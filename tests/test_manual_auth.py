@@ -14,10 +14,8 @@ Usage:
     python test_manual_auth.py
 """
 
-import json
 import sys
 import time
-from pathlib import Path
 
 from perplexity_cli.auth.oauth_handler import authenticate_sync
 from perplexity_cli.auth.token_manager import TokenManager
@@ -56,7 +54,7 @@ def test_2_4_1_actual_perplexity_login() -> bool:
             print("✗ FAILED: No token extracted")
             return False
 
-        print(f"\n✓ SUCCESS: Token extracted")
+        print("\n✓ SUCCESS: Token extracted")
         print(f"  Token length: {len(token)} characters")
         print(f"  Token preview: {token[:50]}...")
 
@@ -228,7 +226,7 @@ def test_2_4_4_token_scenarios() -> bool:
             print("  ✗ FAILED: Should have detected insecure permissions")
             all_passed = False
         except RuntimeError as e:
-            print(f"  ✓ Correctly detected insecure permissions")
+            print("  ✓ Correctly detected insecure permissions")
             print(f"    Error: {str(e)[:60]}...")
 
         # Fix permissions and verify we can load

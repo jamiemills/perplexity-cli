@@ -102,7 +102,7 @@ class NetworkMonitor:
                     "type": "request",
                 }
             )
-            print(f"\n📡 Captured Request:")
+            print("\n📡 Captured Request:")
             print(f"   URL: {url}")
             print(f"   Method: {request_info.get('method')}")
             if request_info.get("postData"):
@@ -114,7 +114,7 @@ class NetworkMonitor:
         url = response_info.get("url", "")
 
         if "perplexity.ai" in url and "/api/" in url:
-            print(f"\n📥 Captured Response:")
+            print("\n📥 Captured Response:")
             print(f"   URL: {url}")
             print(f"   Status: {response_info.get('status')}")
             print(f"   Type: {response_info.get('mimeType')}")
@@ -153,7 +153,7 @@ class NetworkMonitor:
                     elif data.get("method") == "Network.responseReceived":
                         await self._handle_response(data.get("params", {}))
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             print("\n\n" + "=" * 70)
             print("MONITORING COMPLETE")
             print("=" * 70)
@@ -191,7 +191,7 @@ async def discover_query_api():
             print(f"Request {i}:")
             print(f"  URL: {req['url']}")
             print(f"  Method: {req['method']}")
-            print(f"  Headers:")
+            print("  Headers:")
             for key, value in list(req.get("headers", {}).items())[:10]:
                 if key.lower() not in ["cookie", "authorization"]:
                     print(f"    {key}: {value}")
