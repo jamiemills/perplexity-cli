@@ -150,7 +150,6 @@ def test_token_exists_and_loadable():
 @pytest.mark.integration
 def test_token_file_permissions():
     """Test that token file has secure permissions."""
-    import os
     import stat
 
     tm = TokenManager()

@@ -4,7 +4,6 @@
 This script tests various endpoints to map out the API structure.
 """
 
-import json
 
 import httpx
 
@@ -90,7 +89,7 @@ def test_endpoints():
                             elif isinstance(data, list):
                                 print(f"      ✓ JSON array ({len(data)} items)")
                                 results[url] = {"status": 200, "type": "json_array", "count": len(data)}
-                        except:
+                        except Exception:
                             print(f"      ✓ Response: {response.text[:100]}")
                     else:
                         text_preview = response.text[:100].replace("\n", " ")
@@ -98,19 +97,19 @@ def test_endpoints():
                         results[url] = {"status": 200, "type": "html"}
 
                 elif status == 401:
-                    print(f"      ✗ Unauthorized (token invalid)")
+                    print("      ✗ Unauthorized (token invalid)")
                     results[url] = {"status": 401, "type": "auth_error"}
 
                 elif status == 403:
-                    print(f"      ✗ Forbidden")
+                    print("      ✗ Forbidden")
                     results[url] = {"status": 403, "type": "forbidden"}
 
                 elif status == 404:
-                    print(f"      ✗ Not found")
+                    print("      ✗ Not found")
                     results[url] = {"status": 404, "type": "not_found"}
 
                 elif status == 405:
-                    print(f"      ✗ Method not allowed (try different HTTP method)")
+                    print("      ✗ Method not allowed (try different HTTP method)")
                     results[url] = {"status": 405, "type": "method_not_allowed"}
 
                 else:

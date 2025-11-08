@@ -21,7 +21,7 @@ async def test_chrome_connection():
         url = "http://localhost:9222/json"
         with urllib.request.urlopen(url, timeout=5) as response:
             targets = json.loads(response.read())
-        print(f"✓ Connected to Chrome HTTP endpoint")
+        print("✓ Connected to Chrome HTTP endpoint")
         print(f"  Found {len(targets)} target(s)")
 
         for i, target in enumerate(targets):
@@ -39,7 +39,7 @@ async def test_chrome_connection():
             print("✗ No WebSocket URL available")
             return False
 
-        print(f"\n✓ Found page target")
+        print("\n✓ Found page target")
         print(f"  WebSocket URL: {ws_url}")
 
         # Connect via WebSocket
@@ -57,7 +57,7 @@ async def test_chrome_connection():
             response = await ws.recv()
             data = json.loads(response)
 
-            print(f"✓ Received response from Chrome")
+            print("✓ Received response from Chrome")
             print(f"  Response: {json.dumps(data, indent=2)}")
 
             if "result" in data:
