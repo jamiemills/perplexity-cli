@@ -184,7 +184,7 @@ def test_token_with_curl() -> bool:
     # Test additional endpoints
     endpoints = [
         ("https://www.perplexity.ai/api/auth/session", "Get session info"),
-        ("https://www.perplexity.ai/api/conversations", "List conversations"),
+        ("https://www.perplexity.ai/library", "Get library"),
     ]
 
     for url, description in endpoints:
@@ -228,8 +228,8 @@ curl -X GET 'https://www.perplexity.ai/api/auth/session' \\
   -H 'User-Agent: perplexity-cli/0.1.0' \\
   -H 'Content-Type: application/json'
 
-# List conversations
-curl -X GET 'https://www.perplexity.ai/api/conversations' \\
+# Get library
+curl -X GET 'https://www.perplexity.ai/library' \\
   -H 'Authorization: Bearer {token}' \\
   -H 'User-Agent: perplexity-cli/0.1.0' \\
   -H 'Content-Type: application/json'
