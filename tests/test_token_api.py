@@ -5,11 +5,15 @@ can be used to make actual API requests to Perplexity.
 """
 
 import json
+import warnings
 
 import httpx
 import pytest
 
 from perplexity_cli.auth.token_manager import TokenManager
+
+# Suppress harmless coroutine warning from oauth_handler module
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="coroutine.*was never awaited")
 
 
 @pytest.mark.integration
