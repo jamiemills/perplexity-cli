@@ -1,0 +1,24 @@
+Metadata-Version: 2.4
+Name: perplexity-cli
+Version: 0.1.0
+Summary: A command-line interface for querying Perplexity.ai with persistent authentication
+Author-email: Jamie Mills <jamie@example.com>
+License: MIT
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Internet
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: click>=8.0
+Requires-Dist: httpx>=0.25
+Requires-Dist: websockets>=12.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.0; extra == "dev"
+Requires-Dist: ruff>=0.1; extra == "dev"
+
+# Perplexity CLI

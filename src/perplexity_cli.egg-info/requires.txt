@@ -1,0 +1,8 @@
+click>=8.0
+httpx>=0.25
+websockets>=12.0
+
+[dev]
+pytest>=7.0
+pytest-mock>=3.0
+ruff>=0.1

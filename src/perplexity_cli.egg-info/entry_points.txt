@@ -1,0 +1,2 @@
+[console_scripts]
+perplexity = perplexity_cli.cli:main
