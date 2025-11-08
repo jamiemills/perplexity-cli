@@ -32,9 +32,7 @@ class SSEClient:
             "User-Agent": "perplexity-cli/0.1.0",
         }
 
-    def stream_post(
-        self, url: str, json_data: dict
-    ) -> Iterator[dict]:
+    def stream_post(self, url: str, json_data: dict) -> Iterator[dict]:
         """POST request with SSE streaming response.
 
         Args:
@@ -53,9 +51,7 @@ class SSEClient:
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                with client.stream(
-                    "POST", url, headers=headers, json=json_data
-                ) as response:
+                with client.stream("POST", url, headers=headers, json=json_data) as response:
                     # Check for HTTP errors
                     response.raise_for_status()
 
@@ -141,6 +137,4 @@ class SSEClient:
             try:
                 yield json.loads(data_str)
             except json.JSONDecodeError as e:
-                raise ValueError(
-                    f"Failed to parse SSE data as JSON: {data_str[:100]}"
-                ) from e
+                raise ValueError(f"Failed to parse SSE data as JSON: {data_str[:100]}") from e

@@ -62,9 +62,7 @@ class PerplexityAPI:
         request = QueryRequest(query_str=query, params=params)
 
         # Submit query and stream responses
-        for message_data in self.client.stream_post(
-            self.QUERY_ENDPOINT, request.to_dict()
-        ):
+        for message_data in self.client.stream_post(self.QUERY_ENDPOINT, request.to_dict()):
             yield SSEMessage.from_dict(message_data)
 
     def get_complete_answer(self, query: str) -> str:

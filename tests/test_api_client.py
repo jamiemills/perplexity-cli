@@ -26,9 +26,7 @@ class TestQueryParams:
 
     def test_to_dict(self):
         """Test QueryParams converts to dictionary."""
-        params = QueryParams(
-            frontend_uuid="test-uuid-1", frontend_context_uuid="test-uuid-2"
-        )
+        params = QueryParams(frontend_uuid="test-uuid-1", frontend_context_uuid="test-uuid-2")
 
         data = params.to_dict()
 

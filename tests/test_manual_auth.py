@@ -187,6 +187,7 @@ def test_2_4_4_token_scenarios() -> bool:
         with open(tm.token_path, "w") as f:
             f.write("{invalid json")
         import os
+
         os.chmod(tm.token_path, 0o600)
 
         print("  ✓ Token file corrupted")
@@ -217,6 +218,7 @@ def test_2_4_4_token_scenarios() -> bool:
 
         # Change to insecure permissions
         import os
+
         os.chmod(tm.token_path, 0o644)
         print("  ✓ Changed permissions to 0644 (insecure)")
 
