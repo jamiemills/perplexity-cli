@@ -72,3 +72,6 @@ markers = [
     "integration: marks tests as integration tests",
     "security: marks tests as security tests",
 ]
+filterwarnings = [
+    "ignore::RuntimeWarning:.*coroutine.*authenticate_with_browser.*was never awaited",
+]
