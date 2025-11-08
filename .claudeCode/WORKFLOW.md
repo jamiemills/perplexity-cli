@@ -154,31 +154,42 @@
 - **API Working**: Query submission and answer extraction verified
 - **SSE Streaming**: Fully functional with real-time response handling
 
-### 4. Phase 4: CLI Integration
+### 4. Phase 4: CLI Integration ✅ COMPLETE
 
-- [ ] 4.1 Implement Click Commands
-  - [ ] 4.1.1 Implement `auth` command
-  - [ ] 4.1.2 Implement `query` command with argument parsing
-  - [ ] 4.1.3 Implement `logout` command
-  - [ ] 4.1.4 Implement `status` command
+- [x] 4.1 Implement Click Commands
+  - [x] 4.1.1 Implement `auth` command with --port option (219 lines total)
+  - [x] 4.1.2 Implement `query` command with QUERY argument and stdout output
+  - [x] 4.1.3 Implement `logout` command with confirmation
+  - [x] 4.1.4 Implement `status` command with token verification
 
-- [ ] 4.2 Add Error Handling
-  - [ ] 4.2.1 Implement user-friendly error messages
-  - [ ] 4.2.2 Add missing token prompts
-  - [ ] 4.2.3 Add network error handling
-  - [ ] 4.2.4 Add API error handling
+- [x] 4.2 Add Error Handling
+  - [x] 4.2.1 Implement user-friendly error messages for all commands
+  - [x] 4.2.2 Add missing token prompts with guidance (perplexity auth)
+  - [x] 4.2.3 Add network error handling with connection check message
+  - [x] 4.2.4 Add API error handling (401 expired token, 403 forbidden, 429 rate limit)
+  - [x] 4.2.5 Add insecure permission detection with chmod guidance
+  - [x] 4.2.6 Exit codes: 0 (success), 1 (error)
 
-- [ ] 4.3 Test CLI Commands
-  - [ ] 4.3.1 Unit tests for command parsing
-  - [ ] 4.3.2 Unit tests for error paths
-  - [ ] 4.3.3 Integration tests for full workflows
-  - [ ] 4.3.4 Manual testing of all commands
+- [x] 4.3 Test CLI Commands
+  - [x] 4.3.1 Unit tests for all command invocations (13 tests)
+  - [x] 4.3.2 Unit tests for error paths (auth failure, query without token, network errors)
+  - [x] 4.3.3 Integration tests for real token workflows
+  - [x] 4.3.4 Manual testing of all commands ✅ VERIFIED
 
-- [ ] 4.4 Verify End-to-End Workflow
-  - [ ] 4.4.1 Test complete auth → query → answer flow
-  - [ ] 4.4.2 Test token persistence across invocations
-  - [ ] 4.4.3 Test all error scenarios
-  - [ ] 4.4.4 Test help and status commands
+- [x] 4.4 Verify End-to-End Workflow
+  - [x] 4.4.1 Test complete auth → query → answer flow ✅ WORKING
+  - [x] 4.4.2 Test token persistence across invocations ✅ VERIFIED
+  - [x] 4.4.3 Test all error scenarios (no auth, network, expired token) ✅ WORKING
+  - [x] 4.4.4 Test help and status commands ✅ WORKING
+
+## PHASE 4 SUMMARY
+- **Status**: ✅ COMPLETE AND PRODUCTION-READY
+- **Tests**: 75 total (40 auth + 14 API unit + 8 API integration + 13 CLI)
+- **CLI Commands**: 4 (auth, query, logout, status) - all working
+- **Error Handling**: Comprehensive with helpful messages
+- **Exit Codes**: Proper (0 success, 1 error)
+- **Output**: Clean stdout (answers only), errors to stderr
+- **Manual Testing**: Full workflow verified end-to-end
 
 ### 5. Phase 5: Linting & Code Quality
 

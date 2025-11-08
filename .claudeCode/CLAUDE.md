@@ -1,8 +1,8 @@
 # Claude.md - Operational Log & Technical Decisions
 
 **Last Updated**: 2025-11-08
-**Current Phase**: Phases 1-3 COMPLETE, Ready for Phase 4
-**Overall Progress**: 3/8 phases complete (Phase 1, 2, & 3)
+**Current Phase**: Phases 1-4 COMPLETE, Ready for Phase 5
+**Overall Progress**: 4/8 phases complete (Core functionality COMPLETE)
 
 ---
 
@@ -457,4 +457,115 @@ Phase 2 (Authentication) is complete and production-ready. The implementation:
 - "What is Python?" → Complete answer
 - "What is 1+1?" → "1+1 equals 2..."
 
-### API Client Ready for CLI Integration
+---
+
+## Phase 4: CLI Integration - Complete Record
+
+### Date Range
+- **Started**: 2025-11-08
+- **Completed**: 2025-11-08
+- **Duration**: Single session
+
+### Implementation Summary
+
+**Click CLI Framework**: Built complete command-line interface with 4 commands
+- Entry point: `perplexity` command
+- Framework: Click (declarative CLI builder)
+- Output: Answers to stdout, errors to stderr
+- Exit codes: 0 (success), 1 (error)
+
+**Commands Implemented**:
+
+1. **`perplexity auth [--port PORT]`**
+   - Authenticates with Perplexity.ai via Chrome DevTools
+   - Saves JWT token to ~/.config/perplexity-cli/token.json
+   - Error handling with troubleshooting steps
+   - Default port: 9222
+
+2. **`perplexity query "QUESTION"`**
+   - Submits query to Perplexity API
+   - Returns answer to stdout (pipeable)
+   - Checks authentication before query
+   - Comprehensive error handling (401, 403, 429, network)
+
+3. **`perplexity logout`**
+   - Clears stored authentication token
+   - Confirms deletion to user
+   - Idempotent (safe if no token)
+
+4. **`perplexity status`**
+   - Shows authentication status
+   - Displays token location and length
+   - Verifies token with API call to /api/user
+   - Shows username and email if authenticated
+
+### Key Implementation Decisions
+
+**Decision 1**: Output routing (stdout vs stderr)
+- **Rationale**: Answers to stdout enables piping (perplexity query "X" > file.txt)
+- **Implementation**: All errors to stderr, only answers to stdout
+- **Benefit**: Unix-friendly, composable with other tools
+
+**Decision 2**: Error message strategy
+- **Rationale**: Users need actionable guidance, not cryptic errors
+- **Implementation**:
+  - 401 → "Token may be expired. Re-authenticate with: perplexity auth"
+  - Network → "Check your internet connection"
+  - No auth → "Please authenticate first with: perplexity auth"
+- **Benefit**: Self-service troubleshooting
+
+**Decision 3**: Status command with token verification
+- **Rationale**: Users need to know if token is valid, not just present
+- **Implementation**: Makes API call to /api/user to verify token works
+- **Trade-off**: Adds network call, but provides certainty
+
+**Decision 4**: Exit codes for automation
+- **Rationale**: Enable shell scripting and error detection
+- **Implementation**: 0 for success, 1 for any error
+- **Benefit**: Scripts can check $? for success
+
+### Testing Results
+
+**CLI Tests**: 13 tests (all passing)
+- Command invocation tests (help, version)
+- Status tests (authenticated/not authenticated)
+- Logout tests (with/without token)
+- Query tests (success, no auth, network error)
+- Auth tests (success, failure)
+- Integration tests with real components
+
+**Manual Testing**: All workflows verified
+- ✅ `perplexity --help` → Shows commands
+- ✅ `perplexity status` → Shows auth status
+- ✅ `perplexity query "What is 5+5?"` → "5+5 equals 10..."
+- ✅ `perplexity query "meaning of life"` → Full philosophical answer
+- ✅ `perplexity logout` → Removes token
+- ✅ `perplexity query` (no auth) → Error with guidance
+- ✅ Output piping → `perplexity query "X" > file.txt` works
+
+**Total Project Tests**: 75 (all passing)
+- 40 authentication tests
+- 14 API client unit tests
+- 8 API integration tests
+- 13 CLI tests
+
+### Files Created During Phase 4
+
+**Core Implementation**:
+- `src/perplexity_cli/cli.py` (219 lines) - Complete CLI implementation
+
+**Tests**:
+- `tests/test_cli.py` (13 tests, 180 lines)
+- `tests/test_query_simple.py` (quick test utility)
+
+### CLI Now Fully Functional
+
+The `perplexity` command is installed and working:
+```bash
+perplexity status              # Check authentication
+perplexity query "question"    # Ask Perplexity
+perplexity logout              # Clear credentials
+perplexity --help              # Show help
+```
+
+**Core product is complete!** Remaining phases are polish and distribution.
