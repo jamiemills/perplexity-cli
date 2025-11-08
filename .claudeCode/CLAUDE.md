@@ -1,0 +1,310 @@
+# Claude.md - Operational Log & Technical Decisions
+
+**Last Updated**: 2025-11-08
+**Current Phase**: Phase 2 COMPLETE, Ready for Phase 3
+**Overall Progress**: 2/8 phases complete
+
+---
+
+## Phase 2: Authentication - Complete Record
+
+### Date Range
+- **Started**: 2025-11-08
+- **Completed**: 2025-11-08
+- **Duration**: Single session
+
+### Key Findings from Existing Code
+
+**`authenticate.py` Analysis**:
+- ✓ Implements Option A: Browser automation (Chrome DevTools Protocol)
+- ✓ Uses websockets for remote debugging communication
+- ✓ Extracts tokens from both localStorage and cookies
+- ✗ Stored tokens in `.perplexity-auth.json` in project root
+- ✗ No file permission enforcement (0600)
+- ✗ Not integrated into package structure
+
+### Authentication Strategy Chosen: Option A (Browser Automation)
+
+**Rationale**:
+- Most reliable approach (captures live authentication)
+- Works with existing Chrome infrastructure
+- Enables real-time token extraction
+- Proven in existing authenticate.py
+
+**Implementation Details**:
+- Chrome DevTools Protocol over WebSocket
+- Connects to localhost:9222 (standard remote debugging port)
+- Navigates to https://www.perplexity.ai
+- Monitors localStorage for `pplx-next-auth-session` key
+- Extracts encrypted JWT token (~484 characters)
+- Fallback to cookies if localStorage unavailable
+
+**Token Format**:
+- Type: JWT (JSON Web Token), encrypted
+- Encryption: AES-256-GCM (JWE format)
+- Header: `eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0`
+- Size: ~484 characters total
+- Example: `eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..6YRy1ImfS...`
+
+### Implementation Decisions
+
+#### 1. Token Storage Location
+
+**Decision**: `~/.config/perplexity-cli/token.json` (platform-aware)
+
+**Rationale**:
+- Standard location for user config files
+- Follows XDG Base Directory specification (Linux/macOS)
+- Windows equivalent: `%APPDATA%\perplexity-cli\`
+- Separates user data from application code
+- Cross-platform support
+
+**Alternative Rejected**:
+- `.perplexity-auth.json` in project root (not portable, clutters repo)
+- Encrypted file storage (adds complexity, not required per plan)
+- OS keyring (adds dependency, overcomplicated)
+
+#### 2. File Permissions
+
+**Decision**: Enforce 0600 (rw-------)
+
+**Rationale**:
+- Only owner can read/write
+- Prevents group/other access
+- Detects tampering on load
+- Follows Unix security best practices
+- Required by plan specification
+
+**Implementation**:
+- Set on save: `os.chmod(token_path, 0o600)`
+- Verify on load: Check actual permissions match 0o600
+- Error handling: RuntimeError if insecure permissions detected
+
+**Security Implications**:
+- ✓ Group members cannot read token
+- ✓ Other users cannot read token
+- ✓ Tampered tokens detected on load
+- ✓ Clear error message guides recovery
+
+#### 3. Token Capture Strategy
+
+**Implementation Approach**: Async/sync wrapper pattern
+
+```python
+async def authenticate_with_browser(url, port) -> str:
+    """Async function for token extraction"""
+
+def authenticate_sync(url, port) -> str:
+    """Sync wrapper using asyncio.run()"""
+```
+
+**Rationale**:
+- Async allows non-blocking Chrome communication
+- Sync wrapper enables CLI integration
+- Clean separation of concerns
+
+#### 4. Error Handling Strategy
+
+**Three Error Types Defined**:
+
+1. **OSError**: File I/O and JSON parsing failures
+   - Corrupted token files
+   - Failed reads/writes
+   - Permission setting failures
+
+2. **RuntimeError**: Permission violations
+   - Insecure file permissions detected
+   - Chrome connection failures
+   - Authentication failures
+
+3. **None**: Graceful missing token handling
+   - `load_token()` returns None if file missing
+   - `clear_token()` idempotent (no error if missing)
+
+**Rationale**:
+- Specific exceptions enable targeted handling
+- None return avoids exception for normal case
+- Clear error messages don't leak credentials
+
+#### 5. Testing Strategy
+
+**Three-Level Approach**:
+
+**Unit Tests (22 tests)**:
+- Test individual functions in isolation
+- Mock file system and Chrome interactions
+- Verify permissions, JSON handling, extraction logic
+- Security-specific permission tests
+
+**Integration Tests (9 tests)**:
+- Test complete workflows (save-load-delete)
+- Test token persistence across instances
+- Test error recovery scenarios
+- Simulate multiple CLI invocations
+
+**Manual Tests (4 tests)**:
+- 2.4.1: Actual Perplexity.ai authentication
+- 2.4.2: Token persistence verification
+- 2.4.3: Logout functionality
+- 2.4.4: Error scenarios (corrupted, insecure, missing)
+
+**Coverage**:
+- 31 automated tests: 100% passing
+- 4 manual tests: 100% passing
+- Total: 35 tests, all passing ✅
+
+### Security Review
+
+**File Permissions**:
+- ✅ Owner read: Allowed (0600)
+- ✅ Owner write: Allowed (0600)
+- ✅ Group read: DENIED
+- ✅ Group write: DENIED
+- ✅ Other read: DENIED
+- ✅ Other write: DENIED
+
+**Token Handling**:
+- ✅ Never printed in debug output
+- ✅ Never logged to files
+- ✅ Never included in error messages
+- ✅ Verified format on load
+- ✅ Encrypted in transit (HTTPS to Perplexity)
+
+**Error Messages**:
+- ✅ No token content in errors
+- ✅ File paths use variables
+- ✅ All errors actionable
+- ✅ Permission recovery guidance provided
+
+**Code Quality**:
+- ✅ Type hints: 100% coverage
+- ✅ Docstrings: 100% coverage
+- ✅ Ruff linting: All checks passing
+- ✅ No hardcoded credentials
+
+### Phase 2 Challenges & Solutions
+
+**Challenge 1**: Python version compatibility
+- **Issue**: Project had Python 3.13 venv
+- **Solution**: Created new 3.12 venv with `uv venv --python=3.12`
+- **Result**: All code tested on Python 3.12.11
+
+**Challenge 2**: Ruff formatting conflicts
+- **Issue**: Initial code had multiple style issues
+- **Solution**: Auto-fixed with `ruff check --fix` and `ruff format`
+- **Result**: All checks passing, code properly formatted
+
+**Challenge 3**: Duplicate except clauses
+- **Issue**: Two consecutive except OSError clauses in token_manager
+- **Solution**: Merged into single except clause
+- **Result**: Code properly structured
+
+**Challenge 4**: Chrome connection testing
+- **Issue**: Needed to test actual Perplexity.ai authentication
+- **Solution**: Created test script using websockets to Chrome DevTools
+- **Result**: Successfully extracted real token from live session
+
+### Technology Stack
+
+**Runtime Dependencies**:
+- `websockets>=12.0`: WebSocket communication with Chrome DevTools
+- `click>=8.0`: CLI framework (not used in Phase 2)
+- `httpx>=0.25`: HTTP client (not used in Phase 2)
+
+**Development Dependencies**:
+- `pytest>=8.0`: Test framework
+- `pytest-mock>=3.0`: Mocking utilities
+- `pytest-asyncio>=1.2.0`: Async test support
+- `ruff>=0.1`: Linting and formatting
+
+**Platform Dependencies**:
+- Chrome/Chromium with remote debugging enabled
+- Python 3.12.x
+- Unix-like OS (Linux/macOS) or Windows with %APPDATA%
+
+### Files Created During Phase 2
+
+**Core Implementation**:
+- `src/perplexity_cli/__init__.py`
+- `src/perplexity_cli/auth/__init__.py`
+- `src/perplexity_cli/auth/oauth_handler.py` (245 lines)
+- `src/perplexity_cli/auth/token_manager.py` (115 lines)
+- `src/perplexity_cli/utils/__init__.py`
+- `src/perplexity_cli/utils/config.py` (43 lines)
+- `src/perplexity_cli/api/__init__.py`
+- `src/perplexity_cli/cli.py` (placeholder)
+
+**Tests**:
+- `tests/__init__.py`
+- `tests/test_auth.py` (280 lines, 22 tests)
+- `tests/test_auth_integration.py` (200 lines, 9 tests)
+
+**Configuration**:
+- `pyproject.toml` (PEP 517/518 compliant)
+- `requirements.txt` (pinned versions)
+
+**Manual Testing**:
+- `test_manual_auth.py` (350 lines)
+- `test_chrome_connection.py` (100 lines)
+- `save_auth_token.py` (35 lines)
+
+**Documentation**:
+- `.claudeCode/PHASE2_SUMMARY.md`
+- `.claudeCode/PHASE2_TEST_REPORT.md`
+- `.claudeCode/CLAUDE.md` (this file)
+
+### Lessons Learned
+
+1. **Chrome DevTools Protocol Effectiveness**: Proven approach for browser automation with minimal dependencies (just websockets)
+
+2. **File Permission Enforcement**: Critical to verify permissions on both write and read to prevent tampering
+
+3. **Error-Specific Exceptions**: Using RuntimeError vs OSError enables clear error handling in calling code
+
+4. **Test-Driven Security**: Writing security tests alongside functional tests catches vulnerabilities early
+
+5. **Manual Testing Necessity**: Automated tests cannot fully replace testing actual authentication flow with real services
+
+### Known Limitations & Future Improvements
+
+**Current Phase 2 Limitations**:
+- Token refresh not implemented (deferred to Phase 3 when API integration needed)
+- No token expiration warning (will add in Phase 3 with API usage)
+- Requires Chrome with remote debugging (not suitable for headless environments)
+
+**Future Considerations for Phase 3+**:
+- Implement token refresh based on Perplexity API expiration
+- Add HTTP client with auth headers
+- Create API endpoint abstractions
+- Add response parsing and answer extraction
+- Implement CLI command handlers
+
+---
+
+## Repository State
+
+**Branch**: master
+**Last Commits**:
+1. `a9d272c` - Add comprehensive Phase 2 completion summary documentation
+2. `b05b560` - Phase 2.4 complete: End-to-end authentication testing (all tests passed)
+3. `87c2864` - Phase 2 complete: Implement authentication with secure token storage
+
+**Uncommitted Changes**: None
+
+**Git Status**: Clean, all changes committed
+
+---
+
+## Summary
+
+Phase 2 (Authentication) is complete and production-ready. The implementation:
+
+- ✅ Successfully authenticates with Perplexity.ai via Google OAuth
+- ✅ Securely stores tokens with 0600 file permissions
+- ✅ Implements comprehensive error handling
+- ✅ Includes 31 passing tests (22 unit + 9 integration)
+- ✅ Passes all security verification checks
+- ✅ Meets all code quality standards
+- ✅ Includes 4 passing manual end-to-end tests
+
+**Ready for Phase 3: API Client Implementation**
