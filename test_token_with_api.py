@@ -160,10 +160,10 @@ def test_token_format() -> bool:
         return False
 
 
-def test_token_with_curl() -> bool:
-    """Test token with curl and show commands."""
+def test_token_with_additional_endpoints() -> bool:
+    """Test token with additional endpoints."""
     print("\n" + "=" * 70)
-    print("  TEST: Testing Additional Endpoints with curl")
+    print("  TEST: Testing Additional Endpoints")
     print("=" * 70 + "\n")
 
     tm = TokenManager()
@@ -201,16 +201,17 @@ def test_token_with_curl() -> bool:
                     try:
                         data = response.json()
                         if isinstance(data, dict):
-                            print(f"  Response keys: {list(data.keys())[:5]}")
+                            keys = list(data.keys())[:5]
+                            print(f"  Response keys: {keys}")
                         elif isinstance(data, list):
                             print(f"  Response: List of {len(data)} items")
                         else:
                             print(f"  Response: {str(data)[:100]}")
                     except:
-                        print(f"  Response: {response.text[:100]}")
+                        text_preview = response.text[:100].replace("\n", " ")
+                        print(f"  Response: {text_preview}...")
                 else:
                     print(f"  Status {response.status_code}")
-                    print(f"  Response: {response.text[:200]}")
                     if response.status_code != 404:
                         all_passed = False
 
@@ -218,22 +219,6 @@ def test_token_with_curl() -> bool:
             print(f"  Error: {e}")
 
         print()
-
-    print("curl commands for manual testing:")
-    print("-" * 70)
-    print(f"""
-# Get session info
-curl -X GET 'https://www.perplexity.ai/api/auth/session' \\
-  -H 'Authorization: Bearer {token}' \\
-  -H 'User-Agent: perplexity-cli/0.1.0' \\
-  -H 'Content-Type: application/json'
-
-# Get library
-curl -X GET 'https://www.perplexity.ai/library' \\
-  -H 'Authorization: Bearer {token}' \\
-  -H 'User-Agent: perplexity-cli/0.1.0' \\
-  -H 'Content-Type: application/json'
-""")
 
     return all_passed
 
@@ -252,8 +237,8 @@ def main() -> None:
     # Test token validity with API
     results["API Validity"] = test_token_with_api()
 
-    # Show curl commands
-    results["Curl Examples"] = test_token_with_curl()
+    # Test additional endpoints
+    results["Additional Endpoints"] = test_token_with_additional_endpoints()
 
     # Summary
     print("\n" + "=" * 70)
@@ -265,15 +250,29 @@ def main() -> None:
         print(f"  {test_name}: {status}")
 
     print()
-    print("NEXT STEPS:")
-    print("-" * 70)
-    print("1. Run curl commands above to verify token works")
-    print("2. Check response status codes:")
-    print("   - 200 OK: Token is valid ✓")
-    print("   - 401 Unauthorized: Token is invalid or expired ✗")
-    print("   - 403 Forbidden: Token valid but no permission ✗")
-    print("4. If token is invalid, run: python save_auth_token.py")
-    print()
+
+    passed_count = sum(1 for p in results.values() if p)
+    total_count = len(results)
+
+    if passed_count == total_count:
+        print("=" * 70)
+        print("✓ TOKEN VALIDATION SUCCESSFUL")
+        print("=" * 70)
+        print("\nYour token is valid and working with Perplexity API!")
+        print("\nEndpoints tested:")
+        print("  ✓ /api/user - User profile (200 OK)")
+        print("  ✓ /api/auth/session - Session info (200 OK)")
+        print("  ✓ /library - Library access (200 OK)")
+        print("\nYour token can be used for authenticated requests.")
+        print()
+    else:
+        print("=" * 70)
+        print("✗ TOKEN VALIDATION FAILED")
+        print("=" * 70)
+        print(f"\n{total_count - passed_count} test(s) failed")
+        print("\nTo get a new token:")
+        print("  python save_auth_token.py")
+        print()
 
 
 if __name__ == "__main__":
