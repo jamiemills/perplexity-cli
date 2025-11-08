@@ -35,9 +35,7 @@ def auth(port: int) -> None:
         perplexity auth --port 9222
     """
     click.echo("Authenticating with Perplexity.ai...")
-    click.echo(
-        f"\nMake sure Chrome is running with --remote-debugging-port={port}"
-    )
+    click.echo(f"\nMake sure Chrome is running with --remote-debugging-port={port}")
     click.echo("Navigate to https://www.perplexity.ai and log in if needed.\n")
 
     try:
@@ -50,7 +48,7 @@ def auth(port: int) -> None:
 
         click.echo("✓ Authentication successful!")
         click.echo(f"✓ Token saved to: {tm.token_path}")
-        click.echo("\nYou can now use: perplexity query \"<your question>\"")
+        click.echo('\nYou can now use: perplexity query "<your question>"')
 
     except RuntimeError as e:
         click.echo(f"✗ Authentication failed: {e}", err=True)

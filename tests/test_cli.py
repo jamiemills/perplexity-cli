@@ -143,9 +143,7 @@ class TestCLICommands:
 
         # Mock API to raise network error
         mock_api = Mock()
-        mock_api.get_complete_answer.side_effect = httpx.RequestError(
-            "Connection failed"
-        )
+        mock_api.get_complete_answer.side_effect = httpx.RequestError("Connection failed")
         mock_api_class.return_value = mock_api
 
         result = runner.invoke(query, ["test"])

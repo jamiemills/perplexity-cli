@@ -209,6 +209,7 @@ async def discover_query_api():
     except Exception as e:
         print(f"\n✗ Error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

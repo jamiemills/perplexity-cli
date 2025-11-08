@@ -162,7 +162,9 @@ def test_token_file_permissions():
     actual_permissions = stat.S_IMODE(file_stat.st_mode)
 
     # Should be 0600 (owner read/write only)
-    assert actual_permissions == 0o600, f"Token file should have 0600 permissions, got {oct(actual_permissions)}"
+    assert actual_permissions == 0o600, (
+        f"Token file should have 0600 permissions, got {oct(actual_permissions)}"
+    )
 
     # Verify group/others cannot read
     assert (actual_permissions & stat.S_IRGRP) == 0, "Group should not be able to read token"

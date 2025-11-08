@@ -69,7 +69,9 @@ async def test_chrome_connection():
     except urllib.error.URLError as e:
         print(f"✗ Failed to connect to Chrome HTTP endpoint: {e}")
         print("\nMake sure Chrome is running with:")
-        print("  /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9222")
+        print(
+            "  /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9222"
+        )
         return False
     except Exception as e:
         print(f"✗ Error: {e}")

@@ -4,7 +4,6 @@
 This script tests various endpoints to map out the API structure.
 """
 
-
 import httpx
 
 from perplexity_cli.auth.token_manager import TokenManager
@@ -29,24 +28,19 @@ def test_endpoints():
         # User/Auth endpoints
         ("GET", "https://www.perplexity.ai/api/user", "Get current user"),
         ("GET", "https://www.perplexity.ai/api/auth/session", "Get session info"),
-
         # Query/Search endpoints
         ("POST", "https://www.perplexity.ai/api/search", "Search endpoint"),
         ("POST", "https://www.perplexity.ai/api/query", "Query endpoint"),
         ("POST", "https://www.perplexity.ai/api/chat", "Chat endpoint"),
-
         # Library/History endpoints
         ("GET", "https://www.perplexity.ai/api/library", "Library API"),
         ("GET", "https://www.perplexity.ai/api/searches", "Saved searches"),
         ("GET", "https://www.perplexity.ai/api/history", "Search history"),
-
         # Collections/Threads
         ("GET", "https://www.perplexity.ai/api/collections", "Collections"),
         ("GET", "https://www.perplexity.ai/api/threads", "Conversation threads"),
-
         # Sources
         ("GET", "https://www.perplexity.ai/api/sources", "Source list"),
-
         # Settings
         ("GET", "https://www.perplexity.ai/api/settings", "User settings"),
     ]
@@ -67,9 +61,7 @@ def test_endpoints():
                     response = client.get(url, headers=headers, timeout=10)
                 else:
                     # For POST, send empty JSON body
-                    response = client.post(
-                        url, headers=headers, json={}, timeout=10
-                    )
+                    response = client.post(url, headers=headers, json={}, timeout=10)
 
                 status = response.status_code
                 print(f"      Status: {status}")
@@ -88,7 +80,11 @@ def test_endpoints():
                                 results[url] = {"status": 200, "type": "json", "keys": keys}
                             elif isinstance(data, list):
                                 print(f"      ✓ JSON array ({len(data)} items)")
-                                results[url] = {"status": 200, "type": "json_array", "count": len(data)}
+                                results[url] = {
+                                    "status": 200,
+                                    "type": "json_array",
+                                    "count": len(data),
+                                }
                         except Exception:
                             print(f"      ✓ Response: {response.text[:100]}")
                     else:
