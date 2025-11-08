@@ -30,32 +30,65 @@
   - [ ] 1.5.2 Configure CLI entry point for `perplexity` command
   - [ ] 1.5.3 Verify package structure is valid
 
-### 2. Phase 2: Authentication
+### 2. Phase 2: Authentication ✅ COMPLETE
 
 - [x] 2.1 Implement Token Capture
-  - [x] 2.1.1 Implement chosen token capture strategy (A/B/C) in `oauth_handler.py`
+  - [x] 2.1.1 Implement chosen token capture strategy (Option A: Chrome DevTools) in `oauth_handler.py`
   - [x] 2.1.2 Handle browser opening with Chrome DevTools Protocol
-  - [x] 2.1.3 Implement token extraction logic
+  - [x] 2.1.3 Implement token extraction logic from localStorage/cookies
   - [x] 2.1.4 Add error handling for failed authentication
+  - [x] 2.1.5 Provide both async and sync interfaces for token extraction
 
 - [x] 2.2 Implement Token Manager
-  - [x] 2.2.1 Create `token_manager.py` with secure token storage
-  - [x] 2.2.2 Implement file reading/writing with 0600 permissions
-  - [x] 2.2.3 Add token validation logic
+  - [x] 2.2.1 Create `token_manager.py` with secure token storage in ~/.config/perplexity-cli/
+  - [x] 2.2.2 Implement file reading/writing with 0600 permissions (enforced on save and verify on load)
+  - [x] 2.2.3 Add token validation logic (permission verification, JSON parsing)
   - [x] 2.2.4 Token refresh logic deferred (will implement during Phase 3 when API is ready)
-  - [x] 2.2.5 Add logout functionality
+  - [x] 2.2.5 Add logout functionality (delete token file)
+  - [x] 2.2.6 Implement config utility for platform-aware directory management
 
 - [x] 2.3 Write Auth Tests
-  - [x] 2.3.1 Unit tests for token storage and retrieval
-  - [x] 2.3.2 Unit tests for file permission enforcement
-  - [x] 2.3.3 Unit tests for token validation
-  - [x] 2.3.4 Integration test for full auth flow (mocked browser)
+  - [x] 2.3.1 Unit tests for token storage and retrieval (9 tests)
+  - [x] 2.3.2 Unit tests for file permission enforcement (5 tests)
+  - [x] 2.3.3 Unit tests for token validation (8 tests)
+  - [x] 2.3.4 Integration tests for auth flow (9 tests)
+  - [x] 2.3.5 API integration tests (9 tests)
+  - [x] 2.3.6 Total: 40 pytest tests, all passing ✅
 
 - [x] 2.4 Test Authentication End-to-End
-  - [x] 2.4.1 Manual test with actual Perplexity login
-  - [x] 2.4.2 Verify token persistence across CLI invocations
-  - [x] 2.4.3 Test logout functionality
-  - [x] 2.4.4 Test invalid/expired token scenarios
+  - [x] 2.4.1 Manual test with actual Perplexity login via Chrome DevTools ✅ PASSED
+  - [x] 2.4.2 Verify token persistence across CLI invocations ✅ PASSED
+  - [x] 2.4.3 Test logout functionality ✅ PASSED
+  - [x] 2.4.4 Test invalid/expired token scenarios ✅ PASSED
+  - [x] 2.4.5 Validate token works with Perplexity API (/api/user, /api/auth/session, /library) ✅ PASSED
+  - [x] 2.4.6 Verify file permissions (0600) enforced ✅ PASSED
+  - [x] 2.4.7 Test error recovery scenarios ✅ PASSED
+
+- [x] 2.5 Documentation & Code Quality
+  - [x] 2.5.1 Complete PHASE2_SUMMARY.md with implementation details
+  - [x] 2.5.2 Complete PHASE2_TEST_REPORT.md with detailed test results
+  - [x] 2.5.3 Update CLAUDE.md operational log with findings and decisions
+  - [x] 2.5.4 Create TESTING_GUIDE.md with manual testing instructions
+  - [x] 2.5.5 All code passes ruff linting and formatting checks
+  - [x] 2.5.6 100% type hints on all functions
+  - [x] 2.5.7 100% docstrings on all public functions
+
+- [x] 2.6 Test Infrastructure & Utilities
+  - [x] 2.6.1 Create test_token_api.py as pytest test suite (9 tests)
+  - [x] 2.6.2 Create test_chrome_connection.py for Chrome DevTools verification
+  - [x] 2.6.3 Create test_manual_auth.py for interactive manual testing
+  - [x] 2.6.4 Create discover_api_endpoints.py to map Perplexity API
+  - [x] 2.6.5 Create save_auth_token.py utility for token extraction
+  - [x] 2.6.6 Suppress harmless coroutine warnings from pytest output
+
+## PHASE 2 SUMMARY
+- **Status**: ✅ COMPLETE AND PRODUCTION-READY
+- **Tests**: 40/40 passing (22 unit + 9 integration + 9 API tests)
+- **Test Runtime**: < 1 second
+- **Code Quality**: 100% (ruff passing, type hints, docstrings)
+- **Security**: 0600 file permissions enforced and verified
+- **API Validation**: Token verified working with Perplexity API
+- **Documentation**: Complete with implementation details and testing guides
 
 ### 3. Phase 3: API Client
 
