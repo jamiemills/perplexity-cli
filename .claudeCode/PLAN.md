@@ -211,25 +211,96 @@ The chosen approach will be documented in `.claudeCode/CLAUDE.md` during Phase 1
 
 ## SECTION D: API CLIENT IMPLEMENTATION
 
-### D.1 API Abstraction Layer
-- `endpoints.py`: Maps to Perplexity's private API endpoints
-  - Identifies correct endpoint for query submission
-  - Handles response parsing
-  - Extracts answer text from full response
-  - `client.py`: Low-level httpx-based HTTP client
-  - Includes authentication headers in all requests
-  - Handles request/response serialisation
-  - Implements error handling and retry logic
-  - Manages HTTP session lifecycle
-  - Input validation and sanitisation- `models.py`: Data structures for requests/responses
-  - Type-safe request objects
-  - Response parsing models
+### D.1 API Endpoint (DISCOVERED in Phase 1)
 
-### D.2 API Discovery Strategy
-- Use browser developer tools to identify actual API calls made by Perplexity's React frontend
-- Document endpoint URLs, request/response formats, required headers
-- Create wrapper functions in `endpoints.py` to abstract these details
-- This isolation enables rapid adaptation if Perplexity changes API endpoints or formats
+**Primary Query Endpoint**: `POST https://www.perplexity.ai/rest/sse/perplexity_ask`
+
+**Key Characteristics**:
+- Protocol: Server-Sent Events (SSE) streaming
+- Authentication: Bearer JWT token
+- Request Format: JSON with params object and query_str
+- Response Format: text/event-stream with incremental JSON messages
+- API Version: 2.18 (passed as query parameter)
+
+**Request Structure**:
+```json
+{
+  "params": {
+    "language": "en-US",
+    "timezone": "Europe/London",
+    "search_focus": "internet",
+    "mode": "copilot",
+    "frontend_uuid": "<uuid>",
+    "frontend_context_uuid": "<uuid>",
+    "version": "2.18"
+  },
+  "query_str": "<user query>"
+}
+```
+
+**Response Structure**: SSE stream of JSON messages
+- Format: `event: message\ndata: {json}\n\n`
+- Multiple messages sent as answer is generated
+- Final message: `final_sse_message: true`
+- Answer in `blocks` array with `intended_usage` types
+
+### D.2 API Abstraction Layer
+
+**`client.py`: SSE streaming HTTP client**
+- Uses httpx.stream() for Server-Sent Events support
+- Implements SSE event-stream parser (handles "event:" and "data:" lines)
+- Includes Bearer authentication headers in all requests
+- Handles streaming response chunks
+- Implements error handling and retry logic for stream interruptions
+- Manages HTTP session lifecycle
+- Input validation and sanitisation
+
+**`endpoints.py`: Query endpoint wrapper**
+- Maps to `/rest/sse/perplexity_ask` endpoint
+- Generates UUIDs for request tracking (frontend_uuid, frontend_context_uuid)
+- Builds request payload with params and query_str
+- Streams SSE responses and yields parsed JSON messages
+- Extracts answer text from blocks array
+- Detects completion via final_sse_message flag
+- Returns complete answer when streaming finishes
+
+**`models.py`: Data structures for SSE requests/responses**
+- QueryRequest: Request payload structure with params
+- QueryResponse: SSE message structure with blocks
+- Block: Answer block with intended_usage and content
+- WebResult: Search result structure (name, snippet, url, timestamp)
+- Type-safe models with full type hints
+- SSE message deserialisation
+
+### D.3 SSE Streaming Implementation
+
+**SSE Format Handling**:
+- Parse `event: message` lines
+- Parse `data: {json}` lines
+- Handle multi-line data payloads
+- Detect stream completion
+- Accumulate text from incremental updates
+
+**Block Types to Handle**:
+- `web_results`: Search results with sources
+- `answer_tabs`: Answer mode tabs
+- `pro_search_steps`: Search progress indicators
+- `diff_block`: Incremental text patches
+- Text blocks: Actual answer content
+
+**Answer Extraction Strategy**:
+- Collect all streaming messages until final_sse_message: true
+- Extract text from blocks with answer content
+- Optionally include web_results for sources
+- Return complete answer text
+
+### D.4 API Discovery (COMPLETED in Phase 1)
+- ✅ Used Chrome DevTools Protocol to monitor network traffic
+- ✅ Identified `/rest/sse/perplexity_ask` as primary query endpoint
+- ✅ Documented request/response formats in API_DISCOVERY.md
+- ✅ Tested with query: "What is the capital of France?"
+- ✅ Verified SSE streaming response format
+- ✅ Confirmed Bearer token authentication works
 
 ## SECTION E: CLI IMPLEMENTATION
 
@@ -383,25 +454,33 @@ The chosen approach will be documented in `.claudeCode/CLAUDE.md` during Phase 1
 
 ## SECTION I: DEPENDENCIES
 
-### I.1 Required Runtime Packages
+### I.1 Required Runtime Packages (UPDATED based on Phase 1 findings)
 - `click>=8.0` (CLI framework)
-- `httpx>=0.25` (HTTP client)
-- Browser automation library (Selenium or Playwright, if Option A chosen)
+- `httpx>=0.25` (HTTP client with SSE streaming support)
+- `websockets>=12.0` (Chrome DevTools Protocol communication for authentication)
+
+**Note**: No additional browser automation library needed. Chrome DevTools Protocol via websockets is sufficient.
 
 ### I.2 Development Packages
 - `pytest>=7.0` (testing framework)
-- `pytest-mock>=3.0` (mocking HTTP calls)
+- `pytest-mock>=3.0` (mocking HTTP calls and SSE streams)
+- `pytest-asyncio>=1.2.0` (async test support)
+- `pytest-cov>=7.0` (test coverage reporting)
 - `ruff>=0.1` (linting and formatting)
 
 ### I.3 Environment
-- **Python**: 3.12 (specified in `pyproject.toml` with `requires-python = ">=3.12"`)
+- **Python**: 3.12.11 (specified in `pyproject.toml` with `requires-python = ">=3.12"`)
 - **Build system**: setuptools with PEP 517/518 compliance
 - **Package manager**: `uv` (for all dependency and environment management)
+- **Virtual environment**: Created with `uv venv --python=3.12`
 
 ### I.4 Standard Library Dependencies
-- `webbrowser` (automatic browser opening)
-- `http.server` (local OAuth callback server, if Option B chosen)
-- `os`, `json`, `pathlib` (file and configuration management)
+- `uuid` (UUID generation for API request tracking)
+- `json` (JSON serialisation/deserialisation)
+- `os`, `stat` (file operations and permission management)
+- `pathlib` (path handling)
+- `urllib` (Chrome DevTools HTTP endpoint communication)
+- `asyncio` (async operations for Chrome DevTools and SSE streaming)
 
 ## SECTION J: SECURITY CONSIDERATIONS
 
