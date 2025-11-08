@@ -51,11 +51,11 @@
   - [x] 2.3.3 Unit tests for token validation
   - [x] 2.3.4 Integration test for full auth flow (mocked browser)
 
-- [ ] 2.4 Test Authentication End-to-End
-  - [ ] 2.4.1 Manual test with actual Perplexity login
-  - [ ] 2.4.2 Verify token persistence across CLI invocations
-  - [ ] 2.4.3 Test logout functionality
-  - [ ] 2.4.4 Test invalid/expired token scenarios
+- [x] 2.4 Test Authentication End-to-End
+  - [x] 2.4.1 Manual test with actual Perplexity login
+  - [x] 2.4.2 Verify token persistence across CLI invocations
+  - [x] 2.4.3 Test logout functionality
+  - [x] 2.4.4 Test invalid/expired token scenarios
 
 ### 3. Phase 3: API Client
 
