@@ -1,8 +1,66 @@
 # Claude.md - Operational Log & Technical Decisions
 
 **Last Updated**: 2025-11-08
-**Current Phase**: Phase 2 COMPLETE, Ready for Phase 3
-**Overall Progress**: 2/8 phases complete
+**Current Phase**: Phase 1 COMPLETE, Phase 2 COMPLETE, Ready for Phase 3
+**Overall Progress**: 2/8 phases complete (Phase 1 & 2)
+
+---
+
+## Phase 1: Research & Setup - Complete Record
+
+### Date Range
+- **Started**: 2025-11-08
+- **Completed**: 2025-11-08
+- **Duration**: Single session
+
+### API Discovery Findings
+
+**Primary Query Endpoint Discovered**: `POST https://www.perplexity.ai/rest/sse/perplexity_ask`
+
+**Key Characteristics**:
+- Protocol: Server-Sent Events (SSE) streaming
+- Method: POST
+- Content-Type: application/json
+- Response: text/event-stream (incremental updates)
+- Authentication: Bearer token (JWT from Phase 2)
+- API Version: 2.18
+
+**Request Structure**:
+```json
+{
+  "params": {
+    "language": "en-US",
+    "timezone": "Europe/London",
+    "search_focus": "internet",
+    "mode": "copilot",
+    "frontend_uuid": "<uuid>",
+    "frontend_context_uuid": "<uuid>",
+    "version": "2.18"
+  },
+  "query_str": "<user query>"
+}
+```
+
+**Response Format**: SSE stream with incremental JSON messages
+- Format: `event: message\ndata: {json}\n\n`
+- Multiple messages sent as answer is generated
+- Final message marked with `final_sse_message: true`
+- Answer appears in `blocks` array with different `intended_usage` types
+
+**Research Method**: Chrome DevTools Protocol network monitoring during live query submission
+
+**Test Query**: "What is the capital of France?"
+- Successfully submitted and received streaming response
+- Thread created: `what-is-the-capital-of-france-L86vRtELQ6.qJj9k6CzYhQ`
+- Response included web results and answer text
+
+**Additional Endpoints Found**:
+- `/rest/rate-limit/all` - Rate limit info
+- `/rest/thread/mark_viewed/<uuid>` - Thread tracking
+- `/rest/collections/list_user_collections` - User collections
+- `/api/version` - API version info
+
+**Documentation**: Complete API discovery documented in `.claudeCode/API_DISCOVERY.md`
 
 ---
 
