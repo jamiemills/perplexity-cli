@@ -101,34 +101,45 @@
 
 ### 3. Phase 3: API Client
 
-- [ ] 3.1 Implement HTTP Client
-  - [ ] 3.1.1 Create `client.py` with requests-based HTTP client
-  - [ ] 3.1.2 Configure authentication headers
-  - [ ] 3.1.3 Implement error handling and retry logic
-  - [ ] 3.1.4 Add input validation and sanitisation
+- [ ] 3.1 Implement SSE HTTP Client
+  - [ ] 3.1.1 Create `client.py` with httpx streaming client for SSE support
+  - [ ] 3.1.2 Configure authentication headers (Bearer JWT token)
+  - [ ] 3.1.3 Implement SSE event-stream parsing (event: message / data: json format)
+  - [ ] 3.1.4 Implement error handling and retry logic
+  - [ ] 3.1.5 Add input validation and sanitisation
+  - [ ] 3.1.6 Handle streaming response chunks
 
 - [ ] 3.2 Create Endpoint Abstractions
-  - [ ] 3.2.1 Create `endpoints.py` with query submission wrapper
-  - [ ] 3.2.2 Implement response parsing
-  - [ ] 3.2.3 Extract answer text from full response
-  - [ ] 3.2.4 Document API contract
+  - [ ] 3.2.1 Create `endpoints.py` with query submission to /rest/sse/perplexity_ask
+  - [ ] 3.2.2 Generate UUIDs (frontend_uuid, frontend_context_uuid) using uuid.uuid4()
+  - [ ] 3.2.3 Build request payload with params and query_str
+  - [ ] 3.2.4 Implement SSE stream parsing and block extraction
+  - [ ] 3.2.5 Extract answer text from blocks array (intended_usage types)
+  - [ ] 3.2.6 Detect completion via final_sse_message flag
+  - [ ] 3.2.7 Document API contract and SSE message format
 
 - [ ] 3.3 Define Data Models
-  - [ ] 3.3.1 Create request/response models in `models.py`
-  - [ ] 3.3.2 Add type hints for all models
-  - [ ] 3.3.3 Implement serialisation/deserialisation logic
+  - [ ] 3.3.1 Create QueryRequest model with params structure
+  - [ ] 3.3.2 Create QueryResponse model for SSE messages
+  - [ ] 3.3.3 Create Block model for answer blocks (web_results, diff_block, etc.)
+  - [ ] 3.3.4 Create WebResult model for search results
+  - [ ] 3.3.5 Add type hints for all models
+  - [ ] 3.3.6 Implement serialisation/deserialisation logic for SSE JSON
 
 - [ ] 3.4 Write API Tests
-  - [ ] 3.4.1 Unit tests for HTTP client request formatting
-  - [ ] 3.4.2 Unit tests for response parsing
-  - [ ] 3.4.3 Unit tests for answer extraction
-  - [ ] 3.4.4 Mock tests for API interactions
+  - [ ] 3.4.1 Unit tests for SSE client request formatting
+  - [ ] 3.4.2 Unit tests for SSE event-stream parsing
+  - [ ] 3.4.3 Unit tests for answer extraction from blocks
+  - [ ] 3.4.4 Unit tests for UUID generation
+  - [ ] 3.4.5 Mock tests for SSE streaming responses
+  - [ ] 3.4.6 Mock tests for incremental block updates
 
 - [ ] 3.5 Test API Integration
-  - [ ] 3.5.1 Integration tests with actual Perplexity queries
-  - [ ] 3.5.2 Verify answer extraction accuracy
-  - [ ] 3.5.3 Test error handling for invalid queries
-  - [ ] 3.5.4 Test token refresh scenarios
+  - [ ] 3.5.1 Integration tests with actual Perplexity queries (real SSE streaming)
+  - [ ] 3.5.2 Verify answer extraction accuracy from streaming blocks
+  - [ ] 3.5.3 Test error handling for invalid queries (401, 403, rate limits)
+  - [ ] 3.5.4 Test streaming interruption and reconnection
+  - [ ] 3.5.5 Test with various query types (simple, complex, multi-part)
 
 ### 4. Phase 4: CLI Integration
 
