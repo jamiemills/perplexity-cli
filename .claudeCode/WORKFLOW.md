@@ -1,34 +1,43 @@
 ## DEVELOPMENT WORKFLOW
 
-### 1. Phase 1: Research & Setup
+### 1. Phase 1: Research & Setup ✅ COMPLETE
 
-- [ ] 1.1 Analyse Perplexity APIs
-  - [ ] 1.1.1 Use browser developer tools to inspect network calls
-  - [ ] 1.1.2 Document all private API endpoints
-  - [ ] 1.1.3 Record request/response formats and headers
-  - [ ] 1.1.4 Identify authentication mechanism
+- [x] 1.1 Analyse Perplexity APIs
+  - [x] 1.1.1 Use browser developer tools to inspect network calls via Chrome DevTools Protocol
+  - [x] 1.1.2 Document all private API endpoints (see API_DISCOVERY.md)
+  - [x] 1.1.3 Record request/response formats and headers (SSE streaming format)
+  - [x] 1.1.4 Identify authentication mechanism (Bearer JWT token)
 
-- [ ] 1.2 Determine Token Capture Strategy
-  - [ ] 1.2.1 Evaluate Option A (Browser automation)
-  - [ ] 1.2.2 Evaluate Option B (Local callback server)
-  - [ ] 1.2.3 Evaluate Option C (Manual token extraction)
-  - [ ] 1.2.4 Document chosen approach and rationale in `.claudeCode/CLAUDE.md`
+- [x] 1.2 Determine Token Capture Strategy
+  - [x] 1.2.1 Evaluate Option A (Browser automation) - CHOSEN ✅
+  - [x] 1.2.2 Evaluate Option B (Local callback server) - Not needed
+  - [x] 1.2.3 Evaluate Option C (Manual token extraction) - Not needed
+  - [x] 1.2.4 Document chosen approach and rationale in CLAUDE.md
 
-- [ ] 1.3 Set Up Project Environment
-  - [ ] 1.3.1 Configure `pyproject.toml` with Python 3.12 requirement
-  - [ ] 1.3.2 Create initial `uv.lock` file
-  - [ ] 1.3.3 Set up virtual environment with `uv`
-  - [ ] 1.3.4 Install development dependencies via `uv pip install -e ".[dev]"`
+- [x] 1.3 Set Up Project Environment
+  - [x] 1.3.1 Configure pyproject.toml with Python 3.12 requirement
+  - [x] 1.3.2 Create uv.lock file (via uv pip install)
+  - [x] 1.3.3 Set up virtual environment with uv (Python 3.12.11)
+  - [x] 1.3.4 Install development dependencies via uv pip install -e ".[dev]"
 
-- [ ] 1.4 Create Project Structure
-  - [ ] 1.4.1 Create directory structure as per B.1
-  - [ ] 1.4.2 Create empty module files
-  - [ ] 1.4.3 Create initial README skeleton
+- [x] 1.4 Create Project Structure
+  - [x] 1.4.1 Create directory structure: src/perplexity_cli/{auth,api,utils}
+  - [x] 1.4.2 Create all module files (__init__.py files)
+  - [x] 1.4.3 Create initial README (basic structure)
 
-- [ ] 1.5 Configure Build System
-  - [ ] 1.5.1 Set up setuptools configuration in `pyproject.toml`
-  - [ ] 1.5.2 Configure CLI entry point for `perplexity` command
-  - [ ] 1.5.3 Verify package structure is valid
+- [x] 1.5 Configure Build System
+  - [x] 1.5.1 Set up setuptools configuration in pyproject.toml (PEP 517/518)
+  - [x] 1.5.2 Configure CLI entry point for perplexity command
+  - [x] 1.5.3 Verify package structure is valid (installable with uv pip install -e .)
+
+## PHASE 1 SUMMARY
+- **Status**: ✅ COMPLETE
+- **Key Discovery**: POST /rest/sse/perplexity_ask (SSE streaming endpoint)
+- **Authentication**: Bearer JWT token (484 chars, AES-256-GCM)
+- **Request Format**: JSON with params object and query_str
+- **Response Format**: Server-Sent Events (text/event-stream)
+- **API Version**: 2.18
+- **Documentation**: API_DISCOVERY.md created with full details
 
 ### 2. Phase 2: Authentication ✅ COMPLETE
 
