@@ -1,279 +1,166 @@
-#!/usr/bin/env python3
 """Test that the extracted token works with Perplexity API.
 
-This script tests whether the token obtained from authentication
+This module tests whether the token obtained from authentication
 can be used to make actual API requests to Perplexity.
 """
 
 import json
-import sys
 
 import httpx
+import pytest
 
 from perplexity_cli.auth.token_manager import TokenManager
 
 
-def test_token_with_api() -> bool:
-    """Test if the stored token can authenticate with Perplexity API."""
-    print("\n" + "=" * 70)
-    print("  TEST: Token Validity with Perplexity API")
-    print("=" * 70 + "\n")
+@pytest.mark.integration
+class TestTokenAPI:
+    """Tests for token validity with Perplexity API."""
 
-    # Load the stored token
-    tm = TokenManager()
-    token = tm.load_token()
+    @pytest.fixture
+    def token(self):
+        """Load token from storage."""
+        tm = TokenManager()
+        token = tm.load_token()
+        if not token:
+            pytest.skip("No token found. Run: python tests/save_auth_token.py")
+        return token
 
-    if not token:
-        print("✗ No token found. Please run: python save_auth_token.py")
-        return False
-
-    print(f"Token loaded: {token[:50]}...")
-    print(f"Token length: {len(token)} characters\n")
-
-    # Test 1: Make a simple API request to check token validity
-    print("TEST 1: Making authenticated request to Perplexity API")
-    print("-" * 70)
-
-    try:
-        # Try to get user profile info (simple endpoint to verify auth)
-        headers = {
+    @pytest.fixture
+    def headers(self, token):
+        """Create authorization headers."""
+        return {
             "Authorization": f"Bearer {token}",
             "User-Agent": "perplexity-cli/0.1.0",
             "Content-Type": "application/json",
         }
 
-        print("Headers being sent:")
-        print(f"  Authorization: Bearer {token[:30]}...")
-        print(f"  User-Agent: perplexity-cli/0.1.0")
-        print(f"  Content-Type: application/json\n")
+    def test_token_format(self, token):
+        """Test that token has valid JWT format."""
+        # Check length
+        assert len(token) > 100, "Token should be at least 100 characters"
+
+        # Check it looks like a JWT (starts with 'eyJ')
+        assert token.startswith("eyJ"), "Token should start with 'eyJ' (JWT format)"
+
+        # Check it has multiple parts (JWT structure)
+        parts = token.split(".")
+        assert len(parts) >= 2, f"JWT should have at least 2 parts, got {len(parts)}"
+
+    def test_token_stored_correctly(self, token):
+        """Test that token is stored in correct JSON format."""
+        tm = TokenManager()
+
+        # Verify file exists
+        assert tm.token_exists(), "Token file should exist"
+
+        # Load from file and verify structure
+        with open(tm.token_path) as f:
+            data = json.load(f)
+
+        assert "token" in data, "Token file should have 'token' key"
+        assert data["token"] == token, "Stored token should match loaded token"
+
+    def test_api_user_endpoint(self, token, headers):
+        """Test /api/user endpoint returns user profile."""
+        with httpx.Client() as client:
+            response = client.get(
+                "https://www.perplexity.ai/api/user",
+                headers=headers,
+                timeout=10,
+            )
+
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+
+        data = response.json()
+        assert isinstance(data, dict), "Response should be a dictionary"
+        assert "id" in data, "Response should have 'id' field"
+        assert "username" in data, "Response should have 'username' field"
+        assert "email" in data, "Response should have 'email' field"
+
+    def test_api_session_endpoint(self, headers):
+        """Test /api/auth/session endpoint is accessible."""
+        with httpx.Client() as client:
+            response = client.get(
+                "https://www.perplexity.ai/api/auth/session",
+                headers=headers,
+                timeout=10,
+            )
+
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+
+    def test_library_endpoint(self, headers):
+        """Test /library endpoint is accessible."""
+        with httpx.Client() as client:
+            response = client.get(
+                "https://www.perplexity.ai/library",
+                headers=headers,
+                timeout=10,
+            )
+
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+
+    def test_token_not_expired(self, headers):
+        """Test that token is not expired (no 401 errors)."""
+        endpoints = [
+            "https://www.perplexity.ai/api/user",
+            "https://www.perplexity.ai/api/auth/session",
+        ]
 
         with httpx.Client() as client:
-            # Try common Perplexity API endpoints
-            endpoints = [
-                ("https://www.perplexity.ai/api/user", "GET", None),
-                ("https://www.perplexity.ai/api/auth/session", "GET", None),
-            ]
+            for endpoint in endpoints:
+                response = client.get(endpoint, headers=headers, timeout=10)
 
-            for url, method, data in endpoints:
-                print(f"Trying: {method} {url}")
-                try:
-                    if method == "GET":
-                        response = client.get(url, headers=headers, timeout=10)
-                    else:
-                        response = client.post(url, headers=headers, json=data, timeout=10)
+                # 200 OK means token is valid and not expired
+                # 401 would mean token is invalid or expired
+                assert response.status_code != 401, f"{endpoint} returned 401: token may be expired"
+                assert response.status_code == 200, f"{endpoint} returned {response.status_code}"
 
-                    print(f"  Status: {response.status_code}")
+    def test_token_has_required_permissions(self, headers):
+        """Test that token has required permissions to access protected endpoints."""
+        # 403 would mean token is valid but lacks permissions
+        # 200 means we have the necessary permissions
+        with httpx.Client() as client:
+            response = client.get(
+                "https://www.perplexity.ai/api/user",
+                headers=headers,
+                timeout=10,
+            )
 
-                    if response.status_code == 200:
-                        print(f"  ✓ SUCCESS: Token is valid!")
-                        try:
-                            data = response.json()
-                            print(f"  Response: {json.dumps(data, indent=2)[:200]}...")
-                        except:
-                            print(f"  Response: {response.text[:200]}")
-                        return True
-
-                    elif response.status_code == 401:
-                        print(f"  ✗ Unauthorized (401): Token may be invalid or expired")
-                        print(f"  Response: {response.text[:200]}")
-
-                    elif response.status_code == 403:
-                        print(f"  ✗ Forbidden (403): Access denied")
-
-                    elif response.status_code == 404:
-                        print(f"  ✓ Endpoint not found (404): Try other endpoints")
-
-                    else:
-                        print(f"  Status {response.status_code}: {response.text[:100]}")
-
-                except httpx.ConnectError as e:
-                    print(f"  Connection error: {e}")
-                except httpx.TimeoutException as e:
-                    print(f"  Timeout: {e}")
-                except Exception as e:
-                    print(f"  Error: {e}")
-
-                print()
-
-        return False
-
-    except Exception as e:
-        print(f"✗ Error testing token: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        assert response.status_code != 403, "Token should have required permissions (got 403)"
+        assert response.status_code == 200, "Token should be authorized for /api/user"
 
 
-def test_token_format() -> bool:
-    """Verify the token format and structure."""
-    print("\n" + "=" * 70)
-    print("  TEST: Token Format and Structure")
-    print("=" * 70 + "\n")
-
+@pytest.mark.integration
+def test_token_exists_and_loadable():
+    """Test that a token exists and can be loaded."""
     tm = TokenManager()
     token = tm.load_token()
 
-    if not token:
-        print("✗ No token found")
-        return False
+    if token is None:
+        pytest.skip("No token found. Run: python tests/save_auth_token.py")
 
-    print(f"Token content:")
-    print(f"  Length: {len(token)} characters")
-    print(f"  Format: {type(token)} (Python string)")
-    print(f"  Preview: {token[:100]}...")
-    print()
-
-    # Check if it looks like a JWT
-    if token.startswith("eyJ"):
-        print("✓ Token appears to be JWT format (starts with 'eyJ')")
-        parts = token.split(".")
-        print(f"  JWT parts: {len(parts)}")
-        if len(parts) >= 2:
-            try:
-                import base64
-                header = base64.urlsafe_b64decode(parts[0] + "==")
-                print(f"  Header: {header.decode()}")
-            except:
-                pass
-    else:
-        print("Token format: Unknown (not standard JWT)")
-
-    print()
-
-    # Check if stored correctly
-    try:
-        stored_data = None
-        with open(tm.token_path) as f:
-            stored_data = json.load(f)
-
-        print(f"Stored data structure:")
-        print(f"  Keys: {list(stored_data.keys())}")
-        print(f"  Token key exists: {'token' in stored_data}")
-        if "token" in stored_data:
-            print(f"  Token matches loaded: {stored_data['token'] == token}")
-
-        print()
-        return True
-
-    except Exception as e:
-        print(f"✗ Error checking stored data: {e}")
-        return False
+    assert isinstance(token, str), "Token should be a string"
+    assert len(token) > 0, "Token should not be empty"
 
 
-def test_token_with_additional_endpoints() -> bool:
-    """Test token with additional endpoints."""
-    print("\n" + "=" * 70)
-    print("  TEST: Testing Additional Endpoints")
-    print("=" * 70 + "\n")
+@pytest.mark.integration
+def test_token_file_permissions():
+    """Test that token file has secure permissions."""
+    import os
+    import stat
 
     tm = TokenManager()
-    token = tm.load_token()
 
-    if not token:
-        print("✗ No token found")
-        return False
+    if not tm.token_exists():
+        pytest.skip("No token file found. Run: python tests/save_auth_token.py")
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "User-Agent": "perplexity-cli/0.1.0",
-        "Content-Type": "application/json",
-    }
+    # Get file permissions
+    file_stat = tm.token_path.stat()
+    actual_permissions = stat.S_IMODE(file_stat.st_mode)
 
-    all_passed = True
+    # Should be 0600 (owner read/write only)
+    assert actual_permissions == 0o600, f"Token file should have 0600 permissions, got {oct(actual_permissions)}"
 
-    # Test additional endpoints
-    endpoints = [
-        ("https://www.perplexity.ai/api/auth/session", "Get session info"),
-        ("https://www.perplexity.ai/library", "Get library"),
-    ]
-
-    for url, description in endpoints:
-        print(f"Testing: {description}")
-        print(f"URL: {url}")
-
-        try:
-            with httpx.Client() as client:
-                response = client.get(url, headers=headers, timeout=10)
-                print(f"  Status: {response.status_code}")
-
-                if response.status_code == 200:
-                    print(f"  ✓ SUCCESS")
-                    try:
-                        data = response.json()
-                        if isinstance(data, dict):
-                            keys = list(data.keys())[:5]
-                            print(f"  Response keys: {keys}")
-                        elif isinstance(data, list):
-                            print(f"  Response: List of {len(data)} items")
-                        else:
-                            print(f"  Response: {str(data)[:100]}")
-                    except:
-                        text_preview = response.text[:100].replace("\n", " ")
-                        print(f"  Response: {text_preview}...")
-                else:
-                    print(f"  Status {response.status_code}")
-                    if response.status_code != 404:
-                        all_passed = False
-
-        except Exception as e:
-            print(f"  Error: {e}")
-
-        print()
-
-    return all_passed
-
-
-def main() -> None:
-    """Run all token tests."""
-    print("\n" + "=" * 70)
-    print("  PERPLEXITY CLI - TOKEN VALIDATION TESTS")
-    print("=" * 70)
-
-    results = {}
-
-    # Test token format
-    results["Token Format"] = test_token_format()
-
-    # Test token validity with API
-    results["API Validity"] = test_token_with_api()
-
-    # Test additional endpoints
-    results["Additional Endpoints"] = test_token_with_additional_endpoints()
-
-    # Summary
-    print("\n" + "=" * 70)
-    print("  SUMMARY")
-    print("=" * 70 + "\n")
-
-    for test_name, passed in results.items():
-        status = "✓ PASSED" if passed else "⚠️ N/A or NEEDS VERIFICATION"
-        print(f"  {test_name}: {status}")
-
-    print()
-
-    passed_count = sum(1 for p in results.values() if p)
-    total_count = len(results)
-
-    if passed_count == total_count:
-        print("=" * 70)
-        print("✓ TOKEN VALIDATION SUCCESSFUL")
-        print("=" * 70)
-        print("\nYour token is valid and working with Perplexity API!")
-        print("\nEndpoints tested:")
-        print("  ✓ /api/user - User profile (200 OK)")
-        print("  ✓ /api/auth/session - Session info (200 OK)")
-        print("  ✓ /library - Library access (200 OK)")
-        print("\nYour token can be used for authenticated requests.")
-        print()
-    else:
-        print("=" * 70)
-        print("✗ TOKEN VALIDATION FAILED")
-        print("=" * 70)
-        print(f"\n{total_count - passed_count} test(s) failed")
-        print("\nTo get a new token:")
-        print("  python save_auth_token.py")
-        print()
-
-
-if __name__ == "__main__":
-    main()
+    # Verify group/others cannot read
+    assert (actual_permissions & stat.S_IRGRP) == 0, "Group should not be able to read token"
+    assert (actual_permissions & stat.S_IROTH) == 0, "Others should not be able to read token"
