@@ -161,9 +161,9 @@ def test_token_format() -> bool:
 
 
 def test_token_with_curl() -> bool:
-    """Show curl command to test token manually."""
+    """Test token with curl and show commands."""
     print("\n" + "=" * 70)
-    print("  TEST: Manual Testing with curl")
+    print("  TEST: Testing Additional Endpoints with curl")
     print("=" * 70 + "\n")
 
     tm = TokenManager()
@@ -173,40 +173,69 @@ def test_token_with_curl() -> bool:
         print("✗ No token found")
         return False
 
-    print("You can test the token manually with curl:\n")
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "perplexity-cli/0.1.0",
+        "Content-Type": "application/json",
+    }
 
-    print("Test 1: Get user info")
+    all_passed = True
+
+    # Test additional endpoints
+    endpoints = [
+        ("https://www.perplexity.ai/api/auth/session", "Get session info"),
+        ("https://www.perplexity.ai/api/conversations", "List conversations"),
+    ]
+
+    for url, description in endpoints:
+        print(f"Testing: {description}")
+        print(f"URL: {url}")
+
+        try:
+            with httpx.Client() as client:
+                response = client.get(url, headers=headers, timeout=10)
+                print(f"  Status: {response.status_code}")
+
+                if response.status_code == 200:
+                    print(f"  ✓ SUCCESS")
+                    try:
+                        data = response.json()
+                        if isinstance(data, dict):
+                            print(f"  Response keys: {list(data.keys())[:5]}")
+                        elif isinstance(data, list):
+                            print(f"  Response: List of {len(data)} items")
+                        else:
+                            print(f"  Response: {str(data)[:100]}")
+                    except:
+                        print(f"  Response: {response.text[:100]}")
+                else:
+                    print(f"  Status {response.status_code}")
+                    print(f"  Response: {response.text[:200]}")
+                    if response.status_code != 404:
+                        all_passed = False
+
+        except Exception as e:
+            print(f"  Error: {e}")
+
+        print()
+
+    print("curl commands for manual testing:")
     print("-" * 70)
     print(f"""
-curl -X GET 'https://www.perplexity.ai/api/user' \\
-  -H 'Authorization: Bearer {token}' \\
-  -H 'User-Agent: perplexity-cli/0.1.0' \\
-  -H 'Content-Type: application/json'
-""")
-
-    print("\nTest 2: Get session info")
-    print("-" * 70)
-    print(f"""
+# Get session info
 curl -X GET 'https://www.perplexity.ai/api/auth/session' \\
   -H 'Authorization: Bearer {token}' \\
   -H 'User-Agent: perplexity-cli/0.1.0' \\
   -H 'Content-Type: application/json'
-""")
 
-    print("\nTest 3: List conversations")
-    print("-" * 70)
-    print(f"""
+# List conversations
 curl -X GET 'https://www.perplexity.ai/api/conversations' \\
   -H 'Authorization: Bearer {token}' \\
   -H 'User-Agent: perplexity-cli/0.1.0' \\
   -H 'Content-Type: application/json'
 """)
 
-    print("\nIf you get 200 OK, the token is valid!")
-    print("If you get 401 Unauthorized, the token may be invalid or expired.")
-    print()
-
-    return True
+    return all_passed
 
 
 def main() -> None:
