@@ -1,8 +1,8 @@
 # Claude.md - Operational Log & Technical Decisions
 
 **Last Updated**: 2025-11-08
-**Current Phase**: Phase 1 COMPLETE, Phase 2 COMPLETE, Ready for Phase 3
-**Overall Progress**: 2/8 phases complete (Phase 1 & 2)
+**Current Phase**: Phases 1-3 COMPLETE, Ready for Phase 4
+**Overall Progress**: 3/8 phases complete (Phase 1, 2, & 3)
 
 ---
 
@@ -365,4 +365,96 @@ Phase 2 (Authentication) is complete and production-ready. The implementation:
 - ✅ Meets all code quality standards
 - ✅ Includes 4 passing manual end-to-end tests
 
-**Ready for Phase 3: API Client Implementation**
+---
+
+## Phase 3: API Client - Complete Record
+
+### Date Range
+- **Started**: 2025-11-08
+- **Completed**: 2025-11-08
+- **Duration**: Single session
+
+### Implementation Summary
+
+**SSE Streaming Client**: Built complete HTTP client with Server-Sent Events support
+- Endpoint: `POST https://www.perplexity.ai/rest/sse/perplexity_ask`
+- Protocol: SSE (text/event-stream)
+- Parser: event:/data: format handler
+- Authentication: Bearer JWT token
+
+**Key Implementation Decisions**:
+
+1. **SSE Stream Parsing**: Custom parser for `event: message\ndata: {json}` format
+   - Handles multi-line data payloads
+   - Validates JSON on each message
+   - Detects stream completion
+
+2. **Answer Extraction**: From markdown_block with chunks array
+   - Discovered actual response structure through live testing
+   - Answer in `blocks` with `intended_usage: "ask_text"`
+   - Text in `markdown_block.chunks[]` array
+   - Final answer only from last message (final_sse_message: true)
+
+3. **Data Models**: Dataclass-based models for type safety
+   - QueryParams with all required fields
+   - QueryRequest for complete payload
+   - SSEMessage for streaming responses
+   - Block for answer blocks
+   - WebResult for search results
+
+4. **Error Handling**: Status-specific error messages
+   - 401: "Authentication failed. Token may be invalid or expired."
+   - 403: "Access forbidden. Check API permissions."
+   - 429: "Rate limit exceeded. Please wait and try again."
+
+### Challenges & Solutions
+
+**Challenge 1**: Understanding SSE response format
+- **Issue**: Initial attempts returned empty answers
+- **Solution**: Created test_query_realtime.py to inspect live messages
+- **Result**: Discovered markdown_block.chunks structure
+
+**Challenge 2**: Answer duplication from streaming
+- **Issue**: Early implementation collected from all messages (duplicates)
+- **Solution**: Only extract from final message with intended_usage: "ask_text"
+- **Result**: Clean, single answer returned
+
+**Challenge 3**: SSE parsing with httpx
+- **Issue**: httpx.stream() returns raw lines, not parsed events
+- **Solution**: Built custom _parse_sse_stream() method
+- **Result**: Correctly parses event:/data: format with multi-line support
+
+### Files Created During Phase 3
+
+**Core Implementation**:
+- `src/perplexity_cli/api/models.py` (180 lines)
+- `src/perplexity_cli/api/client.py` (145 lines)
+- `src/perplexity_cli/api/endpoints.py` (160 lines)
+- Total: 485 lines of production code
+
+**Tests**:
+- `tests/test_api_client.py` (14 tests, 270 lines)
+- `tests/test_api_integration.py` (8 tests, 120 lines)
+- `tests/test_query_simple.py` (quick test utility)
+- `tests/test_query_realtime.py` (SSE message inspector)
+
+### Test Results
+
+**Total Tests**: 62 (all passing)
+- Authentication: 40 tests
+- API Client Unit: 14 tests
+- API Integration: 8 tests
+
+**Test Coverage**:
+- Models: 100% (all to_dict/from_dict tested)
+- SSE Parser: Comprehensive (single, multiple, multiline messages)
+- Error Handling: 401, 403, 429, invalid JSON
+- Integration: Real API queries verified
+
+**Verified Queries**:
+- "What is 2+2?" → "2+2 equals 4..."
+- "What is the capital of France?" → "Paris..."
+- "What is Python?" → Complete answer
+- "What is 1+1?" → "1+1 equals 2..."
+
+### API Client Ready for CLI Integration
