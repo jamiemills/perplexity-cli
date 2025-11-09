@@ -11,6 +11,8 @@ from typing import Any
 
 import websockets
 
+from ..utils.config import get_perplexity_base_url
+
 
 class ChromeDevToolsClient:
     """Client for communicating with Chrome via DevTools Protocol."""
@@ -102,7 +104,7 @@ class ChromeDevToolsClient:
 
 
 async def authenticate_with_browser(
-    url: str = "https://www.perplexity.ai",
+    url: str | None = None,
     port: int = 9222,
 ) -> str:
     """Authenticate with Perplexity via Google and extract the session token.
@@ -111,7 +113,7 @@ async def authenticate_with_browser(
     to capture the authentication token from localStorage.
 
     Args:
-        url: The Perplexity URL to navigate to (default: https://www.perplexity.ai).
+        url: The Perplexity URL to navigate to. If None, uses configured base URL.
         port: The Chrome remote debugging port (default: 9222).
 
     Returns:
@@ -120,6 +122,9 @@ async def authenticate_with_browser(
     Raises:
         RuntimeError: If Chrome is not available or authentication fails.
     """
+    if url is None:
+        url = get_perplexity_base_url()
+
     client = ChromeDevToolsClient(port)
 
     try:
@@ -214,13 +219,13 @@ def _extract_token(cookies: list[dict[str, Any]], local_storage: dict[str, str])
 
 
 def authenticate_sync(
-    url: str = "https://www.perplexity.ai",
+    url: str | None = None,
     port: int = 9222,
 ) -> str:
     """Synchronous wrapper for authenticate_with_browser.
 
     Args:
-        url: The Perplexity URL to navigate to.
+        url: The Perplexity URL to navigate to. If None, uses configured base URL.
         port: The Chrome remote debugging port.
 
     Returns:

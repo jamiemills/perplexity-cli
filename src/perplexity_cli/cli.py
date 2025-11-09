@@ -11,6 +11,7 @@ from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.auth.oauth_handler import authenticate_sync
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.formatting import get_formatter, list_formatters
+from perplexity_cli.utils.config import get_perplexity_base_url
 from perplexity_cli.utils.style_manager import StyleManager
 
 
@@ -37,9 +38,10 @@ def auth(port: int) -> None:
         perplexity-cli auth
         perplexity-cli auth --port 9222
     """
+    base_url = get_perplexity_base_url()
     click.echo("Authenticating with Perplexity.ai...")
     click.echo(f"\nMake sure Chrome is running with --remote-debugging-port={port}")
-    click.echo("Navigate to https://www.perplexity.ai and log in if needed.\n")
+    click.echo(f"Navigate to {base_url} and log in if needed.\n")
 
     try:
         # Authenticate and extract token
@@ -61,7 +63,7 @@ def auth(port: int) -> None:
             err=True,
         )
         click.echo(
-            "  2. Navigate to https://www.perplexity.ai in Chrome",
+            f"  2. Navigate to {base_url} in Chrome",
             err=True,
         )
         click.echo("  3. Log in with your Google account", err=True)
@@ -329,9 +331,10 @@ def status() -> None:
                     # Make a simple request to verify token
                     import httpx
 
+                    base_url = get_perplexity_base_url()
                     headers = api.client.get_headers()
                     response = httpx.get(
-                        "https://www.perplexity.ai/api/user",
+                        f"{base_url}/api/user",
                         headers=headers,
                         timeout=5,
                     )

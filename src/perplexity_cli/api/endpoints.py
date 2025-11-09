@@ -7,14 +7,13 @@ All API-specific code is isolated here to enable rapid adaptation if APIs change
 import uuid
 from collections.abc import Iterator
 
+from ..utils.config import get_query_endpoint
 from .client import SSEClient
 from .models import Answer, QueryParams, QueryRequest, SSEMessage, WebResult
 
 
 class PerplexityAPI:
     """High-level interface to Perplexity API."""
-
-    QUERY_ENDPOINT = "https://www.perplexity.ai/rest/sse/perplexity_ask"
 
     def __init__(self, token: str, timeout: int = 60) -> None:
         """Initialise Perplexity API client.
@@ -62,7 +61,8 @@ class PerplexityAPI:
         request = QueryRequest(query_str=query, params=params)
 
         # Submit query and stream responses
-        for message_data in self.client.stream_post(self.QUERY_ENDPOINT, request.to_dict()):
+        query_endpoint = get_query_endpoint()
+        for message_data in self.client.stream_post(query_endpoint, request.to_dict()):
             yield SSEMessage.from_dict(message_data)
 
     def get_complete_answer(self, query: str) -> Answer:
