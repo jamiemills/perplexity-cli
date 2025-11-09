@@ -8,9 +8,11 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 - **Encrypted tokens** - Tokens encrypted with system-derived keys
 - **Multiple output formats** - Plain text, Markdown, or rich terminal output
 - **Source references** - Web sources extracted and displayed
-- **Configurable URLs** - Base URL and endpoints configurable via JSON
-- **Error handling** - Clear error messages with exit codes
+- **Configurable URLs** - Base URL and endpoints configurable via JSON or environment variables
+- **Error handling** - Clear error messages with exit codes and automatic retry logic
 - **Server-Sent Events** - Streams responses in real-time
+- **Logging** - Configurable logging with verbose/debug modes and log file support
+- **Streaming output** - Real-time streaming of query responses as they arrive
 
 ## Quick Start
 
@@ -81,12 +83,21 @@ perplexity-cli query --format markdown "Explain quantum computing" > answer.md
 # Remove citations and references section
 perplexity-cli query --strip-references "What is Python?"
 
+# Stream response in real-time
+perplexity-cli query --stream "What is Python?"
+
 # Combine options
 perplexity-cli query --format plain --strip-references "What is 2+2?"
 
 # Use in scripts
 ANSWER=$(perplexity-cli query --format plain "What is 2+2?")
 echo "The answer is: $ANSWER"
+
+# Enable verbose logging
+perplexity-cli --verbose query "What is Python?"
+
+# Enable debug logging with custom log file
+perplexity-cli --debug --log-file /tmp/perplexity.log query "What is Python?"
 ```
 
 ### Status and Logout
@@ -121,6 +132,12 @@ Submit a query and get an answer with source references.
   - `markdown` - GitHub-flavoured Markdown
   - `rich` - Terminal output with colours and formatting
 - `--strip-references` - Remove citations and references section
+- `--stream` - Stream response in real-time as it arrives (experimental)
+
+**Global Options:**
+- `--verbose, -v` - Enable verbose output (INFO level logging)
+- `--debug, -d` - Enable debug output (DEBUG level logging)
+- `--log-file PATH` - Write logs to file (default: ~/.config/perplexity-cli/perplexity-cli.log)
 
 **Exit codes:**
 - `0` - Success
@@ -190,6 +207,18 @@ Perplexity URLs are configured in `~/.config/perplexity-cli/urls.json`.
 
 To use alternative URLs, edit this file. Configuration is automatically created on first run.
 
+**Environment Variables:**
+
+You can override configuration values using environment variables:
+- `PERPLEXITY_BASE_URL` - Overrides `perplexity.base_url`
+- `PERPLEXITY_QUERY_ENDPOINT` - Overrides `perplexity.query_endpoint`
+
+Example:
+```bash
+export PERPLEXITY_BASE_URL="https://custom.example.com"
+perplexity-cli query "What is Python?"
+```
+
 ## Troubleshooting
 
 ### "Not authenticated"
@@ -244,6 +273,8 @@ perplexity-cli query "What is Python?"
 - Encryption key derived from system identifiers
 - File permissions restricted to owner (0600)
 - Tokens validated on each request
+- Token expiration detection (warns if token is >30 days old)
+- Audit logging for token operations
 - No credentials printed to logs
 
 ## Testing
@@ -272,3 +303,4 @@ MIT
 - websockets - WebSocket support
 - rich - Terminal formatting
 - cryptography - Token encryption
+- tenacity - Retry logic with exponential backoff
