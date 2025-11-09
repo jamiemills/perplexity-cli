@@ -53,11 +53,13 @@ class RichFormatter(Formatter):
         for i, ref in enumerate(references, 1):
             table.add_row(str(i), ref.name, ref.url)
 
-        # Render table to string
+        # Render table to string with ANSI codes
         from io import StringIO
 
         string_buffer = StringIO()
-        temp_console = Console(file=string_buffer, legacy_windows=False)
+        temp_console = Console(
+            file=string_buffer, force_terminal=True, legacy_windows=False
+        )
         temp_console.print(table)
         return string_buffer.getvalue().rstrip()
 
@@ -68,12 +70,15 @@ class RichFormatter(Formatter):
             answer: Answer object with text and references.
 
         Returns:
-            Complete Rich-formatted output.
+            Complete Rich-formatted output (with ANSI codes for terminal).
         """
         from io import StringIO
 
         string_buffer = StringIO()
-        output_console = Console(file=string_buffer, legacy_windows=False)
+        # Force terminal mode to preserve ANSI colour codes
+        output_console = Console(
+            file=string_buffer, force_terminal=True, legacy_windows=False
+        )
 
         # Title
         title_text = Text("Answer from Perplexity", style="bold bright_cyan")
