@@ -98,10 +98,16 @@ class TestCLICommands:
         assert "Logged out successfully" in result.output
         mock_tm.clear_token.assert_called_once()
 
+    @patch("perplexity_cli.cli.StyleManager")
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.PerplexityAPI")
-    def test_query_success(self, mock_api_class, mock_tm_class, runner):
+    def test_query_success(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
         """Test successful query."""
+        # Mock style manager (no style configured)
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = None
+        mock_sm_class.return_value = mock_sm
+
         # Mock token manager
         mock_tm = Mock()
         mock_tm.load_token.return_value = "test-token"
@@ -119,11 +125,19 @@ class TestCLICommands:
         assert "Test answer" in result.output
         mock_api.get_complete_answer.assert_called_once_with("What is Python?")
 
+    @patch("perplexity_cli.cli.StyleManager")
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.PerplexityAPI")
-    def test_query_success_with_references(self, mock_api_class, mock_tm_class, runner):
+    def test_query_success_with_references(
+        self, mock_api_class, mock_tm_class, mock_sm_class, runner
+    ):
         """Test successful query with references."""
         from perplexity_cli.api.models import WebResult
+
+        # Mock style manager (no style configured)
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = None
+        mock_sm_class.return_value = mock_sm
 
         # Mock token manager
         mock_tm = Mock()
@@ -169,11 +183,17 @@ class TestCLICommands:
         assert "Not authenticated" in result.output
         assert "perplexity-cli auth" in result.output
 
+    @patch("perplexity_cli.cli.StyleManager")
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.PerplexityAPI")
-    def test_query_network_error(self, mock_api_class, mock_tm_class, runner):
+    def test_query_network_error(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
         """Test query with network error."""
         import httpx
+
+        # Mock style manager (no style configured)
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = None
+        mock_sm_class.return_value = mock_sm
 
         # Mock token manager
         mock_tm = Mock()
