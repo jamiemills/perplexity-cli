@@ -50,14 +50,21 @@ class TestTokenManager:
         assert actual_permissions == 0o600
 
     def test_save_token_stores_json(self, token_manager, temp_token_file):
-        """Test that save_token stores valid JSON."""
+        """Test that save_token stores valid encrypted JSON."""
         test_token = "test_session_token_12345"
         token_manager.save_token(test_token)
 
         with open(temp_token_file) as f:
             data = json.load(f)
 
-        assert data["token"] == test_token
+        # Token should be encrypted and stored with metadata
+        assert data["version"] == 1
+        assert data["encrypted"] is True
+        assert "token" in data
+        # Encrypted token should be a string
+        assert isinstance(data["token"], str)
+        # Should not contain the plaintext token
+        assert data["token"] != test_token
 
     def test_load_token_returns_stored_token(self, token_manager, temp_token_file):
         """Test that load_token retrieves the stored token."""

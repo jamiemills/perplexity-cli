@@ -470,20 +470,47 @@ Edit the `urls.json` file to use alternative Perplexity instances or deployment 
 
 The configuration is automatically created on first run with the default values. Modifications will be picked up immediately on the next CLI invocation.
 
-### Token Storage
+### Token Storage and Encryption
 
-Tokens are stored in:
+Tokens are encrypted and stored in:
 - **Linux/macOS**: `~/.config/perplexity-cli/token.json`
 - **Windows**: `%APPDATA%\perplexity-cli\token.json`
+
+**Encryption**: Tokens are encrypted using Fernet (symmetric encryption) with a key derived from the system machine hostname and OS user. This ensures:
+- Tokens are unreadable on disk without access to the system
+- Tokens cannot be transferred between machines
+- No user passwords to manage (automatic and transparent)
+
+**File format** (encrypted):
+```json
+{
+  "version": 1,
+  "encrypted": true,
+  "token": "encrypted_token_data_here"
+}
+```
 
 **File permissions**: `0600` (owner read/write only)
 
 ### Token Security
 
-- Tokens are JWT encrypted with AES-256-GCM
+- Tokens encrypted at rest using Fernet (AES-128-CBC)
+- Encryption key derived from system identifiers (hostname + OS user)
 - Stored with restrictive file permissions (0600)
 - Never printed to screen or logs
 - Validated on each API request
+
+### Token Portability
+
+Tokens encrypted with this approach are **not portable** between machines or users:
+- Encrypting a token on Machine A will not decrypt on Machine B
+- If you need to use the CLI on a different machine, you must re-authenticate
+- This is intentional for security — it prevents stolen tokens from being usable elsewhere
+
+If you move to a new machine or switch OS users, simply re-authenticate:
+```bash
+perplexity-cli auth
+```
 
 ## Troubleshooting
 
