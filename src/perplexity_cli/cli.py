@@ -91,13 +91,21 @@ def query(query_text: str, format: str, strip_references: bool) -> None:
 
     The answer is printed to stdout, making it easy to pipe to other commands.
 
-    Example:
+    Output formats:
+        plain   - Plain text with underlined headers (good for scripts)
+        markdown - GitHub-flavoured Markdown with proper structure
+        rich    - Colourful terminal output with tables (default)
+
+    Use --strip-references to remove all citations [1], [2], etc. and the
+    references section from the output.
+
+    Examples:
         perplexity-cli query "What is Python?"
-        perplexity-cli query "What is the capital of France?"
-        perplexity-cli query "Explain quantum computing" > answer.txt
+        perplexity-cli query "What is the capital of France?" > answer.txt
         perplexity-cli query --format plain "What is Python?"
-        perplexity-cli query --format markdown "What is Python?"
+        perplexity-cli query --format markdown "What is Python?" > answer.md
         perplexity-cli query --strip-references "What is Python?"
+        perplexity-cli query -f plain --strip-references "What is Python?"
     """
     # Load token
     tm = TokenManager()

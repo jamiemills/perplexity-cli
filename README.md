@@ -141,7 +141,7 @@ perplexity-cli auth
 perplexity-cli auth --port 9222
 ```
 
-### `perplexity-cli query "QUESTION" [--format FORMAT]`
+### `perplexity-cli query "QUESTION" [OPTIONS]`
 
 Submit a query and get an answer with source references.
 
@@ -149,7 +149,11 @@ Submit a query and get an answer with source references.
 - `QUESTION` - Your question (quoted)
 
 **Options:**
-- `--format`, `-f` - Output format: `plain`, `markdown`, or `rich` (default: `rich`)
+- `--format`, `-f` - Output format (default: `rich`)
+  - `plain` - Plain text with underlined headers (good for scripts and piping)
+  - `markdown` - GitHub-flavoured Markdown (good for documentation)
+  - `rich` - Colourful terminal output with tables and styling
+- `--strip-references` - Remove all citations and the references section
 
 **Output:**
 - Answer text to stdout
@@ -165,15 +169,24 @@ Submit a query and get an answer with source references.
 # Simple query (rich format with colours and tables)
 perplexity-cli query "What is Python?"
 
-# Plain text format
+# Plain text format (good for scripts)
 perplexity-cli query --format plain "What is Python?"
 
-# Markdown format
+# Markdown format (good for documentation)
 perplexity-cli query --format markdown "Explain AI" > answer.md
+
+# Remove all citations and references
+perplexity-cli query --strip-references "What is Python?"
+
+# Combine format and strip-references
+perplexity-cli query --format plain --strip-references "What is 2+2?"
 
 # Use in scripts
 ANSWER=$(perplexity-cli query --format plain "What is 2+2?")
 echo "The answer is: $ANSWER"
+
+# Extract answer-only text without citations
+ANSWER=$(perplexity-cli query --format plain --strip-references "What is Python?")
 ```
 
 ### `perplexity-cli status`
@@ -267,11 +280,10 @@ References
 GitHub-flavoured Markdown with proper structure.
 
 **Features:**
-- Document header with title
-- Timestamp metadata
-- Proper `##` headers
+- Markdown-formatted answer text with headers preserved
 - References as numbered Markdown links with snippets
 - Suitable for piping to pandoc or Markdown processors
+- Clean output without extra metadata
 
 **Usage:**
 ```bash
@@ -280,11 +292,13 @@ perplexity-cli query --format markdown "What is Python?" > answer.md
 
 **Example output:**
 ```markdown
-# Answer from Perplexity
-> Generated: 2025-11-09 12:34:56
+### Summary
+Python is a high-level, general-purpose programming language...
 
-## Answer
-Content here...
+### Details
+- Created by Guido van Rossum
+- First released in 1991
+- Known for readable syntax
 
 ## References
 1. [Python.org](https://python.org) - "Official Python website"
@@ -300,6 +314,38 @@ perplexity-cli query "What is Python?"  # Uses plain format
 ```
 
 The `--format` flag overrides the environment variable.
+
+### Stripping References
+
+Use `--strip-references` to remove all citations (`[1]`, `[2]`, etc.) and the references section from the output. This is useful when you only want the answer text without sources.
+
+**Usage:**
+```bash
+# Remove citations and references (keeps all formatting)
+perplexity-cli query --strip-references "What is Paris?"
+
+# Combine with plain format for clean answer-only text
+perplexity-cli query --format plain --strip-references "What is Paris?"
+
+# Useful in scripts where you only need the answer
+ANSWER=$(perplexity-cli query --format plain --strip-references "What is 2+2?")
+echo "$ANSWER"
+```
+
+**Behaviour:**
+- Removes all `[digit]` citation numbers from the answer text
+- Removes the entire references section (no heading, no URLs, no snippets)
+- Works with all three output formats (plain, markdown, rich)
+- The rest of the formatting remains unchanged
+
+**Example with citations removed:**
+```
+Before (with --strip-references):
+The capital of France is Paris[1][2]. Paris is located on the Seine[3].
+
+After (--strip-references applied):
+The capital of France is Paris. Paris is located on the Seine.
+```
 
 ## Configuration
 
