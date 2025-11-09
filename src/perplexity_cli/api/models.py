@@ -134,11 +134,24 @@ class SSEMessage:
     final_sse_message: bool
     cursor: str | None = None
     read_write_token: str | None = None
+    web_results: list[WebResult] | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SSEMessage":
         """Create from SSE message data."""
         blocks = [Block.from_dict(b) for b in data.get("blocks", [])]
+
+        # Extract web results from web_result_block if present
+        web_results = None
+        for block in blocks:
+            if block.intended_usage == "web_results":
+                if "web_result_block" in block.content:
+                    web_result_block = block.content["web_result_block"]
+                    if isinstance(web_result_block, dict) and "web_results" in web_result_block:
+                        results = web_result_block["web_results"]
+                        if isinstance(results, list):
+                            web_results = [WebResult.from_dict(r) for r in results]
+                            break
 
         return cls(
             backend_uuid=data.get("backend_uuid", ""),
@@ -154,4 +167,13 @@ class SSEMessage:
             final_sse_message=data.get("final_sse_message", False),
             cursor=data.get("cursor"),
             read_write_token=data.get("read_write_token"),
+            web_results=web_results,
         )
+
+
+@dataclass
+class Answer:
+    """Complete answer with text and references."""
+
+    text: str
+    references: list[WebResult] = field(default_factory=list)

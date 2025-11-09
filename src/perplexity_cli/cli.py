@@ -99,10 +99,17 @@ def query(query_text: str) -> None:
         api = PerplexityAPI(token=token)
 
         # Submit query and get answer
-        answer = api.get_complete_answer(query_text)
+        answer_obj = api.get_complete_answer(query_text)
 
-        # Output answer to stdout (only the answer, no formatting)
-        click.echo(answer)
+        # Output answer to stdout
+        click.echo(answer_obj.text)
+
+        # Output references if available
+        if answer_obj.references:
+            click.echo("\n" + "─" * 42)
+            click.echo("References")
+            references_str = api._format_references(answer_obj.references)
+            click.echo(references_str)
 
     except httpx.HTTPStatusError as e:
         status = e.response.status_code
