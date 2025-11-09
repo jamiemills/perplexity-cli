@@ -5,12 +5,14 @@ A production-grade command-line interface for querying Perplexity.ai with persis
 ## Features
 
 - **Authenticate once, query many times** - Token persists across CLI invocations
-- **Clean output** - Answers to stdout, errors to stderr (pipeable!)
+- **Three output formats** - Plain text, GitHub-flavoured Markdown, or rich terminal with colours and tables
 - **Source references** - Automatic extraction and display of web sources
+- **Beautiful terminal output** - Styled headers, coloured text, formatted tables (default)
+- **Clean output** - Answers to stdout, errors to stderr (pipeable!)
 - **Secure storage** - Tokens stored with 0600 permissions in `~/.config/perplexity-cli/`
 - **Real-time streaming** - Receives answers via Server-Sent Events
 - **Error handling** - Clear, actionable error messages
-- **Well tested** - 90+ tests passing with >70% code coverage
+- **Well tested** - 100+ tests passing with >70% code coverage
 
 ## Quick Start
 
@@ -80,15 +82,28 @@ The token persists, so you only need to authenticate once.
 ### Querying Perplexity
 
 ```bash
-# Simple query
+# Simple query (uses rich format by default)
 perplexity-cli query "What is machine learning?"
 
-# Save answer to file
-perplexity-cli query "Explain quantum computing" > answer.txt
+# Plain text format (for scripts and piping)
+perplexity-cli query --format plain "What is Python?"
+
+# Markdown format (for documentation)
+perplexity-cli query --format markdown "Explain quantum computing" > answer.md
+
+# Rich format (colourful terminal output) - default
+perplexity-cli query --format rich "What is AI?"
+
+# Save to file
+perplexity-cli query --format markdown "Explain AI" > answer.md
 
 # Use in scripts
-ANSWER=$(perplexity-cli query "What is 2+2?")
+ANSWER=$(perplexity-cli query --format plain "What is 2+2?")
 echo "The answer is: $ANSWER"
+
+# Set default format via environment variable
+export PERPLEXITY_FORMAT=plain
+perplexity-cli query "What is Python?"
 ```
 
 ### Check Authentication Status
@@ -126,12 +141,15 @@ perplexity-cli auth
 perplexity-cli auth --port 9222
 ```
 
-### `perplexity-cli query "QUESTION"`
+### `perplexity-cli query "QUESTION" [--format FORMAT]`
 
 Submit a query and get an answer with source references.
 
 **Arguments:**
 - `QUESTION` - Your question (quoted)
+
+**Options:**
+- `--format`, `-f` - Output format: `plain`, `markdown`, or `rich` (default: `rich`)
 
 **Output:**
 - Answer text to stdout
@@ -142,32 +160,20 @@ Submit a query and get an answer with source references.
 - `0` - Success
 - `1` - Error (authentication, network, etc.)
 
-**Output Format:**
-```
-<answer text>
-
-──────────────────────────────────────
-References
-[1] https://source1.com
-[2] https://source2.com
-[3] https://source3.com
-```
-
 **Examples:**
 ```bash
-# Simple query
+# Simple query (rich format with colours and tables)
 perplexity-cli query "What is Python?"
 
-# Pipe to file (includes references)
-perplexity-cli query "Explain AI" > answer.txt
+# Plain text format
+perplexity-cli query --format plain "What is Python?"
 
-# Extract only answer text (skip references)
-perplexity-cli query "List 5 programming languages" | head -n -10
+# Markdown format
+perplexity-cli query --format markdown "Explain AI" > answer.md
 
 # Use in scripts
-if perplexity-cli query "Is the sky blue?" > /dev/null; then
-    echo "Query succeeded"
-fi
+ANSWER=$(perplexity-cli query --format plain "What is 2+2?")
+echo "The answer is: $ANSWER"
 ```
 
 ### `perplexity-cli status`
@@ -200,6 +206,100 @@ Remove stored credentials.
 ```bash
 perplexity-cli logout
 ```
+
+## Output Formatting
+
+The CLI supports three output formats to suit different use cases.
+
+### Rich Format (Default)
+
+Beautiful terminal output with colours, bold headers, and formatted tables.
+
+**Features:**
+- Bold bright cyan title
+- Styled headers with colours
+- Reference table with columns for #, Source, and URL
+- Text wrapping (no truncation)
+- Syntax highlighting for code blocks
+
+**Usage:**
+```bash
+perplexity-cli query "What is Python?"
+# or explicitly:
+perplexity-cli query --format rich "What is Python?"
+```
+
+### Plain Text Format
+
+Clean, simple text with underlined headers. No markdown syntax or colours.
+
+**Features:**
+- Headers underlined with `=` characters
+- No markdown syntax (`##`, `**`, `*`)
+- Horizontal ruler before references
+- Perfect for scripts and piping
+
+**Usage:**
+```bash
+perplexity-cli query --format plain "What is Python?"
+```
+
+**Example output:**
+```
+Summary
+=======
+Here are the key points...
+
+
+Details
+=======
+Content here...
+
+──────────────────────────────────────────────────
+References
+==========
+[1] https://example.com
+[2] https://example2.com
+```
+
+### Markdown Format
+
+GitHub-flavoured Markdown with proper structure.
+
+**Features:**
+- Document header with title
+- Timestamp metadata
+- Proper `##` headers
+- References as numbered Markdown links with snippets
+- Suitable for piping to pandoc or Markdown processors
+
+**Usage:**
+```bash
+perplexity-cli query --format markdown "What is Python?" > answer.md
+```
+
+**Example output:**
+```markdown
+# Answer from Perplexity
+> Generated: 2025-11-09 12:34:56
+
+## Answer
+Content here...
+
+## References
+1. [Python.org](https://python.org) - "Official Python website"
+2. [Wikipedia](https://wikipedia.org) - "Python programming language"
+```
+
+### Environment Variable
+
+Set a default format:
+```bash
+export PERPLEXITY_FORMAT=plain
+perplexity-cli query "What is Python?"  # Uses plain format
+```
+
+The `--format` flag overrides the environment variable.
 
 ## Configuration
 
@@ -355,6 +455,12 @@ perplexity-cli/
 │   │   ├── client.py           # SSE HTTP client
 │   │   ├── endpoints.py        # API abstractions
 │   │   └── models.py           # Data models
+│   ├── formatting/         # Output formatting module
+│   │   ├── base.py             # Abstract formatter interface
+│   │   ├── plain.py            # Plain text formatter
+│   │   ├── markdown.py         # Markdown formatter
+│   │   ├── rich.py             # Rich terminal formatter
+│   │   └── registry.py         # Formatter registry
 │   └── utils/              # Utilities
 │       └── config.py           # Config management
 ├── tests/                  # Test suite
@@ -378,6 +484,12 @@ perplexity-cli/
    - Click framework for command-line interface
    - Connects authentication and API client
    - Provides user-friendly error messages
+
+4. **Formatting** (`formatting/`)
+   - Pluggable formatter system for multiple output styles
+   - Plain text with underlined headers
+   - GitHub-flavoured Markdown with links
+   - Rich terminal with colours, tables, and syntax highlighting
 
 ## API Details
 
@@ -480,6 +592,7 @@ See [SECURITY_REVIEW.md](.claudeCode/SECURITY_REVIEW.md) for detailed audit.
 - `click>=8.0` - CLI framework
 - `httpx>=0.25` - HTTP client with SSE support
 - `websockets>=12.0` - Chrome DevTools Protocol
+- `rich>=13.0` - Terminal formatting and styling
 
 ### Development
 
@@ -525,6 +638,7 @@ Built with:
 - [Click](https://click.palletsprojects.com/) - CLI framework
 - [httpx](https://www.python-httpx.org/) - HTTP client
 - [websockets](https://websockets.readthedocs.io/) - WebSocket library
+- [Rich](https://github.com/Textualize/rich) - Terminal formatting and styling
 - [pytest](https://pytest.org/) - Testing framework
 - [ruff](https://github.com/astral-sh/ruff) - Linting and formatting
 
