@@ -1,2 +1,0 @@
-[console_scripts]
-perplexity-cli = perplexity_cli.cli:main
