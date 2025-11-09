@@ -6,10 +6,11 @@ A production-grade command-line interface for querying Perplexity.ai with persis
 
 - **Authenticate once, query many times** - Token persists across CLI invocations
 - **Clean output** - Answers to stdout, errors to stderr (pipeable!)
+- **Source references** - Automatic extraction and display of web sources
 - **Secure storage** - Tokens stored with 0600 permissions in `~/.config/perplexity-cli/`
 - **Real-time streaming** - Receives answers via Server-Sent Events
 - **Error handling** - Clear, actionable error messages
-- **Well tested** - 75 tests passing with >70% code coverage
+- **Well tested** - 90+ tests passing with >70% code coverage
 
 ## Quick Start
 
@@ -127,29 +128,41 @@ perplexity-cli auth --port 9222
 
 ### `perplexity-cli query "QUESTION"`
 
-Submit a query and get an answer.
+Submit a query and get an answer with source references.
 
 **Arguments:**
 - `QUESTION` - Your question (quoted)
 
 **Output:**
 - Answer text to stdout
+- Source references (if available) displayed after answer
 - Errors to stderr
 
 **Exit codes:**
 - `0` - Success
 - `1` - Error (authentication, network, etc.)
 
+**Output Format:**
+```
+<answer text>
+
+──────────────────────────────────────
+References
+[1] https://source1.com
+[2] https://source2.com
+[3] https://source3.com
+```
+
 **Examples:**
 ```bash
 # Simple query
 perplexity-cli query "What is Python?"
 
-# Pipe to file
+# Pipe to file (includes references)
 perplexity-cli query "Explain AI" > answer.txt
 
-# Pipe to other commands
-perplexity-cli query "List 5 programming languages" | grep Python
+# Extract only answer text (skip references)
+perplexity-cli query "List 5 programming languages" | head -n -10
 
 # Use in scripts
 if perplexity-cli query "Is the sky blue?" > /dev/null; then
@@ -410,15 +423,18 @@ data: {"status": "COMPLETE", "blocks": [...], "final_sse_message": true}
 
 Answer extracted from `blocks` with `intended_usage: "ask_text"`.
 
+Web sources automatically extracted from `blocks` with `intended_usage: "web_results"` and displayed as numbered references.
+
 ## Testing
 
 ### Test Suite
 
-- **75 tests** total (all passing)
+- **90+ tests** total (all passing)
 - **22 unit tests** (auth module)
 - **14 unit tests** (API client)
-- **8 integration tests** (API)
-- **13 unit tests** (CLI)
+- **11 unit tests** (data models)
+- **10 integration tests** (API endpoints)
+- **15 unit tests** (CLI)
 - **9 integration tests** (token API)
 - **9 integration tests** (auth flow)
 
