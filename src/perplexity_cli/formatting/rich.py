@@ -32,7 +32,7 @@ class RichFormatter(Formatter):
         """
         # Strip citation references if requested
         if strip_references:
-            text = re.sub(r'\[\d+\]', '', text)
+            text = re.sub(r"\[\d+\]", "", text)
 
         # Process the text to highlight code blocks
         formatted_text = self._process_answer_text(text)
@@ -51,7 +51,9 @@ class RichFormatter(Formatter):
             return ""
 
         # Create table with text wrapping
-        table = Table(title="References", show_header=True, header_style="bold cyan", padding=(0, 1))
+        table = Table(
+            title="References", show_header=True, header_style="bold cyan", padding=(0, 1)
+        )
         table.add_column("#", style="cyan", width=3, no_wrap=True)
         table.add_column("Source", style="white", no_wrap=False, max_width=40)
         table.add_column("URL", style="bright_blue", no_wrap=False, max_width=120)
@@ -64,9 +66,7 @@ class RichFormatter(Formatter):
         from io import StringIO
 
         string_buffer = StringIO()
-        temp_console = Console(
-            file=string_buffer, force_terminal=True, legacy_windows=False
-        )
+        temp_console = Console(file=string_buffer, force_terminal=True, legacy_windows=False)
         temp_console.print(table)
         return string_buffer.getvalue().rstrip()
 
@@ -81,7 +81,7 @@ class RichFormatter(Formatter):
         # Parse and style markdown while keeping text left-aligned
         answer_text = answer.text
         if strip_references:
-            answer_text = re.sub(r'\[\d+\]', '', answer_text)
+            answer_text = re.sub(r"\[\d+\]", "", answer_text)
 
         self._print_formatted_text(answer_text)
 
@@ -119,14 +119,12 @@ class RichFormatter(Formatter):
 
         string_buffer = StringIO()
         # Force terminal mode to preserve ANSI colour codes
-        output_console = Console(
-            file=string_buffer, force_terminal=True, legacy_windows=False
-        )
+        output_console = Console(file=string_buffer, force_terminal=True, legacy_windows=False)
 
         # Answer section
         answer_text = answer.text
         if strip_references:
-            answer_text = re.sub(r'\[\d+\]', '', answer_text)
+            answer_text = re.sub(r"\[\d+\]", "", answer_text)
 
         formatted_answer = self._process_answer_text(answer_text)
         output_console.print(formatted_answer)
@@ -158,10 +156,10 @@ class RichFormatter(Formatter):
         """
         import re
 
-        lines = text.split('\n')
+        lines = text.split("\n")
         for line in lines:
             # Check for headers (###, ##, #)
-            header_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+            header_match = re.match(r"^(#{1,6})\s+(.+)$", line)
             if header_match:
                 hashes = header_match.group(1)
                 content = header_match.group(2)

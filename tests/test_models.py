@@ -1,7 +1,5 @@
 """Tests for data models."""
 
-import pytest
-
 from perplexity_cli.api.models import Answer, SSEMessage, WebResult
 
 
