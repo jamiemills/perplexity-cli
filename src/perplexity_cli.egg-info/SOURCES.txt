@@ -15,6 +15,12 @@ src/perplexity_cli/api/models.py
 src/perplexity_cli/auth/__init__.py
 src/perplexity_cli/auth/oauth_handler.py
 src/perplexity_cli/auth/token_manager.py
+src/perplexity_cli/formatting/__init__.py
+src/perplexity_cli/formatting/base.py
+src/perplexity_cli/formatting/markdown.py
+src/perplexity_cli/formatting/plain.py
+src/perplexity_cli/formatting/registry.py
+src/perplexity_cli/formatting/rich.py
 src/perplexity_cli/utils/__init__.py
 src/perplexity_cli/utils/config.py
 tests/test_api_client.py
@@ -23,7 +29,10 @@ tests/test_auth.py
 tests/test_auth_integration.py
 tests/test_chrome_connection.py
 tests/test_cli.py
+tests/test_endpoints.py
+tests/test_formatters.py
 tests/test_manual_auth.py
+tests/test_models.py
 tests/test_query_realtime.py
 tests/test_query_simple.py
 tests/test_token_api.py

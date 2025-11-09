@@ -71,11 +71,6 @@ class RichFormatter(Formatter):
         Args:
             answer: Answer object with text and references.
         """
-        # Title
-        title_text = Text("Answer from Perplexity", style="bold bright_cyan")
-        self.console.print(title_text)
-        self.console.print()
-
         # Answer section - render markdown with left alignment
         # Parse and style markdown while keeping text left-aligned
         self._print_formatted_text(answer.text)
@@ -117,14 +112,7 @@ class RichFormatter(Formatter):
             file=string_buffer, force_terminal=True, legacy_windows=False
         )
 
-        # Title
-        title_text = Text("Answer from Perplexity", style="bold bright_cyan")
-        output_console.print(title_text)
-
         # Answer section
-        output_console.print()
-        answer_header = Text("Answer", style="bold cyan")
-        output_console.print(answer_header)
         formatted_answer = self._process_answer_text(answer.text)
         output_console.print(formatted_answer)
 

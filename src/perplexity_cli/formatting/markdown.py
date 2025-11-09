@@ -16,9 +16,9 @@ class MarkdownFormatter(Formatter):
             text: The answer text.
 
         Returns:
-            Markdown formatted answer with header.
+            Markdown formatted answer.
         """
-        return f"## Answer\n\n{text.rstrip()}"
+        return text.rstrip()
 
     def format_references(self, references: list[WebResult]) -> str:
         """Format references as Markdown list with links.
@@ -53,16 +53,8 @@ class MarkdownFormatter(Formatter):
         """
         lines = []
 
-        # Title
-        lines.append("# Answer from Perplexity")
-
-        # Timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        lines.append(f"> Generated: {timestamp}")
-
         # Answer section
         formatted_answer = self.format_answer(answer.text)
-        lines.append("")
         lines.append(formatted_answer)
 
         # References section

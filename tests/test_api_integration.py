@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from perplexity_cli.api.endpoints import PerplexityAPI
+from perplexity_cli.api.models import Answer
 from perplexity_cli.auth.token_manager import TokenManager
 
 
@@ -49,19 +50,19 @@ class TestPerplexityAPIIntegration:
         """Test getting complete answer for simple query."""
         answer = api.get_complete_answer("What is 2+2?")
 
-        assert isinstance(answer, str)
-        assert len(answer) > 0, "Answer should not be empty"
+        assert isinstance(answer, Answer)
+        assert len(answer.text) > 0, "Answer should not be empty"
         # The answer should mention "4" or "four"
-        assert "4" in answer or "four" in answer.lower()
+        assert "4" in answer.text or "four" in answer.text.lower()
 
     def test_get_complete_answer_returns_text(self, api):
         """Test that get_complete_answer returns answer text."""
         answer = api.get_complete_answer("What is the capital of France?")
 
-        assert isinstance(answer, str)
-        assert len(answer) > 0
+        assert isinstance(answer, Answer)
+        assert len(answer.text) > 0
         # Answer should mention Paris
-        assert "Paris" in answer or "paris" in answer.lower()
+        assert "Paris" in answer.text or "paris" in answer.text.lower()
 
     def test_streaming_messages_have_blocks(self, api):
         """Test that streaming messages contain blocks."""
@@ -79,18 +80,18 @@ class TestPerplexityAPIIntegration:
         # Test with simple query
         answer = api.get_complete_answer("What is Python?")
 
-        assert isinstance(answer, str)
-        assert len(answer) > 0
+        assert isinstance(answer, Answer)
+        assert len(answer.text) > 0
 
     def test_multiple_queries_same_client(self, api):
         """Test multiple queries with same API client instance."""
         answer1 = api.get_complete_answer("What is 1+1?")
         answer2 = api.get_complete_answer("What is 2+2?")
 
-        assert isinstance(answer1, str)
-        assert isinstance(answer2, str)
-        assert len(answer1) > 0
-        assert len(answer2) > 0
+        assert isinstance(answer1, Answer)
+        assert isinstance(answer2, Answer)
+        assert len(answer1.text) > 0
+        assert len(answer2.text) > 0
 
 
 @pytest.mark.integration
@@ -110,8 +111,8 @@ class TestAPIErrorHandling:
         # Empty query should either return empty answer or raise error
         try:
             answer = api.get_complete_answer("")
-            # If it succeeds, answer should be a string (might be empty)
-            assert isinstance(answer, str)
+            # If it succeeds, answer should be an Answer object
+            assert isinstance(answer, Answer)
         except (ValueError, httpx.HTTPStatusError):
             # Or it might raise an error, which is also acceptable
             pass

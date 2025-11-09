@@ -59,7 +59,6 @@ class TestMarkdownFormatter:
         """Test formatting answer as Markdown."""
         formatter = MarkdownFormatter()
         result = formatter.format_answer("Test answer")
-        assert "## Answer" in result
         assert "Test answer" in result
 
     def test_format_references(self):
@@ -84,10 +83,8 @@ class TestMarkdownFormatter:
         refs = [WebResult(name="Test", url="https://test.com", snippet="test")]
         answer = Answer(text="Answer text", references=refs)
         result = formatter.format_complete(answer)
-        assert "# Answer from Perplexity" in result
-        assert "## Answer" in result
+        assert "Answer text" in result
         assert "## References" in result
-        assert "Generated:" in result
 
 
 class TestRichFormatter:
