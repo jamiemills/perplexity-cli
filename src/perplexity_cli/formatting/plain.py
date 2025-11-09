@@ -20,8 +20,11 @@ class PlainTextFormatter(Formatter):
         """
         lines = text.split('\n')
         result = []
+        i = 0
 
-        for line in lines:
+        while i < len(lines):
+            line = lines[i]
+
             # Check for headers (###, ##, #)
             header_match = re.match(r'^(#{1,6})\s+(.+)$', line)
             if header_match:
@@ -31,9 +34,12 @@ class PlainTextFormatter(Formatter):
                 content = re.sub(r'\*(.+?)\*', r'\1', content)
 
                 # Add header with underline
-                result.append('')
                 result.append(content)
                 result.append('=' * len(content))
+                # Add blank line after underline
+                result.append('')
+            elif line.strip() == '':
+                # Preserve blank lines
                 result.append('')
             else:
                 # Remove markdown bold and italic from regular text
@@ -41,21 +47,29 @@ class PlainTextFormatter(Formatter):
                 line = re.sub(r'\*(.+?)\*', r'\1', line)
                 result.append(line)
 
+            i += 1
+
         return '\n'.join(result).rstrip()
 
     def format_references(self, references: list[WebResult]) -> str:
-        """Format references as a simple numbered list.
+        """Format references as a simple numbered list with underlined header.
 
         Args:
             references: List of web results.
 
         Returns:
-            Numbered reference list.
+            Numbered reference list with ruler above and underlined header.
         """
         if not references:
             return ""
 
-        lines = ["References"]
+        lines = []
+        # Add ruler above references (at least 30 characters)
+        lines.append("─" * 50)
+        # Add References header with underline
+        lines.append("References")
+        lines.append("=" * len("References"))
+        # Add references
         for i, ref in enumerate(references, 1):
             lines.append(f"[{i}] {ref.url}")
 
