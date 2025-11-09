@@ -19,9 +19,10 @@ class PlainTextFormatter(Formatter):
             Plain text answer with headers underlined instead of using markdown syntax.
         """
         lines = text.split('\n')
-        result = []
+        result = ['']  # Start with blank line
         i = 0
         skip_next_blank = False
+        blank_count = 0
 
         while i < len(lines):
             line = lines[i]
@@ -39,9 +40,8 @@ class PlainTextFormatter(Formatter):
                 content = re.sub(r'\*\*(.+?)\*\*', r'\1', content)
                 content = re.sub(r'\*(.+?)\*', r'\1', content)
 
-                # Add double blank line before header if result isn't empty
-                if result:
-                    result.append('')
+                # Add single blank line before header if result has content
+                if len(result) > 1:  # More than just the initial blank line
                     result.append('')
 
                 # Add header with underline
@@ -49,14 +49,19 @@ class PlainTextFormatter(Formatter):
                 result.append('=' * len(content))
                 # Skip the next blank line after header
                 skip_next_blank = True
+                blank_count = 0
             elif line.strip() == '':
                 # Skip blank line immediately after header underline
                 if skip_next_blank:
                     skip_next_blank = False
                 else:
-                    result.append('')
+                    # Only add blank line if we haven't just added multiple
+                    blank_count += 1
+                    if blank_count <= 2:  # Allow max 2 consecutive blanks
+                        result.append('')
             else:
                 skip_next_blank = False
+                blank_count = 0
                 # Remove markdown bold and italic from regular text
                 line = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
                 line = re.sub(r'\*(.+?)\*', r'\1', line)
@@ -65,6 +70,31 @@ class PlainTextFormatter(Formatter):
             i += 1
 
         return '\n'.join(result).rstrip()
+
+    def format_complete(self, answer) -> str:  # type: ignore
+        """Format complete answer with references.
+
+        Args:
+            answer: Answer object containing text and references.
+
+        Returns:
+            Complete formatted output with proper spacing.
+        """
+        output_parts = []
+
+        # Add formatted answer
+        formatted_answer = self.format_answer(answer.text)
+        output_parts.append(formatted_answer)
+
+        # Add formatted references if present
+        if answer.references:
+            # Add blank line before references section
+            output_parts.append('')
+            formatted_refs = self.format_references(answer.references)
+            if formatted_refs:
+                output_parts.append(formatted_refs)
+
+        return '\n'.join(output_parts)
 
     def format_references(self, references: list[WebResult]) -> str:
         """Format references as a simple numbered list with underlined header.
