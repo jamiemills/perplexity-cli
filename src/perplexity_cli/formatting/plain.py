@@ -21,9 +21,15 @@ class PlainTextFormatter(Formatter):
         lines = text.split('\n')
         result = []
         i = 0
+        skip_next_blank = False
 
         while i < len(lines):
             line = lines[i]
+
+            # Skip markdown horizontal rules (*** or ---)
+            if re.match(r'^[\*\-]{3,}$', line.strip()):
+                i += 1
+                continue
 
             # Check for headers (###, ##, #)
             header_match = re.match(r'^(#{1,6})\s+(.+)$', line)
@@ -33,15 +39,24 @@ class PlainTextFormatter(Formatter):
                 content = re.sub(r'\*\*(.+?)\*\*', r'\1', content)
                 content = re.sub(r'\*(.+?)\*', r'\1', content)
 
+                # Add double blank line before header if result isn't empty
+                if result:
+                    result.append('')
+                    result.append('')
+
                 # Add header with underline
                 result.append(content)
                 result.append('=' * len(content))
-                # Add blank line after underline
-                result.append('')
+                # Skip the next blank line after header
+                skip_next_blank = True
             elif line.strip() == '':
-                # Preserve blank lines
-                result.append('')
+                # Skip blank line immediately after header underline
+                if skip_next_blank:
+                    skip_next_blank = False
+                else:
+                    result.append('')
             else:
+                skip_next_blank = False
                 # Remove markdown bold and italic from regular text
                 line = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
                 line = re.sub(r'\*(.+?)\*', r'\1', line)
