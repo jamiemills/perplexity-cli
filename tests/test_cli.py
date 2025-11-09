@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 from click.testing import CliRunner
 
+from perplexity_cli.api.models import Answer
 from perplexity_cli.cli import auth, logout, main, query, status
 
 
@@ -108,7 +109,8 @@ class TestCLICommands:
 
         # Mock API
         mock_api = Mock()
-        mock_api.get_complete_answer.return_value = "Test answer"
+        mock_api.get_complete_answer.return_value = Answer(text="Test answer", references=[])
+        mock_api._format_references.return_value = ""
         mock_api_class.return_value = mock_api
 
         result = runner.invoke(query, ["What is Python?"])
@@ -116,6 +118,39 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert "Test answer" in result.output
         mock_api.get_complete_answer.assert_called_once_with("What is Python?")
+
+    @patch("perplexity_cli.cli.TokenManager")
+    @patch("perplexity_cli.cli.PerplexityAPI")
+    def test_query_success_with_references(self, mock_api_class, mock_tm_class, runner):
+        """Test successful query with references."""
+        from perplexity_cli.api.models import WebResult
+
+        # Mock token manager
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = "test-token"
+        mock_tm_class.return_value = mock_tm
+
+        # Create web results
+        refs = [
+            WebResult(name="Wikipedia", url="https://en.wikipedia.org/wiki/Python", snippet="Python programming language"),
+            WebResult(name="Python.org", url="https://www.python.org", snippet="Official Python website"),
+        ]
+
+        # Mock API
+        mock_api = Mock()
+        mock_api.get_complete_answer.return_value = Answer(text="Test answer", references=refs)
+        mock_api._format_references.return_value = "[1] https://en.wikipedia.org/wiki/Python\n[2] https://www.python.org"
+        mock_api_class.return_value = mock_api
+
+        result = runner.invoke(query, ["What is Python?"])
+
+        assert result.exit_code == 0
+        assert "Test answer" in result.output
+        assert "References" in result.output
+        assert "https://en.wikipedia.org/wiki/Python" in result.output
+        assert "https://www.python.org" in result.output
+        assert "[1]" in result.output
+        assert "[2]" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     def test_query_not_authenticated(self, mock_tm_class, runner):

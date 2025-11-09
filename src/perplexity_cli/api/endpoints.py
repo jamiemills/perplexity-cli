@@ -8,7 +8,7 @@ import uuid
 from collections.abc import Iterator
 
 from .client import SSEClient
-from .models import QueryParams, QueryRequest, SSEMessage
+from .models import Answer, QueryParams, QueryRequest, SSEMessage, WebResult
 
 
 class PerplexityAPI:
@@ -65,17 +65,17 @@ class PerplexityAPI:
         for message_data in self.client.stream_post(self.QUERY_ENDPOINT, request.to_dict()):
             yield SSEMessage.from_dict(message_data)
 
-    def get_complete_answer(self, query: str) -> str:
-        """Submit a query and return the complete answer.
+    def get_complete_answer(self, query: str) -> Answer:
+        """Submit a query and return the complete answer with references.
 
         This is a convenience method that handles the streaming response
-        and returns only the final answer text.
+        and returns the final answer text along with any web references.
 
         Args:
             query: The user's query text.
 
         Returns:
-            The complete answer text.
+            Answer object containing text and references list.
 
         Raises:
             httpx.HTTPStatusError: For HTTP errors.
@@ -83,6 +83,7 @@ class PerplexityAPI:
             ValueError: For malformed responses or if no answer is found.
         """
         final_answer = None
+        references: list[WebResult] = []
 
         for message in self.submit_query(query):
             # Only extract from final message to avoid duplicates
@@ -95,12 +96,17 @@ class PerplexityAPI:
                         if text:
                             final_answer = text
                             break
+
+                # Extract web references from final message
+                if message.web_results:
+                    references = message.web_results
+
                 break
 
         if final_answer is None:
             raise ValueError("No answer found in response")
 
-        return final_answer
+        return Answer(text=final_answer, references=references)
 
     def _extract_text_from_block(self, block_content: dict) -> str | None:
         """Extract text from a block's content.
@@ -150,3 +156,21 @@ class PerplexityAPI:
                 return answer_block["text"]
 
         return None
+
+    def _format_references(self, references: list[WebResult]) -> str:
+        """Format references for display.
+
+        Args:
+            references: List of WebResult objects to format.
+
+        Returns:
+            Formatted references string with numbered URLs.
+        """
+        if not references:
+            return ""
+
+        lines = []
+        for i, ref in enumerate(references, 1):
+            lines.append(f"[{i}] {ref.url}")
+
+        return "\n".join(lines)
