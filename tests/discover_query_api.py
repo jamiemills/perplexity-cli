@@ -200,7 +200,11 @@ async def discover_query_api():
             print()
 
         # Save to file
-        output_file = "/Users/jamie.mills/c9h/code/perplexity-cli/.claudeCode/api_discovery.json"
+        import os
+        from pathlib import Path
+
+        project_root = Path(__file__).parent.parent
+        output_file = project_root / ".claudeCode" / "api_discovery.json"
         with open(output_file, "w") as f:
             json.dump(requests, f, indent=2)
 
