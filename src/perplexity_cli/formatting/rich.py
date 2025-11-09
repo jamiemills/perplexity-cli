@@ -71,15 +71,14 @@ class RichFormatter(Formatter):
         Args:
             answer: Answer object with text and references.
         """
-        from rich.markdown import Markdown
-
         # Title
         title_text = Text("Answer from Perplexity", style="bold bright_cyan")
         self.console.print(title_text)
         self.console.print()
 
-        # Answer section - render as markdown with Rich styling
-        self.console.print(Markdown(answer.text))
+        # Answer section - render markdown with left alignment
+        # Parse and style markdown while keeping text left-aligned
+        self._print_formatted_text(answer.text)
 
         # References section
         if answer.references:
@@ -147,6 +146,35 @@ class RichFormatter(Formatter):
             output_console.print(table)
 
         return string_buffer.getvalue().rstrip()
+
+    def _print_formatted_text(self, text: str) -> None:
+        """Print text with markdown styling but left-aligned.
+
+        Args:
+            text: Text possibly containing markdown syntax.
+        """
+        import re
+
+        lines = text.split('\n')
+        for line in lines:
+            # Check for headers (###, ##, #)
+            header_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+            if header_match:
+                hashes = header_match.group(1)
+                content = header_match.group(2)
+                level = len(hashes)
+                # Style based on header level
+                if level == 1:
+                    style = "bold bright_cyan"
+                elif level == 2:
+                    style = "bold cyan"
+                else:
+                    style = "bold white"
+                self.console.print(Text(content, style=style))
+            else:
+                # Regular text - handle inline markdown
+                # Simple approach: just print as-is (Rich will still render markdown markup)
+                self.console.print(line)
 
     def _process_answer_text(self, text: str) -> str:
         """Process answer text to add syntax highlighting and formatting.
