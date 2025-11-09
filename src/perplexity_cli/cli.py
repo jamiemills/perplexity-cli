@@ -125,8 +125,13 @@ def query(query_text: str, format: str) -> None:
         answer_obj = api.get_complete_answer(query_text)
 
         # Format and output the answer
-        formatted_output = formatter.format_complete(answer_obj)
-        click.echo(formatted_output)
+        if output_format == "rich":
+            # Use Rich formatter's direct rendering for proper styling
+            formatter.render_complete(answer_obj)
+        else:
+            # For plain and markdown, use click.echo
+            formatted_output = formatter.format_complete(answer_obj)
+            click.echo(formatted_output)
 
     except httpx.HTTPStatusError as e:
         status = e.response.status_code

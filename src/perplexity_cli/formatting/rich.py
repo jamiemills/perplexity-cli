@@ -16,7 +16,8 @@ class RichFormatter(Formatter):
 
     def __init__(self) -> None:
         """Initialize Rich formatter."""
-        self.console = Console(force_terminal=False, legacy_windows=False)
+        # Console for direct output to terminal
+        self.console = Console(legacy_windows=False)
 
     def format_answer(self, text: str) -> str:
         """Format answer text with Rich styling.
@@ -62,6 +63,40 @@ class RichFormatter(Formatter):
         )
         temp_console.print(table)
         return string_buffer.getvalue().rstrip()
+
+    def render_complete(self, answer: Answer) -> None:
+        """Render complete answer directly to Rich Console.
+
+        Args:
+            answer: Answer object with text and references.
+        """
+        # Title
+        title_text = Text("Answer from Perplexity", style="bold bright_cyan")
+        self.console.print(title_text)
+
+        # Answer section
+        self.console.print()
+        answer_header = Text("Answer", style="bold cyan")
+        self.console.print(answer_header)
+        formatted_answer = self._process_answer_text(answer.text)
+        self.console.print(formatted_answer)
+
+        # References section
+        if answer.references:
+            self.console.print()
+            self.console.print("─" * 50, style="dim")
+            self.console.print()
+
+            # Create and print references table
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("#", style="cyan", width=3)
+            table.add_column("Source", style="white")
+            table.add_column("URL", style="bright_blue")
+
+            for i, ref in enumerate(answer.references, 1):
+                table.add_row(str(i), ref.name, ref.url)
+
+            self.console.print(table)
 
     def format_complete(self, answer: Answer) -> str:
         """Format complete answer with Rich styling.
