@@ -20,15 +20,20 @@ class RichFormatter(Formatter):
         # width=200 allows long URLs to not be truncated
         self.console = Console(force_terminal=True, legacy_windows=False, width=200)
 
-    def format_answer(self, text: str) -> str:
+    def format_answer(self, text: str, strip_references: bool = False) -> str:
         """Format answer text with Rich styling.
 
         Args:
             text: The answer text.
+            strip_references: If True, remove citation numbers like [1], [2], etc.
 
         Returns:
             Rich-formatted answer with syntax highlighting for code.
         """
+        # Strip citation references if requested
+        if strip_references:
+            text = re.sub(r'\[\d+\]', '', text)
+
         # Process the text to highlight code blocks
         formatted_text = self._process_answer_text(text)
         return formatted_text.rstrip()
@@ -65,18 +70,23 @@ class RichFormatter(Formatter):
         temp_console.print(table)
         return string_buffer.getvalue().rstrip()
 
-    def render_complete(self, answer: Answer) -> None:
+    def render_complete(self, answer: Answer, strip_references: bool = False) -> None:
         """Render complete answer directly to Rich Console.
 
         Args:
             answer: Answer object with text and references.
+            strip_references: If True, exclude references section from output.
         """
         # Answer section - render markdown with left alignment
         # Parse and style markdown while keeping text left-aligned
-        self._print_formatted_text(answer.text)
+        answer_text = answer.text
+        if strip_references:
+            answer_text = re.sub(r'\[\d+\]', '', answer_text)
 
-        # References section
-        if answer.references:
+        self._print_formatted_text(answer_text)
+
+        # References section (only if not stripped)
+        if answer.references and not strip_references:
             self.console.print()
             self.console.print("─" * 50, style="dim")
             self.console.print()
@@ -95,11 +105,12 @@ class RichFormatter(Formatter):
 
             self.console.print(table)
 
-    def format_complete(self, answer: Answer) -> str:
+    def format_complete(self, answer: Answer, strip_references: bool = False) -> str:
         """Format complete answer with Rich styling.
 
         Args:
             answer: Answer object with text and references.
+            strip_references: If True, exclude references section from output.
 
         Returns:
             Complete Rich-formatted output (with ANSI codes for terminal).
@@ -113,11 +124,15 @@ class RichFormatter(Formatter):
         )
 
         # Answer section
-        formatted_answer = self._process_answer_text(answer.text)
+        answer_text = answer.text
+        if strip_references:
+            answer_text = re.sub(r'\[\d+\]', '', answer_text)
+
+        formatted_answer = self._process_answer_text(answer_text)
         output_console.print(formatted_answer)
 
-        # References section
-        if answer.references:
+        # References section (only if not stripped)
+        if answer.references and not strip_references:
             output_console.print()
             output_console.print("─" * 50, style="dim")
             output_console.print()

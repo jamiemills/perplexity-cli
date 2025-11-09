@@ -1,5 +1,6 @@
 """GitHub-flavoured Markdown formatter for structured output."""
 
+import re
 from datetime import datetime
 
 from perplexity_cli.api.models import WebResult
@@ -9,15 +10,20 @@ from perplexity_cli.formatting.base import Formatter
 class MarkdownFormatter(Formatter):
     """Formatter that outputs GitHub-flavoured Markdown."""
 
-    def format_answer(self, text: str) -> str:
+    def format_answer(self, text: str, strip_references: bool = False) -> str:
         """Format answer as Markdown section.
 
         Args:
             text: The answer text.
+            strip_references: If True, remove citation numbers like [1], [2], etc.
 
         Returns:
             Markdown formatted answer.
         """
+        # Strip citation references if requested
+        if strip_references:
+            text = re.sub(r'\[\d+\]', '', text)
+
         return text.rstrip()
 
     def format_references(self, references: list[WebResult]) -> str:
@@ -42,11 +48,12 @@ class MarkdownFormatter(Formatter):
 
         return "\n".join(lines)
 
-    def format_complete(self, answer) -> str:  # type: ignore
+    def format_complete(self, answer, strip_references: bool = False) -> str:  # type: ignore
         """Format complete answer with Markdown structure.
 
         Args:
             answer: Answer object with text and references.
+            strip_references: If True, exclude references section from output.
 
         Returns:
             Complete Markdown document.
@@ -54,11 +61,11 @@ class MarkdownFormatter(Formatter):
         lines = []
 
         # Answer section
-        formatted_answer = self.format_answer(answer.text)
+        formatted_answer = self.format_answer(answer.text, strip_references=strip_references)
         lines.append(formatted_answer)
 
-        # References section
-        if answer.references:
+        # References section (only if not stripped)
+        if answer.references and not strip_references:
             lines.append("")
             formatted_refs = self.format_references(answer.references)
             lines.append(formatted_refs)

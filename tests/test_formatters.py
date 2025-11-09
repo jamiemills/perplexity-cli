@@ -146,3 +146,72 @@ class TestFormatterRegistry:
         """Test error on invalid formatter name."""
         with pytest.raises(ValueError):
             get_formatter("invalid")
+
+
+class TestStripReferences:
+    """Test strip_references functionality across all formatters."""
+
+    def test_plain_formatter_strips_citations(self):
+        """Test that plain formatter removes citation numbers."""
+        formatter = PlainTextFormatter()
+        text = "This is answer text[1] with citations[2] and more[3]."
+        result = formatter.format_answer(text, strip_references=True)
+        assert "[1]" not in result
+        assert "[2]" not in result
+        assert "[3]" not in result
+        assert "This is answer text with citations and more." in result
+
+    def test_plain_formatter_keeps_citations_by_default(self):
+        """Test that plain formatter keeps citations by default."""
+        formatter = PlainTextFormatter()
+        text = "This is answer text[1] with citations[2]."
+        result = formatter.format_answer(text)
+        assert "[1]" in result
+        assert "[2]" in result
+
+    def test_plain_formatter_complete_strips_references(self):
+        """Test that format_complete strips references section when requested."""
+        formatter = PlainTextFormatter()
+        refs = [WebResult(name="Test", url="https://test.com", snippet="test")]
+        answer = Answer(text="Answer text[1]", references=refs)
+        result = formatter.format_complete(answer, strip_references=True)
+        assert "Answer text" in result
+        assert "References" not in result
+        assert "https://test.com" not in result
+        assert "[1]" not in result
+
+    def test_markdown_formatter_strips_citations(self):
+        """Test that markdown formatter removes citation numbers."""
+        formatter = MarkdownFormatter()
+        text = "Answer text[1] with citations[2]."
+        result = formatter.format_answer(text, strip_references=True)
+        assert "[1]" not in result
+        assert "[2]" not in result
+
+    def test_markdown_formatter_complete_strips_references(self):
+        """Test that format_complete strips references section when requested."""
+        formatter = MarkdownFormatter()
+        refs = [WebResult(name="Test", url="https://test.com", snippet="test")]
+        answer = Answer(text="Answer text[1]", references=refs)
+        result = formatter.format_complete(answer, strip_references=True)
+        assert "Answer text" in result
+        assert "## References" not in result
+        assert "https://test.com" not in result
+
+    def test_rich_formatter_strips_citations(self):
+        """Test that rich formatter removes citation numbers."""
+        formatter = RichFormatter()
+        text = "Answer text[1] with citations[2]."
+        result = formatter.format_answer(text, strip_references=True)
+        assert "[1]" not in result
+        assert "[2]" not in result
+
+    def test_rich_formatter_complete_strips_references(self):
+        """Test that format_complete strips references section when requested."""
+        formatter = RichFormatter()
+        refs = [WebResult(name="Test", url="https://test.com", snippet="test")]
+        answer = Answer(text="Answer text[1]", references=refs)
+        result = formatter.format_complete(answer, strip_references=True)
+        assert "Answer text" in result
+        assert "References" not in result
+        assert "https://test.com" not in result
