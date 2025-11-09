@@ -1,0 +1,149 @@
+"""Advanced terminal formatter using Rich library with colours and tables."""
+
+import re
+
+from rich.console import Console
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
+
+from perplexity_cli.api.models import Answer, WebResult
+from perplexity_cli.formatting.base import Formatter
+
+
+class RichFormatter(Formatter):
+    """Formatter using Rich library for advanced terminal output."""
+
+    def __init__(self) -> None:
+        """Initialize Rich formatter."""
+        self.console = Console(force_terminal=False, legacy_windows=False)
+
+    def format_answer(self, text: str) -> str:
+        """Format answer text with Rich styling.
+
+        Args:
+            text: The answer text.
+
+        Returns:
+            Rich-formatted answer with syntax highlighting for code.
+        """
+        # Process the text to highlight code blocks
+        formatted_text = self._process_answer_text(text)
+        return formatted_text.rstrip()
+
+    def format_references(self, references: list[WebResult]) -> str:
+        """Format references as a Rich table.
+
+        Args:
+            references: List of web results.
+
+        Returns:
+            Rich-formatted references table.
+        """
+        if not references:
+            return ""
+
+        # Create table
+        table = Table(title="References", show_header=True, header_style="bold cyan")
+        table.add_column("#", style="cyan", width=3)
+        table.add_column("Source", style="white")
+        table.add_column("URL", style="bright_blue")
+
+        # Add rows
+        for i, ref in enumerate(references, 1):
+            table.add_row(str(i), ref.name, ref.url)
+
+        # Render table to string
+        from io import StringIO
+
+        string_buffer = StringIO()
+        temp_console = Console(file=string_buffer, legacy_windows=False)
+        temp_console.print(table)
+        return string_buffer.getvalue().rstrip()
+
+    def format_complete(self, answer: Answer) -> str:
+        """Format complete answer with Rich styling.
+
+        Args:
+            answer: Answer object with text and references.
+
+        Returns:
+            Complete Rich-formatted output.
+        """
+        from io import StringIO
+
+        string_buffer = StringIO()
+        output_console = Console(file=string_buffer, legacy_windows=False)
+
+        # Title
+        title_text = Text("Answer from Perplexity", style="bold bright_cyan")
+        output_console.print(title_text)
+
+        # Answer section
+        output_console.print()
+        answer_header = Text("Answer", style="bold cyan")
+        output_console.print(answer_header)
+        formatted_answer = self._process_answer_text(answer.text)
+        output_console.print(formatted_answer)
+
+        # References section
+        if answer.references:
+            output_console.print()
+            output_console.print("─" * 50, style="dim")
+            output_console.print()
+
+            # Create and print references table
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("#", style="cyan", width=3)
+            table.add_column("Source", style="white")
+            table.add_column("URL", style="bright_blue")
+
+            for i, ref in enumerate(answer.references, 1):
+                table.add_row(str(i), ref.name, ref.url)
+
+            output_console.print(table)
+
+        return string_buffer.getvalue().rstrip()
+
+    def _process_answer_text(self, text: str) -> str:
+        """Process answer text to add syntax highlighting and formatting.
+
+        Args:
+            text: Raw answer text.
+
+        Returns:
+            Processed text with syntax highlighting applied.
+        """
+        # Find code blocks and highlight them
+        result_parts = []
+        pattern = r"```(\w*)\n(.*?)\n```"
+        last_end = 0
+
+        for match in re.finditer(pattern, text, re.DOTALL):
+            # Add text before code block
+            before_text = text[last_end : match.start()]
+            if before_text:
+                result_parts.append(before_text)
+
+            # Add highlighted code block
+            language = match.group(1) or "text"
+            code_content = match.group(2)
+            try:
+                syntax = Syntax(code_content, language, theme="monokai", line_numbers=False)
+                from io import StringIO
+
+                code_buffer = StringIO()
+                code_console = Console(file=code_buffer, legacy_windows=False)
+                code_console.print(syntax)
+                result_parts.append(code_buffer.getvalue().rstrip())
+            except Exception:
+                # Fallback to plain code if syntax highlighting fails
+                result_parts.append(f"```{language}\n{code_content}\n```")
+
+            last_end = match.end()
+
+        # Add remaining text
+        if last_end < len(text):
+            result_parts.append(text[last_end:])
+
+        return "".join(result_parts)
