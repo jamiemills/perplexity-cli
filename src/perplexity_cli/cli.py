@@ -1,5 +1,6 @@
 """Command-line interface for Perplexity CLI."""
 
+import os
 import sys
 
 import click
@@ -9,6 +10,7 @@ from perplexity_cli import __version__
 from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.auth.oauth_handler import authenticate_sync
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.formatting import get_formatter, list_formatters
 
 
 @click.group()
@@ -72,7 +74,14 @@ def auth(port: int) -> None:
 
 @main.command()
 @click.argument("query_text", metavar="QUERY")
-def query(query_text: str) -> None:
+@click.option(
+    "--format",
+    "-f",
+    type=click.Choice(["plain", "markdown", "rich"]),
+    default=None,
+    help="Output format: plain (text), markdown (GitHub-flavoured), or rich (terminal with colours and tables). Defaults to 'rich'.",
+)
+def query(query_text: str, format: str) -> None:
     """Submit a query to Perplexity.ai and get an answer.
 
     The answer is printed to stdout, making it easy to pipe to other commands.
@@ -81,6 +90,8 @@ def query(query_text: str) -> None:
         perplexity-cli query "What is Python?"
         perplexity-cli query "What is the capital of France?"
         perplexity-cli query "Explain quantum computing" > answer.txt
+        perplexity-cli query --format plain "What is Python?"
+        perplexity-cli query --format markdown "What is Python?"
     """
     # Load token
     tm = TokenManager()
@@ -95,21 +106,27 @@ def query(query_text: str) -> None:
         sys.exit(1)
 
     try:
+        # Determine output format
+        output_format = format or os.environ.get("PERPLEXITY_FORMAT", "rich")
+
+        # Get formatter instance
+        try:
+            formatter = get_formatter(output_format)
+        except ValueError as e:
+            click.echo(f"✗ {e}", err=True)
+            available = ", ".join(list_formatters())
+            click.echo(f"Available formats: {available}", err=True)
+            sys.exit(1)
+
         # Create API client
         api = PerplexityAPI(token=token)
 
         # Submit query and get answer
         answer_obj = api.get_complete_answer(query_text)
 
-        # Output answer to stdout
-        click.echo(answer_obj.text)
-
-        # Output references if available
-        if answer_obj.references:
-            click.echo("\n" + "─" * 42)
-            click.echo("References")
-            references_str = api._format_references(answer_obj.references)
-            click.echo(references_str)
+        # Format and output the answer
+        formatted_output = formatter.format_complete(answer_obj)
+        click.echo(formatted_output)
 
     except httpx.HTTPStatusError as e:
         status = e.response.status_code

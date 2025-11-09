@@ -139,18 +139,16 @@ class TestCLICommands:
         # Mock API
         mock_api = Mock()
         mock_api.get_complete_answer.return_value = Answer(text="Test answer", references=refs)
-        mock_api._format_references.return_value = "[1] https://en.wikipedia.org/wiki/Python\n[2] https://www.python.org"
         mock_api_class.return_value = mock_api
 
         result = runner.invoke(query, ["What is Python?"])
 
         assert result.exit_code == 0
         assert "Test answer" in result.output
-        assert "References" in result.output
+        # Rich table format is now used by default
+        assert "Wikipedia" in result.output or "#" in result.output  # References table
         assert "https://en.wikipedia.org/wiki/Python" in result.output
         assert "https://www.python.org" in result.output
-        assert "[1]" in result.output
-        assert "[2]" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     def test_query_not_authenticated(self, mock_tm_class, runner):
