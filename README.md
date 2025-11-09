@@ -100,10 +100,6 @@ perplexity-cli query --format markdown "Explain AI" > answer.md
 # Use in scripts
 ANSWER=$(perplexity-cli query --format plain "What is 2+2?")
 echo "The answer is: $ANSWER"
-
-# Set default format via environment variable
-export PERPLEXITY_FORMAT=plain
-perplexity-cli query "What is Python?"
 ```
 
 ### Check Authentication Status
