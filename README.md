@@ -441,6 +441,39 @@ perplexity-cli clear-style
 
 ## Configuration
 
+### URL Configuration
+
+The Perplexity base URL and API endpoints are configurable via a JSON configuration file. This is useful for alternative deployments or testing against different environments.
+
+**Configuration file location:**
+- **Linux/macOS**: `~/.config/perplexity-cli/urls.json`
+- **Windows**: `%APPDATA%\perplexity-cli\urls.json`
+
+**Default configuration** (automatically created on first run):
+```json
+{
+  "perplexity": {
+    "base_url": "https://www.perplexity.ai",
+    "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask"
+  }
+}
+```
+
+**Customising URLs:**
+
+Edit the `urls.json` file to use alternative Perplexity instances or deployment URLs. For example:
+
+```json
+{
+  "perplexity": {
+    "base_url": "https://alternative-instance.example.com",
+    "query_endpoint": "https://alternative-instance.example.com/rest/sse/perplexity_ask"
+  }
+}
+```
+
+The configuration is automatically created on first run with the default values. Modifications will be picked up immediately on the next CLI invocation.
+
 ### Token Storage
 
 Tokens are stored in:

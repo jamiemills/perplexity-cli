@@ -19,6 +19,7 @@ import time
 
 from perplexity_cli.auth.oauth_handler import authenticate_sync
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.utils.config import get_perplexity_base_url
 
 
 def print_section(title: str) -> None:
@@ -48,7 +49,8 @@ def test_2_4_1_actual_perplexity_login() -> bool:
 
     try:
         print("\nAttempting to connect to Chrome on port 9222...")
-        token = authenticate_sync(url="https://www.perplexity.ai", port=9222)
+        base_url = get_perplexity_base_url()
+        token = authenticate_sync(url=base_url, port=9222)
 
         if not token:
             print("✗ FAILED: No token extracted")

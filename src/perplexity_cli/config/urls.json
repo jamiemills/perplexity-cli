@@ -1,0 +1,6 @@
+{
+  "perplexity": {
+    "base_url": "https://www.perplexity.ai",
+    "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask"
+  }
+}
