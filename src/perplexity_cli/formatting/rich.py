@@ -44,11 +44,11 @@ class RichFormatter(Formatter):
         if not references:
             return ""
 
-        # Create table
+        # Create table with text wrapping
         table = Table(title="References", show_header=True, header_style="bold cyan")
-        table.add_column("#", style="cyan", width=3)
-        table.add_column("Source", style="white")
-        table.add_column("URL", style="bright_blue")
+        table.add_column("#", style="cyan", width=5)
+        table.add_column("Source", style="white", no_wrap=False)
+        table.add_column("URL", style="bright_blue", no_wrap=False)
 
         # Add rows
         for i, ref in enumerate(references, 1):
@@ -88,11 +88,11 @@ class RichFormatter(Formatter):
             self.console.print(Text("References", style="bold cyan"))
             self.console.print()
 
-            # Create and print references table
+            # Create and print references table with text wrapping
             table = Table(show_header=True, header_style="bold cyan")
-            table.add_column("#", style="cyan", width=3)
-            table.add_column("Source", style="white")
-            table.add_column("URL", style="bright_blue")
+            table.add_column("#", style="cyan", width=5)
+            table.add_column("Source", style="white", no_wrap=False)
+            table.add_column("URL", style="bright_blue", no_wrap=False)
 
             for i, ref in enumerate(answer.references, 1):
                 table.add_row(str(i), ref.name, ref.url)
