@@ -81,7 +81,12 @@ def auth(port: int) -> None:
     default=None,
     help="Output format: plain (text), markdown (GitHub-flavoured), or rich (terminal with colours and tables). Defaults to 'rich'.",
 )
-def query(query_text: str, format: str) -> None:
+@click.option(
+    "--strip-references",
+    is_flag=True,
+    help="Remove all references section and inline citation numbers [1], [2], etc. from the answer.",
+)
+def query(query_text: str, format: str, strip_references: bool) -> None:
     """Submit a query to Perplexity.ai and get an answer.
 
     The answer is printed to stdout, making it easy to pipe to other commands.
@@ -92,6 +97,7 @@ def query(query_text: str, format: str) -> None:
         perplexity-cli query "Explain quantum computing" > answer.txt
         perplexity-cli query --format plain "What is Python?"
         perplexity-cli query --format markdown "What is Python?"
+        perplexity-cli query --strip-references "What is Python?"
     """
     # Load token
     tm = TokenManager()
@@ -127,10 +133,10 @@ def query(query_text: str, format: str) -> None:
         # Format and output the answer
         if output_format == "rich":
             # Use Rich formatter's direct rendering for proper styling
-            formatter.render_complete(answer_obj)
+            formatter.render_complete(answer_obj, strip_references=strip_references)
         else:
             # For plain and markdown, use click.echo
-            formatted_output = formatter.format_complete(answer_obj)
+            formatted_output = formatter.format_complete(answer_obj, strip_references=strip_references)
             click.echo(formatted_output)
 
     except httpx.HTTPStatusError as e:

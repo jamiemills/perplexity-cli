@@ -9,15 +9,20 @@ from perplexity_cli.formatting.base import Formatter
 class PlainTextFormatter(Formatter):
     """Formatter that outputs plain text without any formatting."""
 
-    def format_answer(self, text: str) -> str:
+    def format_answer(self, text: str, strip_references: bool = False) -> str:
         """Format answer text as plain text with underlined headers.
 
         Args:
             text: The answer text (possibly containing markdown).
+            strip_references: If True, remove citation numbers like [1], [2], etc.
 
         Returns:
             Plain text answer with headers underlined instead of using markdown syntax.
         """
+        # Strip citation references if requested
+        if strip_references:
+            text = re.sub(r'\[\d+\]', '', text)
+
         lines = text.split('\n')
         result = ['']  # Start with blank line
         i = 0
@@ -71,11 +76,12 @@ class PlainTextFormatter(Formatter):
 
         return '\n'.join(result).rstrip()
 
-    def format_complete(self, answer) -> str:  # type: ignore
+    def format_complete(self, answer, strip_references: bool = False) -> str:  # type: ignore
         """Format complete answer with references.
 
         Args:
             answer: Answer object containing text and references.
+            strip_references: If True, exclude references section from output.
 
         Returns:
             Complete formatted output with proper spacing.
@@ -83,11 +89,11 @@ class PlainTextFormatter(Formatter):
         output_parts = []
 
         # Add formatted answer
-        formatted_answer = self.format_answer(answer.text)
+        formatted_answer = self.format_answer(answer.text, strip_references=strip_references)
         output_parts.append(formatted_answer)
 
-        # Add formatted references if present
-        if answer.references:
+        # Add formatted references if present (and not stripped)
+        if answer.references and not strip_references:
             # Add blank line before references section
             output_parts.append('')
             formatted_refs = self.format_references(answer.references)
