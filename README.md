@@ -18,17 +18,17 @@ A production-grade command-line interface for querying Perplexity.ai with persis
 uv pip install -e .
 
 # Authenticate (one time)
-perplexity auth
+perplexity-cli auth
 
 # Ask questions
-perplexity query "What is Python?"
-perplexity query "What is the capital of France?"
+perplexity-cli query "What is Python?"
+perplexity-cli query "What is the capital of France?"
 
 # Check status
-perplexity status
+perplexity-cli status
 
 # Log out
-perplexity logout
+perplexity-cli logout
 ```
 
 ## Installation
@@ -52,7 +52,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 uv pip install -e ".[dev]"
 ```
 
-The `perplexity` command will be available in your virtual environment.
+The `perplexity-cli` command will be available in your virtual environment.
 
 ## Usage
 
@@ -65,7 +65,7 @@ Before using the CLI, you need to authenticate with Perplexity.ai:
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 &
 
 # Authenticate (extracts token from Chrome session)
-perplexity auth
+perplexity-cli auth
 ```
 
 This will:
@@ -80,20 +80,20 @@ The token persists, so you only need to authenticate once.
 
 ```bash
 # Simple query
-perplexity query "What is machine learning?"
+perplexity-cli query "What is machine learning?"
 
 # Save answer to file
-perplexity query "Explain quantum computing" > answer.txt
+perplexity-cli query "Explain quantum computing" > answer.txt
 
 # Use in scripts
-ANSWER=$(perplexity query "What is 2+2?")
+ANSWER=$(perplexity-cli query "What is 2+2?")
 echo "The answer is: $ANSWER"
 ```
 
 ### Check Authentication Status
 
 ```bash
-perplexity status
+perplexity-cli status
 ```
 
 Shows:
@@ -105,14 +105,14 @@ Shows:
 ### Log Out
 
 ```bash
-perplexity logout
+perplexity-cli logout
 ```
 
 Removes stored credentials. You'll need to re-authenticate before making queries.
 
 ## Commands
 
-### `perplexity auth [--port PORT]`
+### `perplexity-cli auth [--port PORT]`
 
 Authenticate with Perplexity.ai.
 
@@ -121,11 +121,11 @@ Authenticate with Perplexity.ai.
 
 **Example:**
 ```bash
-perplexity auth
-perplexity auth --port 9222
+perplexity-cli auth
+perplexity-cli auth --port 9222
 ```
 
-### `perplexity query "QUESTION"`
+### `perplexity-cli query "QUESTION"`
 
 Submit a query and get an answer.
 
@@ -143,27 +143,27 @@ Submit a query and get an answer.
 **Examples:**
 ```bash
 # Simple query
-perplexity query "What is Python?"
+perplexity-cli query "What is Python?"
 
 # Pipe to file
-perplexity query "Explain AI" > answer.txt
+perplexity-cli query "Explain AI" > answer.txt
 
 # Pipe to other commands
-perplexity query "List 5 programming languages" | grep Python
+perplexity-cli query "List 5 programming languages" | grep Python
 
 # Use in scripts
-if perplexity query "Is the sky blue?" > /dev/null; then
+if perplexity-cli query "Is the sky blue?" > /dev/null; then
     echo "Query succeeded"
 fi
 ```
 
-### `perplexity status`
+### `perplexity-cli status`
 
 Show authentication status and token information.
 
 **Example:**
 ```bash
-perplexity status
+perplexity-cli status
 ```
 
 **Output:**
@@ -179,13 +179,13 @@ Email: user@example.com
 ✓ Token is valid and working
 ```
 
-### `perplexity logout`
+### `perplexity-cli logout`
 
 Remove stored credentials.
 
 **Example:**
 ```bash
-perplexity logout
+perplexity-cli logout
 ```
 
 ## Configuration
@@ -213,7 +213,7 @@ Tokens are stored in:
 
 **Solution**:
 ```bash
-perplexity auth
+perplexity-cli auth
 ```
 
 ### "Authentication failed. Token may be expired."
@@ -222,7 +222,7 @@ perplexity auth
 
 **Solution**:
 ```bash
-perplexity auth  # Re-authenticate
+perplexity-cli auth  # Re-authenticate
 ```
 
 ### "Failed to connect to Chrome"
@@ -235,7 +235,7 @@ perplexity auth  # Re-authenticate
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 &
 
 # Then authenticate
-perplexity auth
+perplexity-cli auth
 ```
 
 ### "Token file has insecure permissions"

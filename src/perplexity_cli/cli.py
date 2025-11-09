@@ -31,8 +31,8 @@ def auth(port: int) -> None:
     Requires Chrome to be running with --remote-debugging-port=<port>.
 
     Example:
-        perplexity auth
-        perplexity auth --port 9222
+        perplexity-cli auth
+        perplexity-cli auth --port 9222
     """
     click.echo("Authenticating with Perplexity.ai...")
     click.echo(f"\nMake sure Chrome is running with --remote-debugging-port={port}")
@@ -48,7 +48,7 @@ def auth(port: int) -> None:
 
         click.echo("✓ Authentication successful!")
         click.echo(f"✓ Token saved to: {tm.token_path}")
-        click.echo('\nYou can now use: perplexity query "<your question>"')
+        click.echo('\nYou can now use: perplexity-cli query "<your question>"')
 
     except RuntimeError as e:
         click.echo(f"✗ Authentication failed: {e}", err=True)
@@ -78,9 +78,9 @@ def query(query_text: str) -> None:
     The answer is printed to stdout, making it easy to pipe to other commands.
 
     Example:
-        perplexity query "What is Python?"
-        perplexity query "What is the capital of France?"
-        perplexity query "Explain quantum computing" > answer.txt
+        perplexity-cli query "What is Python?"
+        perplexity-cli query "What is the capital of France?"
+        perplexity-cli query "Explain quantum computing" > answer.txt
     """
     # Load token
     tm = TokenManager()
@@ -89,7 +89,7 @@ def query(query_text: str) -> None:
     if not token:
         click.echo("✗ Not authenticated.", err=True)
         click.echo(
-            "\nPlease authenticate first with: perplexity auth",
+            "\nPlease authenticate first with: perplexity-cli auth",
             err=True,
         )
         sys.exit(1)
@@ -108,7 +108,7 @@ def query(query_text: str) -> None:
         status = e.response.status_code
         if status == 401:
             click.echo("✗ Authentication failed. Token may be expired.", err=True)
-            click.echo("\nPlease re-authenticate with: perplexity auth", err=True)
+            click.echo("\nPlease re-authenticate with: perplexity-cli auth", err=True)
         elif status == 403:
             click.echo("✗ Access forbidden. Check your permissions.", err=True)
         elif status == 429:
@@ -136,10 +136,10 @@ def logout() -> None:
     """Log out and remove stored credentials.
 
     This deletes the stored authentication token. You will need to
-    re-authenticate with 'perplexity auth' before making queries.
+    re-authenticate with 'perplexity-cli auth' before making queries.
 
     Example:
-        perplexity logout
+        perplexity-cli logout
     """
     tm = TokenManager()
 
@@ -164,7 +164,7 @@ def status() -> None:
     Displays whether you are authenticated and where the token is stored.
 
     Example:
-        perplexity status
+        perplexity-cli status
     """
     tm = TokenManager()
 
@@ -209,7 +209,7 @@ def status() -> None:
             click.echo(f"\nFix with: chmod 0600 {tm.token_path}")
     else:
         click.echo("Status: ✗ Not authenticated")
-        click.echo("\nAuthenticate with: perplexity auth")
+        click.echo("\nAuthenticate with: perplexity-cli auth")
 
 
 if __name__ == "__main__":
