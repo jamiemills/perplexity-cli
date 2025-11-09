@@ -58,17 +58,12 @@ class Formatter(ABC):
         return "\n".join(output_parts)
 
     def should_use_colors(self) -> bool:
-        """Check if colours should be used based on TTY and environment.
+        """Check if colours should be used based on TTY.
 
         Returns:
             True if colours should be used, False otherwise.
         """
-        import os
         import sys
-
-        # Respect NO_COLOR environment variable
-        if os.environ.get("NO_COLOR"):
-            return False
 
         # Check if stdout is a TTY
         return sys.stdout.isatty()

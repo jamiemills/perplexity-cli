@@ -124,7 +124,7 @@ def query(query_text: str, format: str, strip_references: bool) -> None:
 
     try:
         # Determine output format
-        output_format = format or os.environ.get("PERPLEXITY_FORMAT", "rich")
+        output_format = format or "rich"
 
         # Get formatter instance
         try:
