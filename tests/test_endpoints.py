@@ -20,9 +20,7 @@ class TestPerplexityAPIGetCompleteAnswer:
         mock_message.blocks = [
             Mock(
                 intended_usage="ask_text",
-                content={
-                    "markdown_block": {"chunks": ["This is ", "the answer"]}
-                },
+                content={"markdown_block": {"chunks": ["This is ", "the answer"]}},
             )
         ]
         mock_message.web_results = None
@@ -115,9 +113,7 @@ class TestPerplexityAPIGetCompleteAnswer:
             Mock(
                 intended_usage="ask_text",
                 content={
-                    "markdown_block": {
-                        "chunks": ["This ", "is ", "a ", "multi-chunk ", "answer"]
-                    }
+                    "markdown_block": {"chunks": ["This ", "is ", "a ", "multi-chunk ", "answer"]}
                 },
             )
         ]
@@ -175,10 +171,7 @@ class TestPerplexityAPIFormatReferences:
         api = PerplexityAPI(token="test-token")
         result = api._format_references(refs)
 
-        assert (
-            result
-            == "[1] https://example.com/path?query=value&other=test#anchor"
-        )
+        assert result == "[1] https://example.com/path?query=value&other=test#anchor"
 
     def test_format_references_duplicate_urls(self):
         """Test formatting with duplicate URLs (should keep all)."""

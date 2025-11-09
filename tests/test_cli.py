@@ -132,8 +132,14 @@ class TestCLICommands:
 
         # Create web results
         refs = [
-            WebResult(name="Wikipedia", url="https://en.wikipedia.org/wiki/Python", snippet="Python programming language"),
-            WebResult(name="Python.org", url="https://www.python.org", snippet="Official Python website"),
+            WebResult(
+                name="Wikipedia",
+                url="https://en.wikipedia.org/wiki/Python",
+                snippet="Python programming language",
+            ),
+            WebResult(
+                name="Python.org", url="https://www.python.org", snippet="Official Python website"
+            ),
         ]
 
         # Mock API

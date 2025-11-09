@@ -144,7 +144,9 @@ def query(query_text: str, format: str, strip_references: bool) -> None:
             formatter.render_complete(answer_obj, strip_references=strip_references)
         else:
             # For plain and markdown, use click.echo
-            formatted_output = formatter.format_complete(answer_obj, strip_references=strip_references)
+            formatted_output = formatter.format_complete(
+                answer_obj, strip_references=strip_references
+            )
             click.echo(formatted_output)
 
     except httpx.HTTPStatusError as e:

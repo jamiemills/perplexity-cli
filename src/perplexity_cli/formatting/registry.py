@@ -1,6 +1,5 @@
 """Formatter registry for managing available formatters."""
 
-
 from perplexity_cli.formatting.base import Formatter
 
 
@@ -34,9 +33,7 @@ class FormatterRegistry:
         """
         if name not in self._formatters:
             available = ", ".join(self.list())
-            raise ValueError(
-                f"Unknown formatter: {name}. Available: {available}"
-            )
+            raise ValueError(f"Unknown formatter: {name}. Available: {available}")
         return self._formatters[name]()
 
     def list(self) -> list[str]:

@@ -21,10 +21,10 @@ class PlainTextFormatter(Formatter):
         """
         # Strip citation references if requested
         if strip_references:
-            text = re.sub(r'\[\d+\]', '', text)
+            text = re.sub(r"\[\d+\]", "", text)
 
-        lines = text.split('\n')
-        result = ['']  # Start with blank line
+        lines = text.split("\n")
+        result = [""]  # Start with blank line
         i = 0
         skip_next_blank = False
         blank_count = 0
@@ -33,29 +33,29 @@ class PlainTextFormatter(Formatter):
             line = lines[i]
 
             # Skip markdown horizontal rules (*** or ---)
-            if re.match(r'^[\*\-]{3,}$', line.strip()):
+            if re.match(r"^[\*\-]{3,}$", line.strip()):
                 i += 1
                 continue
 
             # Check for headers (###, ##, #)
-            header_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+            header_match = re.match(r"^(#{1,6})\s+(.+)$", line)
             if header_match:
                 content = header_match.group(2)
                 # Remove any markdown bold/italic from header
-                content = re.sub(r'\*\*(.+?)\*\*', r'\1', content)
-                content = re.sub(r'\*(.+?)\*', r'\1', content)
+                content = re.sub(r"\*\*(.+?)\*\*", r"\1", content)
+                content = re.sub(r"\*(.+?)\*", r"\1", content)
 
                 # Add single blank line before header if result has content
                 if len(result) > 1:  # More than just the initial blank line
-                    result.append('')
+                    result.append("")
 
                 # Add header with underline
                 result.append(content)
-                result.append('=' * len(content))
+                result.append("=" * len(content))
                 # Skip the next blank line after header
                 skip_next_blank = True
                 blank_count = 0
-            elif line.strip() == '':
+            elif line.strip() == "":
                 # Skip blank line immediately after header underline
                 if skip_next_blank:
                     skip_next_blank = False
@@ -63,18 +63,18 @@ class PlainTextFormatter(Formatter):
                     # Only add blank line if we haven't just added multiple
                     blank_count += 1
                     if blank_count <= 2:  # Allow max 2 consecutive blanks
-                        result.append('')
+                        result.append("")
             else:
                 skip_next_blank = False
                 blank_count = 0
                 # Remove markdown bold and italic from regular text
-                line = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
-                line = re.sub(r'\*(.+?)\*', r'\1', line)
+                line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
+                line = re.sub(r"\*(.+?)\*", r"\1", line)
                 result.append(line)
 
             i += 1
 
-        return '\n'.join(result).rstrip()
+        return "\n".join(result).rstrip()
 
     def format_complete(self, answer, strip_references: bool = False) -> str:  # type: ignore
         """Format complete answer with references.
@@ -95,12 +95,12 @@ class PlainTextFormatter(Formatter):
         # Add formatted references if present (and not stripped)
         if answer.references and not strip_references:
             # Add blank line before references section
-            output_parts.append('')
+            output_parts.append("")
             formatted_refs = self.format_references(answer.references)
             if formatted_refs:
                 output_parts.append(formatted_refs)
 
-        return '\n'.join(output_parts)
+        return "\n".join(output_parts)
 
     def format_references(self, references: list[WebResult]) -> str:
         """Format references as a simple numbered list with underlined header.
