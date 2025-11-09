@@ -503,14 +503,6 @@ All dependencies are well-maintained with permissive open-source licences (MIT/B
 - Security tests for sensitive operations
 - Maintain >70% code coverage
 
-## Licence
-
-MIT
-
-## Authors
-
-Jamie Mills
-
 ## Acknowledgements
 
 Built with:
