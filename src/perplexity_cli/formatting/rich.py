@@ -17,7 +17,8 @@ class RichFormatter(Formatter):
     def __init__(self) -> None:
         """Initialize Rich formatter."""
         # Console for direct output to terminal with styling
-        self.console = Console(force_terminal=True, legacy_windows=False)
+        # width=200 allows long URLs to not be truncated
+        self.console = Console(force_terminal=True, legacy_windows=False, width=200)
 
     def format_answer(self, text: str) -> str:
         """Format answer text with Rich styling.
@@ -45,10 +46,10 @@ class RichFormatter(Formatter):
             return ""
 
         # Create table with text wrapping
-        table = Table(title="References", show_header=True, header_style="bold cyan")
-        table.add_column("#", style="cyan", width=5)
-        table.add_column("Source", style="white", no_wrap=False)
-        table.add_column("URL", style="bright_blue", no_wrap=False)
+        table = Table(title="References", show_header=True, header_style="bold cyan", padding=(0, 1))
+        table.add_column("#", style="cyan", width=3, no_wrap=True)
+        table.add_column("Source", style="white", no_wrap=False, max_width=40)
+        table.add_column("URL", style="bright_blue", no_wrap=False, max_width=120)
 
         # Add rows
         for i, ref in enumerate(references, 1):
@@ -89,10 +90,11 @@ class RichFormatter(Formatter):
             self.console.print()
 
             # Create and print references table with text wrapping
-            table = Table(show_header=True, header_style="bold cyan")
-            table.add_column("#", style="cyan", width=5)
-            table.add_column("Source", style="white", no_wrap=False)
-            table.add_column("URL", style="bright_blue", no_wrap=False)
+            # Use no_wrap=True for # column, but allow wrapping for others
+            table = Table(show_header=True, header_style="bold cyan", padding=(0, 1))
+            table.add_column("#", style="cyan", width=3, no_wrap=True)
+            table.add_column("Source", style="white", no_wrap=False, max_width=40)
+            table.add_column("URL", style="bright_blue", no_wrap=False, max_width=120)
 
             for i, ref in enumerate(answer.references, 1):
                 table.add_row(str(i), ref.name, ref.url)
