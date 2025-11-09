@@ -41,3 +41,12 @@ def get_token_path() -> Path:
         Path: Path to ~/.config/perplexity-cli/token.json (or platform equivalent).
     """
     return get_config_dir() / "token.json"
+
+
+def get_style_path() -> Path:
+    """Get the path to the style configuration file.
+
+    Returns:
+        Path: Path to ~/.config/perplexity-cli/style.json (or platform equivalent).
+    """
+    return get_config_dir() / "style.json"

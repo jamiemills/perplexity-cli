@@ -11,6 +11,7 @@ from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.auth.oauth_handler import authenticate_sync
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.formatting import get_formatter, list_formatters
+from perplexity_cli.utils.style_manager import StyleManager
 
 
 @click.group()
@@ -132,11 +133,20 @@ def query(query_text: str, format: str, strip_references: bool) -> None:
             click.echo(f"Available formats: {available}", err=True)
             sys.exit(1)
 
+        # Load style if configured
+        sm = StyleManager()
+        style = sm.load_style()
+
+        # Append style to query if one is configured
+        final_query = query_text
+        if style:
+            final_query = f"{query_text}\n\n{style}"
+
         # Create API client
         api = PerplexityAPI(token=token)
 
         # Submit query and get answer
-        answer_obj = api.get_complete_answer(query_text)
+        answer_obj = api.get_complete_answer(final_query)
 
         # Format and output the answer
         if output_format == "rich":
@@ -199,6 +209,95 @@ def logout() -> None:
 
     except Exception as e:
         click.echo(f"✗ Error during logout: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("style", required=True)
+def configure(style: str) -> None:
+    """Configure a style prompt to apply to all queries.
+
+    Sets a custom style/prompt that will be automatically appended to all
+    subsequent queries. This allows you to standardise response formatting
+    without repeating instructions.
+
+    The style is stored in ~/.config/perplexity-cli/style.json and persists
+    across CLI sessions.
+
+    Example:
+        perplexity-cli configure "be brief and concise"
+        perplexity-cli configure "provide super brief answers in minimal words"
+    """
+    sm = StyleManager()
+
+    try:
+        sm.save_style(style)
+        click.echo("✓ Style configured successfully.")
+        click.echo("✓ Style will be applied to all future queries.")
+        click.echo("\nStyle preview:")
+        click.echo(f"  {style}")
+    except ValueError as e:
+        click.echo(f"✗ Invalid style: {e}", err=True)
+        sys.exit(1)
+    except OSError as e:
+        click.echo(f"✗ Failed to save style: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+def view_style() -> None:
+    """View currently configured style.
+
+    Displays the style prompt that is being applied to queries, or a message
+    if no style is configured.
+
+    Example:
+        perplexity-cli view-style
+    """
+    sm = StyleManager()
+
+    try:
+        style = sm.load_style()
+
+        if style is None:
+            click.echo("No style configured.")
+            click.echo("\nSet a style with:")
+            click.echo("  perplexity-cli configure <STYLE>")
+        else:
+            click.echo("Current style:")
+            click.echo("-" * 50)
+            click.echo(style)
+            click.echo("-" * 50)
+    except OSError as e:
+        click.echo(f"✗ Error reading style: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+def clear_style() -> None:
+    """Clear configured style.
+
+    Removes the style configuration. Queries will no longer have any style
+    prompt appended.
+
+    Example:
+        perplexity-cli clear-style
+    """
+    sm = StyleManager()
+
+    try:
+        style = sm.load_style()
+
+        if style is None:
+            click.echo("No style is currently configured.")
+            return
+
+        sm.clear_style()
+        click.echo("✓ Style cleared successfully.")
+        click.echo("✓ Queries will no longer include a style prompt.")
+
+    except OSError as e:
+        click.echo(f"✗ Error clearing style: {e}", err=True)
         sys.exit(1)
 
 

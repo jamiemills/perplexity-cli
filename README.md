@@ -220,6 +220,47 @@ Remove stored credentials.
 perplexity-cli logout
 ```
 
+### `perplexity-cli configure "STYLE"`
+
+Configure a custom style prompt to apply to all queries.
+
+Sets a style/prompt that will be automatically appended to all subsequent
+queries, allowing you to standardise response formatting without repeating
+instructions.
+
+**Arguments:**
+- `STYLE` - The custom style prompt (quoted string)
+
+**Example:**
+```bash
+perplexity-cli configure "be concise and factual"
+perplexity-cli configure "provide super brief answers in minimal words"
+```
+
+### `perplexity-cli view-style`
+
+Display the currently configured style.
+
+Shows the style prompt that is being applied to queries, or a message if
+no style is configured.
+
+**Example:**
+```bash
+perplexity-cli view-style
+```
+
+### `perplexity-cli clear-style`
+
+Remove the configured style.
+
+Clears the style configuration. Queries will no longer have any style prompt
+appended.
+
+**Example:**
+```bash
+perplexity-cli clear-style
+```
+
 ## Output Formatting
 
 The CLI supports three output formats to suit different use cases.
@@ -346,6 +387,57 @@ The capital of France is Paris[1][2]. Paris is located on the Seine[3].
 After (--strip-references applied):
 The capital of France is Paris. Paris is located on the Seine.
 ```
+
+### Style Configuration
+
+Configure a custom style/prompt to apply to all queries automatically. This allows you to standardise response formatting without repeating the same instructions.
+
+**Setting a style:**
+```bash
+perplexity-cli configure "be concise and factual"
+```
+
+**View current style:**
+```bash
+perplexity-cli view-style
+```
+
+**Clear style:**
+```bash
+perplexity-cli clear-style
+```
+
+**How it works:**
+- Once configured, the style is automatically appended to every query
+- The style is stored in `~/.config/perplexity-cli/style.json`
+- The configuration persists across CLI sessions
+- Style works with all three output formats (plain, markdown, rich)
+
+**Examples:**
+```bash
+# Configure a concise style
+perplexity-cli configure "answer in one sentence only"
+
+# All subsequent queries will have this style applied
+perplexity-cli query "What is Python?"
+# Sends: "What is Python?\n\nanswer in one sentence only"
+
+# View what style is configured
+perplexity-cli view-style
+
+# Use plain format with configured style (answer-only output)
+perplexity-cli query --format plain "What is machine learning?"
+
+# Remove style when you no longer want it
+perplexity-cli clear-style
+```
+
+**Use cases:**
+- Standardise response format: "provide answers in 2-3 sentences"
+- Control response length: "answer in under 50 words"
+- Specify content type: "provide example code for your explanation"
+- Set tone: "be technical but explain for beginners"
+- Combine with scripts: Use plain format + style for predictable output
 
 ## Configuration
 
