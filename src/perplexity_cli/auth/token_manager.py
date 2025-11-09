@@ -3,9 +3,12 @@
 import json
 import os
 import stat
+from datetime import datetime
+from pathlib import Path
 
 from perplexity_cli.utils.config import get_token_path
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
+from perplexity_cli.utils.logging import get_logger
 
 
 class TokenManager:
@@ -23,6 +26,7 @@ class TokenManager:
     def __init__(self) -> None:
         """Initialise the token manager."""
         self.token_path = get_token_path()
+        self.logger = get_logger()
 
     def save_token(self, token: str) -> None:
         """Save authentication token securely to disk with encryption.
@@ -41,13 +45,14 @@ class TokenManager:
             # Encrypt the token
             encrypted_token = encrypt_token(token)
 
-            # Write encrypted token to file
+            # Write encrypted token to file with metadata
             with open(self.token_path, "w") as f:
                 json.dump(
                     {
                         "version": 1,
                         "encrypted": True,
                         "token": encrypted_token,
+                        "created_at": datetime.now().isoformat(),
                     },
                     f,
                 )
@@ -55,7 +60,11 @@ class TokenManager:
             # Set restrictive permissions
             os.chmod(self.token_path, self.SECURE_PERMISSIONS)
 
+            # Audit log: token saved
+            self.logger.info(f"Token saved to {self.token_path}")
+
         except OSError as e:
+            self.logger.error(f"Failed to save token: {e}", exc_info=True)
             raise OSError(
                 f"Failed to save or set permissions on token file {self.token_path}: {e}"
             ) from e
@@ -86,18 +95,39 @@ class TokenManager:
 
             # Check if token is encrypted
             if not data.get("encrypted", False):
+                self.logger.warning("Token file is not encrypted")
                 raise RuntimeError(
                     "Token file is not encrypted. Please re-authenticate with: perplexity-cli auth"
                 )
 
             encrypted_token = data.get("token")
             if not encrypted_token:
+                self.logger.error("Token file missing encrypted token data")
                 raise RuntimeError("Token file is missing encrypted token data")
 
+            # Check token age if created_at is present
+            created_at_str = data.get("created_at")
+            if created_at_str:
+                try:
+                    created_at = datetime.fromisoformat(created_at_str)
+                    age_days = (datetime.now() - created_at).days
+                    if age_days > 30:
+                        self.logger.warning(f"Token is {age_days} days old, may be expired")
+                    else:
+                        self.logger.debug(f"Token age: {age_days} days")
+                except (ValueError, TypeError):
+                    pass
+
             # Decrypt the token
-            return decrypt_token(encrypted_token)
+            token = decrypt_token(encrypted_token)
+            
+            # Audit log: token loaded
+            self.logger.info(f"Token loaded from {self.token_path}")
+            
+            return token
 
         except (OSError, json.JSONDecodeError) as e:
+            self.logger.error(f"Failed to load token: {e}", exc_info=True)
             raise OSError(f"Failed to load token from {self.token_path}: {e}") from e
 
     def clear_token(self) -> None:
@@ -108,7 +138,10 @@ class TokenManager:
         if self.token_path.exists():
             try:
                 self.token_path.unlink()
+                # Audit log: token cleared
+                self.logger.info(f"Token cleared from {self.token_path}")
             except OSError as e:
+                self.logger.error(f"Failed to delete token file: {e}", exc_info=True)
                 raise OSError(f"Failed to delete token file: {e}") from e
 
     def token_exists(self) -> bool:
@@ -129,6 +162,10 @@ class TokenManager:
         actual_permissions = stat.S_IMODE(file_stat.st_mode)
 
         if actual_permissions != self.SECURE_PERMISSIONS:
+            self.logger.error(
+                f"Token file has insecure permissions: {oct(actual_permissions)} "
+                f"(expected {oct(self.SECURE_PERMISSIONS)})"
+            )
             raise RuntimeError(
                 f"Token file has insecure permissions: {oct(actual_permissions)}. "
                 f"Expected {oct(self.SECURE_PERMISSIONS)}. "

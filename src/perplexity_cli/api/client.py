@@ -5,19 +5,26 @@ from collections.abc import Iterator
 
 import httpx
 
+from perplexity_cli.utils.logging import get_logger
+from perplexity_cli.utils.retry import is_retryable_error
+from perplexity_cli.utils.version import get_version
+
 
 class SSEClient:
     """HTTP client with Server-Sent Events (SSE) streaming support."""
 
-    def __init__(self, token: str, timeout: int = 60) -> None:
+    def __init__(self, token: str, timeout: int = 60, max_retries: int = 3) -> None:
         """Initialise SSE client.
 
         Args:
             token: Authentication JWT token.
             timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for initial connection.
         """
         self.token = token
         self.timeout = timeout
+        self.max_retries = max_retries
+        self.logger = get_logger()
 
     def get_headers(self) -> dict[str, str]:
         """Get HTTP headers for API requests.
@@ -29,7 +36,7 @@ class SSEClient:
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
-            "User-Agent": "perplexity-cli/0.1.0",
+            "User-Agent": f"perplexity-cli/{get_version()}",
         }
 
     def stream_post(self, url: str, json_data: dict) -> Iterator[dict]:
@@ -48,38 +55,67 @@ class SSEClient:
             ValueError: For malformed SSE messages.
         """
         headers = self.get_headers()
+        attempt = 0
 
-        try:
-            with httpx.Client(timeout=self.timeout) as client:
-                with client.stream("POST", url, headers=headers, json=json_data) as response:
-                    # Check for HTTP errors
-                    response.raise_for_status()
+        while attempt < self.max_retries:
+            try:
+                self.logger.debug(f"Streaming POST to {url} (attempt {attempt + 1}/{self.max_retries})")
+                
+                with httpx.Client(timeout=self.timeout) as client:
+                    with client.stream("POST", url, headers=headers, json=json_data) as response:
+                        # Check for HTTP errors
+                        response.raise_for_status()
 
-                    # Parse SSE stream
-                    yield from self._parse_sse_stream(response)
+                        # Parse SSE stream - once streaming starts, we can't retry
+                        yield from self._parse_sse_stream(response)
+                        return  # Success, exit retry loop
 
-        except httpx.HTTPStatusError as e:
-            # Re-raise with more context
-            status = e.response.status_code
-            if status == 401:
-                raise httpx.HTTPStatusError(
-                    "Authentication failed. Token may be invalid or expired.",
-                    request=e.request,
-                    response=e.response,
-                ) from e
-            elif status == 403:
-                raise httpx.HTTPStatusError(
-                    "Access forbidden. Check API permissions.",
-                    request=e.request,
-                    response=e.response,
-                ) from e
-            elif status == 429:
-                raise httpx.HTTPStatusError(
-                    "Rate limit exceeded. Please wait and try again.",
-                    request=e.request,
-                    response=e.response,
-                ) from e
-            else:
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                # Don't retry auth errors (401, 403)
+                if status in (401, 403):
+                    self.logger.error(f"HTTP {status} error (not retryable): {e}")
+                    if status == 401:
+                        raise httpx.HTTPStatusError(
+                            "Authentication failed. Token may be invalid or expired.",
+                            request=e.request,
+                            response=e.response,
+                        ) from e
+                    elif status == 403:
+                        raise httpx.HTTPStatusError(
+                            "Access forbidden. Check API permissions.",
+                            request=e.request,
+                            response=e.response,
+                        ) from e
+                
+                # Retry 429 and 5xx errors
+                if is_retryable_error(e) and attempt < self.max_retries - 1:
+                    attempt += 1
+                    self.logger.warning(f"HTTP {status} error, retrying (attempt {attempt + 1}/{self.max_retries})")
+                    continue
+                
+                # Re-raise if not retryable or out of retries
+                if status == 429:
+                    raise httpx.HTTPStatusError(
+                        "Rate limit exceeded. Please wait and try again.",
+                        request=e.request,
+                        response=e.response,
+                    ) from e
+                raise
+
+            except httpx.RequestError as e:
+                # Retry network errors
+                if is_retryable_error(e) and attempt < self.max_retries - 1:
+                    attempt += 1
+                    self.logger.warning(f"Network error, retrying (attempt {attempt + 1}/{self.max_retries}): {e}")
+                    continue
+                # Re-raise if out of retries
+                self.logger.error(f"Network error after {attempt + 1} attempts: {e}")
+                raise
+
+            except Exception as e:
+                # Don't retry other exceptions
+                self.logger.error(f"Unexpected error during streaming: {e}", exc_info=True)
                 raise
 
     def _parse_sse_stream(self, response: httpx.Response) -> Iterator[dict]:

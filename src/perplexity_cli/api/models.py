@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from perplexity_cli.utils.version import get_api_version
+
 
 @dataclass
 class QueryParams:
@@ -14,7 +16,7 @@ class QueryParams:
     mode: str = "copilot"
     frontend_uuid: str = ""
     frontend_context_uuid: str = ""
-    version: str = "2.18"
+    version: str = field(default_factory=get_api_version)
     sources: list[str] = field(default_factory=lambda: ["web"])
     attachments: list[Any] = field(default_factory=list)
     search_recency_filter: str | None = None

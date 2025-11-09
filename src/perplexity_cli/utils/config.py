@@ -2,7 +2,9 @@
 
 import json
 import os
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 
 def get_config_dir() -> Path:
@@ -91,13 +93,43 @@ def _ensure_user_urls_config() -> None:
             raise RuntimeError(f"Failed to create URLs configuration file: {e}") from e
 
 
-_urls_cache = None
+def _validate_urls_config(urls: dict[str, Any]) -> None:
+    """Validate URLs configuration structure.
+
+    Args:
+        urls: Configuration dictionary to validate.
+
+    Raises:
+        RuntimeError: If configuration is invalid.
+    """
+    if not isinstance(urls, dict):
+        raise RuntimeError("URLs configuration must be a dictionary")
+    
+    if "perplexity" not in urls:
+        raise RuntimeError("URLs configuration missing 'perplexity' section")
+    
+    perplexity = urls["perplexity"]
+    if not isinstance(perplexity, dict):
+        raise RuntimeError("'perplexity' section must be a dictionary")
+    
+    required_fields = ["base_url", "query_endpoint"]
+    for field in required_fields:
+        if field not in perplexity:
+            raise RuntimeError(f"URLs configuration missing 'perplexity.{field}'")
+        if not isinstance(perplexity[field], str):
+            raise RuntimeError(f"URLs configuration 'perplexity.{field}' must be a string")
+        if not perplexity[field].strip():
+            raise RuntimeError(f"URLs configuration 'perplexity.{field}' cannot be empty")
 
 
-def get_urls() -> dict:
+@lru_cache(maxsize=1)
+def get_urls() -> dict[str, Any]:
     """Load and cache the URLs configuration.
 
     Returns the user configuration if it exists, otherwise creates it from defaults.
+    Environment variables can override configuration values:
+    - PERPLEXITY_BASE_URL: Overrides perplexity.base_url
+    - PERPLEXITY_QUERY_ENDPOINT: Overrides perplexity.query_endpoint
 
     Returns:
         dict: The URLs configuration containing perplexity base_url and query_endpoint.
@@ -105,20 +137,37 @@ def get_urls() -> dict:
     Raises:
         RuntimeError: If configuration cannot be loaded or is invalid.
     """
-    global _urls_cache
-
-    if _urls_cache is not None:
-        return _urls_cache
-
     _ensure_user_urls_config()
 
     urls_path = get_urls_path()
     try:
         with open(urls_path) as f:
-            _urls_cache = json.load(f)
-        return _urls_cache
+            urls = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         raise RuntimeError(f"Failed to load URLs configuration: {e}") from e
+
+    # Validate configuration
+    _validate_urls_config(urls)
+
+    # Apply environment variable overrides
+    if "PERPLEXITY_BASE_URL" in os.environ:
+        urls["perplexity"]["base_url"] = os.environ["PERPLEXITY_BASE_URL"]
+    
+    if "PERPLEXITY_QUERY_ENDPOINT" in os.environ:
+        urls["perplexity"]["query_endpoint"] = os.environ["PERPLEXITY_QUERY_ENDPOINT"]
+
+    # Re-validate after environment variable overrides
+    _validate_urls_config(urls)
+
+    return urls
+
+
+def clear_urls_cache() -> None:
+    """Clear the URLs configuration cache.
+
+    Useful for testing or when configuration files are modified externally.
+    """
+    get_urls.cache_clear()
 
 
 def get_perplexity_base_url() -> str:
