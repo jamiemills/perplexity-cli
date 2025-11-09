@@ -6,7 +6,7 @@ import pytest
 from click.testing import CliRunner
 
 from perplexity_cli.api.models import Answer
-from perplexity_cli.cli import auth, logout, main, query, status
+from perplexity_cli.cli import auth, clear_style, configure, logout, main, query, status, view_style
 
 
 class TestCLICommands:
@@ -247,3 +247,101 @@ class TestCLIIntegration:
         # Then check status
         result2 = runner.invoke(status)
         assert result2.exit_code == 0
+
+    @patch("perplexity_cli.cli.StyleManager")
+    def test_configure_style(self, mock_sm_class, runner):
+        """Test configure command saves style."""
+        mock_sm = Mock()
+        mock_sm_class.return_value = mock_sm
+
+        result = runner.invoke(configure, ["be brief and concise"])
+        assert result.exit_code == 0
+        assert "Style configured successfully" in result.output
+        mock_sm.save_style.assert_called_once_with("be brief and concise")
+
+    @patch("perplexity_cli.cli.StyleManager")
+    def test_configure_style_error(self, mock_sm_class, runner):
+        """Test configure command handles save errors."""
+        mock_sm = Mock()
+        mock_sm.save_style.side_effect = ValueError("Invalid style")
+        mock_sm_class.return_value = mock_sm
+
+        result = runner.invoke(configure, [""])
+        assert result.exit_code == 1
+        assert "Invalid style" in result.output
+
+    @patch("perplexity_cli.cli.StyleManager")
+    def test_view_style_when_set(self, mock_sm_class, runner):
+        """Test view-style shows configured style."""
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = "be brief"
+        mock_sm_class.return_value = mock_sm
+
+        result = runner.invoke(view_style)
+        assert result.exit_code == 0
+        assert "Current style:" in result.output
+        assert "be brief" in result.output
+
+    @patch("perplexity_cli.cli.StyleManager")
+    def test_view_style_when_not_set(self, mock_sm_class, runner):
+        """Test view-style when no style configured."""
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = None
+        mock_sm_class.return_value = mock_sm
+
+        result = runner.invoke(view_style)
+        assert result.exit_code == 0
+        assert "No style configured" in result.output
+
+    @patch("perplexity_cli.cli.StyleManager")
+    def test_clear_style_when_set(self, mock_sm_class, runner):
+        """Test clear-style removes style."""
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = "old style"
+        mock_sm_class.return_value = mock_sm
+
+        result = runner.invoke(clear_style)
+        assert result.exit_code == 0
+        assert "Style cleared successfully" in result.output
+        mock_sm.clear_style.assert_called_once()
+
+    @patch("perplexity_cli.cli.StyleManager")
+    def test_clear_style_when_not_set(self, mock_sm_class, runner):
+        """Test clear-style when no style configured."""
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = None
+        mock_sm_class.return_value = mock_sm
+
+        result = runner.invoke(clear_style)
+        assert result.exit_code == 0
+        assert "No style is currently configured" in result.output
+
+    @patch("perplexity_cli.cli.StyleManager")
+    @patch("perplexity_cli.cli.PerplexityAPI")
+    @patch("perplexity_cli.cli.TokenManager")
+    def test_query_with_style_appended(self, mock_tm_class, mock_api_class, mock_sm_class, runner):
+        """Test query appends style to query text."""
+        # Mock token manager
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = "test_token"
+        mock_tm_class.return_value = mock_tm
+
+        # Mock style manager
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = "be brief"
+        mock_sm_class.return_value = mock_sm
+
+        # Mock API
+        mock_api = Mock()
+        mock_api.get_complete_answer.return_value = Answer(text="Test answer", references=[])
+        mock_api_class.return_value = mock_api
+
+        result = runner.invoke(query, ["What is Python?"])
+        assert result.exit_code == 0
+        assert "Test answer" in result.output
+
+        # Verify style was appended to query
+        called_query = mock_api.get_complete_answer.call_args[0][0]
+        assert "What is Python?" in called_query
+        assert "be brief" in called_query
+        assert "\n\n" in called_query
