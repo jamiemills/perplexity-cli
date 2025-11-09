@@ -1,6 +1,5 @@
 """Command-line interface for Perplexity CLI."""
 
-import os
 import sys
 
 import click

@@ -37,7 +37,7 @@ def derive_encryption_key() -> bytes:
         username = os.getenv("USER") or os.getenv("USERNAME") or "unknown"
 
         # Create deterministic key from system identifiers
-        key_material = f"{hostname}:{username}".encode("utf-8")
+        key_material = f"{hostname}:{username}".encode()
         key_hash = hashlib.sha256(key_material + _KEY_DERIVATION_SALT).digest()
 
         # Convert to Fernet-compatible key (base64-encoded 32 bytes)
@@ -63,8 +63,8 @@ def encrypt_token(token: str) -> str:
     try:
         key = derive_encryption_key()
         cipher = Fernet(key)
-        encrypted = cipher.encrypt(token.encode("utf-8"))
-        return base64.urlsafe_b64encode(encrypted).decode("utf-8")
+        encrypted = cipher.encrypt(token.encode())
+        return base64.urlsafe_b64encode(encrypted).decode()
     except Exception as e:
         raise RuntimeError(f"Failed to encrypt token: {e}") from e
 
@@ -84,12 +84,12 @@ def decrypt_token(encrypted_token: str) -> str:
     try:
         key = derive_encryption_key()
         cipher = Fernet(key)
-        encrypted_bytes = base64.urlsafe_b64decode(encrypted_token.encode("utf-8"))
+        encrypted_bytes = base64.urlsafe_b64decode(encrypted_token.encode())
         decrypted = cipher.decrypt(encrypted_bytes)
-        return decrypted.decode("utf-8")
+        return decrypted.decode()
     except Exception as e:
         raise RuntimeError(
-            f"Failed to decrypt token. This usually means the token was "
-            f"encrypted on a different machine or with a different user. "
-            f"Please re-authenticate with: perplexity-cli auth"
+            "Failed to decrypt token. This usually means the token was "
+            "encrypted on a different machine or with a different user. "
+            "Please re-authenticate with: perplexity-cli auth"
         ) from e
