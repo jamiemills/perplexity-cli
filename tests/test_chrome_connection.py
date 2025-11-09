@@ -9,9 +9,11 @@ import asyncio
 import json
 import urllib.request
 
+import pytest
 import websockets
 
 
+@pytest.mark.asyncio
 async def test_chrome_connection():
     """Test websocket connection to Chrome DevTools."""
     print("Testing Chrome connection on port 9222...")

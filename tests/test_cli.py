@@ -47,30 +47,39 @@ class TestCLICommands:
         assert "perplexity-cli auth" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
-    def test_status_authenticated(self, mock_tm_class, runner):
+    @patch("perplexity_cli.cli.PerplexityAPI")
+    def test_status_authenticated(self, mock_api_class, mock_tm_class, runner):
         """Test status when authenticated."""
+        from datetime import datetime
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
         mock_tm = Mock()
         mock_tm.token_exists.return_value = True
         mock_tm.load_token.return_value = "test-token-123"
-        mock_tm.token_path = "/path/to/token.json"
+        mock_token_path = MagicMock(spec=Path)
+        mock_token_path.__str__ = lambda x: "/path/to/token.json"
+        mock_token_path.exists.return_value = True
+        # Mock stat() method
+        mock_stat = Mock()
+        mock_stat.st_mtime = datetime.now().timestamp()
+        mock_token_path.stat.return_value = mock_stat
+        mock_tm.token_path = mock_token_path
         mock_tm_class.return_value = mock_tm
 
-        # Mock the API verification
-        with patch("perplexity_cli.cli.httpx.get") as mock_get:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = {
-                "username": "testuser",
-                "email": "test@example.com",
-            }
-            mock_get.return_value = mock_response
+        # Mock the API verification (now uses test query)
+        mock_api = Mock()
+        mock_answer = Mock()
+        mock_answer.text = "test answer"
+        mock_answer.references = []
+        mock_api.get_complete_answer.return_value = mock_answer
+        mock_api_class.return_value = mock_api
 
-            result = runner.invoke(status)
+        result = runner.invoke(status)
 
         assert result.exit_code == 0
         assert "Authenticated" in result.output
-        assert "testuser" in result.output
-        assert "test@example.com" in result.output
+        assert "Token is valid and working" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     def test_logout_no_token(self, mock_tm_class, runner):

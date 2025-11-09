@@ -1,24 +1,53 @@
 """Command-line interface for Perplexity CLI."""
 
 import sys
+from pathlib import Path
 
 import click
 import httpx
 
-from perplexity_cli import __version__
 from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.auth.oauth_handler import authenticate_sync
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.formatting import get_formatter, list_formatters
 from perplexity_cli.utils.config import get_perplexity_base_url
+from perplexity_cli.utils.logging import get_default_log_file, setup_logging
 from perplexity_cli.utils.style_manager import StyleManager
+from perplexity_cli.utils.version import get_version
 
 
 @click.group()
-@click.version_option(version=__version__)
-def main() -> None:
+@click.version_option(version=get_version())
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose output (INFO level logging).",
+)
+@click.option(
+    "--debug",
+    "-d",
+    is_flag=True,
+    help="Enable debug output (DEBUG level logging).",
+)
+@click.option(
+    "--log-file",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Write logs to file (default: ~/.config/perplexity-cli/perplexity-cli.log).",
+)
+@click.pass_context
+def main(ctx: click.Context, verbose: bool, debug: bool, log_file: Path | None) -> None:
     """Perplexity CLI - Query Perplexity.ai from the command line."""
-    pass
+    # Setup logging
+    if log_file is None:
+        log_file = get_default_log_file()
+    setup_logging(verbose=verbose, debug=debug, log_file=log_file)
+    
+    # Store context for subcommands
+    ctx.ensure_object(dict)
+    ctx.obj["verbose"] = verbose
+    ctx.obj["debug"] = debug
 
 
 @main.command()
@@ -27,7 +56,8 @@ def main() -> None:
     default=9222,
     help="Chrome remote debugging port (default: 9222)",
 )
-def auth(port: int) -> None:
+@click.pass_context
+def auth(ctx: click.Context, port: int) -> None:
     """Authenticate with Perplexity.ai.
 
     Opens Chrome browser to Perplexity.ai and extracts authentication token.
@@ -37,6 +67,11 @@ def auth(port: int) -> None:
         perplexity-cli auth
         perplexity-cli auth --port 9222
     """
+    from perplexity_cli.utils.logging import get_logger
+
+    logger = get_logger()
+    logger.info(f"Starting authentication on port {port}")
+
     base_url = get_perplexity_base_url()
     click.echo("Authenticating with Perplexity.ai...")
     click.echo(f"\nMake sure Chrome is running with --remote-debugging-port={port}")
@@ -44,17 +79,21 @@ def auth(port: int) -> None:
 
     try:
         # Authenticate and extract token
+        logger.debug("Calling authenticate_sync")
         token = authenticate_sync(port=port)
+        logger.info("Token extracted successfully")
 
         # Save token
         tm = TokenManager()
         tm.save_token(token)
+        logger.info(f"Token saved to {tm.token_path}")
 
         click.echo("✓ Authentication successful!")
         click.echo(f"✓ Token saved to: {tm.token_path}")
         click.echo('\nYou can now use: perplexity-cli query "<your question>"')
 
     except RuntimeError as e:
+        logger.error(f"Authentication failed: {e}", exc_info=True)
         click.echo(f"✗ Authentication failed: {e}", err=True)
         click.echo("\nTroubleshooting:", err=True)
         click.echo(
@@ -69,8 +108,17 @@ def auth(port: int) -> None:
         click.echo("  4. Run this command again", err=True)
         sys.exit(1)
 
+    except KeyboardInterrupt:
+        logger.info("Authentication interrupted by user")
+        click.echo("\n✗ Authentication interrupted.", err=True)
+        sys.exit(130)
+
     except Exception as e:
+        logger.exception(f"Unexpected error during authentication: {e}")
         click.echo(f"✗ Unexpected error: {e}", err=True)
+        if ctx.obj.get("debug", False):
+            import traceback
+            click.echo(traceback.format_exc(), err=True)
         sys.exit(1)
 
 
@@ -88,7 +136,19 @@ def auth(port: int) -> None:
     is_flag=True,
     help="Remove all references section and inline citation numbers [1], [2], etc. from the answer.",
 )
-def query(query_text: str, format: str, strip_references: bool) -> None:
+@click.option(
+    "--stream",
+    is_flag=True,
+    help="Stream response in real-time as it arrives (experimental).",
+)
+@click.pass_context
+def query(
+    ctx: click.Context,
+    query_text: str,
+    format: str,
+    strip_references: bool,
+    stream: bool,
+) -> None:
     """Submit a query to Perplexity.ai and get an answer.
 
     The answer is printed to stdout, making it easy to pipe to other commands.
@@ -101,6 +161,8 @@ def query(query_text: str, format: str, strip_references: bool) -> None:
     Use --strip-references to remove all citations [1], [2], etc. and the
     references section from the output.
 
+    Use --stream to see the response as it arrives in real-time.
+
     Examples:
         perplexity-cli query "What is Python?"
         perplexity-cli query "What is the capital of France?" > answer.txt
@@ -108,7 +170,13 @@ def query(query_text: str, format: str, strip_references: bool) -> None:
         perplexity-cli query --format markdown "What is Python?" > answer.md
         perplexity-cli query --strip-references "What is Python?"
         perplexity-cli query -f plain --strip-references "What is Python?"
+        perplexity-cli query --stream "What is Python?"
     """
+    from perplexity_cli.utils.logging import get_logger
+
+    logger = get_logger()
+    logger.debug(f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}")
+
     # Load token
     tm = TokenManager()
     token = tm.load_token()
@@ -119,6 +187,7 @@ def query(query_text: str, format: str, strip_references: bool) -> None:
             "\nPlease authenticate first with: perplexity-cli auth",
             err=True,
         )
+        logger.warning("Query attempted without authentication")
         sys.exit(1)
 
     try:
@@ -132,6 +201,7 @@ def query(query_text: str, format: str, strip_references: bool) -> None:
             click.echo(f"✗ {e}", err=True)
             available = ", ".join(list_formatters())
             click.echo(f"Available formats: {available}", err=True)
+            logger.error(f"Invalid formatter: {format}")
             sys.exit(1)
 
         # Load style if configured
@@ -142,26 +212,36 @@ def query(query_text: str, format: str, strip_references: bool) -> None:
         final_query = query_text
         if style:
             final_query = f"{query_text}\n\n{style}"
+            logger.debug(f"Applied style: {style[:50]}...")
 
         # Create API client
         api = PerplexityAPI(token=token)
 
-        # Submit query and get answer
-        answer_obj = api.get_complete_answer(final_query)
-
-        # Format and output the answer
-        if output_format == "rich":
-            # Use Rich formatter's direct rendering for proper styling
-            formatter.render_complete(answer_obj, strip_references=strip_references)
+        # Handle streaming vs complete answer
+        if stream:
+            logger.info("Streaming query response")
+            # Stream response
+            _stream_query_response(api, final_query, formatter, output_format, strip_references)
         else:
-            # For plain and markdown, use click.echo
-            formatted_output = formatter.format_complete(
-                answer_obj, strip_references=strip_references
-            )
-            click.echo(formatted_output)
+            logger.info("Fetching complete answer")
+            # Submit query and get answer
+            answer_obj = api.get_complete_answer(final_query)
+            logger.debug(f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references")
+
+            # Format and output the answer
+            if output_format == "rich":
+                # Use Rich formatter's direct rendering for proper styling
+                formatter.render_complete(answer_obj, strip_references=strip_references)
+            else:
+                # For plain and markdown, use click.echo
+                formatted_output = formatter.format_complete(
+                    answer_obj, strip_references=strip_references
+                )
+                click.echo(formatted_output)
 
     except httpx.HTTPStatusError as e:
         status = e.response.status_code
+        logger.error(f"HTTP error {status}: {e}")
         if status == 401:
             click.echo("✗ Authentication failed. Token may be expired.", err=True)
             click.echo("\nPlease re-authenticate with: perplexity-cli auth", err=True)
@@ -174,17 +254,97 @@ def query(query_text: str, format: str, strip_references: bool) -> None:
         sys.exit(1)
 
     except httpx.RequestError as e:
+        logger.error(f"Network error: {e}", exc_info=True)
         click.echo(f"✗ Network error: {e}", err=True)
         click.echo("\nPlease check your internet connection.", err=True)
         sys.exit(1)
 
     except ValueError as e:
+        logger.error(f"Value error: {e}", exc_info=True)
         click.echo(f"✗ Error: {e}", err=True)
         sys.exit(1)
 
+    except KeyboardInterrupt:
+        logger.info("Query interrupted by user")
+        click.echo("\n✗ Query interrupted.", err=True)
+        sys.exit(130)
+
     except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
         click.echo(f"✗ Unexpected error: {e}", err=True)
+        if ctx.obj.get("debug", False):
+            import traceback
+            click.echo(traceback.format_exc(), err=True)
         sys.exit(1)
+
+
+def _stream_query_response(
+    api: PerplexityAPI,
+    query: str,
+    formatter,
+    output_format: str,
+    strip_references: bool,
+) -> None:
+    """Stream query response in real-time.
+
+    Args:
+        api: PerplexityAPI instance.
+        query: Query text.
+        formatter: Formatter instance.
+        output_format: Output format name.
+        strip_references: Whether to strip references.
+    """
+    from perplexity_cli.api.models import Answer, WebResult
+    from perplexity_cli.utils.logging import get_logger
+
+    logger = get_logger()
+    accumulated_text = ""
+    references: list[WebResult] = []
+
+    try:
+        for message in api.submit_query(query):
+            logger.debug(f"Received SSE message: status={message.status}, final={message.final_sse_message}")
+
+            # Extract text from blocks
+            for block in message.blocks:
+                if block.intended_usage == "ask_text":
+                    text = api._extract_text_from_block(block.content)
+                    if text and text != accumulated_text:
+                        # Only print new text
+                        new_text = text[len(accumulated_text):]
+                        if new_text:
+                            if output_format == "rich":
+                                # For rich, print incrementally
+                                click.echo(new_text, nl=False)
+                            else:
+                                click.echo(new_text, nl=False)
+                            accumulated_text = text
+
+            # Extract references from final message
+            if message.final_sse_message and message.web_results:
+                references = message.web_results
+                logger.debug(f"Extracted {len(references)} references")
+
+        # Print newline after streaming
+        click.echo()
+
+        # Print references if not stripped
+        if references and not strip_references:
+            click.echo()
+            if output_format == "rich":
+                formatter.render_complete(
+                    Answer(text=accumulated_text, references=references),
+                    strip_references=True,  # Already printed text
+                )
+            else:
+                formatted_refs = formatter.format_references(references)
+                if formatted_refs:
+                    click.echo(formatted_refs)
+
+    except KeyboardInterrupt:
+        logger.info("Streaming interrupted by user")
+        click.echo("\n✗ Streaming interrupted.", err=True)
+        raise
 
 
 @main.command()
@@ -209,6 +369,10 @@ def logout() -> None:
         click.echo("✓ Stored credentials removed.")
 
     except Exception as e:
+        from perplexity_cli.utils.logging import get_logger
+
+        logger = get_logger()
+        logger.error(f"Error during logout: {e}", exc_info=True)
         click.echo(f"✗ Error during logout: {e}", err=True)
         sys.exit(1)
 
@@ -307,10 +471,17 @@ def status() -> None:
     """Show current authentication status.
 
     Displays whether you are authenticated and where the token is stored.
+    Attempts to verify token validity by making a test query.
 
     Example:
         perplexity-cli status
     """
+    from datetime import datetime
+    from pathlib import Path
+
+    from perplexity_cli.utils.logging import get_logger
+
+    logger = get_logger()
     tm = TokenManager()
 
     click.echo("Perplexity CLI Status")
@@ -324,28 +495,36 @@ def status() -> None:
                 click.echo(f"Token file: {tm.token_path}")
                 click.echo(f"Token length: {len(token)} characters")
 
-                # Try to verify token works
+                # Show token file metadata
                 try:
-                    api = PerplexityAPI(token=token)
-                    # Make a simple request to verify token
-                    import httpx
-
-                    base_url = get_perplexity_base_url()
-                    headers = api.client.get_headers()
-                    response = httpx.get(
-                        f"{base_url}/api/user",
-                        headers=headers,
-                        timeout=5,
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        click.echo(f"User: {data.get('username', 'Unknown')}")
-                        click.echo(f"Email: {data.get('email', 'Unknown')}")
-                        click.echo("\n✓ Token is valid and working")
-                    else:
-                        click.echo("\n⚠ Token may be expired (unable to verify)")
+                    stat = tm.token_path.stat()
+                    modified_time = datetime.fromtimestamp(stat.st_mtime)
+                    click.echo(f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}")
                 except Exception:
-                    click.echo("\n⚠ Token verification failed")
+                    pass
+
+                # Try to verify token works with a minimal test query
+                try:
+                    logger.debug("Verifying token validity")
+                    api = PerplexityAPI(token=token, timeout=10)
+                    # Use a very short test query to verify token
+                    test_answer = api.get_complete_answer("test")
+                    if test_answer and len(test_answer.text) > 0:
+                        click.echo("\n✓ Token is valid and working")
+                        logger.info("Token verification successful")
+                    else:
+                        click.echo("\n⚠ Token verification returned empty response")
+                        logger.warning("Token verification returned empty response")
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 401:
+                        click.echo("\n✗ Token is invalid or expired")
+                        logger.warning("Token verification failed: 401 Unauthorized")
+                    else:
+                        click.echo(f"\n⚠ Token verification failed (HTTP {e.response.status_code})")
+                        logger.warning(f"Token verification failed: HTTP {e.response.status_code}")
+                except Exception as e:
+                    click.echo("\n⚠ Token verification failed (unable to test)")
+                    logger.debug(f"Token verification error: {e}", exc_info=True)
 
             else:
                 click.echo("Status: ✗ Not authenticated")
@@ -353,6 +532,7 @@ def status() -> None:
             click.echo("Status: ⚠ Token file has insecure permissions")
             click.echo(f"Error: {e}")
             click.echo(f"\nFix with: chmod 0600 {tm.token_path}")
+            logger.error(f"Token file has insecure permissions: {e}")
     else:
         click.echo("Status: ✗ Not authenticated")
         click.echo("\nAuthenticate with: perplexity-cli auth")

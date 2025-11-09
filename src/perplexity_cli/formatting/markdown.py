@@ -2,7 +2,7 @@
 
 import re
 
-from perplexity_cli.api.models import WebResult
+from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting.base import Formatter
 
 
@@ -47,7 +47,7 @@ class MarkdownFormatter(Formatter):
 
         return "\n".join(lines)
 
-    def format_complete(self, answer, strip_references: bool = False) -> str:  # type: ignore
+    def format_complete(self, answer: Answer, strip_references: bool = False) -> str:
         """Format complete answer with Markdown structure.
 
         Args:
