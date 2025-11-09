@@ -1,0 +1,39 @@
+# Claude Code
+.scratch
+.claude
+.claudecode
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Environment variables
+.env
+.env.local
+
+# Editor files
+*.swp
+*.swo
+*.swn
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
