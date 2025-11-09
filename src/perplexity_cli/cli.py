@@ -538,5 +538,12 @@ def status() -> None:
         click.echo("\nAuthenticate with: perplexity-cli auth")
 
 
+# NOTE: Thread commands (threads, thread, followup, continue, export, delete) are disabled
+# as the functionality does not work properly. If thread commands are added in the future,
+# they should be disabled with an early return showing an error message like:
+#   click.echo("✗ Threads functionality is currently disabled as it does not work properly.", err=True)
+#   sys.exit(1)
+
+
 if __name__ == "__main__":
     main()
