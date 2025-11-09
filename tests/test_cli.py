@@ -43,7 +43,7 @@ class TestCLICommands:
 
         assert result.exit_code == 0
         assert "Not authenticated" in result.output
-        assert "perplexity auth" in result.output
+        assert "perplexity-cli auth" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     def test_status_authenticated(self, mock_tm_class, runner):
@@ -128,7 +128,7 @@ class TestCLICommands:
 
         assert result.exit_code == 1
         assert "Not authenticated" in result.output
-        assert "perplexity auth" in result.output
+        assert "perplexity-cli auth" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.PerplexityAPI")

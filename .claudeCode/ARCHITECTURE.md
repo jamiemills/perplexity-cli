@@ -342,7 +342,7 @@ External:
 ### 1. Authentication Flow
 
 ```
-User runs: perplexity auth
+User runs: perplexity-cli auth
          │
          ▼
    ┌──────────┐
@@ -392,7 +392,7 @@ User runs: perplexity auth
 ### 2. Query Flow
 
 ```
-User runs: perplexity query "What is Python?"
+User runs: perplexity-cli query "What is Python?"
          │
          ▼
    ┌──────────┐
@@ -471,7 +471,7 @@ User runs: perplexity query "What is Python?"
 ### 3. Logout Flow
 
 ```
-User runs: perplexity logout
+User runs: perplexity-cli logout
          │
          ▼
    ┌──────────┐
@@ -501,7 +501,7 @@ User runs: perplexity logout
 ### 4. Status Flow
 
 ```
-User runs: perplexity status
+User runs: perplexity-cli status
          │
          ▼
    ┌──────────┐
@@ -651,7 +651,7 @@ User runs: perplexity status
 ```
 
 **Examples**:
-- 401 → "Token may be expired. Re-authenticate with: perplexity auth"
+- 401 → "Token may be expired. Re-authenticate with: perplexity-cli auth"
 - Network error → "Check your internet connection."
 
 **Benefit**: Self-service troubleshooting, reduced support burden
@@ -661,8 +661,8 @@ User runs: perplexity status
 **Decision**: Answers to stdout, errors to stderr
 
 **Rationale**:
-- Enables piping: `perplexity query "Q" > file.txt`
-- Shell scripts can capture answer: `ANSWER=$(perplexity query "Q")`
+- Enables piping: `perplexity-cli query "Q" > file.txt`
+- Shell scripts can capture answer: `ANSWER=$(perplexity-cli query "Q")`
 - Errors don't pollute answer text
 - Unix philosophy: composable tools
 

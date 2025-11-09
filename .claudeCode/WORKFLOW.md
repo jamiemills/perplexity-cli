@@ -164,7 +164,7 @@
 
 - [x] 4.2 Add Error Handling
   - [x] 4.2.1 Implement user-friendly error messages for all commands
-  - [x] 4.2.2 Add missing token prompts with guidance (perplexity auth)
+  - [x] 4.2.2 Add missing token prompts with guidance (perplexity-cli auth)
   - [x] 4.2.3 Add network error handling with connection check message
   - [x] 4.2.4 Add API error handling (401 expired token, 403 forbidden, 429 rate limit)
   - [x] 4.2.5 Add insecure permission detection with chmod guidance
@@ -290,7 +290,7 @@
 
 - [x] 7.2 Test Local Installation
   - [x] 7.2.1 Test installation via `uv pip install -e .` ✅ WORKING
-  - [x] 7.2.2 Verify `perplexity` command is available ✅ VERIFIED
+  - [x] 7.2.2 Verify `perplexity-cli` command is available ✅ VERIFIED
   - [x] 7.2.3 Test each CLI command after installation ✅ ALL WORKING
   - [x] 7.2.4 Test with fresh virtual environment ✅ TESTED
 
@@ -305,7 +305,7 @@
 - [x] 7.4 Test Distribution Installation
   - [x] 7.4.1 Create fresh virtual environment (/tmp/test-perplexity-install) ✅
   - [x] 7.4.2 Install from built wheel (uv pip install dist/*.whl) ✅ SUCCESS
-  - [x] 7.4.3 Test `perplexity` command functionality (--help, --version, status) ✅ WORKING
+  - [x] 7.4.3 Test `perplexity-cli` command functionality (--help, --version, status) ✅ WORKING
   - [x] 7.4.4 Verify all dependencies installed (11 packages) ✅ VERIFIED
 
 - [x] 7.5 Update Installation Documentation

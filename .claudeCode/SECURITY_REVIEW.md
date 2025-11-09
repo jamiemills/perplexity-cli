@@ -399,7 +399,7 @@ All critical security measures are in place.
 **Security Best Practices**:
 1. Keep Chrome updated (for authentication)
 2. Don't share your `~/.config/perplexity-cli/token.json` file
-3. Run `perplexity logout` on shared systems
+3. Run `perplexity-cli logout` on shared systems
 4. Check file permissions if warning appears
 
 **Token Security**:

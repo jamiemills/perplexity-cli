@@ -19,7 +19,7 @@ Build a production-grade command-line interface (CLI) application that allows au
 
 #### A.2.2 Query Execution Requirements
 - CLI must support sending a single query per invocation (not interactive mode)
-- Query syntax: `perplexity query "What is machine learning?"`
+- Query syntax: `perplexity-cli query "What is machine learning?"`
 - Output must contain ONLY the answer text from Perplexity, no website chrome or metadata
 - Answer must be written to stdout for piping to other commands if needed
 - Appropriate exit codes must be used for success/failure
@@ -151,7 +151,7 @@ perplexity-cli/
 ## SECTION C: AUTHENTICATION IMPLEMENTATION
 
 ### C.1 Authentication Flow
-1. User runs `perplexity auth`
+1. User runs `perplexity-cli auth`
 2. CLI opens browser to `https://www.perplexity.ai` (or appropriate Perplexity login page)
 3. User sees Perplexity's login page with Google OAuth option
 4. User clicks Google OAuth and authenticates with their Google account
@@ -312,7 +312,7 @@ The chosen approach will be documented in `.claudeCode/CLAUDE.md` during Phase 1
   - `status` command: Shows current authentication status
 
 ### E.2 Command Behaviour
-- `perplexity query "What is machine learning?"`
+- `perplexity-cli query "What is machine learning?"`
 - Checks for valid token; prompts auth if missing
 - Sends query to Perplexity API
 - Extracts answer text from response
@@ -333,7 +333,7 @@ The chosen approach will be documented in `.claudeCode/CLAUDE.md` during Phase 1
 ### F.2 Installation Options
 - Installable via `uv pip install -e .` for development
 - Installable via `uv pip install perplexity-cli` from PyPI (future)
-- Creates executable `perplexity` command available system-wide after installation
+- Creates executable `perplexity-cli` command available system-wide after installation
 
 ### F.3 Build Process
 - `uv` used for all environment management and dependency resolution
@@ -449,7 +449,7 @@ The chosen approach will be documented in `.claudeCode/CLAUDE.md` during Phase 1
 - [ ] H.4.7 Re-authentication after logout
 - [ ] H.4.8 Network error handling
 - [ ] H.4.9 Installation from built wheel
-- [ ] H.4.10 `perplexity` command available after installation
+- [ ] H.4.10 `perplexity-cli` command available after installation
 - [ ] H.4.11 All commands work post-installation
 
 ## SECTION I: DEPENDENCIES

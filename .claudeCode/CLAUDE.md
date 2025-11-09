@@ -469,31 +469,31 @@ Phase 2 (Authentication) is complete and production-ready. The implementation:
 ### Implementation Summary
 
 **Click CLI Framework**: Built complete command-line interface with 4 commands
-- Entry point: `perplexity` command
+- Entry point: `perplexity-cli` command
 - Framework: Click (declarative CLI builder)
 - Output: Answers to stdout, errors to stderr
 - Exit codes: 0 (success), 1 (error)
 
 **Commands Implemented**:
 
-1. **`perplexity auth [--port PORT]`**
+1. **`perplexity-cli auth [--port PORT]`**
    - Authenticates with Perplexity.ai via Chrome DevTools
    - Saves JWT token to ~/.config/perplexity-cli/token.json
    - Error handling with troubleshooting steps
    - Default port: 9222
 
-2. **`perplexity query "QUESTION"`**
+2. **`perplexity-cli query "QUESTION"`**
    - Submits query to Perplexity API
    - Returns answer to stdout (pipeable)
    - Checks authentication before query
    - Comprehensive error handling (401, 403, 429, network)
 
-3. **`perplexity logout`**
+3. **`perplexity-cli logout`**
    - Clears stored authentication token
    - Confirms deletion to user
    - Idempotent (safe if no token)
 
-4. **`perplexity status`**
+4. **`perplexity-cli status`**
    - Shows authentication status
    - Displays token location and length
    - Verifies token with API call to /api/user
@@ -502,16 +502,16 @@ Phase 2 (Authentication) is complete and production-ready. The implementation:
 ### Key Implementation Decisions
 
 **Decision 1**: Output routing (stdout vs stderr)
-- **Rationale**: Answers to stdout enables piping (perplexity query "X" > file.txt)
+- **Rationale**: Answers to stdout enables piping (perplexity-cli query "X" > file.txt)
 - **Implementation**: All errors to stderr, only answers to stdout
 - **Benefit**: Unix-friendly, composable with other tools
 
 **Decision 2**: Error message strategy
 - **Rationale**: Users need actionable guidance, not cryptic errors
 - **Implementation**:
-  - 401 → "Token may be expired. Re-authenticate with: perplexity auth"
+  - 401 → "Token may be expired. Re-authenticate with: perplexity-cli auth"
   - Network → "Check your internet connection"
-  - No auth → "Please authenticate first with: perplexity auth"
+  - No auth → "Please authenticate first with: perplexity-cli auth"
 - **Benefit**: Self-service troubleshooting
 
 **Decision 3**: Status command with token verification
@@ -535,13 +535,13 @@ Phase 2 (Authentication) is complete and production-ready. The implementation:
 - Integration tests with real components
 
 **Manual Testing**: All workflows verified
-- ✅ `perplexity --help` → Shows commands
-- ✅ `perplexity status` → Shows auth status
-- ✅ `perplexity query "What is 5+5?"` → "5+5 equals 10..."
-- ✅ `perplexity query "meaning of life"` → Full philosophical answer
-- ✅ `perplexity logout` → Removes token
-- ✅ `perplexity query` (no auth) → Error with guidance
-- ✅ Output piping → `perplexity query "X" > file.txt` works
+- ✅ `perplexity-cli --help` → Shows commands
+- ✅ `perplexity-cli status` → Shows auth status
+- ✅ `perplexity-cli query "What is 5+5?"` → "5+5 equals 10..."
+- ✅ `perplexity-cli query "meaning of life"` → Full philosophical answer
+- ✅ `perplexity-cli logout` → Removes token
+- ✅ `perplexity-cli query` (no auth) → Error with guidance
+- ✅ Output piping → `perplexity-cli query "X" > file.txt` works
 
 **Total Project Tests**: 75 (all passing)
 - 40 authentication tests
@@ -560,12 +560,12 @@ Phase 2 (Authentication) is complete and production-ready. The implementation:
 
 ### CLI Now Fully Functional
 
-The `perplexity` command is installed and working:
+The `perplexity-cli` command is installed and working:
 ```bash
-perplexity status              # Check authentication
-perplexity query "question"    # Ask Perplexity
-perplexity logout              # Clear credentials
-perplexity --help              # Show help
+perplexity-cli status              # Check authentication
+perplexity-cli query "question"    # Ask Perplexity
+perplexity-cli logout              # Clear credentials
+perplexity-cli --help              # Show help
 ```
 
 ---

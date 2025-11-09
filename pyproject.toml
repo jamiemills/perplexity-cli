@@ -38,7 +38,7 @@ dev = [
 ]
 
 [project.scripts]
-perplexity = "perplexity_cli.cli:main"
+perplexity-cli = "perplexity_cli.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
