@@ -73,7 +73,7 @@ def _get_default_urls() -> dict:
     """
     package_config = Path(__file__).parent.parent / "config" / "urls.json"
     try:
-        with open(package_config, "r") as f:
+        with open(package_config) as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         raise RuntimeError(f"Failed to load default URLs configuration: {e}") from e
@@ -114,7 +114,7 @@ def get_urls() -> dict:
 
     urls_path = get_urls_path()
     try:
-        with open(urls_path, "r") as f:
+        with open(urls_path) as f:
             _urls_cache = json.load(f)
         return _urls_cache
     except (OSError, json.JSONDecodeError) as e:
