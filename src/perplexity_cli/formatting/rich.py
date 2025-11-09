@@ -70,21 +70,22 @@ class RichFormatter(Formatter):
         Args:
             answer: Answer object with text and references.
         """
+        from rich.markdown import Markdown
+
         # Title
         title_text = Text("Answer from Perplexity", style="bold bright_cyan")
         self.console.print(title_text)
-
-        # Answer section
         self.console.print()
-        answer_header = Text("Answer", style="bold cyan")
-        self.console.print(answer_header)
-        formatted_answer = self._process_answer_text(answer.text)
-        self.console.print(formatted_answer)
+
+        # Answer section - render as markdown with Rich styling
+        self.console.print(Markdown(answer.text))
 
         # References section
         if answer.references:
             self.console.print()
             self.console.print("─" * 50, style="dim")
+            self.console.print()
+            self.console.print(Text("References", style="bold cyan"))
             self.console.print()
 
             # Create and print references table
