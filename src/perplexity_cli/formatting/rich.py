@@ -16,8 +16,8 @@ class RichFormatter(Formatter):
 
     def __init__(self) -> None:
         """Initialize Rich formatter."""
-        # Console for direct output to terminal
-        self.console = Console(legacy_windows=False)
+        # Console for direct output to terminal with styling
+        self.console = Console(force_terminal=True, legacy_windows=False)
 
     def format_answer(self, text: str) -> str:
         """Format answer text with Rich styling.
