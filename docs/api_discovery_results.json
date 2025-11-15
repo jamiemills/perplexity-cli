@@ -1,0 +1,166 @@
+{
+  "base_url": "https://www.perplexity.ai",
+  "tested_endpoints": [
+    {
+      "url": "https://www.perplexity.ai/api/library",
+      "status": 404,
+      "headers": {
+        "date": "Sun, 09 Nov 2025 17:54:54 GMT",
+        "content-type": "text/html; charset=UTF-8",
+        "transfer-encoding": "chunked",
+        "connection": "keep-alive",
+        "content-encoding": "gzip",
+        "content-security-policy": "object-src 'none'; base-uri 'self'; form-action 'self' https://onedrive.live.com https://*.sharepoint.com https://*.paypal.com https://*.venmo.com; frame-ancestors 'self' https://onedrive.live.com https://*.sharepoint.com https://app.athina.ai; upgrade-insecure-requests",
+        "cross-origin-opener-policy": "unsafe-none",
+        "cross-origin-resource-policy": "same-origin",
+        "origin-agent-cluster": "?1",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "strict-transport-security": "max-age=15552000; includeSubDomains; preload",
+        "x-content-type-options": "nosniff",
+        "x-dns-prefetch-control": "off",
+        "x-download-options": "noopen",
+        "x-frame-options": "DENY",
+        "x-permitted-cross-domain-policies": "none",
+        "x-xss-protection": "0",
+        "cf-cache-status": "DYNAMIC",
+        "set-cookie": "__cf_bm=pwV3GdBT04NJ_c_DVAXiNRGT.vxW443_09UskMyHoOE-1762710894-1.0.1.1-LBZYSp..KmWfOxs1k3CbxCOl6l_dRF1DWv_s18m7aN4KRK2Ce0eQD1obC5M8pXd1FcP.sSRQg1S1o8oYvH3w1e2E3J9Cyz5MhTAU77tHCbs; path=/; expires=Sun, 09-Nov-25 18:24:54 GMT; domain=.perplexity.ai; HttpOnly; Secure; SameSite=None, __cflb=02DiuDyvFMmK5p9jVbVnMNSKYZhUL9aGmbi5uc1qYSk3n; SameSite=None; Secure; path=/; expires=Mon, 10-Nov-25 16:54:54 GMT; HttpOnly",
+        "server": "cloudflare",
+        "cf-ray": "99bf2d925a390050-LHR"
+      }
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/library",
+      "status": 404,
+      "headers": {
+        "date": "Sun, 09 Nov 2025 17:54:54 GMT",
+        "content-type": "application/json",
+        "content-length": "22",
+        "connection": "keep-alive",
+        "cf-ray": "99bf2d931c270050-LHR",
+        "cf-cache-status": "DYNAMIC",
+        "strict-transport-security": "max-age=15552000; includeSubDomains; preload",
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate",
+        "server": "cloudflare"
+      }
+    },
+    {
+      "url": "https://www.perplexity.ai/api/threads",
+      "status": 404,
+      "headers": {
+        "date": "Sun, 09 Nov 2025 17:54:54 GMT",
+        "content-type": "text/html; charset=UTF-8",
+        "transfer-encoding": "chunked",
+        "connection": "keep-alive",
+        "content-encoding": "gzip",
+        "content-security-policy": "object-src 'none'; base-uri 'self'; form-action 'self' https://onedrive.live.com https://*.sharepoint.com https://*.paypal.com https://*.venmo.com; frame-ancestors 'self' https://onedrive.live.com https://*.sharepoint.com https://app.athina.ai; upgrade-insecure-requests",
+        "cross-origin-opener-policy": "unsafe-none",
+        "cross-origin-resource-policy": "same-origin",
+        "origin-agent-cluster": "?1",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "strict-transport-security": "max-age=15552000; includeSubDomains; preload",
+        "x-content-type-options": "nosniff",
+        "x-dns-prefetch-control": "off",
+        "x-download-options": "noopen",
+        "x-frame-options": "DENY",
+        "x-permitted-cross-domain-policies": "none",
+        "x-xss-protection": "0",
+        "cf-cache-status": "DYNAMIC",
+        "server": "cloudflare",
+        "cf-ray": "99bf2d93de310050-LHR"
+      }
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/threads",
+      "status": 404,
+      "headers": {
+        "date": "Sun, 09 Nov 2025 17:54:54 GMT",
+        "content-type": "application/json",
+        "content-length": "22",
+        "connection": "keep-alive",
+        "cf-ray": "99bf2d94a8610050-LHR",
+        "cf-cache-status": "DYNAMIC",
+        "strict-transport-security": "max-age=15552000; includeSubDomains; preload",
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate",
+        "server": "cloudflare"
+      }
+    },
+    {
+      "url": "https://www.perplexity.ai/api/user/library",
+      "status": 404,
+      "headers": {
+        "date": "Sun, 09 Nov 2025 17:54:55 GMT",
+        "content-type": "text/html; charset=utf-8",
+        "transfer-encoding": "chunked",
+        "connection": "keep-alive",
+        "content-encoding": "gzip",
+        "content-security-policy": "object-src 'none';    base-uri 'self';    form-action 'self' https://onedrive.live.com https://*.sharepoint.com;    frame-ancestors 'self' https://onedrive.live.com https://*.sharepoint.com https://app.athina.ai;    block-all-mixed-content;    upgrade-insecure-requests;",
+        "x-frame-options": "DENY",
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate",
+        "x-powered-by": "Next.js",
+        "vary": "Accept-Encoding",
+        "cf-cache-status": "DYNAMIC",
+        "strict-transport-security": "max-age=15552000; includeSubDomains; preload",
+        "server": "cloudflare",
+        "cf-ray": "99bf2d957aba0050-LHR"
+      }
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/user/library",
+      "status": 404,
+      "headers": {
+        "date": "Sun, 09 Nov 2025 17:54:55 GMT",
+        "content-type": "application/json",
+        "content-length": "22",
+        "connection": "keep-alive",
+        "cf-ray": "99bf2d963ce70050-LHR",
+        "cf-cache-status": "DYNAMIC",
+        "strict-transport-security": "max-age=15552000; includeSubDomains; preload",
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate",
+        "server": "cloudflare"
+      }
+    },
+    {
+      "url": "https://www.perplexity.ai/api/conversations",
+      "status": 404,
+      "headers": {
+        "date": "Sun, 09 Nov 2025 17:54:55 GMT",
+        "content-type": "text/html; charset=UTF-8",
+        "transfer-encoding": "chunked",
+        "connection": "keep-alive",
+        "content-encoding": "gzip",
+        "content-security-policy": "object-src 'none'; base-uri 'self'; form-action 'self' https://onedrive.live.com https://*.sharepoint.com https://*.paypal.com https://*.venmo.com; frame-ancestors 'self' https://onedrive.live.com https://*.sharepoint.com https://app.athina.ai; upgrade-insecure-requests",
+        "cross-origin-opener-policy": "unsafe-none",
+        "cross-origin-resource-policy": "same-origin",
+        "origin-agent-cluster": "?1",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "strict-transport-security": "max-age=15552000; includeSubDomains; preload",
+        "x-content-type-options": "nosniff",
+        "x-dns-prefetch-control": "off",
+        "x-download-options": "noopen",
+        "x-frame-options": "DENY",
+        "x-permitted-cross-domain-policies": "none",
+        "x-xss-protection": "0",
+        "cf-cache-status": "DYNAMIC",
+        "server": "cloudflare",
+        "cf-ray": "99bf2d971f5e0050-LHR"
+      }
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/conversations",
+      "status": 404,
+      "headers": {
+        "date": "Sun, 09 Nov 2025 17:54:55 GMT",
+        "content-type": "application/json",
+        "content-length": "22",
+        "connection": "keep-alive",
+        "cf-ray": "99bf2d97d9580050-LHR",
+        "cf-cache-status": "DYNAMIC",
+        "strict-transport-security": "max-age=15552000; includeSubDomains; preload",
+        "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate",
+        "server": "cloudflare"
+      }
+    }
+  ],
+  "successful_endpoints": [],
+  "failed_endpoints": []
+}

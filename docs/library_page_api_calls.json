@@ -1,0 +1,337 @@
+{
+  "page": "https://www.perplexity.ai/library",
+  "api_requests": [
+    {
+      "url": "https://www.perplexity.ai/api/auth/session",
+      "method": "GET",
+      "headers": {
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "Content-Type": "application/json",
+        "sec-ch-ua-mobile": "?0",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://pplx-next-static-public.perplexity.ai/_spa/assets/library-CXUmXsAG.js",
+      "method": "GET",
+      "headers": {
+        "Origin": "https://www.perplexity.ai",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "sec-ch-ua-mobile": "?0"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/event/analytics",
+      "method": "POST",
+      "headers": {
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "Content-Type": "application/json; charset=utf-8",
+        "sec-ch-ua-mobile": "?0",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/user/settings?version=2.18&source=default",
+      "method": "GET",
+      "headers": {
+        "x-perplexity-request-try-number": "1",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "accept-language": "en-US",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "x-app-apiclient": "default",
+        "sec-ch-ua-mobile": "?0",
+        "x-perplexity-request-endpoint": "https://www.perplexity.ai/rest/user/settings?version=2.18&source=default",
+        "x-perplexity-request-reason": "stream-side-effects",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "x-app-apiversion": "2.18"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/enterprise/user/organization?version=2.18&source=default",
+      "method": "GET",
+      "headers": {
+        "x-perplexity-request-try-number": "1",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "x-app-apiclient": "default",
+        "sec-ch-ua-mobile": "?0",
+        "x-perplexity-request-endpoint": "https://www.perplexity.ai/rest/enterprise/user/organization?version=2.18&source=default",
+        "x-perplexity-request-reason": "app-banner-inner",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "x-app-apiversion": "2.18"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/auth/check_government_request_origin?version=2.18&source=default",
+      "method": "GET",
+      "headers": {
+        "x-perplexity-request-try-number": "1",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "x-app-apiclient": "default",
+        "sec-ch-ua-mobile": "?0",
+        "x-perplexity-request-endpoint": "https://www.perplexity.ai/rest/auth/check_government_request_origin?version=2.18&source=default",
+        "x-perplexity-request-reason": "user-capabilities",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "x-app-apiversion": "2.18"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/user/promotions?version=2.18&source=default",
+      "method": "GET",
+      "headers": {
+        "x-perplexity-request-try-number": "1",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "x-app-apiclient": "default",
+        "sec-ch-ua-mobile": "?0",
+        "x-perplexity-request-endpoint": "https://www.perplexity.ai/rest/user/promotions?version=2.18&source=default",
+        "x-perplexity-request-reason": "app-banner-inner",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "x-app-apiversion": "2.18"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/homepage-widgets/upsell?version=2.18&source=default",
+      "method": "GET",
+      "headers": {
+        "x-perplexity-request-try-number": "1",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "x-app-apiclient": "default",
+        "sec-ch-ua-mobile": "?0",
+        "x-perplexity-request-endpoint": "https://www.perplexity.ai/rest/homepage-widgets/upsell?version=2.18&source=default",
+        "x-current-path": "/library",
+        "x-perplexity-request-reason": "get upsells",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "x-app-apiversion": "2.18"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/referrals/validate-email?email=jamie.mills%40gmail.com&version=2.18&source=default",
+      "method": "GET",
+      "headers": {
+        "x-perplexity-request-try-number": "1",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "x-app-apiclient": "default",
+        "sec-ch-ua-mobile": "?0",
+        "x-perplexity-request-endpoint": "https://www.perplexity.ai/rest/referrals/validate-email?email=jamie.mills%40gmail.com&version=2.18&source=default",
+        "x-perplexity-request-reason": "combined_paywall",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "x-app-apiversion": "2.18"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/academic/check-edu-institution?version=2.18&source=default",
+      "method": "GET",
+      "headers": {
+        "x-perplexity-request-try-number": "1",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "x-app-apiclient": "default",
+        "sec-ch-ua-mobile": "?0",
+        "x-perplexity-request-endpoint": "https://www.perplexity.ai/rest/academic/check-edu-institution?version=2.18&source=default",
+        "x-perplexity-request-reason": "combined_paywall",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "x-app-apiversion": "2.18"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://fscdn.eppo.cloud/api/flag-config/v1/config?apiKey=a2yUBlJ1tebb5g2II8WD1CzbVUszCSk3.ZWg9bnhqMGc3LmUuZXBwby5jbG91ZCZjcz1ueGowZzc&sdkName=js-client-sdk&sdkVersion=3.4.0",
+      "method": "GET",
+      "headers": {
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "sec-ch-ua-mobile": "?0"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/api/intercom?useCase=default",
+      "method": "GET",
+      "headers": {
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "sec-ch-ua-mobile": "?0"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/thread/list_ask_threads?version=2.18&source=default",
+      "method": "POST",
+      "headers": {
+        "x-perplexity-request-try-number": "1",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "x-app-apiclient": "default",
+        "sec-ch-ua-mobile": "?0",
+        "x-perplexity-request-endpoint": "https://www.perplexity.ai/rest/thread/list_ask_threads?version=2.18&source=default",
+        "x-perplexity-request-reason": "threads-body",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "content-type": "application/json",
+        "x-app-apiversion": "2.18"
+      },
+      "postData": "{\"limit\":20,\"ascending\":false,\"offset\":0,\"search_term\":\"\"}"
+    },
+    {
+      "url": "https://sdk-api-v1.singular.net/api/v1/event?custom_user_id=ad789f65-d005-4dcd-a3db-40d44b31bcdf&current_device_time=1762711251&event_id=ca20d7a3-d98b-4844-a02e-452824b258f3&conversion_event=true&k=SDID&a=perplexity_ai_039eb8fb&p=Web&i=ai.perplexity&screen_height=1329&screen_width=2056&sdk=WebSDK-v1.4.4&singular_instance_id=58138d5e-5b17-44f1-985f-c0b91b6c3ab1&sdid=21ea294e-452c-4d2a-8ade-4abe2f96eb6a&storage_type=local&timezone=GMT%2B0000&touchpoint_timestamp=1762633239&u=21ea294e-452c-4d2a-8ade-4abe2f96eb6a&n=__PAGE_VISIT__&is_revenue_event=false&first=false&s=90b4c059-d6ba-48b9-9cb3-60917e0f3ccd&is_first_visit=false&is_page_refreshed=false&sdid_persist_mode=off&is_first_page_visit_in_session=false&ecid=21ea294e-452c-4d2a-8ade-4abe2f96eb6a&os=MacOS&lag=0&h=e07212f73f38c5951a93146932cfaf1cbd179fe7",
+      "method": "POST",
+      "headers": {
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "Content-Type": "application/json",
+        "sec-ch-ua-mobile": "?0",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+      },
+      "postData": "{\"payload\":\"{\\\"device_user_agent\\\":\\\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36\\\",\\\"web_url\\\":\\\"https://www.perplexity.ai/library\\\",\\\"client_hints\\\":\\\"{\\\\\\\"architecture\\\\\\\":\\\\\\\"arm\\\\\\\",\\\\\\\"brands\\\\\\\":[{\\\\\\\"brand\\\\\\\":\\\\\\\"Not_A Brand\\\\\\\",\\\\\\\"version\\\\\\\":\\\\\\\"99\\\\\\\"},{\\\\\\\"brand\\\\\\\":\\\\\\\"Chromium\\\\\\\",\\\\\\\"version\\\\\\\":\\\\\\\"142\\\\\\\"}],\\\\\\\"mobile\\\\\\\":false,\\\\\\\"model\\\\\\\":\\\\\\\"\\\\\\\",\\\\\\\"platform\\\\\\\":\\\\\\\"macOS\\\\\\\",\\\\\\\"platformVersion\\\\\\\":\\\\\\\"15.7.1\\\\\\\",\\\\\\\"uaFullVersion\\\\\\\":\\\\\\\"142.0.7444.61\\\\\\\"}\\\"}\",\"signature\":\"85451ecc77e965e52cf4d821da516882d9bbfb60\"}"
+    },
+    {
+      "url": "https://sdk-api-v1.singular.net/api/v1/event?custom_user_id=ad789f65-d005-4dcd-a3db-40d44b31bcdf&current_device_time=1762711251&event_id=ca20d7a3-d98b-4844-a02e-452824b258f3&conversion_event=true&k=SDID&a=perplexity_ai_039eb8fb&p=Web&i=ai.perplexity&screen_height=1329&screen_width=2056&sdk=WebSDK-v1.4.4&singular_instance_id=58138d5e-5b17-44f1-985f-c0b91b6c3ab1&sdid=21ea294e-452c-4d2a-8ade-4abe2f96eb6a&storage_type=local&timezone=GMT%2B0000&touchpoint_timestamp=1762633239&u=21ea294e-452c-4d2a-8ade-4abe2f96eb6a&n=__PAGE_VISIT__&is_revenue_event=false&first=false&s=90b4c059-d6ba-48b9-9cb3-60917e0f3ccd&is_first_visit=false&is_page_refreshed=false&sdid_persist_mode=off&is_first_page_visit_in_session=false&ecid=21ea294e-452c-4d2a-8ade-4abe2f96eb6a&os=MacOS&lag=0&h=e07212f73f38c5951a93146932cfaf1cbd179fe7",
+      "method": "OPTIONS",
+      "headers": {
+        "Accept": "*/*",
+        "Access-Control-Request-Headers": "content-type",
+        "Access-Control-Request-Method": "POST",
+        "Origin": "https://www.perplexity.ai",
+        "Sec-Fetch-Mode": "cors",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/enterprise/user/pending-invitation?version=2.18&source=default",
+      "method": "GET",
+      "headers": {
+        "x-perplexity-request-try-number": "1",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "x-app-apiclient": "default",
+        "sec-ch-ua-mobile": "?0",
+        "x-perplexity-request-endpoint": "https://www.perplexity.ai/rest/enterprise/user/pending-invitation?version=2.18&source=default",
+        "x-perplexity-request-reason": "app-banner-inner",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "x-app-apiversion": "2.18"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub4ecf63e3fd1ad28de1a9027c01181601&dd-evp-origin-version=6.21.2&dd-evp-origin=browser&dd-request-id=48ea223c-ea12-4ca1-aa9d-8480b7f7a19c&dd-evp-encoding=deflate&batch_time=1762711251146&_dd.api=fetch-keepalive",
+      "method": "POST",
+      "headers": {
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "Content-Type": "text/plain",
+        "sec-ch-ua-mobile": "?0",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub4ecf63e3fd1ad28de1a9027c01181601&dd-evp-origin-version=6.21.2&dd-evp-origin=browser&dd-request-id=9bbb7567-2f28-4647-8a61-d6536bc4b9b3&dd-evp-encoding=deflate&batch_time=1762711251153&_dd.api=fetch-keepalive",
+      "method": "POST",
+      "headers": {
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "Content-Type": "text/plain",
+        "sec-ch-ua-mobile": "?0",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://www.perplexity.ai/rest/collections/list_user_collections?limit=30&offset=0&version=2.18&source=default",
+      "method": "GET",
+      "headers": {
+        "x-perplexity-request-try-number": "1",
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/library",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "x-app-apiclient": "default",
+        "sec-ch-ua-mobile": "?0",
+        "x-perplexity-request-endpoint": "https://www.perplexity.ai/rest/collections/list_user_collections?limit=30&offset=0&version=2.18&source=default",
+        "x-perplexity-request-reason": "thread-item",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        "x-app-apiversion": "2.18"
+      },
+      "postData": null
+    },
+    {
+      "url": "https://sdk-api-v1.singular.net/api/v1/event?custom_user_id=ad789f65-d005-4dcd-a3db-40d44b31bcdf&current_device_time=1762711251&event_id=6d5e517a-6799-4a79-b86a-8295be3e1c42&conversion_event=false&k=SDID&a=perplexity_ai_039eb8fb&p=Web&i=ai.perplexity&screen_height=1329&screen_width=2056&sdk=WebSDK-v1.4.4&singular_instance_id=58138d5e-5b17-44f1-985f-c0b91b6c3ab1&sdid=21ea294e-452c-4d2a-8ade-4abe2f96eb6a&storage_type=local&timezone=GMT%2B0000&touchpoint_timestamp=1762633239&u=21ea294e-452c-4d2a-8ade-4abe2f96eb6a&n=initialized%20singular&is_revenue_event=false&first=false&os=MacOS&s=90b4c059-d6ba-48b9-9cb3-60917e0f3ccd&lag=0&h=05fc68a064050fdec57dd6900f6d31f50d1d0feb",
+      "method": "POST",
+      "headers": {
+        "sec-ch-ua-platform": "\"macOS\"",
+        "Referer": "https://www.perplexity.ai/",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+        "Content-Type": "application/json",
+        "sec-ch-ua-mobile": "?0",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+      },
+      "postData": "{\"payload\":\"{\\\"device_user_agent\\\":\\\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36\\\",\\\"client_hints\\\":\\\"{\\\\\\\"architecture\\\\\\\":\\\\\\\"arm\\\\\\\",\\\\\\\"brands\\\\\\\":[{\\\\\\\"brand\\\\\\\":\\\\\\\"Not_A Brand\\\\\\\",\\\\\\\"version\\\\\\\":\\\\\\\"99\\\\\\\"},{\\\\\\\"brand\\\\\\\":\\\\\\\"Chromium\\\\\\\",\\\\\\\"version\\\\\\\":\\\\\\\"142\\\\\\\"}],\\\\\\\"mobile\\\\\\\":false,\\\\\\\"model\\\\\\\":\\\\\\\"\\\\\\\",\\\\\\\"platform\\\\\\\":\\\\\\\"macOS\\\\\\\",\\\\\\\"platformVersion\\\\\\\":\\\\\\\"15.7.1\\\\\\\",\\\\\\\"uaFullVersion\\\\\\\":\\\\\\\"142.0.7444.61\\\\\\\"}\\\",\\\"e\\\":\\\"{\\\\\\\"visitorId\\\\\\\":\\\\\\\"bb77c0d0-9d5f-461f-9baa-ad8b7efff128\\\\\\\",\\\\\\\"eventId\\\\\\\":\\\\\\\"f2365075380283ff3d48fff013ba5aaee866b3157e456b1f932b5a75b67edc10\\\\\\\"}\\\"}\",\"signature\":\"8000de8317c7e23e5100f3530529094ed6f9dc73\"}"
+    },
+    {
+      "url": "https://sdk-api-v1.singular.net/api/v1/event?custom_user_id=ad789f65-d005-4dcd-a3db-40d44b31bcdf&current_device_time=1762711251&event_id=6d5e517a-6799-4a79-b86a-8295be3e1c42&conversion_event=false&k=SDID&a=perplexity_ai_039eb8fb&p=Web&i=ai.perplexity&screen_height=1329&screen_width=2056&sdk=WebSDK-v1.4.4&singular_instance_id=58138d5e-5b17-44f1-985f-c0b91b6c3ab1&sdid=21ea294e-452c-4d2a-8ade-4abe2f96eb6a&storage_type=local&timezone=GMT%2B0000&touchpoint_timestamp=1762633239&u=21ea294e-452c-4d2a-8ade-4abe2f96eb6a&n=initialized%20singular&is_revenue_event=false&first=false&os=MacOS&s=90b4c059-d6ba-48b9-9cb3-60917e0f3ccd&lag=0&h=05fc68a064050fdec57dd6900f6d31f50d1d0feb",
+      "method": "OPTIONS",
+      "headers": {
+        "Accept": "*/*",
+        "Access-Control-Request-Headers": "content-type",
+        "Access-Control-Request-Method": "POST",
+        "Origin": "https://www.perplexity.ai",
+        "Sec-Fetch-Mode": "cors",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+      },
+      "postData": null
+    }
+  ]
+}

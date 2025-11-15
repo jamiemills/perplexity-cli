@@ -13,6 +13,9 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 - **Server-Sent Events** - Streams responses in real-time
 - **Logging** - Configurable logging with verbose/debug modes and log file support
 - **Streaming output** - Real-time streaming of query responses as they arrive
+- **Library/Threads management** - List, view, continue, export, and manage your Perplexity conversations
+- **Thread context caching** - Automatic caching of thread context for faster follow-up queries
+- **Interactive sessions** - Continue conversations interactively with multiple queries
 
 ## Quick Start
 
@@ -168,6 +171,155 @@ Display currently configured style.
 
 Remove configured style.
 
+## Library/Threads Commands
+
+The CLI supports managing your Perplexity library threads (conversations), allowing you to list, view, continue, and export your saved conversations.
+
+### `perplexity-cli threads [OPTIONS]`
+
+List your Perplexity threads/conversations.
+
+**Options:**
+- `--limit N` - Number of threads to show (default: 20)
+- `--offset N` - Offset for pagination (default: 0)
+- `--search TERM` - Search term to filter threads (searches title and answer content)
+- `--format {table,json}` - Output format (default: table)
+
+**Examples:**
+```bash
+# List all threads
+perplexity-cli threads
+
+# List with pagination
+perplexity-cli threads --limit 50 --offset 20
+
+# Search for threads
+perplexity-cli threads --search "python"
+
+# JSON output for scripting
+perplexity-cli threads --format json | jq '.[0].title'
+
+# Use regex patterns in search
+perplexity-cli threads --search "^What is"
+```
+
+### `perplexity-cli thread THREAD_SLUG [OPTIONS]`
+
+Show details of a specific thread.
+
+**Arguments:**
+- `THREAD_SLUG` - The thread slug identifier (from `threads` command)
+
+**Options:**
+- `--format {plain,markdown,rich}` - Output format (default: rich)
+
+**Examples:**
+```bash
+# View thread details
+perplexity-cli thread what-is-python-HDn1I22.QKCoDctO58P2UA
+
+# Export thread details as markdown
+perplexity-cli thread <slug> --format markdown > thread.md
+```
+
+### `perplexity-cli followup THREAD_SLUG QUERY [OPTIONS]`
+
+Send a follow-up query to an existing thread, maintaining conversation context.
+
+**Arguments:**
+- `THREAD_SLUG` - The thread slug identifier
+- `QUERY` - Your follow-up question
+
+**Options:**
+- `--format {plain,markdown,rich}` - Output format (default: rich)
+- `--strip-references` - Remove citations and references section
+- `--stream` - Stream response in real-time
+
+**Examples:**
+```bash
+# Send a follow-up query
+perplexity-cli followup what-is-python-HDn1I22.QKCoDctO58P2UA "What are its main features?"
+
+# Stream the response
+perplexity-cli followup <slug> "Tell me more" --stream
+```
+
+**Thread Context:**
+- Thread context is automatically cached after queries
+- The `followup` command uses cached context when available, avoiding API lookups
+- Context includes conversation continuity information maintained by Perplexity
+
+### `perplexity-cli continue THREAD_SLUG [OPTIONS]`
+
+Start an interactive session to continue a thread with multiple follow-up queries.
+
+**Arguments:**
+- `THREAD_SLUG` - The thread slug identifier
+
+**Options:**
+- `--format {plain,markdown,rich}` - Output format (default: rich)
+- `--strip-references` - Remove citations and references section
+
+**Examples:**
+```bash
+# Start interactive session
+perplexity-cli continue what-is-python-HDn1I22.QKCoDctO58P2UA
+
+# In the session:
+> What are its main features?
+> Give me examples
+> exit
+```
+
+**Interactive Commands:**
+- Type your query and press Enter
+- Type `exit`, `quit`, or `q` to end the session
+- Press Ctrl+C to interrupt
+
+### `perplexity-cli export THREAD_SLUG [OPTIONS]`
+
+Export a thread to a file in various formats.
+
+**Arguments:**
+- `THREAD_SLUG` - The thread slug identifier
+
+**Options:**
+- `--format {json,markdown,txt}` - Export format (default: markdown)
+- `--output PATH, -o PATH` - Output file path (default: stdout)
+
+**Examples:**
+```bash
+# Export to markdown file
+perplexity-cli export what-is-python-HDn1I22.QKCoDctO58P2UA --output thread.md
+
+# Export as JSON
+perplexity-cli export <slug> --format json -o thread.json
+
+# Print to stdout
+perplexity-cli export <slug> --format txt
+```
+
+### `perplexity-cli delete THREAD_SLUG [OPTIONS]`
+
+Delete a thread (if endpoint is available).
+
+**Note:** The delete endpoint may not be available yet. This command will attempt to delete the thread and clear its cached context.
+
+**Arguments:**
+- `THREAD_SLUG` - The thread slug identifier
+
+**Options:**
+- `--confirm` - Skip confirmation prompt
+
+**Examples:**
+```bash
+# Delete with confirmation
+perplexity-cli delete what-is-python-HDn1I22.QKCoDctO58P2UA
+
+# Delete without confirmation
+perplexity-cli delete <slug> --confirm
+```
+
 ## Configuration
 
 ### Token Storage and Encryption
@@ -240,6 +392,14 @@ Token file was modified or has incorrect permissions. Delete the file and re-aut
 rm ~/.config/perplexity-cli/token.json
 perplexity-cli auth
 ```
+
+### Thread not found
+
+The thread slug may be incorrect or the thread may have been deleted. Use `perplexity-cli threads` to list available threads and get the correct slug.
+
+### Delete endpoint not available
+
+The thread deletion endpoint has not been discovered yet. Use the Perplexity web interface to delete threads, or help discover the endpoint by inspecting network traffic when deleting a thread in the browser.
 
 ## Output Formats
 

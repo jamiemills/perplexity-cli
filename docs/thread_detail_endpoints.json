@@ -1,0 +1,53 @@
+{
+  "test_thread": {
+    "slug": "and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA",
+    "title": "and this thread has 3",
+    "query_count_from_list": 1
+  },
+  "endpoint_results": {
+    "/rest/thread/and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    },
+    "/rest/thread/get_thread?slug=and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    },
+    "/rest/thread/detail?slug=and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    },
+    "/api/thread/and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    },
+    "/api/threads/and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    },
+    "/rest/conversation/and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    },
+    "/rest/conversation/get?slug=and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    },
+    "/rest/thread/thread_detail?slug=and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    },
+    "/rest/thread/get_thread_detail?slug=and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    },
+    "/rest/thread/list_thread_queries?slug=and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    },
+    "/rest/thread/queries?thread_slug=and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA": {
+      "method": "GET",
+      "status": 403
+    }
+  }
+}

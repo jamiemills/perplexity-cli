@@ -1,0 +1,19 @@
+{
+  "thread_hash": "1e8ef0ac",
+  "thread_slug": "and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA",
+  "api_thread_info": {
+    "title": "and this thread has 3",
+    "query_count": 1,
+    "frontend_context_uuid": "d5ff8d1d-d0a4-4b34-835c-1b75de4934ab",
+    "context_uuid": "0fddf829-8814-4fab-8e4e-d8c95e45ff0d"
+  },
+  "page_data": {
+    "url": "https://www.perplexity.ai/search/and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA",
+    "threadSlug": "and-this-thread-has-3-o..wS7U1QV6S8QVvDfXysA",
+    "queries": [],
+    "messages": [],
+    "_class___query__": 3,
+    "containerChildren": 2
+  },
+  "captured_requests": []
+}

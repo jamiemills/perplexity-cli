@@ -1,0 +1,15 @@
+{
+  "initial_query": "What is Python?",
+  "followup_query": "What are its main features?",
+  "thread_context": {
+    "thread_url_slug": "what-is-python-HDn1I22.QKCoDctO58P2UA",
+    "frontend_context_uuid": "40a32424-1609-445e-ba2b-e198f654e0ef",
+    "context_uuid": "ea323fd3-df7a-43ea-bbdb-3c6fa6f4a0f5",
+    "cursor": "06910d57-ca17-78d8-8000-f5a444f4adf1",
+    "read_write_token": "d54938fc-5ebe-41cc-9e60-3ed074e78d9c"
+  },
+  "initial_message_count": 64,
+  "followup_message_count": 119,
+  "followup_thread_slug": "what-are-its-main-features-9OF5uZmiQImVxGTaQGc.8Q",
+  "followup_context_uuid": "40a32424-1609-445e-ba2b-e198f654e0ef"
+}

@@ -1,0 +1,19 @@
+{
+  "thread_hash": "1f344d10",
+  "thread_slug": "this-is-a-thread-and-it-has-tw-JcFIBLzDRR2CS8JJGxQKNA",
+  "api_thread_info": {
+    "title": "this is a thread and it has two messages",
+    "query_count": 1,
+    "frontend_context_uuid": "8c9a0a26-e5f1-4719-9728-353ffd2225c0",
+    "context_uuid": "c9dbe771-d8b1-41f9-a773-5edf311e9196"
+  },
+  "page_data": {
+    "url": "https://www.perplexity.ai/search/this-is-a-thread-and-it-has-tw-JcFIBLzDRR2CS8JJGxQKNA",
+    "threadSlug": "this-is-a-thread-and-it-has-tw-JcFIBLzDRR2CS8JJGxQKNA",
+    "queries": [],
+    "messages": [],
+    "_class___query__": 2,
+    "containerChildren": 2
+  },
+  "captured_requests": []
+}

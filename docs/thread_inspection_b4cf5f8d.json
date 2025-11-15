@@ -1,0 +1,33 @@
+{
+  "thread_hash": "b4cf5f8d",
+  "thread_slug": "this-is-a-thread-and-it-only-h-ii5ZMD9wTRix7t7yfhVMcw",
+  "api_thread_info": {
+    "title": "this is a thread and it only has one message",
+    "query_count": 1,
+    "frontend_context_uuid": "e26b6e35-919c-4b6e-baeb-89400469a603",
+    "context_uuid": "2243e5a4-16c9-4806-ad67-3753ccda3ac6"
+  },
+  "page_data": {
+    "url": "https://www.perplexity.ai/thread/this-is-a-thread-and-it-only-h-ii5ZMD9wTRix7t7yfhVMcw",
+    "threadSlug": "this-is-a-thread-and-it-only-h-ii5ZMD9wTRix7t7yfhVMcw",
+    "queries": [],
+    "messages": [
+      {
+        "index": 0,
+        "preview": "Page not foundError 404. Check the address and try again.Return home",
+        "classes": [
+          "bg-underlay",
+          "p-lg",
+          "flex",
+          "h-screen",
+          "w-full",
+          "flex-col",
+          "items-center",
+          "justify-center"
+        ]
+      }
+    ],
+    "containerChildren": 1
+  },
+  "captured_requests": []
+}

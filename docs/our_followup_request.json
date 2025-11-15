@@ -1,0 +1,49 @@
+{
+  "thread_slug": "what-is-the-capital-of-france-NYD1FemPRVaK6F8KT.sbFA",
+  "thread_hash": "6488e0e2",
+  "our_request": {
+    "query_str": "how many people are in france",
+    "params": {
+      "language": "en-US",
+      "timezone": "Europe/London",
+      "search_focus": "internet",
+      "mode": "copilot",
+      "frontend_uuid": "a9f85dbd-b135-4494-bb17-900a7f4fdc60",
+      "frontend_context_uuid": "f7afafe3-d262-431c-9d12-3ef31f84df4a",
+      "version": "2.18",
+      "sources": [
+        "web"
+      ],
+      "attachments": [],
+      "search_recency_filter": null,
+      "model_preference": "pplx_pro",
+      "is_related_query": true,
+      "is_sponsored": false,
+      "prompt_source": "user",
+      "query_source": "home",
+      "is_incognito": false,
+      "local_search_enabled": false,
+      "use_schematized_api": true,
+      "send_back_text_in_streaming_api": false,
+      "client_coordinates": null,
+      "mentions": [],
+      "skip_search_enabled": true,
+      "is_nav_suggestions_disabled": false,
+      "always_search_override": false,
+      "override_no_search": false,
+      "should_ask_for_mcp_tool_confirmation": true,
+      "browser_agent_allow_once_from_toggle": false,
+      "context_uuid": "d93440d2-cf2c-42e3-8acc-f3b0b75dce54",
+      "read_write_token": "94c8f13e-5696-4263-b0ba-bcd00e0147c0",
+      "thread_url_slug": "how-many-people-are-in-france-y0BVBkhwR72u3r1ItnNP_A"
+    }
+  },
+  "key_fields": {
+    "frontend_uuid": "a9f85dbd-b135-4494-bb17-900a7f4fdc60",
+    "frontend_context_uuid": "f7afafe3-d262-431c-9d12-3ef31f84df4a",
+    "context_uuid": "d93440d2-cf2c-42e3-8acc-f3b0b75dce54",
+    "read_write_token": "94c8f13e-5696-4263-b0ba-bcd00e0147c0",
+    "thread_url_slug": "how-many-people-are-in-france-y0BVBkhwR72u3r1ItnNP_A",
+    "is_related_query": true
+  }
+}
