@@ -303,16 +303,52 @@ perplexity-cli query --format json "What is machine learning?"
 - Process answers through additional tools or APIs
 
 **Examples:**
+
+Save to file:
 ```bash
-# Save JSON output to file
 perplexity-cli query --format json "What is Python?" > python.json
+```
 
-# Extract and process with jq
-perplexity-cli query --format json "What is Python?" | jq '.answer'
+Extract and display answer as readable text:
+```bash
+# Use jq -r to render newlines as actual line breaks
+perplexity-cli query --format json "What is Python?" | jq -r '.answer'
+```
 
-# Remove references from JSON output
+Extract just the reference URLs:
+```bash
+perplexity-cli query --format json "What is Python?" | jq -r '.references[] | .url'
+```
+
+Remove references from JSON output:
+```bash
 perplexity-cli query --format json --strip-references "What is Python?"
 ```
+
+Count the number of references:
+```bash
+perplexity-cli query --format json "What is Python?" | jq '.references | length'
+```
+
+Parse JSON in a script:
+```bash
+python3 << 'EOF'
+import json
+import subprocess
+
+result = subprocess.run(
+    ["perplexity-cli", "query", "--format", "json", "What is Python?"],
+    capture_output=True,
+    text=True
+)
+data = json.loads(result.stdout)
+print(data["answer"])
+for ref in data["references"]:
+    print(f"- {ref['title']}: {ref['url']}")
+EOF
+```
+
+**Note:** When viewing JSON output, use `jq -r` (raw output) to properly display newlines in the answer text. Without `-r`, you'll see escape sequences like `\n` instead of actual line breaks.
 
 ## Security
 
