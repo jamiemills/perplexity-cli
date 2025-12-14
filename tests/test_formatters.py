@@ -1,9 +1,12 @@
 """Tests for output formatters."""
 
+import json
+
 import pytest
 
 from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting import get_formatter, list_formatters
+from perplexity_cli.formatting.json import JSONFormatter
 from perplexity_cli.formatting.markdown import MarkdownFormatter
 from perplexity_cli.formatting.plain import PlainTextFormatter
 from perplexity_cli.formatting.rich import RichFormatter
@@ -215,3 +218,121 @@ class TestStripReferences:
         assert "Answer text" in result
         assert "References" not in result
         assert "https://test.com" not in result
+
+
+class TestJSONFormatter:
+    """Test JSONFormatter."""
+
+    def test_format_answer(self):
+        """Test formatting answer text."""
+        formatter = JSONFormatter()
+        result = formatter.format_answer("Test answer")
+        assert result == "Test answer"
+
+    def test_format_answer_strips_citations(self):
+        """Test that citations are stripped when requested."""
+        formatter = JSONFormatter()
+        text = "Answer text[1] with citations[2]."
+        result = formatter.format_answer(text, strip_references=True)
+        assert "[1]" not in result
+        assert "[2]" not in result
+        assert "Answer text with citations." in result
+
+    def test_format_references(self):
+        """Test that format_references returns empty string (not used in JSON)."""
+        formatter = JSONFormatter()
+        refs = [WebResult(name="Test", url="https://test.com", snippet="test")]
+        result = formatter.format_references(refs)
+        assert result == ""
+
+    def test_format_complete_basic(self):
+        """Test formatting complete answer as JSON."""
+        formatter = JSONFormatter()
+        answer = Answer(text="Test answer", references=[])
+        result = formatter.format_complete(answer)
+
+        # Parse JSON to verify structure
+        parsed = json.loads(result)
+        assert parsed["format_version"] == "1.0"
+        assert parsed["answer"] == "Test answer"
+        assert parsed["references"] == []
+
+    def test_format_complete_with_references(self):
+        """Test JSON output includes references."""
+        formatter = JSONFormatter()
+        refs = [
+            WebResult(
+                name="Test Source",
+                url="https://test.com",
+                snippet="This is a test snippet"
+            ),
+            WebResult(
+                name="Second Source",
+                url="https://test2.com",
+                snippet="Another snippet"
+            ),
+        ]
+        answer = Answer(text="Answer text", references=refs)
+        result = formatter.format_complete(answer)
+
+        parsed = json.loads(result)
+        assert parsed["format_version"] == "1.0"
+        assert parsed["answer"] == "Answer text"
+        assert len(parsed["references"]) == 2
+
+        # Verify reference structure
+        ref1 = parsed["references"][0]
+        assert ref1["index"] == 1
+        assert ref1["title"] == "Test Source"
+        assert ref1["url"] == "https://test.com"
+        assert ref1["snippet"] == "This is a test snippet"
+
+        ref2 = parsed["references"][1]
+        assert ref2["index"] == 2
+        assert ref2["title"] == "Second Source"
+
+    def test_format_complete_strips_references(self):
+        """Test that references are excluded when strip_references is True."""
+        formatter = JSONFormatter()
+        refs = [WebResult(name="Test", url="https://test.com", snippet="test")]
+        answer = Answer(text="Answer text[1]", references=refs)
+        result = formatter.format_complete(answer, strip_references=True)
+
+        parsed = json.loads(result)
+        assert parsed["answer"] == "Answer text"  # Citation stripped
+        assert parsed["references"] == []
+
+    def test_format_complete_null_snippets(self):
+        """Test that null snippets are handled correctly."""
+        formatter = JSONFormatter()
+        refs = [WebResult(name="Test", url="https://test.com", snippet=None)]
+        answer = Answer(text="Answer", references=refs)
+        result = formatter.format_complete(answer)
+
+        parsed = json.loads(result)
+        assert parsed["references"][0]["snippet"] is None
+
+    def test_json_output_is_valid(self):
+        """Test that output is always valid JSON."""
+        formatter = JSONFormatter()
+        refs = [
+            WebResult(name="Test", url="https://test.com", snippet="test"),
+            WebResult(name="Test2", url="https://test2.com", snippet=None),
+        ]
+        answer = Answer(text="Complex answer\nwith\nmultiple\nlines", references=refs)
+        result = formatter.format_complete(answer)
+
+        # Should not raise an exception
+        parsed = json.loads(result)
+        assert isinstance(parsed, dict)
+        assert "format_version" in parsed
+        assert "answer" in parsed
+        assert "references" in parsed
+
+    def test_json_formatter_in_registry(self):
+        """Test that JSON formatter is registered."""
+        formatters = list_formatters()
+        assert "json" in formatters
+
+        formatter = get_formatter("json")
+        assert isinstance(formatter, JSONFormatter)
