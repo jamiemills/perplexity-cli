@@ -127,9 +127,9 @@ def auth(ctx: click.Context, port: int) -> None:
 @click.option(
     "--format",
     "-f",
-    type=click.Choice(["plain", "markdown", "rich"]),
+    type=click.Choice(["plain", "markdown", "rich", "json"]),
     default=None,
-    help="Output format: plain (text), markdown (GitHub-flavoured), or rich (terminal with colours and tables). Defaults to 'rich'.",
+    help="Output format: plain (text), markdown (GitHub-flavoured), rich (terminal with colours), or json (structured JSON). Defaults to 'rich'.",
 )
 @click.option(
     "--strip-references",
@@ -154,9 +154,10 @@ def query(
     The answer is printed to stdout, making it easy to pipe to other commands.
 
     Output formats:
-        plain   - Plain text with underlined headers (good for scripts)
+        plain    - Plain text with underlined headers (good for scripts)
         markdown - GitHub-flavoured Markdown with proper structure
-        rich    - Colourful terminal output with tables (default)
+        rich     - Colourful terminal output with tables (default)
+        json     - Structured JSON with answer and references
 
     Use --strip-references to remove all citations [1], [2], etc. and the
     references section from the output.
@@ -168,9 +169,14 @@ def query(
         perplexity-cli query "What is the capital of France?" > answer.txt
         perplexity-cli query --format plain "What is Python?"
         perplexity-cli query --format markdown "What is Python?" > answer.md
+        perplexity-cli query --format json "What is Python?" | jq -r '.answer'
+        perplexity-cli query --format json "What is Python?" > answer.json
         perplexity-cli query --strip-references "What is Python?"
         perplexity-cli query -f plain --strip-references "What is Python?"
         perplexity-cli query --stream "What is Python?"
+
+    JSON format tip: Use jq -r to display newlines properly:
+        perplexity-cli query --format json "Question" | jq -r '.answer'
     """
     from perplexity_cli.utils.logging import get_logger
 
@@ -244,23 +250,26 @@ def query(
         logger.error(f"HTTP error {status}: {e}")
         if status == 401:
             click.echo("✗ Authentication failed. Token may be expired.", err=True)
-            click.echo("\nPlease re-authenticate with: perplexity-cli auth", err=True)
+            click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
         elif status == 403:
             click.echo("✗ Access forbidden. Check your permissions.", err=True)
         elif status == 429:
             click.echo("✗ Rate limit exceeded. Please wait and try again.", err=True)
         else:
-            click.echo(f"✗ HTTP error {status}: {e}", err=True)
+            click.echo(f"✗ HTTP error {status}.", err=True)
+            if ctx.obj.get("debug", False):
+                click.echo(f"Details: {e}", err=True)
         sys.exit(1)
 
     except httpx.RequestError as e:
-        logger.error(f"Network error: {e}", exc_info=True)
-        click.echo(f"✗ Network error: {e}", err=True)
-        click.echo("\nPlease check your internet connection.", err=True)
+        logger.error(f"Network error: {e}")
+        click.echo("✗ Network error. Please check your internet connection.", err=True)
+        if ctx.obj.get("debug", False):
+            click.echo(f"Details: {e}", err=True)
         sys.exit(1)
 
     except ValueError as e:
-        logger.error(f"Value error: {e}", exc_info=True)
+        logger.error(f"Value error: {e}")
         click.echo(f"✗ Error: {e}", err=True)
         sys.exit(1)
 
@@ -271,10 +280,12 @@ def query(
 
     except Exception as e:
         logger.exception(f"Unexpected error: {e}")
-        click.echo(f"✗ Unexpected error: {e}", err=True)
+        click.echo("✗ An unexpected error occurred.", err=True)
         if ctx.obj.get("debug", False):
             import traceback
-            click.echo(traceback.format_exc(), err=True)
+            click.echo(f"Debug info:\n{traceback.format_exc()}", err=True)
+        else:
+            click.echo("Run with --debug for more information.", err=True)
         sys.exit(1)
 
 
@@ -341,10 +352,41 @@ def _stream_query_response(
                 if formatted_refs:
                     click.echo(formatted_refs)
 
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code
+        logger.error(f"HTTP error {status} during streaming: {e}")
+        click.echo()  # Newline after streamed content
+        if status == 401:
+            click.echo("✗ Authentication failed. Token may be expired.", err=True)
+            click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
+            sys.exit(1)
+        elif status == 403:
+            click.echo("✗ Access forbidden. Check your permissions.", err=True)
+            sys.exit(1)
+        elif status == 429:
+            click.echo("✗ Rate limit exceeded. Please wait and try again.", err=True)
+            sys.exit(1)
+        else:
+            click.echo(f"✗ HTTP error {status}.", err=True)
+            sys.exit(1)
+
+    except httpx.RequestError as e:
+        logger.error(f"Network error during streaming: {e}")
+        click.echo()  # Newline after streamed content
+        click.echo("✗ Network error. Please check your internet connection.", err=True)
+        sys.exit(1)
+
     except KeyboardInterrupt:
         logger.info("Streaming interrupted by user")
         click.echo("\n✗ Streaming interrupted.", err=True)
-        raise
+        sys.exit(130)
+
+    except Exception as e:
+        logger.exception(f"Unexpected error during streaming: {e}")
+        click.echo()  # Newline after streamed content
+        click.echo("✗ An unexpected error occurred.", err=True)
+        click.echo("Run with --debug for more information.", err=True)
+        sys.exit(1)
 
 
 @main.command()
