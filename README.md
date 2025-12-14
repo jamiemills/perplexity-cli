@@ -54,19 +54,63 @@ uv pip install -e ".[dev]"
 
 ## Usage
 
-### Authentication
+### Authentication Setup
 
-Before querying, authenticate with Perplexity.ai:
+The first time you use perplexity-cli, you need to authenticate with Perplexity.ai. This is a one-time process that extracts your session token and stores it securely on your machine.
+
+#### Step 1: Install Chrome for Testing
+
+Download a dedicated Chrome browser for authentication (this keeps testing separate from your main Chrome instance):
 
 ```bash
-# Start Chrome with remote debugging on port 9222
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 &
+npx @puppeteer/browsers install chrome@stable
+```
 
-# Run authentication
+This downloads Chrome to `~/.local/bin/chrome/` (the path may change between Chrome versions).
+
+#### Step 2: Create a Shell Alias
+
+Set up an alias to easily run Chrome with remote debugging enabled:
+
+```bash
+# Add this line to your shell config (~/.bashrc, ~/.zshrc, etc.)
+alias chromefortesting='open ~/.local/bin/chrome/mac_arm-*/chrome-mac-arm64/Google\ Chrome\ for\ Testing.app --args "--remote-debugging-port=9222" "about:blank"'
+```
+
+**Note:** The `mac_arm-*` pattern matches the version directory. The exact path varies by Chrome version.
+
+#### Step 3: Start Chrome and Authenticate
+
+```bash
+# Terminal 1: Start Chrome with debugging enabled
+chromefortesting
+
+# Terminal 2: Run authentication
 perplexity-cli auth
 ```
 
-This connects to Chrome, navigates to Perplexity.ai, extracts your session token, and saves it encrypted to `~/.config/perplexity-cli/token.json`.
+The authentication process will:
+1. Connect to Chrome via the remote debugging port
+2. Navigate to Perplexity.ai
+3. Wait for you to log in (you'll see the login page in Chrome)
+4. Extract your session token automatically
+5. Save it encrypted to `~/.config/perplexity-cli/token.json`
+
+Once complete, you won't need to authenticate again unless you run `perplexity-cli logout`.
+
+#### Custom Port (Optional)
+
+If port 9222 is already in use, specify a different port:
+
+```bash
+perplexity-cli auth --port 9223
+```
+
+Then start Chrome with the matching port:
+
+```bash
+alias chromefortesting='open ~/.local/bin/chrome/mac_arm-*/chrome-mac-arm64/Google\ Chrome\ for\ Testing.app --args "--remote-debugging-port=9223" "about:blank"'
+```
 
 ### Query Perplexity
 

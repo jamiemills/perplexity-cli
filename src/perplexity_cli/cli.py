@@ -58,14 +58,32 @@ def main(ctx: click.Context, verbose: bool, debug: bool, log_file: Path | None) 
 )
 @click.pass_context
 def auth(ctx: click.Context, port: int) -> None:
-    """Authenticate with Perplexity.ai.
+    """Authenticate with Perplexity.ai via Chrome DevTools Protocol.
 
-    Opens Chrome browser to Perplexity.ai and extracts authentication token.
-    Requires Chrome to be running with --remote-debugging-port=<port>.
+    One-time setup to extract and store your authentication token securely.
 
-    Example:
+    SETUP INSTRUCTIONS:
+
+    1. Install Chrome for Testing:
+        npx @puppeteer/browsers install chrome@stable
+
+    2. Create a shell alias in ~/.bashrc, ~/.zshrc, etc.:
+        alias chromefortesting='open ~/.local/bin/chrome/mac_arm-*/chrome-mac-arm64/Google\\ Chrome\\ for\\ Testing.app --args "--remote-debugging-port=9222" "about:blank"'
+
+    3. Run authentication:
+        chromefortesting           # Terminal 1: Start Chrome
+        perplexity-cli auth        # Terminal 2: Extract token
+
+    The token is then stored encrypted at ~/.config/perplexity-cli/token.json
+
+    CUSTOM PORT:
+
+    If port 9222 is in use, use --port to specify an alternative:
+        perplexity-cli auth --port 9223
+
+    Examples:
         perplexity-cli auth
-        perplexity-cli auth --port 9222
+        perplexity-cli auth --port 9223
     """
     from perplexity_cli.utils.logging import get_logger
 
