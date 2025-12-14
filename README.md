@@ -80,6 +80,9 @@ perplexity-cli query --format plain "What is Python?"
 # Markdown format
 perplexity-cli query --format markdown "Explain quantum computing" > answer.md
 
+# JSON format (structured output for programmatic use)
+perplexity-cli query --format json "What is machine learning?" > answer.json
+
 # Remove citations and references section
 perplexity-cli query --strip-references "What is Python?"
 
@@ -127,10 +130,11 @@ Submit a query and get an answer with source references.
 - `QUESTION` - Your question (quoted)
 
 **Options:**
-- `--format {plain,markdown,rich}` - Output format (default: rich)
+- `--format {plain,markdown,rich,json}` - Output format (default: rich)
   - `plain` - Plain text, suitable for scripts
   - `markdown` - GitHub-flavoured Markdown
   - `rich` - Terminal output with colours and formatting
+  - `json` - Structured JSON with answer and references
 - `--strip-references` - Remove citations and references section
 - `--stream` - Stream response in real-time as it arrives (experimental)
 
@@ -265,6 +269,49 @@ Terminal output with colours, bold text, and formatted tables (default).
 
 ```bash
 perplexity-cli query "What is Python?"
+```
+
+### JSON
+
+Structured JSON output suitable for programmatic processing and integration with other tools.
+
+```bash
+perplexity-cli query --format json "What is machine learning?"
+```
+
+**Output structure:**
+```json
+{
+  "format_version": "1.0",
+  "answer": "Machine learning is a subfield of artificial intelligence...",
+  "references": [
+    {
+      "index": 1,
+      "title": "Machine learning, explained | MIT Sloan",
+      "url": "https://mitsloan.mit.edu/ideas-made-to-matter/machine-learning-explained",
+      "snippet": "Machine learning is a powerful form of artificial intelligence..."
+    }
+  ]
+}
+```
+
+**Use cases:**
+- Parse responses programmatically in scripts or applications
+- Save structured data for later analysis
+- Integrate with data pipelines
+- Extract references for citation management
+- Process answers through additional tools or APIs
+
+**Examples:**
+```bash
+# Save JSON output to file
+perplexity-cli query --format json "What is Python?" > python.json
+
+# Extract and process with jq
+perplexity-cli query --format json "What is Python?" | jq '.answer'
+
+# Remove references from JSON output
+perplexity-cli query --format json --strip-references "What is Python?"
 ```
 
 ## Security

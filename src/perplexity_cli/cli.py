@@ -127,9 +127,9 @@ def auth(ctx: click.Context, port: int) -> None:
 @click.option(
     "--format",
     "-f",
-    type=click.Choice(["plain", "markdown", "rich"]),
+    type=click.Choice(["plain", "markdown", "rich", "json"]),
     default=None,
-    help="Output format: plain (text), markdown (GitHub-flavoured), or rich (terminal with colours and tables). Defaults to 'rich'.",
+    help="Output format: plain (text), markdown (GitHub-flavoured), rich (terminal with colours), or json (structured JSON). Defaults to 'rich'.",
 )
 @click.option(
     "--strip-references",
@@ -154,9 +154,10 @@ def query(
     The answer is printed to stdout, making it easy to pipe to other commands.
 
     Output formats:
-        plain   - Plain text with underlined headers (good for scripts)
+        plain    - Plain text with underlined headers (good for scripts)
         markdown - GitHub-flavoured Markdown with proper structure
-        rich    - Colourful terminal output with tables (default)
+        rich     - Colourful terminal output with tables (default)
+        json     - Structured JSON with answer and references
 
     Use --strip-references to remove all citations [1], [2], etc. and the
     references section from the output.
@@ -168,6 +169,7 @@ def query(
         perplexity-cli query "What is the capital of France?" > answer.txt
         perplexity-cli query --format plain "What is Python?"
         perplexity-cli query --format markdown "What is Python?" > answer.md
+        perplexity-cli query --format json "What is Python?" > answer.json
         perplexity-cli query --strip-references "What is Python?"
         perplexity-cli query -f plain --strip-references "What is Python?"
         perplexity-cli query --stream "What is Python?"
