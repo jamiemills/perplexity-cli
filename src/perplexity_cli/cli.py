@@ -169,10 +169,14 @@ def query(
         perplexity-cli query "What is the capital of France?" > answer.txt
         perplexity-cli query --format plain "What is Python?"
         perplexity-cli query --format markdown "What is Python?" > answer.md
+        perplexity-cli query --format json "What is Python?" | jq -r '.answer'
         perplexity-cli query --format json "What is Python?" > answer.json
         perplexity-cli query --strip-references "What is Python?"
         perplexity-cli query -f plain --strip-references "What is Python?"
         perplexity-cli query --stream "What is Python?"
+
+    JSON format tip: Use jq -r to display newlines properly:
+        perplexity-cli query --format json "Question" | jq -r '.answer'
     """
     from perplexity_cli.utils.logging import get_logger
 
