@@ -1,6 +1,7 @@
 """Command-line interface for Perplexity CLI."""
 
 import sys
+from importlib.resources import files
 from pathlib import Path
 
 import click
@@ -14,6 +15,13 @@ from perplexity_cli.utils.config import get_perplexity_base_url
 from perplexity_cli.utils.logging import get_default_log_file, setup_logging
 from perplexity_cli.utils.style_manager import StyleManager
 from perplexity_cli.utils.version import get_version
+
+# Load Agent Skill definition for display via show-skill command
+try:
+    SKILL_CONTENT = files('perplexity_cli.resources').joinpath('skill.md').read_text(encoding='utf-8')
+except (FileNotFoundError, AttributeError):
+    # Fallback if skill.md is not found
+    SKILL_CONTENT = "Agent Skill definition not available. Run 'perplexity-cli --help' for usage information."
 
 
 @click.group()
@@ -596,6 +604,20 @@ def status() -> None:
     else:
         click.echo("Status: ✗ Not authenticated")
         click.echo("\nAuthenticate with: perplexity-cli auth")
+
+
+@main.command()
+def show_skill() -> None:
+    """Display the Agent Skill definition for using perplexity-cli.
+
+    Shows the SKILL.md content that describes how to use perplexity-cli
+    as an alternative to web search, including JSON output parsing examples
+    and practical patterns for integration.
+
+    Example:
+        perplexity-cli show-skill
+    """
+    click.echo(SKILL_CONTENT)
 
 
 if __name__ == "__main__":
