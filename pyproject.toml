@@ -45,6 +45,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages]
 find = {where = ["src"]}
 
+[tool.setuptools.package-data]
+perplexity_cli = ["resources/skill.md"]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
