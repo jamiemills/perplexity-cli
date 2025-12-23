@@ -8,6 +8,8 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 - **Encrypted tokens** - Tokens encrypted with system-derived keys
 - **Multiple output formats** - Plain text, Markdown, or rich terminal output
 - **Source references** - Web sources extracted and displayed
+- **Thread library export** - Export your entire Perplexity thread history to CSV with timestamps
+- **Date filtering** - Filter exported threads by date range
 - **Configurable URLs** - Base URL and endpoints configurable via JSON or environment variables
 - **Error handling** - Clear error messages with exit codes and automatic retry logic
 - **Server-Sent Events** - Streams responses in real-time
@@ -215,6 +217,50 @@ Display currently configured style.
 ### `perplexity-cli clear-style`
 
 Remove configured style.
+
+### `perplexity-cli export-threads [OPTIONS]`
+
+Export your Perplexity.ai thread library to CSV format with creation timestamps.
+
+Uses your stored authentication token - no browser required after initial auth setup!
+
+**Options:**
+- `--from-date DATE` - Start date for filtering (YYYY-MM-DD format, inclusive)
+- `--to-date DATE` - End date for filtering (YYYY-MM-DD format, inclusive)
+- `--output PATH` - Output CSV file path (default: threads-TIMESTAMP.csv)
+
+**Examples:**
+```bash
+# Export all threads (authenticate first if you haven't)
+perplexity-cli export-threads
+
+# Export threads from 2025
+perplexity-cli export-threads --from-date 2025-01-01
+
+# Export threads from a specific date range
+perplexity-cli export-threads --from-date 2025-01-01 --to-date 2025-12-31
+
+# Export to custom file
+perplexity-cli export-threads --output my-threads.csv
+```
+
+**Setup:**
+Just authenticate once with `perplexity-cli auth` - the export command reuses your stored token. No browser needed!
+
+**Output format:**
+```csv
+created_at,title,url
+2025-12-23T23:06:00.525132Z,What is Python?,https://www.perplexity.ai/search/...
+2025-12-22T20:54:36.349239Z,Explain AI,https://www.perplexity.ai/search/...
+```
+
+The export includes:
+- **created_at** - ISO 8601 timestamp with timezone (UTC)
+- **title** - Thread question/title
+- **url** - Full URL to the thread
+
+**How it works:**
+The command uses your stored authentication token to call the Perplexity.ai API directly. It automatically paginates through your entire library (handles thousands of threads) and exports the results to CSV.
 
 ## Configuration
 
@@ -431,3 +477,4 @@ MIT
 - rich - Terminal formatting
 - cryptography - Token encryption
 - tenacity - Retry logic with exponential backoff
+- python-dateutil - Date parsing for thread exports
