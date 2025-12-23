@@ -204,3 +204,108 @@ def get_query_endpoint() -> str:
         raise RuntimeError(
             "Invalid URLs configuration: missing perplexity.query_endpoint"
         ) from e
+
+
+def _get_default_rate_limiting() -> dict[str, Any]:
+    """Get default rate limiting configuration.
+
+    Returns:
+        dict: Default rate limiting settings.
+    """
+    return {
+        "enabled": True,
+        "requests_per_period": 20,
+        "period_seconds": 60,
+    }
+
+
+def _validate_rate_limiting_config(config: dict[str, Any]) -> None:
+    """Validate rate limiting configuration structure.
+
+    Args:
+        config: Configuration dictionary to validate.
+
+    Raises:
+        RuntimeError: If configuration is invalid.
+    """
+    if not isinstance(config, dict):
+        raise RuntimeError("Rate limiting configuration must be a dictionary")
+
+    if "enabled" in config and not isinstance(config["enabled"], bool):
+        raise RuntimeError("Rate limiting 'enabled' must be a boolean")
+
+    if "requests_per_period" in config:
+        if not isinstance(config["requests_per_period"], int):
+            raise RuntimeError("Rate limiting 'requests_per_period' must be an integer")
+        if config["requests_per_period"] <= 0:
+            raise RuntimeError("Rate limiting 'requests_per_period' must be greater than 0")
+
+    if "period_seconds" in config:
+        if not isinstance(config["period_seconds"], (int, float)):
+            raise RuntimeError("Rate limiting 'period_seconds' must be a number")
+        if config["period_seconds"] <= 0:
+            raise RuntimeError("Rate limiting 'period_seconds' must be greater than 0")
+
+
+def get_rate_limiting_config() -> dict[str, Any]:
+    """Load and return rate limiting configuration.
+
+    Returns the configuration from urls.json if present, otherwise returns defaults.
+    Environment variables can override configuration values:
+    - PERPLEXITY_RATE_LIMITING_ENABLED: "true" or "false"
+    - PERPLEXITY_RATE_LIMITING_RPS: requests_per_period (e.g., "10")
+    - PERPLEXITY_RATE_LIMITING_PERIOD: period_seconds (e.g., "60")
+
+    Returns:
+        dict: Rate limiting configuration with keys:
+            - enabled: Boolean (default: True)
+            - requests_per_period: Integer (default: 20)
+            - period_seconds: Float (default: 60)
+
+    Raises:
+        RuntimeError: If configuration is invalid.
+    """
+    # Start with defaults
+    config = _get_default_rate_limiting()
+
+    # Try to load from urls.json
+    try:
+        urls = get_urls()
+        if "rate_limiting" in urls:
+            user_config = urls["rate_limiting"]
+            _validate_rate_limiting_config(user_config)
+            # Merge user config with defaults
+            config.update(user_config)
+    except RuntimeError:
+        # If urls.json doesn't have rate_limiting section, just use defaults
+        pass
+
+    # Apply environment variable overrides
+    if "PERPLEXITY_RATE_LIMITING_ENABLED" in os.environ:
+        enabled_str = os.environ["PERPLEXITY_RATE_LIMITING_ENABLED"].lower()
+        config["enabled"] = enabled_str in ("true", "1", "yes")
+
+    if "PERPLEXITY_RATE_LIMITING_RPS" in os.environ:
+        try:
+            config["requests_per_period"] = int(
+                os.environ["PERPLEXITY_RATE_LIMITING_RPS"]
+            )
+        except ValueError as e:
+            raise RuntimeError(
+                f"Invalid PERPLEXITY_RATE_LIMITING_RPS: {os.environ['PERPLEXITY_RATE_LIMITING_RPS']}"
+            ) from e
+
+    if "PERPLEXITY_RATE_LIMITING_PERIOD" in os.environ:
+        try:
+            config["period_seconds"] = float(
+                os.environ["PERPLEXITY_RATE_LIMITING_PERIOD"]
+            )
+        except ValueError as e:
+            raise RuntimeError(
+                f"Invalid PERPLEXITY_RATE_LIMITING_PERIOD: {os.environ['PERPLEXITY_RATE_LIMITING_PERIOD']}"
+            ) from e
+
+    # Final validation
+    _validate_rate_limiting_config(config)
+
+    return config

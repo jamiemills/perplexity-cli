@@ -694,6 +694,23 @@ def export_threads(
         logger.warning("Export attempted without authentication")
         sys.exit(1)
 
+    # Load rate limiting configuration
+    from perplexity_cli.utils.config import get_rate_limiting_config
+    from perplexity_cli.utils.rate_limiter import RateLimiter
+
+    rate_limit_config = get_rate_limiting_config()
+
+    rate_limiter = None
+    if rate_limit_config.get("enabled", True):
+        rate_limiter = RateLimiter(
+            requests_per_period=rate_limit_config["requests_per_period"],
+            period_seconds=rate_limit_config["period_seconds"],
+        )
+        logger.info(
+            f"Rate limiting enabled: {rate_limit_config['requests_per_period']} requests per "
+            f"{rate_limit_config['period_seconds']} seconds"
+        )
+
     # Validate date range if provided
     if from_date or to_date:
         try:
@@ -709,8 +726,8 @@ def export_threads(
             sys.exit(1)
 
     try:
-        # Create scraper instance with token
-        scraper = ThreadScraper(token=token)
+        # Create scraper instance with token and rate limiter
+        scraper = ThreadScraper(token=token, rate_limiter=rate_limiter)
 
         # Progress tracking
         progress_bar = None

@@ -295,6 +295,12 @@ Perplexity URLs are configured in `~/.config/perplexity-cli/urls.json`.
   "perplexity": {
     "base_url": "https://www.perplexity.ai",
     "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask"
+  },
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_period": 20,
+    "period_seconds": 60,
+    "description": "Allow 20 requests per 60 seconds (~3s delay). Override via env vars or edit this file."
   }
 }
 ```
@@ -311,6 +317,82 @@ Example:
 ```bash
 export PERPLEXITY_BASE_URL="https://custom.example.com"
 perplexity-cli query "What is Python?"
+```
+
+### Rate Limiting Configuration
+
+Thread export operations are rate-limited by default to prevent overwhelming the Perplexity API and encountering 429 (Too Many Requests) errors.
+
+**Default Rate Limit:**
+- 20 requests per 60 seconds
+- Approximately 3 second delay between API requests
+- Safe for exporting libraries with thousands of threads
+
+**Adjust Rate Limiting:**
+
+Edit `~/.config/perplexity-cli/urls.json` and modify the `rate_limiting` section:
+
+```json
+{
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_period": 20,
+    "period_seconds": 60
+  }
+}
+```
+
+**Common Configurations:**
+
+```json
+{
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_period": 10,
+    "period_seconds": 60,
+    "description": "Conservative: ~6 second delay (10 requests/60s). Use if encountering rate limits."
+  }
+}
+```
+
+```json
+{
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_period": 30,
+    "period_seconds": 60,
+    "description": "Aggressive: ~2 second delay (30 requests/60s). Use for faster exports."
+  }
+}
+```
+
+```json
+{
+  "rate_limiting": {
+    "enabled": false,
+    "description": "Disabled: No rate limiting (not recommended, may hit API limits)."
+  }
+}
+```
+
+**Environment Variable Overrides:**
+
+You can override rate limiting settings without editing the config file:
+
+- `PERPLEXITY_RATE_LIMITING_ENABLED` - Set to "true" or "false"
+- `PERPLEXITY_RATE_LIMITING_RPS` - requests_per_period (e.g., "10")
+- `PERPLEXITY_RATE_LIMITING_PERIOD` - period_seconds (e.g., "60")
+
+Example:
+```bash
+# Disable rate limiting for a single export
+export PERPLEXITY_RATE_LIMITING_ENABLED=false
+perplexity-cli export-threads
+
+# Use conservative rate limiting (10 requests/minute)
+export PERPLEXITY_RATE_LIMITING_RPS=10
+export PERPLEXITY_RATE_LIMITING_PERIOD=60
+perplexity-cli export-threads
 ```
 
 ## Troubleshooting
