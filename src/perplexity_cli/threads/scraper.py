@@ -6,13 +6,14 @@ API endpoint using stored authentication token.
 
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
 from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.utils.logging import get_logger
+from perplexity_cli.utils.rate_limiter import RateLimiter
 
 
 class ThreadScraper:
@@ -22,13 +23,15 @@ class ThreadScraper:
     thread metadata including creation timestamps using the stored auth token.
     """
 
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, rate_limiter: Optional[RateLimiter] = None) -> None:
         """Initialise thread scraper.
 
         Args:
             token: Authentication token (from TokenManager)
+            rate_limiter: Optional RateLimiter instance for request throttling
         """
         self.token = token
+        self.rate_limiter = rate_limiter
         self.logger = get_logger()
         self.api_url = "https://www.perplexity.ai/rest/thread/list_ask_threads"
         self.api_version = "2.18"
@@ -143,6 +146,12 @@ class ThreadScraper:
 
                     # Parse response
                     thread_data = response.json()
+
+                    # Apply rate limiting after successful request
+                    if self.rate_limiter:
+                        wait_time = await self.rate_limiter.acquire()
+                        if wait_time > 0:
+                            self.logger.debug(f"Rate limited: waited {wait_time:.2f}s")
 
                     if not thread_data or len(thread_data) == 0:
                         # No more threads
