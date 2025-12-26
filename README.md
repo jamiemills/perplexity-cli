@@ -228,10 +228,12 @@ Uses your stored authentication token - no browser required after initial auth s
 - `--from-date DATE` - Start date for filtering (YYYY-MM-DD format, inclusive)
 - `--to-date DATE` - End date for filtering (YYYY-MM-DD format, inclusive)
 - `--output PATH` - Output CSV file path (default: threads-TIMESTAMP.csv)
+- `--force-refresh` - Ignore local cache and fetch fresh data from Perplexity API
+- `--clear-cache` - Delete local cache file before export
 
 **Examples:**
 ```bash
-# Export all threads (authenticate first if you haven't)
+# Export all threads (uses cache if available)
 perplexity-cli export-threads
 
 # Export threads from 2025
@@ -242,6 +244,12 @@ perplexity-cli export-threads --from-date 2025-01-01 --to-date 2025-12-31
 
 # Export to custom file
 perplexity-cli export-threads --output my-threads.csv
+
+# Force fresh data from API (bypass cache)
+perplexity-cli export-threads --force-refresh
+
+# Clear cache and export fresh
+perplexity-cli export-threads --clear-cache
 ```
 
 **Setup:**
@@ -261,6 +269,14 @@ The export includes:
 
 **How it works:**
 The command uses your stored authentication token to call the Perplexity.ai API directly. It automatically paginates through your entire library (handles thousands of threads) and exports the results to CSV.
+
+**Caching:**
+Thread exports are automatically cached locally to improve performance. On first export, all threads are fetched and cached. On subsequent exports, the cache is used unless:
+- Requested date range extends beyond cached data (smart partial updates only fetch the gap)
+- `--force-refresh` flag is used to bypass cache
+- Cache is cleared with `--clear-cache` flag
+
+The cache is encrypted with the same system-derived key as your auth token and stored at `~/.config/perplexity-cli/threads-cache.json`.
 
 ## Configuration
 
