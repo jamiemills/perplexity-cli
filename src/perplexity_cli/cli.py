@@ -689,8 +689,6 @@ def export_threads(
     """
     import asyncio
 
-    from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
-
     from perplexity_cli.threads.exporter import write_threads_csv
     from perplexity_cli.threads.scraper import ThreadScraper
     from perplexity_cli.utils.logging import get_logger
@@ -768,28 +766,9 @@ def export_threads(
         )
 
         # Progress tracking
-        progress_bar = None
-        total_threads = 0
-
         def update_progress(current: int, total: int) -> None:
             """Progress callback for scraping."""
-            nonlocal progress_bar, total_threads
-            total_threads = total
-
-            if progress_bar is None:
-                # Create progress bar on first call
-                progress_bar = Progress(
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    TaskProgressColumn(),
-                )
-                progress_bar.start()
-                progress_bar.add_task(
-                    f"Extracting {total} threads...", total=total
-                )
-
-            # Update progress
-            progress_bar.update(0, completed=current)
+            click.echo(f"\rExtracting {current} threads...", nl=False)
 
         # Run async scraping
         async def run_scrape() -> list:
@@ -801,9 +780,8 @@ def export_threads(
 
         threads = asyncio.run(run_scrape())
 
-        # Stop progress bar
-        if progress_bar:
-            progress_bar.stop()
+        # Clear the progress line
+        click.echo()
 
         if not threads:
             click.echo("\n✗ No threads found matching criteria.", err=True)
