@@ -639,12 +639,26 @@ def show_skill() -> None:
     default=None,
     help="Output CSV file path (default: threads-TIMESTAMP.csv)",
 )
+@click.option(
+    "--force-refresh",
+    is_flag=True,
+    default=False,
+    help="Ignore local cache and fetch fresh data from API",
+)
+@click.option(
+    "--clear-cache",
+    is_flag=True,
+    default=False,
+    help="Delete local cache file before export",
+)
 @click.pass_context
 def export_threads(
     ctx: click.Context,
     from_date: str | None,
     to_date: str | None,
     output: Path | None,
+    force_refresh: bool,
+    clear_cache: bool,
 ) -> None:
     """Export thread library with titles and creation dates as CSV.
 
@@ -656,6 +670,9 @@ def export_threads(
     - Creation date and time (ISO 8601 with timezone)
     - Thread URL
 
+    Uses local encrypted cache to avoid repeated API calls. Cache is automatically
+    updated with newly fetched threads and used on subsequent exports.
+
     Optional date filtering to export specific date ranges.
 
     Examples:
@@ -663,6 +680,8 @@ def export_threads(
         perplexity-cli export-threads --from-date 2025-01-01
         perplexity-cli export-threads --from-date 2025-01-01 --to-date 2025-12-31
         perplexity-cli export-threads --output my-threads.csv
+        perplexity-cli export-threads --force-refresh
+        perplexity-cli export-threads --clear-cache
 
     The command uses your stored authentication token from the initial
     'perplexity-cli auth' setup. If you haven't authenticated yet, run:
@@ -711,6 +730,20 @@ def export_threads(
             f"{rate_limit_config['period_seconds']} seconds"
         )
 
+    # Initialise cache manager
+    from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+    cache_manager = ThreadCacheManager()
+
+    # Handle cache deletion if requested
+    if clear_cache:
+        if cache_manager.cache_exists():
+            cache_manager.clear_cache()
+            click.echo("✓ Cache cleared")
+            logger.info("Cache cleared by user")
+        else:
+            click.echo("ℹ No cache file to clear")
+
     # Validate date range if provided
     if from_date or to_date:
         try:
@@ -726,8 +759,13 @@ def export_threads(
             sys.exit(1)
 
     try:
-        # Create scraper instance with token and rate limiter
-        scraper = ThreadScraper(token=token, rate_limiter=rate_limiter)
+        # Create scraper instance with token, rate limiter, and cache manager
+        scraper = ThreadScraper(
+            token=token,
+            rate_limiter=rate_limiter,
+            cache_manager=cache_manager,
+            force_refresh=force_refresh,
+        )
 
         # Progress tracking
         progress_bar = None
