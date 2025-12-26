@@ -620,5 +620,229 @@ def show_skill() -> None:
     click.echo(SKILL_CONTENT)
 
 
+@main.command()
+@click.option(
+    "--from-date",
+    type=str,
+    default=None,
+    help="Start date for filtering (ISO 8601 format: YYYY-MM-DD)",
+)
+@click.option(
+    "--to-date",
+    type=str,
+    default=None,
+    help="End date for filtering (ISO 8601 format: YYYY-MM-DD)",
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output CSV file path (default: threads-TIMESTAMP.csv)",
+)
+@click.option(
+    "--force-refresh",
+    is_flag=True,
+    default=False,
+    help="Ignore local cache and fetch fresh data from API",
+)
+@click.option(
+    "--clear-cache",
+    is_flag=True,
+    default=False,
+    help="Delete local cache file before export",
+)
+@click.pass_context
+def export_threads(
+    ctx: click.Context,
+    from_date: str | None,
+    to_date: str | None,
+    output: Path | None,
+    force_refresh: bool,
+    clear_cache: bool,
+) -> None:
+    """Export thread library with titles and creation dates as CSV.
+
+    Extracts all threads from your Perplexity.ai library using your stored
+    authentication token. No browser required after initial auth setup.
+
+    Includes:
+    - Thread title
+    - Creation date and time (ISO 8601 with timezone)
+    - Thread URL
+
+    Uses local encrypted cache to avoid repeated API calls. Cache is automatically
+    updated with newly fetched threads and used on subsequent exports.
+
+    Optional date filtering to export specific date ranges.
+
+    Examples:
+        perplexity-cli export-threads
+        perplexity-cli export-threads --from-date 2025-01-01
+        perplexity-cli export-threads --from-date 2025-01-01 --to-date 2025-12-31
+        perplexity-cli export-threads --output my-threads.csv
+        perplexity-cli export-threads --force-refresh
+        perplexity-cli export-threads --clear-cache
+
+    The command uses your stored authentication token from the initial
+    'perplexity-cli auth' setup. If you haven't authenticated yet, run:
+        perplexity-cli auth
+    """
+    import asyncio
+
+    from perplexity_cli.threads.exporter import write_threads_csv
+    from perplexity_cli.threads.scraper import ThreadScraper
+    from perplexity_cli.utils.logging import get_logger
+
+    logger = get_logger()
+    logger.info("Starting thread export")
+
+    click.echo("Exporting threads from Perplexity.ai library...")
+
+    # Load token
+    tm = TokenManager()
+    token = tm.load_token()
+
+    if not token:
+        click.echo("✗ Not authenticated.", err=True)
+        click.echo(
+            "\nPlease authenticate first with: perplexity-cli auth",
+            err=True,
+        )
+        logger.warning("Export attempted without authentication")
+        sys.exit(1)
+
+    # Load rate limiting configuration
+    from perplexity_cli.utils.config import get_rate_limiting_config
+    from perplexity_cli.utils.rate_limiter import RateLimiter
+
+    rate_limit_config = get_rate_limiting_config()
+
+    rate_limiter = None
+    if rate_limit_config.get("enabled", True):
+        rate_limiter = RateLimiter(
+            requests_per_period=rate_limit_config["requests_per_period"],
+            period_seconds=rate_limit_config["period_seconds"],
+        )
+        logger.info(
+            f"Rate limiting enabled: {rate_limit_config['requests_per_period']} requests per "
+            f"{rate_limit_config['period_seconds']} seconds"
+        )
+
+    # Initialise cache manager
+    from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+    cache_manager = ThreadCacheManager()
+
+    # Handle cache deletion if requested
+    if clear_cache:
+        if cache_manager.cache_exists():
+            cache_manager.clear_cache()
+            click.echo("✓ Cache cleared")
+            logger.info("Cache cleared by user")
+        else:
+            click.echo("ℹ No cache file to clear")
+
+    # Validate date range if provided
+    if from_date or to_date:
+        try:
+            from dateutil import parser as dateutil_parser
+
+            if from_date:
+                dateutil_parser.parse(from_date)
+            if to_date:
+                dateutil_parser.parse(to_date)
+        except ValueError as e:
+            click.echo(f"✗ Invalid date format: {e}", err=True)
+            click.echo("Please use YYYY-MM-DD format (e.g., 2025-12-23)", err=True)
+            sys.exit(1)
+
+    try:
+        # Create scraper instance with token, rate limiter, and cache manager
+        scraper = ThreadScraper(
+            token=token,
+            rate_limiter=rate_limiter,
+            cache_manager=cache_manager,
+            force_refresh=force_refresh,
+        )
+
+        # Progress tracking
+        def update_progress(current: int, total: int) -> None:
+            """Progress callback for scraping."""
+            click.echo(f"\rExtracting {current} threads...", nl=False)
+
+        # Run async scraping
+        async def run_scrape() -> list:
+            return await scraper.scrape_all_threads(
+                from_date=from_date,
+                to_date=to_date,
+                progress_callback=update_progress,
+            )
+
+        threads = asyncio.run(run_scrape())
+
+        # Clear the progress line
+        click.echo()
+
+        if not threads:
+            click.echo("\n✗ No threads found matching criteria.", err=True)
+            if from_date or to_date:
+                click.echo(
+                    f"Date range: {from_date or 'beginning'} to {to_date or 'end'}",
+                    err=True,
+                )
+            sys.exit(1)
+
+        # Write CSV
+        output_path = write_threads_csv(threads, output)
+        logger.info(f"Exported {len(threads)} threads to {output_path}")
+
+        # Success message
+        click.echo(f"\n✓ Export complete")
+        click.echo(f"✓ Exported {len(threads)} threads")
+        if from_date or to_date:
+            click.echo(
+                f"✓ Filtered by date range: {from_date or 'beginning'} to {to_date or 'end'}"
+            )
+        click.echo(f"✓ Saved to: {output_path.resolve()}")
+
+    except RuntimeError as e:
+        logger.error(f"Export failed: {e}", exc_info=True)
+        click.echo(f"\n✗ Export failed: {e}", err=True)
+        if "Authentication failed" in str(e):
+            click.echo("\nYour token may have expired. Please re-authenticate:", err=True)
+            click.echo("  perplexity-cli auth", err=True)
+        sys.exit(1)
+
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code
+        logger.error(f"HTTP error {status}: {e}")
+        if status == 401:
+            click.echo("✗ Authentication failed. Token may be expired.", err=True)
+            click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
+        elif status == 403:
+            click.echo("✗ Access forbidden. Check your permissions.", err=True)
+        elif status == 429:
+            click.echo("✗ Rate limit exceeded. Please wait and try again later.", err=True)
+        else:
+            click.echo(f"✗ HTTP error {status}.", err=True)
+            if ctx.obj.get("debug", False):
+                click.echo(f"Details: {e}", err=True)
+        sys.exit(1)
+
+    except KeyboardInterrupt:
+        logger.info("Export interrupted by user")
+        click.echo("\n✗ Export interrupted.", err=True)
+        sys.exit(130)
+
+    except Exception as e:
+        logger.exception(f"Unexpected error during export: {e}")
+        click.echo(f"\n✗ Unexpected error: {e}", err=True)
+        if ctx.obj.get("debug", False):
+            import traceback
+
+            click.echo(traceback.format_exc(), err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

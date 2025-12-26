@@ -8,6 +8,8 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 - **Encrypted tokens** - Tokens encrypted with system-derived keys
 - **Multiple output formats** - Plain text, Markdown, or rich terminal output
 - **Source references** - Web sources extracted and displayed
+- **Thread library export** - Export your entire Perplexity thread history to CSV with timestamps
+- **Date filtering** - Filter exported threads by date range
 - **Configurable URLs** - Base URL and endpoints configurable via JSON or environment variables
 - **Error handling** - Clear error messages with exit codes and automatic retry logic
 - **Server-Sent Events** - Streams responses in real-time
@@ -216,6 +218,66 @@ Display currently configured style.
 
 Remove configured style.
 
+### `perplexity-cli export-threads [OPTIONS]`
+
+Export your Perplexity.ai thread library to CSV format with creation timestamps.
+
+Uses your stored authentication token - no browser required after initial auth setup!
+
+**Options:**
+- `--from-date DATE` - Start date for filtering (YYYY-MM-DD format, inclusive)
+- `--to-date DATE` - End date for filtering (YYYY-MM-DD format, inclusive)
+- `--output PATH` - Output CSV file path (default: threads-TIMESTAMP.csv)
+- `--force-refresh` - Ignore local cache and fetch fresh data from Perplexity API
+- `--clear-cache` - Delete local cache file before export
+
+**Examples:**
+```bash
+# Export all threads (uses cache if available)
+perplexity-cli export-threads
+
+# Export threads from 2025
+perplexity-cli export-threads --from-date 2025-01-01
+
+# Export threads from a specific date range
+perplexity-cli export-threads --from-date 2025-01-01 --to-date 2025-12-31
+
+# Export to custom file
+perplexity-cli export-threads --output my-threads.csv
+
+# Force fresh data from API (bypass cache)
+perplexity-cli export-threads --force-refresh
+
+# Clear cache and export fresh
+perplexity-cli export-threads --clear-cache
+```
+
+**Setup:**
+Just authenticate once with `perplexity-cli auth` - the export command reuses your stored token. No browser needed!
+
+**Output format:**
+```csv
+created_at,title,url
+2025-12-23T23:06:00.525132Z,What is Python?,https://www.perplexity.ai/search/...
+2025-12-22T20:54:36.349239Z,Explain AI,https://www.perplexity.ai/search/...
+```
+
+The export includes:
+- **created_at** - ISO 8601 timestamp with timezone (UTC)
+- **title** - Thread question/title
+- **url** - Full URL to the thread
+
+**How it works:**
+The command uses your stored authentication token to call the Perplexity.ai API directly. It automatically paginates through your entire library (handles thousands of threads) and exports the results to CSV.
+
+**Caching:**
+Thread exports are automatically cached locally to improve performance. On first export, all threads are fetched and cached. On subsequent exports, the cache is used unless:
+- Requested date range extends beyond cached data (smart partial updates only fetch the gap)
+- `--force-refresh` flag is used to bypass cache
+- Cache is cleared with `--clear-cache` flag
+
+The cache is encrypted with the same system-derived key as your auth token and stored at `~/.config/perplexity-cli/threads-cache.json`.
+
 ## Configuration
 
 ### Token Storage and Encryption
@@ -249,6 +311,12 @@ Perplexity URLs are configured in `~/.config/perplexity-cli/urls.json`.
   "perplexity": {
     "base_url": "https://www.perplexity.ai",
     "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask"
+  },
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_period": 20,
+    "period_seconds": 60,
+    "description": "Allow 20 requests per 60 seconds (~3s delay). Override via env vars or edit this file."
   }
 }
 ```
@@ -265,6 +333,82 @@ Example:
 ```bash
 export PERPLEXITY_BASE_URL="https://custom.example.com"
 perplexity-cli query "What is Python?"
+```
+
+### Rate Limiting Configuration
+
+Thread export operations are rate-limited by default to prevent overwhelming the Perplexity API and encountering 429 (Too Many Requests) errors.
+
+**Default Rate Limit:**
+- 20 requests per 60 seconds
+- Approximately 3 second delay between API requests
+- Safe for exporting libraries with thousands of threads
+
+**Adjust Rate Limiting:**
+
+Edit `~/.config/perplexity-cli/urls.json` and modify the `rate_limiting` section:
+
+```json
+{
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_period": 20,
+    "period_seconds": 60
+  }
+}
+```
+
+**Common Configurations:**
+
+```json
+{
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_period": 10,
+    "period_seconds": 60,
+    "description": "Conservative: ~6 second delay (10 requests/60s). Use if encountering rate limits."
+  }
+}
+```
+
+```json
+{
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_period": 30,
+    "period_seconds": 60,
+    "description": "Aggressive: ~2 second delay (30 requests/60s). Use for faster exports."
+  }
+}
+```
+
+```json
+{
+  "rate_limiting": {
+    "enabled": false,
+    "description": "Disabled: No rate limiting (not recommended, may hit API limits)."
+  }
+}
+```
+
+**Environment Variable Overrides:**
+
+You can override rate limiting settings without editing the config file:
+
+- `PERPLEXITY_RATE_LIMITING_ENABLED` - Set to "true" or "false"
+- `PERPLEXITY_RATE_LIMITING_RPS` - requests_per_period (e.g., "10")
+- `PERPLEXITY_RATE_LIMITING_PERIOD` - period_seconds (e.g., "60")
+
+Example:
+```bash
+# Disable rate limiting for a single export
+export PERPLEXITY_RATE_LIMITING_ENABLED=false
+perplexity-cli export-threads
+
+# Use conservative rate limiting (10 requests/minute)
+export PERPLEXITY_RATE_LIMITING_RPS=10
+export PERPLEXITY_RATE_LIMITING_PERIOD=60
+perplexity-cli export-threads
 ```
 
 ## Troubleshooting
@@ -431,3 +575,4 @@ MIT
 - rich - Terminal formatting
 - cryptography - Token encryption
 - tenacity - Retry logic with exponential backoff
+- python-dateutil - Date parsing for thread exports
