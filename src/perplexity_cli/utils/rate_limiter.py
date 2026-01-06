@@ -6,7 +6,6 @@ This prevents overwhelming the API with too many concurrent requests.
 
 import asyncio
 import time
-from typing import Optional
 
 
 class RateLimiter:
@@ -113,11 +112,7 @@ class RateLimiter:
                 - average_wait_per_request: Average wait time per request
                 - current_tokens: Current token bucket fill level
         """
-        avg_wait = (
-            self.total_wait_time / self.total_requests
-            if self.total_requests > 0
-            else 0.0
-        )
+        avg_wait = self.total_wait_time / self.total_requests if self.total_requests > 0 else 0.0
 
         return {
             "requests_per_period": self.requests_per_period,

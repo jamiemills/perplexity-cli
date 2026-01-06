@@ -4,7 +4,6 @@ import json
 import os
 import stat
 from datetime import datetime
-from pathlib import Path
 
 from perplexity_cli.utils.config import get_token_path
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
@@ -120,10 +119,10 @@ class TokenManager:
 
             # Decrypt the token
             token = decrypt_token(encrypted_token)
-            
+
             # Audit log: token loaded
             self.logger.info(f"Token loaded from {self.token_path}")
-            
+
             return token
 
         except (OSError, json.JSONDecodeError) as e:

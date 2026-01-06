@@ -2,6 +2,8 @@
 
 A command-line interface for querying Perplexity.ai with persistent authentication and encrypted token storage.
 
+[![PyPI](https://img.shields.io/pypi/v/perplexity-cli)](https://pypi.org/project/perplexity-cli/)
+
 ## Features
 
 - **Persistent authentication** - Token stored securely and reused across invocations
@@ -16,42 +18,135 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 - **Logging** - Configurable logging with verbose/debug modes and log file support
 - **Streaming output** - Real-time streaming of query responses as they arrive
 
-## Quick Start
-
-```bash
-# Install
-uv pip install -e .
-
-# Authenticate (one time)
-perplexity-cli auth
-
-# Ask questions
-perplexity-cli query "What is Python?"
-
-# Check status
-perplexity-cli status
-
-# Log out
-perplexity-cli logout
-```
-
 ## Installation
 
-### Prerequisites
+### Quick Install (Recommended for Users)
 
-- Python 3.12 or higher
-- uv package manager
-- Google Chrome (for authentication)
+The easiest way to use perplexity-cli is with `uvx`:
 
-### Install
+```bash
+uvx perplexity-cli auth
+```
+
+Or install with uv pip:
+
+```bash
+uv pip install perplexity-cli
+perplexity-cli auth
+```
+
+### Development Installation (For Contributors)
+
+Clone and set up development environment:
 
 ```bash
 git clone https://github.com/jamiemills/perplexity-cli.git
 cd perplexity-cli
-
 uv venv --python=3.12
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 uv pip install -e ".[dev]"
+```
+
+Run tests to verify setup:
+
+```bash
+pytest
+```
+
+### Prerequisites
+
+- Python 3.12 or higher
+- Google Chrome (for authentication)
+
+## Quick Start
+
+### Authenticate (One Time)
+
+```bash
+perplexity-cli auth
+```
+
+This opens your browser to authenticate with Perplexity.ai. Your token is encrypted and stored locally.
+
+### Ask a Question
+
+```bash
+perplexity-cli query "What is Python?"
+```
+
+### Check Status
+
+```bash
+perplexity-cli status
+```
+
+### Output Formats
+
+Query with JSON output:
+
+```bash
+perplexity-cli query "Explain machine learning" --format json
+```
+
+### Verbose Mode
+
+Get detailed logging:
+
+```bash
+perplexity-cli query "What is AI?" --verbose
+```
+
+### Log Out
+
+```bash
+perplexity-cli logout
+```
+
+## Configuration
+
+### Environment Variables
+
+Configure perplexity-cli with environment variables:
+
+- `PERPLEXITY_BASE_URL`: Custom API base URL (default: https://www.perplexity.ai)
+- `PERPLEXITY_QUERY_ENDPOINT`: Custom query endpoint
+- `PERPLEXITY_LOG_LEVEL`: Logging level - DEBUG, INFO, WARNING, ERROR (default: INFO)
+- `PERPLEXITY_LOG_FILE`: Path to log file (default: ~/.config/perplexity-cli/perplexity-cli.log)
+- `PERPLEXITY_RATE_LIMITING_ENABLED`: Enable/disable rate limiting (default: true)
+- `PERPLEXITY_RATE_LIMITING_RPS`: Requests per period (default: 20)
+- `PERPLEXITY_RATE_LIMITING_PERIOD`: Period in seconds (default: 60)
+
+Example:
+
+```bash
+export PERPLEXITY_LOG_LEVEL=DEBUG
+perplexity-cli query "test"
+```
+
+### Output Formats
+
+Available formats: `plain`, `markdown`, `rich`, `json`
+
+Default is `rich` for terminal output with formatting. Use `--format` flag:
+
+```bash
+perplexity-cli query "..." --format markdown
+perplexity-cli query "..." --format json
+```
+
+### Token Management
+
+Your authentication token is encrypted and stored at:
+- **Linux/macOS**: `~/.config/perplexity-cli/token.json`
+- **Windows**: `%APPDATA%\perplexity-cli\token.json`
+
+The token is encrypted using Fernet (AES-128-CBC) with a key derived from your system hostname and OS user. Tokens are not portable between machines.
+
+To re-authenticate:
+
+```bash
+perplexity-cli logout
+perplexity-cli auth
 ```
 
 ## Usage
@@ -538,6 +633,46 @@ EOF
 
 **Note:** When viewing JSON output, use `jq -r` (raw output) to properly display newlines in the answer text. Without `-r`, you'll see escape sequences like `\n` instead of actual line breaks.
 
+## Development
+
+### Setup Development Environment
+
+```bash
+git clone https://github.com/jamiemills/perplexity-cli.git
+cd perplexity-cli
+uv venv --python=3.12
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -e ".[dev]"
+```
+
+### Run Tests
+
+```bash
+pytest
+```
+
+### Linting, Formatting, and Type Checking
+
+Format code (auto-fix):
+
+```bash
+ruff format src/
+```
+
+Check for linting issues:
+
+```bash
+ruff check src/
+```
+
+Type checking:
+
+```bash
+mypy src/
+```
+
+For more details on development practices, see `.claude/TESTING_GUIDE.md`.
+
 ## Security
 
 - Tokens encrypted at rest using Fernet
@@ -547,14 +682,6 @@ EOF
 - Token expiration detection (warns if token is >30 days old)
 - Audit logging for token operations
 - No credentials printed to logs
-
-## Testing
-
-Run tests with pytest:
-
-```bash
-python -m pytest tests/
-```
 
 ## Contributing
 

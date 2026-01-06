@@ -18,10 +18,14 @@ from perplexity_cli.utils.version import get_version
 
 # Load Agent Skill definition for display via show-skill command
 try:
-    SKILL_CONTENT = files('perplexity_cli.resources').joinpath('skill.md').read_text(encoding='utf-8')
+    SKILL_CONTENT = (
+        files("perplexity_cli.resources").joinpath("skill.md").read_text(encoding="utf-8")
+    )
 except (FileNotFoundError, AttributeError):
     # Fallback if skill.md is not found
-    SKILL_CONTENT = "Agent Skill definition not available. Run 'perplexity-cli --help' for usage information."
+    SKILL_CONTENT = (
+        "Agent Skill definition not available. Run 'perplexity-cli --help' for usage information."
+    )
 
 
 @click.group()
@@ -51,7 +55,7 @@ def main(ctx: click.Context, verbose: bool, debug: bool, log_file: Path | None) 
     if log_file is None:
         log_file = get_default_log_file()
     setup_logging(verbose=verbose, debug=debug, log_file=log_file)
-    
+
     # Store context for subcommands
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
@@ -144,6 +148,7 @@ def auth(ctx: click.Context, port: int) -> None:
         click.echo(f"✗ Unexpected error: {e}", err=True)
         if ctx.obj.get("debug", False):
             import traceback
+
             click.echo(traceback.format_exc(), err=True)
         sys.exit(1)
 
@@ -207,7 +212,9 @@ def query(
     from perplexity_cli.utils.logging import get_logger
 
     logger = get_logger()
-    logger.debug(f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}")
+    logger.debug(
+        f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}"
+    )
 
     # Load token
     tm = TokenManager()
@@ -258,7 +265,9 @@ def query(
             logger.info("Fetching complete answer")
             # Submit query and get answer
             answer_obj = api.get_complete_answer(final_query)
-            logger.debug(f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references")
+            logger.debug(
+                f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references"
+            )
 
             # Format and output the answer
             if output_format == "rich":
@@ -309,6 +318,7 @@ def query(
         click.echo("✗ An unexpected error occurred.", err=True)
         if ctx.obj.get("debug", False):
             import traceback
+
             click.echo(f"Debug info:\n{traceback.format_exc()}", err=True)
         else:
             click.echo("Run with --debug for more information.", err=True)
@@ -340,7 +350,9 @@ def _stream_query_response(
 
     try:
         for message in api.submit_query(query):
-            logger.debug(f"Received SSE message: status={message.status}, final={message.final_sse_message}")
+            logger.debug(
+                f"Received SSE message: status={message.status}, final={message.final_sse_message}"
+            )
 
             # Extract text from blocks
             for block in message.blocks:
@@ -348,7 +360,7 @@ def _stream_query_response(
                     text = api._extract_text_from_block(block.content)
                     if text and text != accumulated_text:
                         # Only print new text
-                        new_text = text[len(accumulated_text):]
+                        new_text = text[len(accumulated_text) :]
                         if new_text:
                             if output_format == "rich":
                                 # For rich, print incrementally
@@ -545,7 +557,6 @@ def status() -> None:
         perplexity-cli status
     """
     from datetime import datetime
-    from pathlib import Path
 
     from perplexity_cli.utils.logging import get_logger
 
@@ -567,7 +578,9 @@ def status() -> None:
                 try:
                     stat = tm.token_path.stat()
                     modified_time = datetime.fromtimestamp(stat.st_mtime)
-                    click.echo(f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    click.echo(
+                        f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
                 except Exception:
                     pass
 
@@ -797,7 +810,7 @@ def export_threads(
         logger.info(f"Exported {len(threads)} threads to {output_path}")
 
         # Success message
-        click.echo(f"\n✓ Export complete")
+        click.echo("\n✓ Export complete")
         click.echo(f"✓ Exported {len(threads)} threads")
         if from_date or to_date:
             click.echo(
