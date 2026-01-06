@@ -2,7 +2,7 @@
 
 A command-line interface for querying Perplexity.ai with persistent authentication and encrypted token storage.
 
-[![PyPI](https://img.shields.io/pypi/v/perplexity-cli)](https://pypi.org/project/perplexity-cli/)
+[![PyPI](https://img.shields.io/pypi/v/pp-cli)](https://pypi.org/project/pp-cli/)
 
 ## Features
 
@@ -22,18 +22,20 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 
 ### Quick Install (Recommended for Users)
 
-The easiest way to use perplexity-cli is with `uvx`:
+The easiest way to use pp-cli is with `uvx`:
 
 ```bash
-uvx perplexity-cli auth
+uvx pp-cli auth
 ```
 
 Or install with uv pip:
 
 ```bash
-uv pip install perplexity-cli
-perplexity-cli auth
+uv pip install pp-cli
+pp-cli auth
 ```
+
+Note: The command can also be run as `perplexity-cli` for convenience.
 
 ### Development Installation (For Contributors)
 
