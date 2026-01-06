@@ -38,7 +38,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest
+          pytest --ignore=tests/test_manual_auth.py
 
       - name: Build distributions
         run: |
