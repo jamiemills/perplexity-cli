@@ -65,7 +65,7 @@ pytest
 ### Authenticate (One Time)
 
 ```bash
-perplexity-cli auth
+pxcli auth
 ```
 
 This opens your browser to authenticate with Perplexity.ai. Your token is encrypted and stored locally.
@@ -73,13 +73,13 @@ This opens your browser to authenticate with Perplexity.ai. Your token is encryp
 ### Ask a Question
 
 ```bash
-perplexity-cli query "What is Python?"
+pxcli query "What is Python?"
 ```
 
 ### Check Status
 
 ```bash
-perplexity-cli status
+pxcli status
 ```
 
 ### Output Formats
@@ -87,7 +87,7 @@ perplexity-cli status
 Query with JSON output:
 
 ```bash
-perplexity-cli query "Explain machine learning" --format json
+pxcli query "Explain machine learning" --format json
 ```
 
 ### Verbose Mode
@@ -95,13 +95,13 @@ perplexity-cli query "Explain machine learning" --format json
 Get detailed logging:
 
 ```bash
-perplexity-cli query "What is AI?" --verbose
+pxcli query "What is AI?" --verbose
 ```
 
 ### Log Out
 
 ```bash
-perplexity-cli logout
+pxcli logout
 ```
 
 ## Configuration
@@ -122,7 +122,7 @@ Example:
 
 ```bash
 export PERPLEXITY_LOG_LEVEL=DEBUG
-perplexity-cli query "test"
+pxcli query "test"
 ```
 
 ### Output Formats
@@ -132,8 +132,8 @@ Available formats: `plain`, `markdown`, `rich`, `json`
 Default is `rich` for terminal output with formatting. Use `--format` flag:
 
 ```bash
-perplexity-cli query "..." --format markdown
-perplexity-cli query "..." --format json
+pxcli query "..." --format markdown
+pxcli query "..." --format json
 ```
 
 ### Token Management
@@ -147,15 +147,15 @@ The token is encrypted using Fernet (AES-128-CBC) with a key derived from your s
 To re-authenticate:
 
 ```bash
-perplexity-cli logout
-perplexity-cli auth
+pxcli logout
+pxcli auth
 ```
 
 ## Usage
 
 ### Authentication Setup
 
-The first time you use perplexity-cli, you need to authenticate with Perplexity.ai. This is a one-time process that extracts your session token and stores it securely on your machine.
+The first time you use pxcli, you need to authenticate with Perplexity.ai. This is a one-time process that extracts your session token and stores it securely on your machine.
 
 #### Step 1: Install Chrome for Testing
 
@@ -185,7 +185,7 @@ alias chromefortesting='open ~/.local/bin/chrome/mac_arm-*/chrome-mac-arm64/Goog
 chromefortesting
 
 # Terminal 2: Run authentication
-perplexity-cli auth
+pxcli auth
 ```
 
 The authentication process will:
@@ -195,14 +195,14 @@ The authentication process will:
 4. Extract your session token automatically
 5. Save it encrypted to `~/.config/perplexity-cli/token.json`
 
-Once complete, you won't need to authenticate again unless you run `perplexity-cli logout`.
+Once complete, you won't need to authenticate again unless you run `pxcli logout`.
 
 #### Custom Port (Optional)
 
 If port 9222 is already in use, specify a different port:
 
 ```bash
-perplexity-cli auth --port 9223
+pxcli auth --port 9223
 ```
 
 Then start Chrome with the matching port:
@@ -215,28 +215,28 @@ alias chromefortesting='open ~/.local/bin/chrome/mac_arm-*/chrome-mac-arm64/Goog
 
 ```bash
 # Default format (rich terminal output)
-perplexity-cli query "What is machine learning?"
+pxcli query "What is machine learning?"
 
 # Plain text (for scripts)
-perplexity-cli query --format plain "What is Python?"
+pxcli query --format plain "What is Python?"
 
 # Markdown format
-perplexity-cli query --format markdown "Explain quantum computing" > answer.md
+pxcli query --format markdown "Explain quantum computing" > answer.md
 
 # JSON format (structured output for programmatic use)
-perplexity-cli query --format json "What is machine learning?" > answer.json
+pxcli query --format json "What is machine learning?" > answer.json
 
 # Remove citations and references section
-perplexity-cli query --strip-references "What is Python?"
+pxcli query --strip-references "What is Python?"
 
 # Stream response in real-time
-perplexity-cli query --stream "What is Python?"
+pxcli query --stream "What is Python?"
 
 # Combine options
-perplexity-cli query --format plain --strip-references "What is 2+2?"
+pxcli query --format plain --strip-references "What is 2+2?"
 
 # Use in scripts
-ANSWER=$(perplexity-cli query --format plain "What is 2+2?")
+ANSWER=$(pxcli query --format plain "What is 2+2?")
 echo "The answer is: $ANSWER"
 
 # Enable verbose logging
@@ -250,22 +250,22 @@ perplexity-cli --debug --log-file /tmp/perplexity.log query "What is Python?"
 
 ```bash
 # Check authentication status
-perplexity-cli status
+pxcli status
 
 # Remove stored token
-perplexity-cli logout
+pxcli logout
 ```
 
 ## Commands
 
-### `perplexity-cli auth [--port PORT]`
+### `pxcli auth [--port PORT]`
 
 Authenticate with Perplexity.ai via Chrome.
 
 **Options:**
 - `--port PORT` - Chrome remote debugging port (default: 9222)
 
-### `perplexity-cli query QUESTION [OPTIONS]`
+### `pxcli query QUESTION [OPTIONS]`
 
 Submit a query and get an answer with source references.
 
@@ -290,32 +290,32 @@ Submit a query and get an answer with source references.
 - `0` - Success
 - `1` - Error
 
-### `perplexity-cli status`
+### `pxcli status`
 
 Display authentication status and token information.
 
-### `perplexity-cli logout`
+### `pxcli logout`
 
 Remove stored authentication token.
 
-### `perplexity-cli configure STYLE`
+### `pxcli configure STYLE`
 
 Set a custom style prompt applied to all queries.
 
 **Example:**
 ```bash
-perplexity-cli configure "be concise"
+pxcli configure "be concise"
 ```
 
-### `perplexity-cli view-style`
+### `pxcli view-style`
 
 Display currently configured style.
 
-### `perplexity-cli clear-style`
+### `pxcli clear-style`
 
 Remove configured style.
 
-### `perplexity-cli export-threads [OPTIONS]`
+### `pxcli export-threads [OPTIONS]`
 
 Export your Perplexity.ai thread library to CSV format with creation timestamps.
 
@@ -331,26 +331,26 @@ Uses your stored authentication token - no browser required after initial auth s
 **Examples:**
 ```bash
 # Export all threads (uses cache if available)
-perplexity-cli export-threads
+pxcli export-threads
 
 # Export threads from 2025
-perplexity-cli export-threads --from-date 2025-01-01
+pxcli export-threads --from-date 2025-01-01
 
 # Export threads from a specific date range
-perplexity-cli export-threads --from-date 2025-01-01 --to-date 2025-12-31
+pxcli export-threads --from-date 2025-01-01 --to-date 2025-12-31
 
 # Export to custom file
-perplexity-cli export-threads --output my-threads.csv
+pxcli export-threads --output my-threads.csv
 
 # Force fresh data from API (bypass cache)
-perplexity-cli export-threads --force-refresh
+pxcli export-threads --force-refresh
 
 # Clear cache and export fresh
-perplexity-cli export-threads --clear-cache
+pxcli export-threads --clear-cache
 ```
 
 **Setup:**
-Just authenticate once with `perplexity-cli auth` - the export command reuses your stored token. No browser needed!
+Just authenticate once with `pxcli auth` - the export command reuses your stored token. No browser needed!
 
 **Output format:**
 ```csv
@@ -429,7 +429,7 @@ You can override configuration values using environment variables:
 Example:
 ```bash
 export PERPLEXITY_BASE_URL="https://custom.example.com"
-perplexity-cli query "What is Python?"
+pxcli query "What is Python?"
 ```
 
 ### Rate Limiting Configuration
@@ -500,23 +500,23 @@ Example:
 ```bash
 # Disable rate limiting for a single export
 export PERPLEXITY_RATE_LIMITING_ENABLED=false
-perplexity-cli export-threads
+pxcli export-threads
 
 # Use conservative rate limiting (10 requests/minute)
 export PERPLEXITY_RATE_LIMITING_RPS=10
 export PERPLEXITY_RATE_LIMITING_PERIOD=60
-perplexity-cli export-threads
+pxcli export-threads
 ```
 
 ## Troubleshooting
 
 ### "Not authenticated"
 
-Run `perplexity-cli auth` to authenticate.
+Run `pxcli auth` to authenticate.
 
 ### "Failed to decrypt token"
 
-Token was encrypted on a different machine or with a different user. Run `perplexity-cli auth` to re-authenticate.
+Token was encrypted on a different machine or with a different user. Run `pxcli auth` to re-authenticate.
 
 ### Chrome connection fails
 
@@ -527,7 +527,7 @@ Ensure Chrome is running with `--remote-debugging-port=9222`. Verify the port ma
 Token file was modified or has incorrect permissions. Delete the file and re-authenticate:
 ```bash
 rm ~/.config/perplexity-cli/token.json
-perplexity-cli auth
+pxcli auth
 ```
 
 ## Output Formats
@@ -537,7 +537,7 @@ perplexity-cli auth
 Plain text output suitable for scripts and piping.
 
 ```bash
-perplexity-cli query --format plain "What is Python?"
+pxcli query --format plain "What is Python?"
 ```
 
 ### Markdown
@@ -545,7 +545,7 @@ perplexity-cli query --format plain "What is Python?"
 GitHub-flavoured Markdown with headers and formatting.
 
 ```bash
-perplexity-cli query --format markdown "Explain AI" > answer.md
+pxcli query --format markdown "Explain AI" > answer.md
 ```
 
 ### Rich
@@ -553,7 +553,7 @@ perplexity-cli query --format markdown "Explain AI" > answer.md
 Terminal output with colours, bold text, and formatted tables (default).
 
 ```bash
-perplexity-cli query "What is Python?"
+pxcli query "What is Python?"
 ```
 
 ### JSON
@@ -561,7 +561,7 @@ perplexity-cli query "What is Python?"
 Structured JSON output suitable for programmatic processing and integration with other tools.
 
 ```bash
-perplexity-cli query --format json "What is machine learning?"
+pxcli query --format json "What is machine learning?"
 ```
 
 **Output structure:**
@@ -591,28 +591,28 @@ perplexity-cli query --format json "What is machine learning?"
 
 Save to file:
 ```bash
-perplexity-cli query --format json "What is Python?" > python.json
+pxcli query --format json "What is Python?" > python.json
 ```
 
 Extract and display answer as readable text:
 ```bash
 # Use jq -r to render newlines as actual line breaks
-perplexity-cli query --format json "What is Python?" | jq -r '.answer'
+pxcli query --format json "What is Python?" | jq -r '.answer'
 ```
 
 Extract just the reference URLs:
 ```bash
-perplexity-cli query --format json "What is Python?" | jq -r '.references[] | .url'
+pxcli query --format json "What is Python?" | jq -r '.references[] | .url'
 ```
 
 Remove references from JSON output:
 ```bash
-perplexity-cli query --format json --strip-references "What is Python?"
+pxcli query --format json --strip-references "What is Python?"
 ```
 
 Count the number of references:
 ```bash
-perplexity-cli query --format json "What is Python?" | jq '.references | length'
+pxcli query --format json "What is Python?" | jq '.references | length'
 ```
 
 Parse JSON in a script:
