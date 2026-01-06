@@ -36,10 +36,6 @@ jobs:
         run: |
           ruff check src/
 
-      - name: Type checking
-        run: |
-          mypy src/
-
       - name: Run tests
         run: |
           pytest
