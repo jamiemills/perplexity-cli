@@ -7,7 +7,7 @@ for efficient repeated exports.
 
 import json
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -28,8 +28,8 @@ class ThreadScraper:
     def __init__(
         self,
         token: str,
-        rate_limiter: Optional[RateLimiter] = None,
-        cache_manager: Optional[ThreadCacheManager] = None,
+        rate_limiter: RateLimiter | None = None,
+        cache_manager: ThreadCacheManager | None = None,
         force_refresh: bool = False,
     ) -> None:
         """Initialise thread scraper.
@@ -114,9 +114,7 @@ class ThreadScraper:
                     return threads
             else:
                 # Cache needs refresh - load existing cache
-                self.logger.info(
-                    f"Cache gap detected, fetching {fetch_from} to {fetch_to}"
-                )
+                self.logger.info(f"Cache gap detected, fetching {fetch_from} to {fetch_to}")
                 cache_data = self.cache_manager.load_cache()
                 if cache_data:
                     threads = [
@@ -165,8 +163,7 @@ class ThreadScraper:
         if from_date or to_date:
             filtered = self._filter_by_date_range(threads, from_date, to_date)
             self.logger.info(
-                f"Filtered to {len(filtered)} threads "
-                f"(from_date={from_date}, to_date={to_date})"
+                f"Filtered to {len(filtered)} threads (from_date={from_date}, to_date={to_date})"
             )
             return filtered
 
@@ -252,9 +249,7 @@ class ThreadScraper:
                         try:
                             # Get total count from first response
                             if total_threads is None:
-                                total_threads = thread_dict.get(
-                                    "total_threads", len(thread_data)
-                                )
+                                total_threads = thread_dict.get("total_threads", len(thread_data))
 
                             # Extract timestamp
                             timestamp_str = thread_dict.get("last_query_datetime")
@@ -285,9 +280,7 @@ class ThreadScraper:
                             # Get title
                             title = thread_dict.get("title", "Untitled")
 
-                            threads.append(
-                                ThreadRecord(title=title, url=url, created_at=iso_date)
-                            )
+                            threads.append(ThreadRecord(title=title, url=url, created_at=iso_date))
 
                         except (ValueError, KeyError) as e:
                             self.logger.warning(f"Failed to parse thread data: {e}")

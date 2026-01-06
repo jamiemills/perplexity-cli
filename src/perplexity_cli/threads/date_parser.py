@@ -3,7 +3,7 @@
 This module handles parsing and formatting of thread creation timestamps.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from dateutil import parser as dateutil_parser
 
@@ -68,14 +68,13 @@ def to_iso8601(dt: datetime) -> str:
         >>> to_iso8601(dt)
         '2025-12-23T13:51:50Z'
     """
-    from datetime import timezone
 
     # If naive datetime, assume UTC
     if dt.tzinfo is None:
-        utc_dt = dt.replace(tzinfo=timezone.utc)
+        utc_dt = dt.replace(tzinfo=UTC)
     else:
         # Convert to UTC
-        utc_dt = dt.astimezone(timezone.utc)
+        utc_dt = dt.astimezone(UTC)
 
     # Format as ISO 8601 and replace +00:00 with Z
     iso_str = utc_dt.isoformat()

@@ -8,13 +8,24 @@ version = "0.3.0"
 description = "A command-line interface for querying Perplexity.ai with persistent authentication"
 readme = "README.md"
 requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Jamie Mills", email = "jamie.mills@gmail.com"},
+]
+keywords = ["cli", "perplexity", "ai", "query", "command-line"]
+
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Internet",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
 ]
 
 dependencies = [
@@ -36,6 +47,12 @@ dev = [
     "ruff>=0.1",
     "mypy>=1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jamiemills/perplexity-cli"
+Repository = "https://github.com/jamiemills/perplexity-cli"
+"Bug Tracker" = "https://github.com/jamiemills/perplexity-cli/issues"
+"Source Code" = "https://github.com/jamiemills/perplexity-cli"
 
 [project.scripts]
 perplexity-cli = "perplexity_cli.cli:main"

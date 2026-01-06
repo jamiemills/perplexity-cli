@@ -2,16 +2,15 @@
 
 import time
 from collections.abc import Callable
-from typing import TypeVar, cast
+from typing import TypeVar
 
+import httpx
 from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
-
-import httpx
 
 T = TypeVar("T")
 
@@ -35,17 +34,13 @@ def retry_with_backoff(
     """
     return retry(
         stop=stop_after_attempt(max_attempts),
-        wait=wait_exponential(
-            multiplier=initial_wait, max=max_wait, exp_base=exponential_base
-        ),
-        retry=retry_if_exception_type(
-            (httpx.RequestError, httpx.HTTPStatusError)
-        ),
+        wait=wait_exponential(multiplier=initial_wait, max=max_wait, exp_base=exponential_base),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
         reraise=True,
     )
 
 
-def retry_http_request(
+def retry_http_request[T](
     func: Callable[[], T],
     max_attempts: int = 3,
     initial_wait: float = 1.0,
@@ -111,6 +106,5 @@ def sleep_with_backoff(attempt: int, base_delay: float = 1.0, max_delay: float =
         base_delay: Base delay in seconds.
         max_delay: Maximum delay in seconds.
     """
-    delay = min(base_delay * (2 ** attempt), max_delay)
+    delay = min(base_delay * (2**attempt), max_delay)
     time.sleep(delay)
-

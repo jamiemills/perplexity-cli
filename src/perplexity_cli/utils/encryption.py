@@ -12,7 +12,6 @@ import socket
 
 from cryptography.fernet import Fernet
 
-
 # Salt used for key derivation - consistent across installations
 _KEY_DERIVATION_SALT = b"perplexity-cli-token-encryption"
 

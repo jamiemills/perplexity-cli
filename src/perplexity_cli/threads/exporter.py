@@ -81,5 +81,5 @@ def write_threads_csv(
                 writer.writerow([record.created_at, record.title, record.url])
 
         return output_path
-    except (IOError, OSError) as e:
-        raise IOError(f"Failed to write CSV file to {output_path}: {e}") from e
+    except OSError as e:
+        raise OSError(f"Failed to write CSV file to {output_path}: {e}") from e

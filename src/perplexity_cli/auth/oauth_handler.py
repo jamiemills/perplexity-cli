@@ -131,7 +131,7 @@ async def authenticate_with_browser(
     from perplexity_cli.utils.logging import get_logger
 
     logger = get_logger()
-    
+
     if url is None:
         url = get_perplexity_base_url()
 
@@ -160,7 +160,7 @@ async def authenticate_with_browser(
         # Poll for authentication token with timeout
         logger.info("Waiting for authentication...")
         start_time = asyncio.get_event_loop().time()
-        
+
         while True:
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed > timeout:
@@ -202,7 +202,9 @@ async def authenticate_with_browser(
                 return session_token
 
             # Wait before next poll
-            logger.debug(f"No token found yet, waiting {poll_interval}s... (elapsed: {elapsed:.1f}s)")
+            logger.debug(
+                f"No token found yet, waiting {poll_interval}s... (elapsed: {elapsed:.1f}s)"
+            )
             await asyncio.sleep(poll_interval)
 
     finally:

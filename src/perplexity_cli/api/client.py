@@ -59,8 +59,10 @@ class SSEClient:
 
         while attempt < self.max_retries:
             try:
-                self.logger.debug(f"Streaming POST to {url} (attempt {attempt + 1}/{self.max_retries})")
-                
+                self.logger.debug(
+                    f"Streaming POST to {url} (attempt {attempt + 1}/{self.max_retries})"
+                )
+
                 with httpx.Client(timeout=self.timeout) as client:
                     with client.stream("POST", url, headers=headers, json=json_data) as response:
                         # Check for HTTP errors
@@ -87,13 +89,15 @@ class SSEClient:
                             request=e.request,
                             response=e.response,
                         ) from e
-                
+
                 # Retry 429 and 5xx errors
                 if is_retryable_error(e) and attempt < self.max_retries - 1:
                     attempt += 1
-                    self.logger.warning(f"HTTP {status} error, retrying (attempt {attempt + 1}/{self.max_retries})")
+                    self.logger.warning(
+                        f"HTTP {status} error, retrying (attempt {attempt + 1}/{self.max_retries})"
+                    )
                     continue
-                
+
                 # Re-raise if not retryable or out of retries
                 if status == 429:
                     raise httpx.HTTPStatusError(
@@ -107,7 +111,9 @@ class SSEClient:
                 # Retry network errors
                 if is_retryable_error(e) and attempt < self.max_retries - 1:
                     attempt += 1
-                    self.logger.warning(f"Network error, retrying (attempt {attempt + 1}/{self.max_retries}): {e}")
+                    self.logger.warning(
+                        f"Network error, retrying (attempt {attempt + 1}/{self.max_retries}): {e}"
+                    )
                     continue
                 # Re-raise if out of retries
                 self.logger.error(f"Network error after {attempt + 1} attempts: {e}")

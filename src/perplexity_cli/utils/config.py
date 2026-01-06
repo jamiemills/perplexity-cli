@@ -104,14 +104,14 @@ def _validate_urls_config(urls: dict[str, Any]) -> None:
     """
     if not isinstance(urls, dict):
         raise RuntimeError("URLs configuration must be a dictionary")
-    
+
     if "perplexity" not in urls:
         raise RuntimeError("URLs configuration missing 'perplexity' section")
-    
+
     perplexity = urls["perplexity"]
     if not isinstance(perplexity, dict):
         raise RuntimeError("'perplexity' section must be a dictionary")
-    
+
     required_fields = ["base_url", "query_endpoint"]
     for field in required_fields:
         if field not in perplexity:
@@ -152,7 +152,7 @@ def get_urls() -> dict[str, Any]:
     # Apply environment variable overrides
     if "PERPLEXITY_BASE_URL" in os.environ:
         urls["perplexity"]["base_url"] = os.environ["PERPLEXITY_BASE_URL"]
-    
+
     if "PERPLEXITY_QUERY_ENDPOINT" in os.environ:
         urls["perplexity"]["query_endpoint"] = os.environ["PERPLEXITY_QUERY_ENDPOINT"]
 
@@ -183,9 +183,7 @@ def get_perplexity_base_url() -> str:
     try:
         return urls["perplexity"]["base_url"]
     except (KeyError, TypeError) as e:
-        raise RuntimeError(
-            "Invalid URLs configuration: missing perplexity.base_url"
-        ) from e
+        raise RuntimeError("Invalid URLs configuration: missing perplexity.base_url") from e
 
 
 def get_query_endpoint() -> str:
@@ -201,9 +199,7 @@ def get_query_endpoint() -> str:
     try:
         return urls["perplexity"]["query_endpoint"]
     except (KeyError, TypeError) as e:
-        raise RuntimeError(
-            "Invalid URLs configuration: missing perplexity.query_endpoint"
-        ) from e
+        raise RuntimeError("Invalid URLs configuration: missing perplexity.query_endpoint") from e
 
 
 def _get_default_rate_limiting() -> dict[str, Any]:
@@ -287,9 +283,7 @@ def get_rate_limiting_config() -> dict[str, Any]:
 
     if "PERPLEXITY_RATE_LIMITING_RPS" in os.environ:
         try:
-            config["requests_per_period"] = int(
-                os.environ["PERPLEXITY_RATE_LIMITING_RPS"]
-            )
+            config["requests_per_period"] = int(os.environ["PERPLEXITY_RATE_LIMITING_RPS"])
         except ValueError as e:
             raise RuntimeError(
                 f"Invalid PERPLEXITY_RATE_LIMITING_RPS: {os.environ['PERPLEXITY_RATE_LIMITING_RPS']}"
@@ -297,9 +291,7 @@ def get_rate_limiting_config() -> dict[str, Any]:
 
     if "PERPLEXITY_RATE_LIMITING_PERIOD" in os.environ:
         try:
-            config["period_seconds"] = float(
-                os.environ["PERPLEXITY_RATE_LIMITING_PERIOD"]
-            )
+            config["period_seconds"] = float(os.environ["PERPLEXITY_RATE_LIMITING_PERIOD"])
         except ValueError as e:
             raise RuntimeError(
                 f"Invalid PERPLEXITY_RATE_LIMITING_PERIOD: {os.environ['PERPLEXITY_RATE_LIMITING_PERIOD']}"
