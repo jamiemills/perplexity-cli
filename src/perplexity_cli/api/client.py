@@ -37,6 +37,8 @@ class SSEClient:
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
             "User-Agent": f"perplexity-cli/{get_version()}",
+            "Origin": "https://www.perplexity.ai",
+            "Referer": "https://www.perplexity.ai/",
         }
 
     def stream_post(self, url: str, json_data: dict) -> Iterator[dict]:
