@@ -64,6 +64,7 @@ class SSEClient:
                 self.logger.debug(
                     f"Streaming POST to {url} (attempt {attempt + 1}/{self.max_retries})"
                 )
+                self.logger.debug(f"Request headers: {headers}")
 
                 with httpx.Client(timeout=self.timeout) as client:
                     with client.stream("POST", url, headers=headers, json=json_data) as response:
