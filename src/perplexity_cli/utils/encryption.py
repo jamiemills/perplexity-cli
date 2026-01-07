@@ -35,10 +35,6 @@ def derive_encryption_key() -> bytes:
         hostname = socket.gethostname()
         username = os.getenv("USER") or os.getenv("USERNAME") or "unknown"
 
-        # DEBUG: Log key derivation inputs
-        import sys
-        print(f"[DEBUG] Key derivation: hostname='{hostname}', username='{username}', USER={os.getenv('USER')}, USERNAME={os.getenv('USERNAME')}", file=sys.stderr)
-
         # Create deterministic key from system identifiers
         key_material = f"{hostname}:{username}".encode()
         key_hash = hashlib.sha256(key_material + _KEY_DERIVATION_SALT).digest()

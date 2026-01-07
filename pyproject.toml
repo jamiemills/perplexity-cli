@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pxcli"
-version = "0.3.5"
+version = "0.4.0"
 description = "A command-line interface for querying Perplexity.ai with persistent authentication"
 readme = "README.md"
 requires-python = ">=3.12"

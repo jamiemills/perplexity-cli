@@ -15,14 +15,15 @@ from .models import Answer, QueryParams, QueryRequest, SSEMessage, WebResult
 class PerplexityAPI:
     """High-level interface to Perplexity API."""
 
-    def __init__(self, token: str, timeout: int = 60) -> None:
+    def __init__(self, token: str, cookies: dict[str, str] | None = None, timeout: int = 60) -> None:
         """Initialise Perplexity API client.
 
         Args:
             token: Authentication JWT token.
+            cookies: Optional browser cookies for Cloudflare bypass.
             timeout: Request timeout in seconds.
         """
-        self.client = SSEClient(token=token, timeout=timeout)
+        self.client = SSEClient(token=token, cookies=cookies, timeout=timeout)
 
     def submit_query(
         self,

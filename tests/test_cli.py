@@ -31,7 +31,7 @@ class TestCLICommands:
         """Test version option."""
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.3.5" in result.output
+        assert "0.4.0" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     def test_status_not_authenticated(self, mock_tm_class, runner):
@@ -56,7 +56,7 @@ class TestCLICommands:
 
         mock_tm = Mock()
         mock_tm.token_exists.return_value = True
-        mock_tm.load_token.return_value = "test-token-123"
+        mock_tm.load_token.return_value = ("test-token-123", None)
         mock_token_path = MagicMock(spec=Path)
         mock_token_path.__str__ = lambda x: "/path/to/token.json"
         mock_token_path.exists.return_value = True
@@ -119,7 +119,7 @@ class TestCLICommands:
 
         # Mock token manager
         mock_tm = Mock()
-        mock_tm.load_token.return_value = "test-token"
+        mock_tm.load_token.return_value = ("test-token", None)
         mock_tm_class.return_value = mock_tm
 
         # Mock API
@@ -150,7 +150,7 @@ class TestCLICommands:
 
         # Mock token manager
         mock_tm = Mock()
-        mock_tm.load_token.return_value = "test-token"
+        mock_tm.load_token.return_value = ("test-token", None)
         mock_tm_class.return_value = mock_tm
 
         # Create web results
@@ -183,14 +183,14 @@ class TestCLICommands:
     def test_query_not_authenticated(self, mock_tm_class, runner):
         """Test query when not authenticated."""
         mock_tm = Mock()
-        mock_tm.load_token.return_value = None
+        mock_tm.load_token.return_value = (None, None)
         mock_tm_class.return_value = mock_tm
 
         result = runner.invoke(query, ["test query"])
 
         assert result.exit_code == 1
         assert "Not authenticated" in result.output
-        assert "perplexity-cli auth" in result.output
+        assert "pxcli auth" in result.output
 
     @patch("perplexity_cli.cli.StyleManager")
     @patch("perplexity_cli.cli.TokenManager")
@@ -206,7 +206,7 @@ class TestCLICommands:
 
         # Mock token manager
         mock_tm = Mock()
-        mock_tm.load_token.return_value = "test-token"
+        mock_tm.load_token.return_value = ("test-token", None)
         mock_tm_class.return_value = mock_tm
 
         # Mock API to raise network error
@@ -223,8 +223,9 @@ class TestCLICommands:
     @patch("perplexity_cli.cli.authenticate_sync")
     def test_auth_success(self, mock_auth, mock_tm_class, runner):
         """Test successful authentication."""
-        # Mock authentication
-        mock_auth.return_value = "new-token-123"
+        # Mock authentication - returns (token, cookies) tuple
+        mock_cookies = {"__cf_bm": "test", "__cflb": "test2"}
+        mock_auth.return_value = ("new-token-123", mock_cookies)
 
         # Mock token manager
         mock_tm = Mock()
@@ -235,7 +236,7 @@ class TestCLICommands:
 
         assert result.exit_code == 0
         assert "Authentication successful" in result.output
-        mock_tm.save_token.assert_called_once_with("new-token-123")
+        mock_tm.save_token.assert_called_once_with("new-token-123", cookies=mock_cookies)
 
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.authenticate_sync")
@@ -352,7 +353,7 @@ class TestCLIIntegration:
         """Test query appends style to query text."""
         # Mock token manager
         mock_tm = Mock()
-        mock_tm.load_token.return_value = "test_token"
+        mock_tm.load_token.return_value = ("test_token", None)
         mock_tm_class.return_value = mock_tm
 
         # Mock style manager
