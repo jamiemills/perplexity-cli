@@ -301,3 +301,192 @@ def get_rate_limiting_config() -> dict[str, Any]:
     _validate_rate_limiting_config(config)
 
     return config
+
+
+def get_feature_config_path() -> Path:
+    """Get path to feature configuration file.
+
+    Returns:
+        Path to config.json in user config directory.
+    """
+    return get_config_dir() / "config.json"
+
+
+def _get_default_feature_config() -> dict[str, Any]:
+    """Get default feature configuration.
+
+    Returns:
+        Dictionary with default feature settings.
+    """
+    return {
+        "version": 1,
+        "features": {
+            "save_cookies": False,
+            "debug_mode": False,
+        },
+    }
+
+
+def _validate_feature_config(config: dict[str, Any]) -> None:
+    """Validate feature configuration structure.
+
+    Args:
+        config: Feature configuration dictionary to validate.
+
+    Raises:
+        RuntimeError: If configuration is invalid.
+    """
+    if not isinstance(config, dict):
+        raise RuntimeError("Feature configuration must be a dictionary")
+
+    if "version" not in config:
+        raise RuntimeError("Feature configuration missing 'version' field")
+
+    if "features" not in config:
+        raise RuntimeError("Feature configuration missing 'features' field")
+
+    features = config["features"]
+    if not isinstance(features, dict):
+        raise RuntimeError("Feature configuration 'features' must be a dictionary")
+
+    # Validate save_cookies
+    if "save_cookies" in features and not isinstance(features["save_cookies"], bool):
+        raise RuntimeError("Feature 'save_cookies' must be a boolean")
+
+    # Validate debug_mode
+    if "debug_mode" in features and not isinstance(features["debug_mode"], bool):
+        raise RuntimeError("Feature 'debug_mode' must be a boolean")
+
+
+def _ensure_user_feature_config() -> None:
+    """Ensure user feature configuration file exists.
+
+    Creates config.json from defaults if it doesn't exist.
+    """
+    config_path = get_feature_config_path()
+
+    if not config_path.exists():
+        defaults = _get_default_feature_config()
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(config_path, "w") as f:
+            json.dump(defaults, f, indent=2)
+
+
+@lru_cache(maxsize=1)
+def get_feature_config() -> dict[str, Any]:
+    """Load feature configuration with defaults and environment overrides.
+
+    Precedence (highest to lowest):
+    1. Environment variables
+    2. User config file (~/.config/perplexity-cli/config.json)
+    3. Defaults
+
+    Environment variables:
+    - PERPLEXITY_SAVE_COOKIES: "true" or "false"
+    - PERPLEXITY_DEBUG_MODE: "true" or "false"
+
+    Returns:
+        Feature configuration dictionary.
+
+    Raises:
+        RuntimeError: If configuration is invalid.
+    """
+    # Ensure config file exists
+    _ensure_user_feature_config()
+
+    # Start with defaults
+    config = _get_default_feature_config()
+
+    # Try to load user configuration
+    config_path = get_feature_config_path()
+    try:
+        with open(config_path) as f:
+            user_config = json.load(f)
+
+        # Merge features from user config
+        if "features" in user_config:
+            config["features"].update(user_config["features"])
+
+    except (OSError, json.JSONDecodeError) as e:
+        # If user config is invalid, log warning and use defaults
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to load feature config, using defaults: {e}")
+
+    # Apply environment variable overrides
+    if "PERPLEXITY_SAVE_COOKIES" in os.environ:
+        value = os.environ["PERPLEXITY_SAVE_COOKIES"].lower()
+        config["features"]["save_cookies"] = value in ("true", "1", "yes")
+
+    if "PERPLEXITY_DEBUG_MODE" in os.environ:
+        value = os.environ["PERPLEXITY_DEBUG_MODE"].lower()
+        config["features"]["debug_mode"] = value in ("true", "1", "yes")
+
+    # Validate final configuration
+    _validate_feature_config(config)
+
+    return config
+
+
+def clear_feature_config_cache() -> None:
+    """Clear the feature configuration cache.
+
+    Useful for testing or when configuration changes.
+    """
+    get_feature_config.cache_clear()
+
+
+def get_save_cookies_enabled() -> bool:
+    """Check if cookie saving is enabled.
+
+    Returns:
+        True if cookies should be saved, False otherwise.
+    """
+    config = get_feature_config()
+    return config["features"].get("save_cookies", False)
+
+
+def get_debug_mode_enabled() -> bool:
+    """Check if debug mode is enabled in configuration.
+
+    Note: This does not check CLI --debug flag, only config file.
+
+    Returns:
+        True if debug mode is enabled in config, False otherwise.
+    """
+    config = get_feature_config()
+    return config["features"].get("debug_mode", False)
+
+
+def set_feature(key: str, value: bool) -> None:
+    """Set a feature configuration value.
+
+    Args:
+        key: Feature key ("save_cookies" or "debug_mode").
+        value: Boolean value to set.
+
+    Raises:
+        RuntimeError: If key is invalid or file cannot be written.
+    """
+    valid_keys = ["save_cookies", "debug_mode"]
+    if key not in valid_keys:
+        raise RuntimeError(f"Invalid feature key: {key}. Valid keys: {', '.join(valid_keys)}")
+
+    if not isinstance(value, bool):
+        raise RuntimeError(f"Feature value must be boolean, got {type(value).__name__}")
+
+    # Load current config
+    config = get_feature_config()
+
+    # Update value
+    config["features"][key] = value
+
+    # Write to file
+    config_path = get_feature_config_path()
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+    # Clear cache so next call loads fresh config
+    clear_feature_config_cache()

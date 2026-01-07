@@ -1,5 +1,6 @@
 """Command-line interface for Perplexity CLI."""
 
+import os
 import sys
 from importlib.resources import files
 from pathlib import Path
@@ -51,10 +52,18 @@ except (FileNotFoundError, AttributeError):
 @click.pass_context
 def main(ctx: click.Context, verbose: bool, debug: bool, log_file: Path | None) -> None:
     """Perplexity CLI - Query Perplexity.ai from the command line."""
-    # Setup logging
+    # Setup logging - check config for debug mode if no CLI flag
     if log_file is None:
         log_file = get_default_log_file()
-    setup_logging(verbose=verbose, debug=debug, log_file=log_file)
+
+    # Apply config debug mode if --debug flag not specified
+    effective_debug = debug
+    if not debug:
+        from perplexity_cli.utils.config import get_debug_mode_enabled
+
+        effective_debug = get_debug_mode_enabled()
+
+    setup_logging(verbose=verbose, debug=effective_debug, log_file=log_file)
 
     # Store context for subcommands
     ctx.ensure_object(dict)
@@ -114,13 +123,22 @@ def auth(ctx: click.Context, port: int) -> None:
         logger.info(f"Token and {len(cookies)} cookies extracted successfully")
 
         # Save token and cookies
+        from perplexity_cli.utils.config import get_save_cookies_enabled
+
         tm = TokenManager()
         tm.save_token(token, cookies=cookies)
         logger.info(f"Token and cookies saved to {tm.token_path}")
 
         click.echo("✓ Authentication successful!")
         click.echo(f"✓ Token saved to: {tm.token_path}")
-        click.echo(f"✓ {len(cookies)} cookies saved (including Cloudflare cookies)")
+
+        # Show cookie message based on config
+        if get_save_cookies_enabled():
+            click.echo(f"✓ {len(cookies)} cookies saved (including Cloudflare cookies)")
+        else:
+            click.echo("ℹ Cookies not saved (disabled in config)")
+            click.echo("  To enable cookie storage: pxcli set-config save_cookies true")
+
         click.echo('\nYou can now use: pxcli query "<your question>"')
 
     except RuntimeError as e:
@@ -619,7 +637,118 @@ def status() -> None:
             logger.error(f"Token file has insecure permissions: {e}")
     else:
         click.echo("Status: ✗ Not authenticated")
-        click.echo("\nAuthenticate with: perplexity-cli auth")
+        click.echo("\nAuthenticate with: pxcli auth")
+
+
+@main.command(name="set-config")
+@click.argument("key", type=click.Choice(["save_cookies", "debug_mode"]))
+@click.argument("value", type=click.Choice(["true", "false"]))
+@click.pass_context
+def set_config(ctx: click.Context, key: str, value: str) -> None:
+    """Set configuration options.
+
+    Configure feature toggles for pxcli.
+
+    Arguments:
+        KEY: Configuration key (save_cookies or debug_mode)
+        VALUE: Configuration value (true or false)
+
+    Examples:
+        pxcli set-config save_cookies true
+        pxcli set-config debug_mode false
+    """
+    from perplexity_cli.utils.config import clear_feature_config_cache, set_feature
+    from perplexity_cli.utils.logging import get_logger
+
+    logger = get_logger()
+
+    try:
+        # Convert string to boolean
+        bool_value = value.lower() == "true"
+
+        # Update configuration
+        set_feature(key, bool_value)
+
+        # Clear cache to ensure new value is used
+        clear_feature_config_cache()
+
+        click.echo(f"✓ Configuration updated: {key} = {bool_value}")
+        logger.info(f"Configuration updated: {key} = {bool_value}")
+
+        # Show helpful messages
+        if key == "save_cookies" and bool_value:
+            click.echo("\nℹ Cookie storage enabled.")
+            click.echo("  Re-authenticate to save cookies: pxcli auth")
+        elif key == "save_cookies" and not bool_value:
+            click.echo("\nℹ Cookie storage disabled.")
+            click.echo("  Only JWT token will be saved on next authentication.")
+        elif key == "debug_mode" and bool_value:
+            click.echo("\nℹ Debug mode enabled.")
+            click.echo("  All commands will now log at DEBUG level.")
+        elif key == "debug_mode" and not bool_value:
+            click.echo("\nℹ Debug mode disabled.")
+            click.echo("  Use --debug flag for one-time debug output.")
+
+    except RuntimeError as e:
+        click.echo(f"✗ Failed to update configuration: {e}", err=True)
+        logger.error(f"Configuration update failed: {e}", exc_info=True)
+        sys.exit(1)
+
+
+@main.command(name="show-config")
+@click.pass_context
+def show_config(ctx: click.Context) -> None:
+    """Display current configuration.
+
+    Shows feature toggle settings and their sources.
+
+    Example:
+        pxcli show-config
+    """
+    from perplexity_cli.utils.config import get_feature_config, get_feature_config_path
+    from perplexity_cli.utils.logging import get_logger
+
+    logger = get_logger()
+
+    try:
+        config = get_feature_config()
+        config_path = get_feature_config_path()
+
+        click.echo("Perplexity CLI Configuration")
+        click.echo("=" * 40)
+        click.echo(f"Config file: {config_path}")
+        click.echo()
+
+        click.echo("Feature Toggles:")
+        click.echo(f"  save_cookies: {config['features']['save_cookies']}")
+        click.echo(f"  debug_mode:   {config['features']['debug_mode']}")
+        click.echo()
+
+        # Show environment variable overrides if present
+        env_overrides = []
+        if "PERPLEXITY_SAVE_COOKIES" in os.environ:
+            env_overrides.append(
+                f"  PERPLEXITY_SAVE_COOKIES={os.environ['PERPLEXITY_SAVE_COOKIES']}"
+            )
+        if "PERPLEXITY_DEBUG_MODE" in os.environ:
+            env_overrides.append(f"  PERPLEXITY_DEBUG_MODE={os.environ['PERPLEXITY_DEBUG_MODE']}")
+
+        if env_overrides:
+            click.echo("Environment Overrides:")
+            for override in env_overrides:
+                click.echo(override)
+            click.echo()
+
+        click.echo("To change settings:")
+        click.echo("  pxcli set-config save_cookies true|false")
+        click.echo("  pxcli set-config debug_mode true|false")
+
+        logger.debug("Configuration displayed successfully")
+
+    except RuntimeError as e:
+        click.echo(f"✗ Failed to load configuration: {e}", err=True)
+        logger.error(f"Configuration display failed: {e}", exc_info=True)
+        sys.exit(1)
 
 
 @main.command()

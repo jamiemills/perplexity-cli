@@ -53,10 +53,16 @@ class TokenManager:
                 "created_at": datetime.now().isoformat(),
             }
 
-            # Encrypt and store cookies if provided
+            # Encrypt and store cookies if provided and enabled in config
             if cookies:
-                encrypted_cookies = encrypt_token(json.dumps(cookies))
-                data["cookies"] = encrypted_cookies
+                from perplexity_cli.utils.config import get_save_cookies_enabled
+
+                if get_save_cookies_enabled():
+                    encrypted_cookies = encrypt_token(json.dumps(cookies))
+                    data["cookies"] = encrypted_cookies
+                    self.logger.debug(f"Saving {len(cookies)} cookies (cookie storage enabled)")
+                else:
+                    self.logger.debug(f"Skipping {len(cookies)} cookies (cookie storage disabled in config)")
 
             # Write encrypted data to file
             with open(self.token_path, "w") as f:
@@ -66,7 +72,8 @@ class TokenManager:
             os.chmod(self.token_path, self.SECURE_PERMISSIONS)
 
             # Audit log
-            cookie_msg = f" and {len(cookies)} cookies" if cookies else ""
+            saved_cookies = "cookies" in data
+            cookie_msg = f" and {len(cookies)} cookies" if saved_cookies else ""
             self.logger.info(f"Token{cookie_msg} saved to {self.token_path}")
 
         except OSError as e:
