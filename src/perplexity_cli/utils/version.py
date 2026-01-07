@@ -16,7 +16,7 @@ def get_version() -> str:
     try:
         from importlib.metadata import version
 
-        return version("perplexity-cli")
+        return version("pxcli")
     except Exception:
         # Fallback for development mode (before package installation)
         from perplexity_cli import __version__
