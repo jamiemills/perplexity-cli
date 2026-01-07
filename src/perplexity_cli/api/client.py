@@ -65,9 +65,33 @@ class SSEClient:
                     f"Streaming POST to {url} (attempt {attempt + 1}/{self.max_retries})"
                 )
                 self.logger.debug(f"Request headers: {headers}")
+                self.logger.debug(f"Request body: {json_data}")
+
+                # Dump full HTTP request details
+                import sys
+                print(f"\n[HTTP REQUEST DUMP]", file=sys.stderr)
+                print(f"URL: {url}", file=sys.stderr)
+                print(f"Method: POST", file=sys.stderr)
+                print(f"Headers:", file=sys.stderr)
+                for k, v in headers.items():
+                    if k == "Authorization":
+                        print(f"  {k}: Bearer {v[7:50]}... (truncated)", file=sys.stderr)
+                    else:
+                        print(f"  {k}: {v}", file=sys.stderr)
+                print(f"Body: {json_data}", file=sys.stderr)
+                print(f"[END HTTP REQUEST DUMP]\n", file=sys.stderr)
 
                 with httpx.Client(timeout=self.timeout) as client:
                     with client.stream("POST", url, headers=headers, json=json_data) as response:
+                        # Dump response BEFORE checking status
+                        print(f"\n[HTTP RESPONSE DUMP]", file=sys.stderr)
+                        print(f"Status: {response.status_code}", file=sys.stderr)
+                        print(f"Reason: {response.reason_phrase}", file=sys.stderr)
+                        print(f"Headers:", file=sys.stderr)
+                        for k, v in response.headers.items():
+                            print(f"  {k}: {v}", file=sys.stderr)
+                        print(f"[END HTTP RESPONSE DUMP]\n", file=sys.stderr)
+
                         # Check for HTTP errors
                         response.raise_for_status()
 
