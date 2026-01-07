@@ -31,7 +31,7 @@ class TestCLICommands:
         """Test version option."""
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.4.0" in result.output
+        assert "0.4.1" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     def test_status_not_authenticated(self, mock_tm_class, runner):
@@ -44,7 +44,7 @@ class TestCLICommands:
 
         assert result.exit_code == 0
         assert "Not authenticated" in result.output
-        assert "perplexity-cli auth" in result.output
+        assert "pxcli auth" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.PerplexityAPI")

@@ -106,23 +106,74 @@ pxcli logout
 
 ## Configuration
 
+### Configuration File
+
+pxcli stores configuration in `~/.config/perplexity-cli/config.json`.
+
+**Default configuration:**
+```json
+{
+  "version": 1,
+  "features": {
+    "save_cookies": false,
+    "debug_mode": false
+  }
+}
+```
+
+**Feature Toggles:**
+
+- `save_cookies` (default: false) - Store browser cookies alongside JWT token
+  - When enabled: Saves 100+ cookies including Cloudflare verification cookies
+  - Purpose: May help bypass Cloudflare bot detection in some environments
+  - Privacy: Cookies are encrypted with same security as JWT token
+
+- `debug_mode` (default: false) - Enable debug-level logging
+  - When enabled: All commands log at DEBUG level
+  - Alternative: Use `--debug` flag for one-time debug output
+
+**Managing Configuration:**
+
+```bash
+# View current configuration
+pxcli show-config
+
+# Enable cookie storage
+pxcli set-config save_cookies true
+
+# Enable debug mode
+pxcli set-config debug_mode true
+
+# Disable features
+pxcli set-config save_cookies false
+pxcli set-config debug_mode false
+```
+
+**Note:** After changing `save_cookies`, you must re-authenticate for the change to take effect:
+```bash
+pxcli set-config save_cookies true
+pxcli auth  # Re-authenticate to save cookies
+```
+
 ### Environment Variables
 
-Configure perplexity-cli with environment variables:
+Environment variables override configuration file settings:
 
+- `PERPLEXITY_SAVE_COOKIES`: "true" or "false" - Override cookie storage setting
+- `PERPLEXITY_DEBUG_MODE`: "true" or "false" - Override debug mode setting
 - `PERPLEXITY_BASE_URL`: Custom API base URL (default: https://www.perplexity.ai)
 - `PERPLEXITY_QUERY_ENDPOINT`: Custom query endpoint
-- `PERPLEXITY_LOG_LEVEL`: Logging level - DEBUG, INFO, WARNING, ERROR (default: INFO)
-- `PERPLEXITY_LOG_FILE`: Path to log file (default: ~/.config/perplexity-cli/perplexity-cli.log)
 - `PERPLEXITY_RATE_LIMITING_ENABLED`: Enable/disable rate limiting (default: true)
 - `PERPLEXITY_RATE_LIMITING_RPS`: Requests per period (default: 20)
 - `PERPLEXITY_RATE_LIMITING_PERIOD`: Period in seconds (default: 60)
 
+**Precedence:** CLI flags > Environment variables > Config file > Defaults
+
 Example:
 
 ```bash
-export PERPLEXITY_LOG_LEVEL=DEBUG
-pxcli query "test"
+export PERPLEXITY_DEBUG_MODE=true
+pxcli query "test"  # Uses debug mode from environment variable
 ```
 
 ### Output Formats
