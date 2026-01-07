@@ -108,12 +108,12 @@ async def authenticate_with_browser(
     port: int = 9222,
     timeout: int = 120,
     poll_interval: float = 2.0,
-) -> str:
-    """Authenticate with Perplexity via Google and extract the session token.
+) -> tuple[str, dict[str, str]]:
+    """Authenticate with Perplexity via Google and extract the session token and cookies.
 
     Opens Chrome to the Perplexity login page and monitors network traffic
-    to capture the authentication token from localStorage. Uses polling to check
-    for authentication token instead of fixed wait times.
+    to capture the authentication token from localStorage and all browser cookies
+    (including Cloudflare cookies for bot detection bypass).
 
     Args:
         url: The Perplexity URL to navigate to. If None, uses configured base URL.
@@ -122,7 +122,9 @@ async def authenticate_with_browser(
         poll_interval: Time between polling attempts in seconds (default: 2.0).
 
     Returns:
-        The extracted authentication token.
+        Tuple of (token, cookies_dict) where:
+            - token: The extracted authentication token
+            - cookies_dict: Dictionary of all browser cookies {name: value}
 
     Raises:
         RuntimeError: If Chrome is not available or authentication fails.
@@ -194,12 +196,12 @@ async def authenticate_with_browser(
             if "result" in local_storage_result and "value" in local_storage_result["result"]:
                 local_storage_data = local_storage_result["result"]["value"]
 
-            # Extract session token from localStorage
-            session_token = _extract_token(cookies, local_storage_data)
+            # Extract session token and cookies
+            session_token, cookie_dict = _extract_token(cookies, local_storage_data)
 
             if session_token:
-                logger.info("Successfully extracted authentication token")
-                return session_token
+                logger.info(f"Successfully extracted authentication token and {len(cookie_dict)} cookies")
+                return (session_token, cookie_dict)
 
             # Wait before next poll
             logger.debug(
@@ -244,35 +246,40 @@ async def _wait_for_page_load(client: ChromeDevToolsClient, timeout: int = 30) -
         await asyncio.sleep(poll_interval)
 
 
-def _extract_token(cookies: list[dict[str, Any]], local_storage: dict[str, str]) -> str | None:
-    """Extract authentication token from cookies and localStorage.
+def _extract_token(cookies: list[dict[str, Any]], local_storage: dict[str, str]) -> tuple[str | None, dict[str, str]]:
+    """Extract authentication token and cookies from browser.
 
     Args:
-        cookies: List of cookie dictionaries.
+        cookies: List of cookie dictionaries from Chrome.
         local_storage: Dictionary of localStorage key-value pairs.
 
     Returns:
-        The authentication token string, or None if not found.
+        Tuple of (token, cookies_dict) where:
+            - token: The authentication token string, or None if not found
+            - cookies_dict: Dictionary of all cookies {name: value}
     """
-    # Try to extract from localStorage session data
+    # Build complete cookie dictionary from all browser cookies
+    cookie_dict = {c["name"]: c["value"] for c in cookies}
+
+    # Try to extract token from localStorage session data
+    token = None
     if "pplx-next-auth-session" in local_storage:
         try:
             session_data = json.loads(local_storage["pplx-next-auth-session"])
             # Perplexity stores session as NextAuth.js session
             # Return the entire session data as token
-            return json.dumps(session_data)
+            token = json.dumps(session_data)
         except (json.JSONDecodeError, TypeError):
             pass
 
-    # Try to extract from cookies (fallback)
-    cookie_dict = {c["name"]: c["value"] for c in cookies}
+    # Try to extract token from cookies (fallback)
+    if not token:
+        for cookie_name in ["__Secure-next-auth.session-token", "next-auth.session-token"]:
+            if cookie_name in cookie_dict:
+                token = cookie_dict[cookie_name]
+                break
 
-    # Common authentication cookie names
-    for cookie_name in ["__Secure-next-auth.session-token", "next-auth.session-token"]:
-        if cookie_name in cookie_dict:
-            return cookie_dict[cookie_name]
-
-    return None
+    return (token, cookie_dict)
 
 
 def authenticate_sync(
@@ -280,7 +287,7 @@ def authenticate_sync(
     port: int = 9222,
     timeout: int = 120,
     poll_interval: float = 2.0,
-) -> str:
+) -> tuple[str, dict[str, str]]:
     """Synchronous wrapper for authenticate_with_browser.
 
     Args:
@@ -290,7 +297,9 @@ def authenticate_sync(
         poll_interval: Time between polling attempts in seconds (default: 2.0).
 
     Returns:
-        The extracted authentication token.
+        Tuple of (token, cookies_dict) where:
+            - token: The extracted authentication token
+            - cookies_dict: Dictionary of all browser cookies {name: value}
 
     Raises:
         RuntimeError: If Chrome is not available or authentication fails.

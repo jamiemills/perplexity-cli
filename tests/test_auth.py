@@ -58,26 +58,30 @@ class TestTokenManager:
             data = json.load(f)
 
         # Token should be encrypted and stored with metadata
-        assert data["version"] == 1
+        assert data["version"] == 2  # v2 with cookie support
         assert data["encrypted"] is True
         assert "token" in data
         # Encrypted token should be a string
         assert isinstance(data["token"], str)
         # Should not contain the plaintext token
         assert data["token"] != test_token
+        # No cookies provided, so cookies field should not be present
+        assert "cookies" not in data or data.get("cookies") is None
 
     def test_load_token_returns_stored_token(self, token_manager, temp_token_file):
         """Test that load_token retrieves the stored token."""
         test_token = "test_session_token_12345"
         token_manager.save_token(test_token)
 
-        loaded_token = token_manager.load_token()
+        loaded_token, loaded_cookies = token_manager.load_token()
         assert loaded_token == test_token
+        assert loaded_cookies is None  # No cookies provided
 
     def test_load_token_returns_none_if_not_exists(self, token_manager):
         """Test that load_token returns None when token doesn't exist."""
-        loaded_token = token_manager.load_token()
+        loaded_token, loaded_cookies = token_manager.load_token()
         assert loaded_token is None
+        assert loaded_cookies is None
 
     def test_load_token_verifies_permissions(self, token_manager, temp_token_file):
         """Test that load_token verifies secure permissions."""
@@ -123,7 +127,7 @@ class TestTokenManager:
         token_manager.save_token("old_token")
         token_manager.save_token("new_token")
 
-        loaded_token = token_manager.load_token()
+        loaded_token, _ = token_manager.load_token()
         assert loaded_token == "new_token"
 
     def test_save_token_with_special_characters(self, token_manager):
@@ -131,7 +135,7 @@ class TestTokenManager:
         test_token = '{"sub": "user123", "exp": 9999999999}'
         token_manager.save_token(test_token)
 
-        loaded_token = token_manager.load_token()
+        loaded_token, _ = token_manager.load_token()
         assert loaded_token == test_token
 
     def test_verify_permissions_detects_insecure_perms(self, token_manager, temp_token_file):
@@ -166,7 +170,7 @@ class TestOAuthHandler:
         session_data = {"user": {"email": "test@example.com"}, "token": "abc123"}
         local_storage = {"pplx-next-auth-session": json.dumps(session_data)}
 
-        token = _extract_token([], local_storage)
+        token, cookies = _extract_token([], local_storage)
         assert token is not None
         parsed = json.loads(token)
         assert parsed["user"]["email"] == "test@example.com"
@@ -177,14 +181,14 @@ class TestOAuthHandler:
 
         cookies = [{"name": "__Secure-next-auth.session-token", "value": "cookie_token_123"}]
 
-        token = _extract_token(cookies, {})
+        token, cookies = _extract_token(cookies, {})
         assert token == "cookie_token_123"
 
     def test_extract_token_returns_none_if_not_found(self):
         """Test token extraction returns None if not found."""
         from perplexity_cli.auth.oauth_handler import _extract_token
 
-        token = _extract_token([], {})
+        token, cookies = _extract_token([], {})
         assert token is None
 
     def test_extract_token_prioritises_local_storage(self):
@@ -195,7 +199,7 @@ class TestOAuthHandler:
         local_storage = {"pplx-next-auth-session": json.dumps(session_data)}
         cookies = [{"name": "__Secure-next-auth.session-token", "value": "cookie_token"}]
 
-        token = _extract_token(cookies, local_storage)
+        token, cookies = _extract_token(cookies, local_storage)
         parsed = json.loads(token)
         assert parsed["user"]["email"] == "test@example.com"
 
@@ -205,7 +209,7 @@ class TestOAuthHandler:
 
         local_storage = {"pplx-next-auth-session": "{invalid json"}
 
-        token = _extract_token([], local_storage)
+        token, cookies = _extract_token([], local_storage)
         assert token is None
 
 

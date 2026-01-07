@@ -108,19 +108,20 @@ def auth(ctx: click.Context, port: int) -> None:
     click.echo(f"Navigate to {base_url} and log in if needed.\n")
 
     try:
-        # Authenticate and extract token
+        # Authenticate and extract token and cookies
         logger.debug("Calling authenticate_sync")
-        token = authenticate_sync(port=port)
-        logger.info("Token extracted successfully")
+        token, cookies = authenticate_sync(port=port)
+        logger.info(f"Token and {len(cookies)} cookies extracted successfully")
 
-        # Save token
+        # Save token and cookies
         tm = TokenManager()
-        tm.save_token(token)
-        logger.info(f"Token saved to {tm.token_path}")
+        tm.save_token(token, cookies=cookies)
+        logger.info(f"Token and cookies saved to {tm.token_path}")
 
         click.echo("✓ Authentication successful!")
         click.echo(f"✓ Token saved to: {tm.token_path}")
-        click.echo('\nYou can now use: perplexity-cli query "<your question>"')
+        click.echo(f"✓ {len(cookies)} cookies saved (including Cloudflare cookies)")
+        click.echo('\nYou can now use: pxcli query "<your question>"')
 
     except RuntimeError as e:
         logger.error(f"Authentication failed: {e}", exc_info=True)
@@ -216,14 +217,14 @@ def query(
         f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}"
     )
 
-    # Load token
+    # Load token and cookies
     tm = TokenManager()
-    token = tm.load_token()
+    token, cookies = tm.load_token()
 
     if not token:
         click.echo("✗ Not authenticated.", err=True)
         click.echo(
-            "\nPlease authenticate first with: perplexity-cli auth",
+            "\nPlease authenticate first with: pxcli auth",
             err=True,
         )
         logger.warning("Query attempted without authentication")
@@ -253,8 +254,8 @@ def query(
             final_query = f"{query_text}\n\n{style}"
             logger.debug(f"Applied style: {style[:50]}...")
 
-        # Create API client
-        api = PerplexityAPI(token=token)
+        # Create API client with cookies
+        api = PerplexityAPI(token=token, cookies=cookies)
 
         # Handle streaming vs complete answer
         if stream:
@@ -568,11 +569,13 @@ def status() -> None:
 
     if tm.token_exists():
         try:
-            token = tm.load_token()
+            token, cookies = tm.load_token()
             if token:
                 click.echo("Status: ✓ Authenticated")
                 click.echo(f"Token file: {tm.token_path}")
                 click.echo(f"Token length: {len(token)} characters")
+                if cookies:
+                    click.echo(f"Cookies: {len(cookies)} stored")
 
                 # Show token file metadata
                 try:
@@ -587,7 +590,7 @@ def status() -> None:
                 # Try to verify token works with a minimal test query
                 try:
                     logger.debug("Verifying token validity")
-                    api = PerplexityAPI(token=token, timeout=10)
+                    api = PerplexityAPI(token=token, cookies=cookies, timeout=10)
                     # Use a very short test query to verify token
                     test_answer = api.get_complete_answer("test")
                     if test_answer and len(test_answer.text) > 0:
@@ -711,14 +714,14 @@ def export_threads(
 
     click.echo("Exporting threads from Perplexity.ai library...")
 
-    # Load token
+    # Load token and cookies
     tm = TokenManager()
-    token = tm.load_token()
+    token, cookies = tm.load_token()
 
     if not token:
         click.echo("✗ Not authenticated.", err=True)
         click.echo(
-            "\nPlease authenticate first with: perplexity-cli auth",
+            "\nPlease authenticate first with: pxcli auth",
             err=True,
         )
         logger.warning("Export attempted without authentication")

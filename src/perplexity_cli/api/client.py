@@ -13,15 +13,17 @@ from perplexity_cli.utils.version import get_version
 class SSEClient:
     """HTTP client with Server-Sent Events (SSE) streaming support."""
 
-    def __init__(self, token: str, timeout: int = 60, max_retries: int = 3) -> None:
+    def __init__(self, token: str, cookies: dict[str, str] | None = None, timeout: int = 60, max_retries: int = 3) -> None:
         """Initialise SSE client.
 
         Args:
             token: Authentication JWT token.
+            cookies: Optional browser cookies for Cloudflare bypass.
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for initial connection.
         """
         self.token = token
+        self.cookies = cookies
         self.timeout = timeout
         self.max_retries = max_retries
         self.logger = get_logger()
@@ -30,9 +32,9 @@ class SSEClient:
         """Get HTTP headers for API requests.
 
         Returns:
-            Dictionary of HTTP headers including authentication.
+            Dictionary of HTTP headers including authentication and cookies.
         """
-        return {
+        headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
@@ -40,6 +42,13 @@ class SSEClient:
             "Origin": "https://www.perplexity.ai",
             "Referer": "https://www.perplexity.ai/",
         }
+
+        # Add cookies if available (for Cloudflare bypass)
+        if self.cookies:
+            cookie_str = "; ".join(f"{k}={v}" for k, v in self.cookies.items())
+            headers["Cookie"] = cookie_str
+
+        return headers
 
     def stream_post(self, url: str, json_data: dict) -> Iterator[dict]:
         """POST request with SSE streaming response.
@@ -64,38 +73,9 @@ class SSEClient:
                 self.logger.debug(
                     f"Streaming POST to {url} (attempt {attempt + 1}/{self.max_retries})"
                 )
-                self.logger.debug(f"Request headers: {headers}")
-                self.logger.debug(f"Request body: {json_data}")
-
-                # Dump full HTTP request details
-                import sys
-                print("\n[HTTP REQUEST DUMP]", file=sys.stderr)
-                print(f"URL: {url}", file=sys.stderr)
-                print("Method: POST", file=sys.stderr)
-                print("Headers:", file=sys.stderr)
-                for k, v in headers.items():
-                    if k == "Authorization":
-                        print(f"  {k}: Bearer {v[7:50]}... (truncated)", file=sys.stderr)
-                    else:
-                        print(f"  {k}: {v}", file=sys.stderr)
-                print(f"Body: {json_data}", file=sys.stderr)
-                print("[END HTTP REQUEST DUMP]\n", file=sys.stderr)
 
                 with httpx.Client(timeout=self.timeout) as client:
                     with client.stream("POST", url, headers=headers, json=json_data) as response:
-                        # Dump response BEFORE checking status (skip if testing)
-                        try:
-                            print("\n[HTTP RESPONSE DUMP]", file=sys.stderr)
-                            print(f"Status: {response.status_code}", file=sys.stderr)
-                            print(f"Reason: {response.reason_phrase}", file=sys.stderr)
-                            print("Headers:", file=sys.stderr)
-                            for k, v in response.headers.items():
-                                print(f"  {k}: {v}", file=sys.stderr)
-                            print("[END HTTP RESPONSE DUMP]\n", file=sys.stderr)
-                        except (AttributeError, TypeError):
-                            # Skip dump if response is mocked in tests
-                            pass
-
                         # Check for HTTP errors
                         response.raise_for_status()
 
