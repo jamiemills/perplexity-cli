@@ -83,14 +83,18 @@ class SSEClient:
 
                 with httpx.Client(timeout=self.timeout) as client:
                     with client.stream("POST", url, headers=headers, json=json_data) as response:
-                        # Dump response BEFORE checking status
-                        print("\n[HTTP RESPONSE DUMP]", file=sys.stderr)
-                        print(f"Status: {response.status_code}", file=sys.stderr)
-                        print(f"Reason: {response.reason_phrase}", file=sys.stderr)
-                        print("Headers:", file=sys.stderr)
-                        for k, v in response.headers.items():
-                            print(f"  {k}: {v}", file=sys.stderr)
-                        print("[END HTTP RESPONSE DUMP]\n", file=sys.stderr)
+                        # Dump response BEFORE checking status (skip if testing)
+                        try:
+                            print("\n[HTTP RESPONSE DUMP]", file=sys.stderr)
+                            print(f"Status: {response.status_code}", file=sys.stderr)
+                            print(f"Reason: {response.reason_phrase}", file=sys.stderr)
+                            print("Headers:", file=sys.stderr)
+                            for k, v in response.headers.items():
+                                print(f"  {k}: {v}", file=sys.stderr)
+                            print("[END HTTP RESPONSE DUMP]\n", file=sys.stderr)
+                        except (AttributeError, TypeError):
+                            # Skip dump if response is mocked in tests
+                            pass
 
                         # Check for HTTP errors
                         response.raise_for_status()
