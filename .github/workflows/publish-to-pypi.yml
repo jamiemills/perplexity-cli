@@ -38,7 +38,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest --ignore=tests/test_manual_auth.py
+          pytest --ignore=tests/test_manual_auth.py -m "not integration"
 
       - name: Build distributions
         run: |

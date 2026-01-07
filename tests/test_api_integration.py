@@ -14,14 +14,14 @@ class TestPerplexityAPIIntegration:
 
     @pytest.fixture
     def api(self):
-        """Create PerplexityAPI instance with real token."""
+        """Create PerplexityAPI instance with real token and cookies."""
         tm = TokenManager()
-        token = tm.load_token()
+        token, cookies = tm.load_token()
 
         if not token:
             pytest.skip("No token found. Run: python tests/save_auth_token.py")
 
-        return PerplexityAPI(token=token)
+        return PerplexityAPI(token=token, cookies=cookies)
 
     def test_submit_query_returns_messages(self, api):
         """Test that submit_query returns SSE messages."""
