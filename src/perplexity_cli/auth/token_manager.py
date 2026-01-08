@@ -62,7 +62,9 @@ class TokenManager:
                     data["cookies"] = encrypted_cookies
                     self.logger.debug(f"Saving {len(cookies)} cookies (cookie storage enabled)")
                 else:
-                    self.logger.debug(f"Skipping {len(cookies)} cookies (cookie storage disabled in config)")
+                    self.logger.debug(
+                        f"Skipping {len(cookies)} cookies (cookie storage disabled in config)"
+                    )
 
             # Write encrypted data to file
             with open(self.token_path, "w") as f:
@@ -147,6 +149,23 @@ class TokenManager:
                 if encrypted_cookies:
                     cookies_json = decrypt_token(encrypted_cookies)
                     cookies = json.loads(cookies_json)
+
+                    # Debug logging: identify Cloudflare-related cookies
+                    cf_cookies = {
+                        k: v
+                        for k, v in cookies.items()
+                        if k.startswith("cf") or k.startswith("__cf")
+                    }
+                    self.logger.debug(
+                        f"Loaded {len(cookies)} cookies, including {len(cf_cookies)} Cloudflare cookies"
+                    )
+                    if cf_cookies:
+                        self.logger.debug(f"Cloudflare cookies: {', '.join(cf_cookies.keys())}")
+            else:
+                if version == 2:
+                    self.logger.debug("Token is v2 format but no cookies stored")
+                else:
+                    self.logger.debug(f"Token is v{version} format (no cookies)")
 
             # Audit log
             cookie_msg = f" and {len(cookies)} cookies" if cookies else ""
