@@ -228,9 +228,41 @@ def query(
     JSON format tip: Use jq -r to display newlines properly:
         perplexity-cli query --format json "Question" | jq -r '.answer'
     """
+    import socket
+
+    from perplexity_cli.utils.config import get_save_cookies_enabled
     from perplexity_cli.utils.logging import get_logger
 
     logger = get_logger()
+
+    # Debug: Log environment details at startup
+    try:
+        hostname = socket.gethostname()
+        logger.debug(f"Hostname: {hostname}")
+    except Exception:
+        pass
+    logger.debug(f"Platform: {sys.platform}")
+    logger.debug(f"Python version: {sys.version.split()[0]}")
+    logger.debug(f"Python executable: {sys.executable}")
+
+    # Detect execution environment
+    exec_env = "unknown"
+    if hasattr(sys, "base_prefix"):
+        if sys.base_prefix != sys.prefix:
+            exec_env = "virtualenv"
+    if "VIRTUAL_ENV" in os.environ:
+        exec_env = "venv"
+    if "UV_ACTIVE" in os.environ or "UVXENV" in os.environ:
+        exec_env = "uvx"
+
+    logger.debug(f"Execution environment: {exec_env}")
+
+    # Log token and config paths
+    token_path = Path.home() / ".config" / "perplexity-cli" / "token.json"
+    logger.debug(f"Token path: {token_path}")
+    logger.debug(f"Token exists: {token_path.exists()}")
+    logger.debug(f"Cookie storage enabled: {get_save_cookies_enabled()}")
+
     logger.debug(
         f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}"
     )
