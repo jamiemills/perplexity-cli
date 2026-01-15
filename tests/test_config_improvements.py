@@ -63,34 +63,34 @@ class TestConfigEnvironmentVariables:
     def test_env_var_override_base_url(self, monkeypatch):
         """Test that PERPLEXITY_BASE_URL overrides config."""
         monkeypatch.setenv("PERPLEXITY_BASE_URL", "https://custom.example.com")
-        
+
         # Clear cache to force reload
         clear_urls_cache()
-        
+
         urls = get_urls()
-        assert urls["perplexity"]["base_url"] == "https://custom.example.com"
+        assert urls.base_url == "https://custom.example.com"
 
     def test_env_var_override_query_endpoint(self, monkeypatch):
         """Test that PERPLEXITY_QUERY_ENDPOINT overrides config."""
         monkeypatch.setenv("PERPLEXITY_QUERY_ENDPOINT", "https://custom.example.com/api")
-        
+
         # Clear cache to force reload
         clear_urls_cache()
-        
+
         urls = get_urls()
-        assert urls["perplexity"]["query_endpoint"] == "https://custom.example.com/api"
+        assert urls.query_endpoint == "https://custom.example.com/api"
 
     def test_env_var_override_both(self, monkeypatch):
         """Test that both env vars can override config."""
         monkeypatch.setenv("PERPLEXITY_BASE_URL", "https://custom1.example.com")
         monkeypatch.setenv("PERPLEXITY_QUERY_ENDPOINT", "https://custom2.example.com/api")
-        
+
         # Clear cache to force reload
         clear_urls_cache()
-        
+
         urls = get_urls()
-        assert urls["perplexity"]["base_url"] == "https://custom1.example.com"
-        assert urls["perplexity"]["query_endpoint"] == "https://custom2.example.com/api"
+        assert urls.base_url == "https://custom1.example.com"
+        assert urls.query_endpoint == "https://custom2.example.com/api"
 
 
 class TestConfigCache:

@@ -55,7 +55,7 @@ class TestWebResult:
         result = WebResult.from_dict(data)
         assert result.name == "Test"
         assert result.url == ""
-        assert result.snippet == ""
+        assert result.snippet is None
 
 
 class TestAnswer:

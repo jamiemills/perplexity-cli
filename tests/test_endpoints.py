@@ -97,6 +97,7 @@ class TestPerplexityAPIGetCompleteAnswer:
         mock_message = Mock(spec=SSEMessage)
         mock_message.final_sse_message = True
         mock_message.blocks = []  # No blocks
+        mock_message.web_results = None
 
         mock_submit.return_value = [mock_message]
 

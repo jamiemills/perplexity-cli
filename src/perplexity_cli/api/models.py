@@ -1,78 +1,51 @@
 """Data models for Perplexity API requests and responses."""
 
-from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from perplexity_cli.utils.version import get_api_version
 
 
-@dataclass
-class QueryParams:
+class QueryParams(BaseModel):
     """Parameters for a Perplexity query request."""
 
-    language: str = "en-US"
-    timezone: str = "Europe/London"
-    search_focus: str = "internet"
-    mode: str = "copilot"
-    frontend_uuid: str = ""
-    frontend_context_uuid: str = ""
-    version: str = field(default_factory=get_api_version)
-    sources: list[str] = field(default_factory=lambda: ["web"])
-    attachments: list[Any] = field(default_factory=list)
-    search_recency_filter: str | None = None
-    model_preference: str = "pplx_pro"
-    is_related_query: bool = False
-    is_sponsored: bool = False
-    prompt_source: str = "user"
-    query_source: str = "home"
-    is_incognito: bool = False
-    local_search_enabled: bool = False
-    use_schematized_api: bool = True
-    send_back_text_in_streaming_api: bool = False
-    client_coordinates: Any | None = None
-    mentions: list[Any] = field(default_factory=list)
-    skip_search_enabled: bool = True
-    is_nav_suggestions_disabled: bool = False
-    always_search_override: bool = False
-    override_no_search: bool = False
-    should_ask_for_mcp_tool_confirmation: bool = True
-    browser_agent_allow_once_from_toggle: bool = False
+    model_config = ConfigDict(populate_by_name=True)
+
+    language: str = Field(default="en-US")
+    timezone: str = Field(default="Europe/London")
+    search_focus: str = Field(default="internet")
+    mode: str = Field(default="copilot")
+    frontend_uuid: str = Field(default="")
+    frontend_context_uuid: str = Field(default="")
+    version: str = Field(default_factory=get_api_version)
+    sources: list[str] = Field(default_factory=lambda: ["web"])
+    attachments: list[Any] = Field(default_factory=list)
+    search_recency_filter: str | None = Field(default=None)
+    model_preference: str = Field(default="pplx_pro")
+    is_related_query: bool = Field(default=False)
+    is_sponsored: bool = Field(default=False)
+    prompt_source: str = Field(default="user")
+    query_source: str = Field(default="home")
+    is_incognito: bool = Field(default=False)
+    local_search_enabled: bool = Field(default=False)
+    use_schematized_api: bool = Field(default=True)
+    send_back_text_in_streaming_api: bool = Field(default=False)
+    client_coordinates: Any | None = Field(default=None)
+    mentions: list[Any] = Field(default_factory=list)
+    skip_search_enabled: bool = Field(default=True)
+    is_nav_suggestions_disabled: bool = Field(default=False)
+    always_search_override: bool = Field(default=False)
+    override_no_search: bool = Field(default=False)
+    should_ask_for_mcp_tool_confirmation: bool = Field(default=True)
+    browser_agent_allow_once_from_toggle: bool = Field(default=False)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API request."""
-        return {
-            "language": self.language,
-            "timezone": self.timezone,
-            "search_focus": self.search_focus,
-            "mode": self.mode,
-            "frontend_uuid": self.frontend_uuid,
-            "frontend_context_uuid": self.frontend_context_uuid,
-            "version": self.version,
-            "sources": self.sources,
-            "attachments": self.attachments,
-            "search_recency_filter": self.search_recency_filter,
-            "model_preference": self.model_preference,
-            "is_related_query": self.is_related_query,
-            "is_sponsored": self.is_sponsored,
-            "prompt_source": self.prompt_source,
-            "query_source": self.query_source,
-            "is_incognito": self.is_incognito,
-            "local_search_enabled": self.local_search_enabled,
-            "use_schematized_api": self.use_schematized_api,
-            "send_back_text_in_streaming_api": self.send_back_text_in_streaming_api,
-            "client_coordinates": self.client_coordinates,
-            "mentions": self.mentions,
-            "skip_search_enabled": self.skip_search_enabled,
-            "is_nav_suggestions_disabled": self.is_nav_suggestions_disabled,
-            "always_search_override": self.always_search_override,
-            "override_no_search": self.override_no_search,
-            "should_ask_for_mcp_tool_confirmation": self.should_ask_for_mcp_tool_confirmation,
-            "browser_agent_allow_once_from_toggle": self.browser_agent_allow_once_from_toggle,
-        }
+        return self.model_dump()
 
 
-@dataclass
-class QueryRequest:
+class QueryRequest(BaseModel):
     """Complete query request to Perplexity API."""
 
     query_str: str
@@ -80,17 +53,19 @@ class QueryRequest:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API request."""
-        return {"query_str": self.query_str, "params": self.params.to_dict()}
+        return {
+            "query_str": self.query_str,
+            "params": self.params.to_dict(),
+        }
 
 
-@dataclass
-class WebResult:
+class WebResult(BaseModel):
     """Search result from Perplexity."""
 
     name: str
     url: str
-    snippet: str
-    timestamp: str | None = None
+    snippet: str | None = Field(default=None)
+    timestamp: str | None = Field(default=None)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WebResult":
@@ -98,13 +73,12 @@ class WebResult:
         return cls(
             name=data.get("name", ""),
             url=data.get("url", ""),
-            snippet=data.get("snippet", ""),
+            snippet=data.get("snippet"),
             timestamp=data.get("timestamp"),
         )
 
 
-@dataclass
-class Block:
+class Block(BaseModel):
     """Answer block from SSE response."""
 
     intended_usage: str
@@ -119,8 +93,7 @@ class Block:
         return cls(intended_usage=intended_usage, content=content)
 
 
-@dataclass
-class SSEMessage:
+class SSEMessage(BaseModel):
     """Single SSE message from streaming response."""
 
     backend_uuid: str
@@ -129,14 +102,14 @@ class SSEMessage:
     frontend_context_uuid: str
     display_model: str
     mode: str
-    thread_url_slug: str | None
+    thread_url_slug: str | None = Field(default=None)
     status: str
     text_completed: bool
-    blocks: list[Block]
+    blocks: list[Block] = Field(default_factory=list)
     final_sse_message: bool
-    cursor: str | None = None
-    read_write_token: str | None = None
-    web_results: list[WebResult] | None = None
+    cursor: str | None = Field(default=None)
+    read_write_token: str | None = Field(default=None)
+    web_results: list[WebResult] | None = Field(default=None)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SSEMessage":
@@ -173,9 +146,8 @@ class SSEMessage:
         )
 
 
-@dataclass
-class Answer:
+class Answer(BaseModel):
     """Complete answer with text and references."""
 
     text: str
-    references: list[WebResult] = field(default_factory=list)
+    references: list[WebResult] = Field(default_factory=list)
