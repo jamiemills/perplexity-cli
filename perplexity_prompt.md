@@ -10,7 +10,7 @@ SOURCING: Never assume or guess. If asked for an opinion, identify and cite cred
 
 <rule:output>
 STRUCTURE:
-Always use the structure and headings below 
+Always use the structure and headings below
 1. "Summary" heading: 1–2 direct sentences capturing the core answer
 2. Detailed reasoning, research, and context in sections below
 3. "TL;DR" heading: concise bullet-point summary

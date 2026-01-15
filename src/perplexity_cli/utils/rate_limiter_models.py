@@ -73,9 +73,7 @@ class RateLimiterStats(BaseModel):
         total_wait_time: float,
     ) -> "RateLimiterStats":
         """Create stats from raw data."""
-        average_wait_time = (
-            total_wait_time / total_requests if total_requests > 0 else 0.0
-        )
+        average_wait_time = total_wait_time / total_requests if total_requests > 0 else 0.0
         return cls(
             total_requests=total_requests,
             total_wait_time=total_wait_time,

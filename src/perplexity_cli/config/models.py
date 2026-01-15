@@ -1,6 +1,5 @@
 """Pydantic models for configuration management."""
 
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -105,6 +104,4 @@ class AppConfig(BaseModel):
         Returns:
             AppConfig instance with validated configurations
         """
-        return cls(
-            urls=urls_config, rate_limiting=rate_limiting_config, features=features_config
-        )
+        return cls(urls=urls_config, rate_limiting=rate_limiting_config, features=features_config)

@@ -4,10 +4,8 @@ Tests the ThreadCacheManager class, cache invalidation logic, and encryption.
 """
 
 import json
-import os
 import stat
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -169,9 +167,7 @@ class TestCacheInvalidation:
 
     def test_requires_fresh_data_no_cache(self, cache_manager):
         """Test that missing cache requires fresh data."""
-        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data(
-            "2025-12-22", "2025-12-23"
-        )
+        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data("2025-12-22", "2025-12-23")
         assert needs_fresh is True
 
     def test_requires_fresh_data_range_within_cache(self, cache_manager, cached_threads):
@@ -179,22 +175,16 @@ class TestCacheInvalidation:
         cache_manager.save_cache(cached_threads)
 
         # Request range that ends before cache_newest_date
-        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data(
-            "2025-12-21", "2025-12-22"
-        )
+        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data("2025-12-21", "2025-12-22")
         assert needs_fresh is False
         assert from_d is None
         assert to_d is None
 
-    def test_requires_fresh_data_range_extends_beyond_cache(
-        self, cache_manager, cached_threads
-    ):
+    def test_requires_fresh_data_range_extends_beyond_cache(self, cache_manager, cached_threads):
         """Test that range extending beyond cache needs refresh."""
         cache_manager.save_cache(cached_threads)
 
-        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data(
-            "2025-12-22", "2025-12-24"
-        )
+        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data("2025-12-22", "2025-12-24")
         assert needs_fresh is True
         # Should fetch from cache_newest_date (2025-12-23) not 2025-12-24
         assert from_d == "2025-12-23"
@@ -204,23 +194,17 @@ class TestCacheInvalidation:
         """Test that range before cache needs refresh."""
         cache_manager.save_cache(cached_threads)
 
-        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data(
-            "2025-12-20", "2025-12-21"
-        )
+        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data("2025-12-20", "2025-12-21")
         assert needs_fresh is True
         assert from_d == "2025-12-20"
         assert to_d == "2025-12-21"
 
-    def test_requires_fresh_data_includes_cache_newest_date(
-        self, cache_manager, cached_threads
-    ):
+    def test_requires_fresh_data_includes_cache_newest_date(self, cache_manager, cached_threads):
         """Test that fetch range includes cache_newest_date (same-day refetch)."""
         cache_manager.save_cache(cached_threads)
 
         # Request exactly matches cache newest date
-        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data(
-            "2025-12-23", "2025-12-23"
-        )
+        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data("2025-12-23", "2025-12-23")
         # Should still fetch because range matches cache_newest_date
         # (may have additional threads added that day)
         assert needs_fresh is True
@@ -231,9 +215,7 @@ class TestCacheInvalidation:
         """Test that missing to_date uses today's date."""
         cache_manager.save_cache(cached_threads)
 
-        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data(
-            "2025-12-22", None
-        )
+        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data("2025-12-22", None)
         # Since to_date is None, it should default to today
         # Today is definitely after cache_newest_date
         assert needs_fresh is True

@@ -200,7 +200,9 @@ async def authenticate_with_browser(
             session_token, cookie_dict = _extract_token(cookies, local_storage_data)
 
             if session_token:
-                logger.info(f"Successfully extracted authentication token and {len(cookie_dict)} cookies")
+                logger.info(
+                    f"Successfully extracted authentication token and {len(cookie_dict)} cookies"
+                )
                 return (session_token, cookie_dict)
 
             # Wait before next poll
@@ -246,7 +248,9 @@ async def _wait_for_page_load(client: ChromeDevToolsClient, timeout: int = 30) -
         await asyncio.sleep(poll_interval)
 
 
-def _extract_token(cookies: list[dict[str, Any]], local_storage: dict[str, str]) -> tuple[str | None, dict[str, str]]:
+def _extract_token(
+    cookies: list[dict[str, Any]], local_storage: dict[str, str]
+) -> tuple[str | None, dict[str, str]]:
     """Extract authentication token and cookies from browser.
 
     Args:
