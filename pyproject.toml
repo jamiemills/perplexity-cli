@@ -46,6 +46,7 @@ dev = [
     "pytest-asyncio>=1.2.0",
     "ruff>=0.1",
     "mypy>=1.0",
+    "pre-commit>=3.0",
 ]
 
 [project.urls]
@@ -95,4 +96,12 @@ markers = [
 ]
 filterwarnings = [
     "ignore::RuntimeWarning:.*coroutine.*authenticate_with_browser.*was never awaited",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = [
+    "B101",  # assert_used (required for pytest)
+    "B110",  # try_except_pass (acceptable error handling pattern)
+    "B310",  # urllib_urlopen (false positive on requests library)
 ]

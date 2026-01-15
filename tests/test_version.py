@@ -1,7 +1,5 @@
 """Tests for version utilities."""
 
-import pytest
-
 from perplexity_cli.utils.version import get_api_version, get_version, get_version_from_pyproject
 
 
@@ -26,4 +24,3 @@ class TestVersionUtilities:
         api_version = get_api_version()
         assert isinstance(api_version, str)
         assert api_version == "2.18"
-

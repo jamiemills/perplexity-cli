@@ -261,16 +261,8 @@ class TestJSONFormatter:
         """Test JSON output includes references."""
         formatter = JSONFormatter()
         refs = [
-            WebResult(
-                name="Test Source",
-                url="https://test.com",
-                snippet="This is a test snippet"
-            ),
-            WebResult(
-                name="Second Source",
-                url="https://test2.com",
-                snippet="Another snippet"
-            ),
+            WebResult(name="Test Source", url="https://test.com", snippet="This is a test snippet"),
+            WebResult(name="Second Source", url="https://test2.com", snippet="Another snippet"),
         ]
         answer = Answer(text="Answer text", references=refs)
         result = formatter.format_complete(answer)

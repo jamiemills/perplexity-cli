@@ -250,7 +250,7 @@ def _validate_rate_limiting_config(config: dict[str, Any]) -> None:
             raise RuntimeError("Rate limiting 'requests_per_period' must be greater than 0")
 
     if "period_seconds" in config:
-        if not isinstance(config["period_seconds"], (int, float)):
+        if not isinstance(config["period_seconds"], int | float):
             raise RuntimeError("Rate limiting 'period_seconds' must be a number")
         if config["period_seconds"] <= 0:
             raise RuntimeError("Rate limiting 'period_seconds' must be greater than 0")

@@ -1,11 +1,5 @@
 """Tests for improved configuration management."""
 
-import json
-import os
-import tempfile
-from pathlib import Path
-from unittest.mock import patch
-
 import pytest
 
 from perplexity_cli.utils.config import (
@@ -100,10 +94,9 @@ class TestConfigCache:
         """Test clearing URLs cache."""
         # Should not raise
         clear_urls_cache()
-        
+
         # Cache should be cleared, next call should reload
         urls1 = get_urls()
         clear_urls_cache()
         urls2 = get_urls()
         assert urls1 == urls2
-

@@ -1,7 +1,6 @@
 """Tests for token encryption utilities."""
 
 import os
-import socket
 from unittest import mock
 
 import pytest
