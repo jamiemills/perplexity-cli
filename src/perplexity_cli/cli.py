@@ -379,11 +379,11 @@ def _stream_query_response(
         status = e.response.status_code
         logger.error(f"HTTP error {status} during streaming: {e}")
         click.echo()  # Newline after streamed content
-        if status == 401:
+        if status == 401 and api.client.token:
             click.echo("✗ Authentication failed. Token may be expired.", err=True)
             click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
             sys.exit(1)
-        elif status == 403:
+        elif status == 403 and api.client.token:
             click.echo("✗ Access forbidden. Check your permissions.", err=True)
             sys.exit(1)
         elif status == 429:
