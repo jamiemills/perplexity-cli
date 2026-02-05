@@ -181,16 +181,16 @@ class TestCLICommands:
 
     @patch("perplexity_cli.cli.TokenManager")
     def test_query_not_authenticated(self, mock_tm_class, runner):
-        """Test query when not authenticated."""
+        """Test query without authentication attempts anonymous query."""
         mock_tm = Mock()
         mock_tm.load_token.return_value = None
         mock_tm_class.return_value = mock_tm
 
         result = runner.invoke(query, ["test query"])
 
-        assert result.exit_code == 1
-        assert "Not authenticated" in result.output
-        assert "perplexity-cli auth" in result.output
+        # Without token, query is attempted anonymously (may succeed or fail)
+        # Should not show "Not authenticated" error anymore
+        assert "Not authenticated" not in result.output
 
     @patch("perplexity_cli.cli.StyleManager")
     @patch("perplexity_cli.cli.TokenManager")

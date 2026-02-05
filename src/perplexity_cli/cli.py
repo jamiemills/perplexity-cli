@@ -177,6 +177,9 @@ def query(
 ) -> None:
     """Submit a query to Perplexity.ai and get an answer.
 
+    Authentication is optional - queries work without login. Authenticate with
+    'perplexity-cli auth' to access thread library and personalized features.
+
     The answer is printed to stdout, making it easy to pipe to other commands.
 
     Output formats:
@@ -209,18 +212,12 @@ def query(
     logger = get_logger()
     logger.debug(f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}")
 
-    # Load token
+    # Load token (optional - allows anonymous queries)
     tm = TokenManager()
     token = tm.load_token()
 
     if not token:
-        click.echo("✗ Not authenticated.", err=True)
-        click.echo(
-            "\nPlease authenticate first with: perplexity-cli auth",
-            err=True,
-        )
-        logger.warning("Query attempted without authentication")
-        sys.exit(1)
+        logger.info("No token found, using anonymous query")
 
     try:
         # Determine output format
@@ -274,10 +271,10 @@ def query(
     except httpx.HTTPStatusError as e:
         status = e.response.status_code
         logger.error(f"HTTP error {status}: {e}")
-        if status == 401:
+        if status == 401 and token:
             click.echo("✗ Authentication failed. Token may be expired.", err=True)
             click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
-        elif status == 403:
+        elif status == 403 and token:
             click.echo("✗ Access forbidden. Check your permissions.", err=True)
         elif status == 429:
             click.echo("✗ Rate limit exceeded. Please wait and try again.", err=True)
