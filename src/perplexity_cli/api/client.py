@@ -1,10 +1,12 @@
 """HTTP client for Perplexity API with SSE streaming support."""
 
 import json
+import uuid
 from collections.abc import Iterator
 
 import httpx
 
+from perplexity_cli.utils.config import get_perplexity_base_url
 from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.retry import is_retryable_error
 from perplexity_cli.utils.version import get_version
@@ -13,11 +15,11 @@ from perplexity_cli.utils.version import get_version
 class SSEClient:
     """HTTP client with Server-Sent Events (SSE) streaming support."""
 
-    def __init__(self, token: str, timeout: int = 60, max_retries: int = 3) -> None:
+    def __init__(self, token: str | None = None, timeout: int = 60, max_retries: int = 3) -> None:
         """Initialise SSE client.
 
         Args:
-            token: Authentication JWT token.
+            token: Optional authentication JWT token for authenticated requests.
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for initial connection.
         """
@@ -30,14 +32,20 @@ class SSEClient:
         """Get HTTP headers for API requests.
 
         Returns:
-            Dictionary of HTTP headers including authentication.
+            Dictionary of HTTP headers including authentication if token is set.
         """
-        return {
-            "Authorization": f"Bearer {self.token}",
+        base_url = get_perplexity_base_url()
+        headers = {
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
             "User-Agent": f"perplexity-cli/{get_version()}",
+            "Origin": base_url,
+            "Referer": f"{base_url}/",
+            "x-request-id": str(uuid.uuid4()),
         }
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        return headers
 
     def stream_post(self, url: str, json_data: dict) -> Iterator[dict]:
         """POST request with SSE streaming response.
@@ -72,8 +80,8 @@ class SSEClient:
 
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
-                # Don't retry auth errors (401, 403)
-                if status in (401, 403):
+                # Don't retry auth errors (401, 403) only if token is provided
+                if status in (401, 403) and self.token:
                     self.logger.error(f"HTTP {status} error (not retryable): {e}")
                     if status == 401:
                         raise httpx.HTTPStatusError(
