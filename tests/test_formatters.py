@@ -19,13 +19,13 @@ class TestPlainTextFormatter:
         """Test formatting answer text."""
         formatter = PlainTextFormatter()
         result = formatter.format_answer("Test answer")
-        assert result == "\nTest answer"
+        assert result == "Test answer"
 
     def test_format_answer_strips_trailing_whitespace(self):
         """Test that trailing whitespace is stripped."""
         formatter = PlainTextFormatter()
         result = formatter.format_answer("Test answer\n\n")
-        assert result == "\nTest answer"
+        assert result == "Test answer"
 
     def test_format_references(self):
         """Test formatting references."""
@@ -261,16 +261,8 @@ class TestJSONFormatter:
         """Test JSON output includes references."""
         formatter = JSONFormatter()
         refs = [
-            WebResult(
-                name="Test Source",
-                url="https://test.com",
-                snippet="This is a test snippet"
-            ),
-            WebResult(
-                name="Second Source",
-                url="https://test2.com",
-                snippet="Another snippet"
-            ),
+            WebResult(name="Test Source", url="https://test.com", snippet="This is a test snippet"),
+            WebResult(name="Second Source", url="https://test2.com", snippet="Another snippet"),
         ]
         answer = Answer(text="Answer text", references=refs)
         result = formatter.format_complete(answer)

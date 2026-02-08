@@ -1,0 +1,303 @@
+"""Tests for Pydantic models validation and serialization."""
+
+from datetime import datetime, timedelta
+
+import pytest
+from pydantic import ValidationError
+
+from perplexity_cli.auth.models import CookieData, TokenFormat, TokenMetadata
+from perplexity_cli.threads.models import CacheContent, CacheFormat, CacheMetadata
+from perplexity_cli.utils.rate_limiter_models import (
+    RateLimiterConfig,
+    RateLimiterState,
+    RateLimiterStats,
+)
+
+
+class TestTokenFormat:
+    """Test TokenFormat model."""
+
+    def test_token_format_creation_valid(self):
+        """Test TokenFormat creation with valid data."""
+        token_fmt = TokenFormat(
+            version=2,
+            encrypted=True,
+            token="test-token-123",
+            created_at=datetime.now(),
+        )
+        assert token_fmt.version == 2
+        assert token_fmt.encrypted is True
+        assert token_fmt.token == "test-token-123"
+        assert token_fmt.cookies is None
+
+    def test_token_format_with_cookies(self):
+        """Test TokenFormat with encrypted cookies."""
+        token_fmt = TokenFormat(
+            token="test-token",
+            cookies="encrypted-cookies-string",
+        )
+        assert token_fmt.token == "test-token"
+        assert token_fmt.cookies == "encrypted-cookies-string"
+
+    def test_token_format_empty_token_rejected(self):
+        """Test that empty tokens are rejected."""
+        with pytest.raises(ValidationError):
+            TokenFormat(token="")
+
+    def test_token_format_future_created_at_rejected(self):
+        """Test that future created_at is rejected."""
+        future = datetime.now() + timedelta(days=1)
+        with pytest.raises(ValidationError):
+            TokenFormat(token="test", created_at=future)
+
+    def test_token_format_version_bounds(self):
+        """Test version field bounds."""
+        # Valid versions
+        TokenFormat(token="test", version=1)
+        TokenFormat(token="test", version=2)
+
+        # Invalid version
+        with pytest.raises(ValidationError):
+            TokenFormat(token="test", version=3)
+
+
+class TestCacheMetadata:
+    """Test CacheMetadata model."""
+
+    def test_cache_metadata_creation(self):
+        """Test CacheMetadata creation."""
+        metadata = CacheMetadata(
+            last_sync_time=datetime.now(),
+            oldest_thread_date="2025-01-01",
+            newest_thread_date="2025-01-15",
+            total_threads=42,
+        )
+        assert metadata.total_threads == 42
+        assert metadata.oldest_thread_date == "2025-01-01"
+
+    def test_cache_metadata_future_sync_rejected(self):
+        """Test that future sync time is rejected."""
+        future = datetime.now() + timedelta(hours=1)
+        with pytest.raises(ValidationError):
+            CacheMetadata(last_sync_time=future)
+
+    def test_cache_metadata_negative_threads_rejected(self):
+        """Test that negative thread count is rejected."""
+        with pytest.raises(ValidationError):
+            CacheMetadata(
+                last_sync_time=datetime.now(),
+                total_threads=-1,
+            )
+
+
+class TestCacheFormat:
+    """Test CacheFormat model."""
+
+    def test_cache_format_creation(self):
+        """Test CacheFormat creation."""
+        cache_fmt = CacheFormat(
+            version=1,
+            encrypted=True,
+            cache="encrypted-cache-string",
+        )
+        assert cache_fmt.version == 1
+        assert cache_fmt.encrypted is True
+
+    def test_cache_format_empty_cache_rejected(self):
+        """Test that empty cache is rejected."""
+        with pytest.raises(ValidationError):
+            CacheFormat(cache="")
+
+    def test_cache_format_future_created_at_rejected(self):
+        """Test that future created_at is rejected."""
+        future = datetime.now() + timedelta(days=1)
+        with pytest.raises(ValidationError):
+            CacheFormat(
+                cache="test",
+                created_at=future,
+            )
+
+
+class TestCacheContent:
+    """Test CacheContent model."""
+
+    def test_cache_content_creation(self):
+        """Test CacheContent creation."""
+        metadata = CacheMetadata(
+            last_sync_time=datetime.now(),
+            total_threads=2,
+        )
+        content = CacheContent(
+            version=1,
+            metadata=metadata,
+            threads=[
+                {
+                    "url": "https://example.com/thread1",
+                    "title": "Thread 1",
+                    "created_at": "2025-01-15",
+                },
+                {
+                    "url": "https://example.com/thread2",
+                    "title": "Thread 2",
+                    "created_at": "2025-01-14",
+                },
+            ],
+        )
+        assert len(content.threads) == 2
+        assert content.metadata.total_threads == 2
+
+    def test_cache_content_thread_missing_url_rejected(self):
+        """Test that thread without URL is rejected."""
+        metadata = CacheMetadata(last_sync_time=datetime.now())
+        with pytest.raises(ValidationError):
+            CacheContent(
+                metadata=metadata,
+                threads=[{"title": "No URL"}],
+            )
+
+    def test_cache_content_thread_missing_title_rejected(self):
+        """Test that thread without title is rejected."""
+        metadata = CacheMetadata(last_sync_time=datetime.now())
+        with pytest.raises(ValidationError):
+            CacheContent(
+                metadata=metadata,
+                threads=[{"url": "https://example.com"}],
+            )
+
+
+class TestCookieData:
+    """Test CookieData model."""
+
+    def test_cookie_data_creation(self):
+        """Test CookieData creation."""
+        cookie = CookieData(
+            name="session_id",
+            value="abc123",
+            domain=".example.com",
+            secure=True,
+        )
+        assert cookie.name == "session_id"
+        assert cookie.value == "abc123"
+        assert cookie.secure is True
+
+    def test_cookie_data_empty_name_rejected(self):
+        """Test that empty cookie name is rejected."""
+        with pytest.raises(ValidationError):
+            CookieData(name="")
+
+    def test_cookie_data_default_value(self):
+        """Test cookie with default value."""
+        cookie = CookieData(name="empty_cookie")
+        assert cookie.value == ""
+
+
+class TestTokenMetadata:
+    """Test TokenMetadata model."""
+
+    def test_token_metadata_creation(self):
+        """Test TokenMetadata creation."""
+        metadata = TokenMetadata(
+            is_encrypted=True,
+            has_cookies=False,
+            age_days=5,
+            version=2,
+        )
+        assert metadata.age_days == 5
+        assert metadata.has_cookies is False
+
+    def test_token_metadata_negative_age_rejected(self):
+        """Test that negative age is rejected."""
+        with pytest.raises(ValidationError):
+            TokenMetadata(age_days=-1)
+
+
+class TestRateLimiterConfig:
+    """Test RateLimiterConfig model."""
+
+    def test_rate_limiter_config_creation(self):
+        """Test RateLimiterConfig creation."""
+        config = RateLimiterConfig(
+            requests_per_period=20,
+            period_seconds=60.0,
+        )
+        assert config.requests_per_period == 20
+        assert config.period_seconds == 60.0
+
+    def test_rate_limiter_config_zero_requests_rejected(self):
+        """Test that zero requests is rejected."""
+        with pytest.raises(ValidationError):
+            RateLimiterConfig(
+                requests_per_period=0,
+                period_seconds=60.0,
+            )
+
+    def test_rate_limiter_config_zero_period_rejected(self):
+        """Test that zero period is rejected."""
+        with pytest.raises(ValidationError):
+            RateLimiterConfig(
+                requests_per_period=10,
+                period_seconds=0.0,
+            )
+
+
+class TestRateLimiterState:
+    """Test RateLimiterState model."""
+
+    def test_rate_limiter_state_creation(self):
+        """Test RateLimiterState creation."""
+        now = datetime.now().timestamp()
+        state = RateLimiterState(
+            tokens=10.0,
+            last_refill_time=now,
+            requests_per_period=20,
+            period_seconds=60.0,
+        )
+        assert state.tokens == 10.0
+
+    def test_rate_limiter_state_negative_tokens_rejected(self):
+        """Test that negative tokens are rejected."""
+        with pytest.raises(ValidationError):
+            RateLimiterState(
+                tokens=-1.0,
+                last_refill_time=datetime.now().timestamp(),
+                requests_per_period=20,
+                period_seconds=60.0,
+            )
+
+
+class TestRateLimiterStats:
+    """Test RateLimiterStats model."""
+
+    def test_rate_limiter_stats_creation(self):
+        """Test RateLimiterStats creation."""
+        stats = RateLimiterStats(
+            total_requests=100,
+            total_wait_time=5.0,
+        )
+        assert stats.total_requests == 100
+        assert stats.total_wait_time == 5.0
+
+    def test_rate_limiter_stats_from_data(self):
+        """Test RateLimiterStats creation from raw data."""
+        stats = RateLimiterStats.from_data(
+            total_requests=100,
+            total_wait_time=10.0,
+        )
+        assert stats.total_requests == 100
+        assert stats.average_wait_time == 0.1  # 10.0 / 100
+
+    def test_rate_limiter_stats_zero_requests_average(self):
+        """Test average wait time with zero requests."""
+        stats = RateLimiterStats.from_data(
+            total_requests=0,
+            total_wait_time=0.0,
+        )
+        assert stats.average_wait_time == 0.0
+
+    def test_rate_limiter_stats_negative_rejected(self):
+        """Test that negative stats are rejected."""
+        with pytest.raises(ValidationError):
+            RateLimiterStats(
+                total_requests=-1,
+                total_wait_time=0.0,
+            )

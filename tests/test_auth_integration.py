@@ -41,7 +41,7 @@ class TestAuthenticationFlow:
         token_manager2 = TokenManager()
         token_manager2.token_path = token_manager.token_path
 
-        loaded_token = token_manager2.load_token()
+        loaded_token, _ = token_manager2.load_token()
         assert loaded_token == token1
 
     def test_logout_and_reauthentication(self, token_manager):
@@ -56,7 +56,7 @@ class TestAuthenticationFlow:
 
         # Re-authenticate with new token
         token_manager.save_token("new_token")
-        loaded_token = token_manager.load_token()
+        loaded_token, _ = token_manager.load_token()
         assert loaded_token == "new_token"
 
     @pytest.mark.asyncio
@@ -103,13 +103,15 @@ class TestTokenLifecycle:
         assert token_manager.token_exists()
 
         # Load
-        loaded = token_manager.load_token()
+        loaded, _ = token_manager.load_token()
         assert loaded == test_token
 
         # Delete
         token_manager.clear_token()
         assert not token_manager.token_exists()
-        assert token_manager.load_token() is None
+        token, cookies = token_manager.load_token()
+        assert token is None
+        assert cookies is None
 
     def test_token_refresh_workflow(self, token_manager):
         """Test token refresh scenario."""
@@ -122,7 +124,7 @@ class TestTokenLifecycle:
         token_manager.save_token(new_token)
 
         # Verify new token is loaded
-        loaded = token_manager.load_token()
+        loaded, _ = token_manager.load_token()
         assert loaded == new_token
         assert loaded != old_token
 
@@ -137,7 +139,7 @@ class TestTokenLifecycle:
         for _ in range(5):
             tm = TokenManager()
             tm.token_path = token_manager.token_path
-            loaded = tm.load_token()
+            loaded, _ = tm.load_token()
             assert loaded == test_token
 
 
@@ -176,7 +178,8 @@ class TestErrorRecovery:
         # Can recover by clearing and saving new token
         token_manager.clear_token()
         token_manager.save_token("recovered_token")
-        assert token_manager.load_token() == "recovered_token"
+        loaded_token, _ = token_manager.load_token()
+        assert loaded_token == "recovered_token"
 
     def test_recover_from_permission_error(self, token_manager):
         """Test recovery from permission errors."""
@@ -194,4 +197,5 @@ class TestErrorRecovery:
 
         # Can recover by fixing permissions
         os.chmod(token_manager.token_path, 0o600)
-        assert token_manager.load_token() == test_token
+        loaded_token, _ = token_manager.load_token()
+        assert loaded_token == test_token

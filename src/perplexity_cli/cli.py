@@ -1,5 +1,6 @@
 """Command-line interface for Perplexity CLI."""
 
+import os
 import sys
 from importlib.resources import files
 from pathlib import Path
@@ -18,10 +19,14 @@ from perplexity_cli.utils.version import get_version
 
 # Load Agent Skill definition for display via show-skill command
 try:
-    SKILL_CONTENT = files('perplexity_cli.resources').joinpath('skill.md').read_text(encoding='utf-8')
+    SKILL_CONTENT = (
+        files("perplexity_cli.resources").joinpath("skill.md").read_text(encoding="utf-8")
+    )
 except (FileNotFoundError, AttributeError):
     # Fallback if skill.md is not found
-    SKILL_CONTENT = "Agent Skill definition not available. Run 'perplexity-cli --help' for usage information."
+    SKILL_CONTENT = (
+        "Agent Skill definition not available. Run 'perplexity-cli --help' for usage information."
+    )
 
 
 @click.group()
@@ -47,11 +52,19 @@ except (FileNotFoundError, AttributeError):
 @click.pass_context
 def main(ctx: click.Context, verbose: bool, debug: bool, log_file: Path | None) -> None:
     """Perplexity CLI - Query Perplexity.ai from the command line."""
-    # Setup logging
+    # Setup logging - check config for debug mode if no CLI flag
     if log_file is None:
         log_file = get_default_log_file()
-    setup_logging(verbose=verbose, debug=debug, log_file=log_file)
-    
+
+    # Apply config debug mode if --debug flag not specified
+    effective_debug = debug
+    if not debug:
+        from perplexity_cli.utils.config import get_debug_mode_enabled
+
+        effective_debug = get_debug_mode_enabled()
+
+    setup_logging(verbose=verbose, debug=effective_debug, log_file=log_file)
+
     # Store context for subcommands
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
@@ -104,19 +117,29 @@ def auth(ctx: click.Context, port: int) -> None:
     click.echo(f"Navigate to {base_url} and log in if needed.\n")
 
     try:
-        # Authenticate and extract token
+        # Authenticate and extract token and cookies
         logger.debug("Calling authenticate_sync")
-        token = authenticate_sync(port=port)
-        logger.info("Token extracted successfully")
+        token, cookies = authenticate_sync(port=port)
+        logger.info(f"Token and {len(cookies)} cookies extracted successfully")
 
-        # Save token
+        # Save token and cookies
+        from perplexity_cli.utils.config import get_save_cookies_enabled
+
         tm = TokenManager()
-        tm.save_token(token)
-        logger.info(f"Token saved to {tm.token_path}")
+        tm.save_token(token, cookies=cookies)
+        logger.info(f"Token and cookies saved to {tm.token_path}")
 
         click.echo("✓ Authentication successful!")
         click.echo(f"✓ Token saved to: {tm.token_path}")
-        click.echo('\nYou can now use: perplexity-cli query "<your question>"')
+
+        # Show cookie message based on config
+        if get_save_cookies_enabled():
+            click.echo(f"✓ {len(cookies)} cookies saved (including Cloudflare cookies)")
+        else:
+            click.echo("ℹ Cookies not saved (disabled in config)")
+            click.echo("  To enable cookie storage: pxcli set-config save_cookies true")
+
+        click.echo('\nYou can now use: pxcli query "<your question>"')
 
     except RuntimeError as e:
         logger.error(f"Authentication failed: {e}", exc_info=True)
@@ -144,6 +167,7 @@ def auth(ctx: click.Context, port: int) -> None:
         click.echo(f"✗ Unexpected error: {e}", err=True)
         if ctx.obj.get("debug", False):
             import traceback
+
             click.echo(traceback.format_exc(), err=True)
         sys.exit(1)
 
@@ -163,9 +187,9 @@ def auth(ctx: click.Context, port: int) -> None:
     help="Remove all references section and inline citation numbers [1], [2], etc. from the answer.",
 )
 @click.option(
-    "--stream",
-    is_flag=True,
-    help="Stream response in real-time as it arrives (experimental).",
+    "--stream/--no-stream",
+    default=False,
+    help="Stream response in real-time. Use --stream for incremental output (experimental).",
 )
 @click.pass_context
 def query(
@@ -178,6 +202,7 @@ def query(
     """Submit a query to Perplexity.ai and get an answer.
 
     The answer is printed to stdout, making it easy to pipe to other commands.
+    By default, responses are displayed after the complete response is fetched (batch mode). Use --stream for real-time streaming.
 
     Output formats:
         plain    - Plain text with underlined headers (good for scripts)
@@ -188,7 +213,7 @@ def query(
     Use --strip-references to remove all citations [1], [2], etc. and the
     references section from the output.
 
-    Use --stream to see the response as it arrives in real-time.
+    Use --stream for real-time streaming of the response as it arrives.
 
     Examples:
         perplexity-cli query "What is Python?"
@@ -204,19 +229,57 @@ def query(
     JSON format tip: Use jq -r to display newlines properly:
         perplexity-cli query --format json "Question" | jq -r '.answer'
     """
+    import logging
+
     from perplexity_cli.utils.logging import get_logger
 
     logger = get_logger()
-    logger.debug(f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}")
 
-    # Load token
+    if logger.isEnabledFor(logging.DEBUG):
+        import socket
+
+        from perplexity_cli.utils.config import get_save_cookies_enabled
+
+        # Debug: Log environment details at startup
+        try:
+            hostname = socket.gethostname()
+            logger.debug(f"Hostname: {hostname}")
+        except Exception:
+            pass
+        logger.debug(f"Platform: {sys.platform}")
+        logger.debug(f"Python version: {sys.version.split()[0]}")
+        logger.debug(f"Python executable: {sys.executable}")
+
+        # Detect execution environment
+        exec_env = "unknown"
+        if hasattr(sys, "base_prefix"):
+            if sys.base_prefix != sys.prefix:
+                exec_env = "virtualenv"
+        if "VIRTUAL_ENV" in os.environ:
+            exec_env = "venv"
+        if "UV_ACTIVE" in os.environ or "UVXENV" in os.environ:
+            exec_env = "uvx"
+
+        logger.debug(f"Execution environment: {exec_env}")
+
+        # Log token and config paths
+        token_path = Path.home() / ".config" / "perplexity-cli" / "token.json"
+        logger.debug(f"Token path: {token_path}")
+        logger.debug(f"Token exists: {token_path.exists()}")
+        logger.debug(f"Cookie storage enabled: {get_save_cookies_enabled()}")
+
+        logger.debug(
+            f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}"
+        )
+
+    # Load token and cookies
     tm = TokenManager()
-    token = tm.load_token()
+    token, cookies = tm.load_token()
 
     if not token:
         click.echo("✗ Not authenticated.", err=True)
         click.echo(
-            "\nPlease authenticate first with: perplexity-cli auth",
+            "\nPlease authenticate first with: pxcli auth",
             err=True,
         )
         logger.warning("Query attempted without authentication")
@@ -246,30 +309,31 @@ def query(
             final_query = f"{query_text}\n\n{style}"
             logger.debug(f"Applied style: {style[:50]}...")
 
-        # Create API client
-        api = PerplexityAPI(token=token)
-
-        # Handle streaming vs complete answer
-        if stream:
-            logger.info("Streaming query response")
-            # Stream response
-            _stream_query_response(api, final_query, formatter, output_format, strip_references)
-        else:
-            logger.info("Fetching complete answer")
-            # Submit query and get answer
-            answer_obj = api.get_complete_answer(final_query)
-            logger.debug(f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references")
-
-            # Format and output the answer
-            if output_format == "rich":
-                # Use Rich formatter's direct rendering for proper styling
-                formatter.render_complete(answer_obj, strip_references=strip_references)
+        # Create API client with cookies
+        with PerplexityAPI(token=token, cookies=cookies) as api:
+            # Handle streaming vs complete answer
+            if stream:
+                logger.info("Streaming query response")
+                # Stream response
+                _stream_query_response(api, final_query, formatter, output_format, strip_references)
             else:
-                # For plain and markdown, use click.echo
-                formatted_output = formatter.format_complete(
-                    answer_obj, strip_references=strip_references
+                logger.info("Fetching complete answer")
+                # Submit query and get answer
+                answer_obj = api.get_complete_answer(final_query)
+                logger.debug(
+                    f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references"
                 )
-                click.echo(formatted_output)
+
+                # Format and output the answer
+                if output_format == "rich":
+                    # Use Rich formatter's direct rendering for proper styling
+                    formatter.render_complete(answer_obj, strip_references=strip_references)
+                else:
+                    # For plain and markdown, use click.echo
+                    formatted_output = formatter.format_complete(
+                        answer_obj, strip_references=strip_references
+                    )
+                    click.echo(formatted_output)
 
     except httpx.HTTPStatusError as e:
         status = e.response.status_code
@@ -309,6 +373,7 @@ def query(
         click.echo("✗ An unexpected error occurred.", err=True)
         if ctx.obj.get("debug", False):
             import traceback
+
             click.echo(f"Debug info:\n{traceback.format_exc()}", err=True)
         else:
             click.echo("Run with --debug for more information.", err=True)
@@ -340,7 +405,9 @@ def _stream_query_response(
 
     try:
         for message in api.submit_query(query):
-            logger.debug(f"Received SSE message: status={message.status}, final={message.final_sse_message}")
+            logger.debug(
+                f"Received SSE message: status={message.status}, final={message.final_sse_message}"
+            )
 
             # Extract text from blocks
             for block in message.blocks:
@@ -348,7 +415,7 @@ def _stream_query_response(
                     text = api._extract_text_from_block(block.content)
                     if text and text != accumulated_text:
                         # Only print new text
-                        new_text = text[len(accumulated_text):]
+                        new_text = text[len(accumulated_text) :]
                         if new_text:
                             if output_format == "rich":
                                 # For rich, print incrementally
@@ -545,7 +612,6 @@ def status() -> None:
         perplexity-cli status
     """
     from datetime import datetime
-    from pathlib import Path
 
     from perplexity_cli.utils.logging import get_logger
 
@@ -557,26 +623,30 @@ def status() -> None:
 
     if tm.token_exists():
         try:
-            token = tm.load_token()
+            token, cookies = tm.load_token()
             if token:
                 click.echo("Status: ✓ Authenticated")
                 click.echo(f"Token file: {tm.token_path}")
                 click.echo(f"Token length: {len(token)} characters")
+                if cookies:
+                    click.echo(f"Cookies: {len(cookies)} stored")
 
                 # Show token file metadata
                 try:
                     stat = tm.token_path.stat()
                     modified_time = datetime.fromtimestamp(stat.st_mtime)
-                    click.echo(f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    click.echo(
+                        f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
                 except Exception:
                     pass
 
                 # Try to verify token works with a minimal test query
                 try:
                     logger.debug("Verifying token validity")
-                    api = PerplexityAPI(token=token, timeout=10)
-                    # Use a very short test query to verify token
-                    test_answer = api.get_complete_answer("test")
+                    with PerplexityAPI(token=token, cookies=cookies, timeout=10) as api:
+                        # Use a very short test query to verify token
+                        test_answer = api.get_complete_answer("test")
                     if test_answer and len(test_answer.text) > 0:
                         click.echo("\n✓ Token is valid and working")
                         logger.info("Token verification successful")
@@ -603,7 +673,118 @@ def status() -> None:
             logger.error(f"Token file has insecure permissions: {e}")
     else:
         click.echo("Status: ✗ Not authenticated")
-        click.echo("\nAuthenticate with: perplexity-cli auth")
+        click.echo("\nAuthenticate with: pxcli auth")
+
+
+@main.command(name="set-config")
+@click.argument("key", type=click.Choice(["save_cookies", "debug_mode"]))
+@click.argument("value", type=click.Choice(["true", "false"]))
+@click.pass_context
+def set_config(ctx: click.Context, key: str, value: str) -> None:
+    """Set configuration options.
+
+    Configure feature toggles for pxcli.
+
+    Arguments:
+        KEY: Configuration key (save_cookies or debug_mode)
+        VALUE: Configuration value (true or false)
+
+    Examples:
+        pxcli set-config save_cookies true
+        pxcli set-config debug_mode false
+    """
+    from perplexity_cli.utils.config import clear_feature_config_cache, set_feature
+    from perplexity_cli.utils.logging import get_logger
+
+    logger = get_logger()
+
+    try:
+        # Convert string to boolean
+        bool_value = value.lower() == "true"
+
+        # Update configuration
+        set_feature(key, bool_value)
+
+        # Clear cache to ensure new value is used
+        clear_feature_config_cache()
+
+        click.echo(f"✓ Configuration updated: {key} = {bool_value}")
+        logger.info(f"Configuration updated: {key} = {bool_value}")
+
+        # Show helpful messages
+        if key == "save_cookies" and bool_value:
+            click.echo("\nℹ Cookie storage enabled.")
+            click.echo("  Re-authenticate to save cookies: pxcli auth")
+        elif key == "save_cookies" and not bool_value:
+            click.echo("\nℹ Cookie storage disabled.")
+            click.echo("  Only JWT token will be saved on next authentication.")
+        elif key == "debug_mode" and bool_value:
+            click.echo("\nℹ Debug mode enabled.")
+            click.echo("  All commands will now log at DEBUG level.")
+        elif key == "debug_mode" and not bool_value:
+            click.echo("\nℹ Debug mode disabled.")
+            click.echo("  Use --debug flag for one-time debug output.")
+
+    except RuntimeError as e:
+        click.echo(f"✗ Failed to update configuration: {e}", err=True)
+        logger.error(f"Configuration update failed: {e}", exc_info=True)
+        sys.exit(1)
+
+
+@main.command(name="show-config")
+@click.pass_context
+def show_config(ctx: click.Context) -> None:
+    """Display current configuration.
+
+    Shows feature toggle settings and their sources.
+
+    Example:
+        pxcli show-config
+    """
+    from perplexity_cli.utils.config import get_feature_config, get_feature_config_path
+    from perplexity_cli.utils.logging import get_logger
+
+    logger = get_logger()
+
+    try:
+        config = get_feature_config()
+        config_path = get_feature_config_path()
+
+        click.echo("Perplexity CLI Configuration")
+        click.echo("=" * 40)
+        click.echo(f"Config file: {config_path}")
+        click.echo()
+
+        click.echo("Feature Toggles:")
+        click.echo(f"  save_cookies: {config.save_cookies}")
+        click.echo(f"  debug_mode:   {config.debug_mode}")
+        click.echo()
+
+        # Show environment variable overrides if present
+        env_overrides = []
+        if "PERPLEXITY_SAVE_COOKIES" in os.environ:
+            env_overrides.append(
+                f"  PERPLEXITY_SAVE_COOKIES={os.environ['PERPLEXITY_SAVE_COOKIES']}"
+            )
+        if "PERPLEXITY_DEBUG_MODE" in os.environ:
+            env_overrides.append(f"  PERPLEXITY_DEBUG_MODE={os.environ['PERPLEXITY_DEBUG_MODE']}")
+
+        if env_overrides:
+            click.echo("Environment Overrides:")
+            for override in env_overrides:
+                click.echo(override)
+            click.echo()
+
+        click.echo("To change settings:")
+        click.echo("  pxcli set-config save_cookies true|false")
+        click.echo("  pxcli set-config debug_mode true|false")
+
+        logger.debug("Configuration displayed successfully")
+
+    except RuntimeError as e:
+        click.echo(f"✗ Failed to load configuration: {e}", err=True)
+        logger.error(f"Configuration display failed: {e}", exc_info=True)
+        sys.exit(1)
 
 
 @main.command()
@@ -698,14 +879,14 @@ def export_threads(
 
     click.echo("Exporting threads from Perplexity.ai library...")
 
-    # Load token
+    # Load token and cookies
     tm = TokenManager()
-    token = tm.load_token()
+    token, cookies = tm.load_token()
 
     if not token:
         click.echo("✗ Not authenticated.", err=True)
         click.echo(
-            "\nPlease authenticate first with: perplexity-cli auth",
+            "\nPlease authenticate first with: pxcli auth",
             err=True,
         )
         logger.warning("Export attempted without authentication")
@@ -718,14 +899,14 @@ def export_threads(
     rate_limit_config = get_rate_limiting_config()
 
     rate_limiter = None
-    if rate_limit_config.get("enabled", True):
+    if rate_limit_config.enabled:
         rate_limiter = RateLimiter(
-            requests_per_period=rate_limit_config["requests_per_period"],
-            period_seconds=rate_limit_config["period_seconds"],
+            requests_per_period=rate_limit_config.requests_per_period,
+            period_seconds=rate_limit_config.period_seconds,
         )
         logger.info(
-            f"Rate limiting enabled: {rate_limit_config['requests_per_period']} requests per "
-            f"{rate_limit_config['period_seconds']} seconds"
+            f"Rate limiting enabled: {rate_limit_config.requests_per_period} requests per "
+            f"{rate_limit_config.period_seconds} seconds"
         )
 
     # Initialise cache manager
@@ -797,7 +978,7 @@ def export_threads(
         logger.info(f"Exported {len(threads)} threads to {output_path}")
 
         # Success message
-        click.echo(f"\n✓ Export complete")
+        click.echo("\n✓ Export complete")
         click.echo(f"✓ Exported {len(threads)} threads")
         if from_date or to_date:
             click.echo(

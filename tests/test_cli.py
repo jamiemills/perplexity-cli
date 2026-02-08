@@ -1,21 +1,40 @@
 """Tests for CLI commands."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from click.testing import CliRunner
 
 from perplexity_cli.api.models import Answer
-from perplexity_cli.cli import auth, clear_style, configure, logout, main, query, status, view_style
+from perplexity_cli.cli import (
+    auth,
+    clear_style,
+    configure,
+    export_threads,
+    logout,
+    main,
+    query,
+    show_config,
+    status,
+    view_style,
+)
+
+
+def _make_api_mock(**kwargs):
+    """Create a Mock for PerplexityAPI that supports context manager protocol.
+
+    Returns a mock that can be used with ``with PerplexityAPI(...) as api:``.
+    Any keyword arguments are set as attributes on the mock instance.
+    """
+    mock_api = MagicMock()
+    mock_api.__enter__ = Mock(return_value=mock_api)
+    mock_api.__exit__ = Mock(return_value=False)
+    for key, value in kwargs.items():
+        setattr(mock_api, key, value)
+    return mock_api
 
 
 class TestCLICommands:
     """Test CLI command functionality."""
-
-    @pytest.fixture
-    def runner(self):
-        """Create CLI test runner."""
-        return CliRunner()
 
     def test_main_help(self, runner):
         """Test main command shows help."""
@@ -31,7 +50,7 @@ class TestCLICommands:
         """Test version option."""
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.output
+        assert "0.4.3" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     def test_status_not_authenticated(self, mock_tm_class, runner):
@@ -44,7 +63,7 @@ class TestCLICommands:
 
         assert result.exit_code == 0
         assert "Not authenticated" in result.output
-        assert "perplexity-cli auth" in result.output
+        assert "pxcli auth" in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.PerplexityAPI")
@@ -52,11 +71,10 @@ class TestCLICommands:
         """Test status when authenticated."""
         from datetime import datetime
         from pathlib import Path
-        from unittest.mock import MagicMock
 
         mock_tm = Mock()
         mock_tm.token_exists.return_value = True
-        mock_tm.load_token.return_value = "test-token-123"
+        mock_tm.load_token.return_value = ("test-token-123", None)
         mock_token_path = MagicMock(spec=Path)
         mock_token_path.__str__ = lambda x: "/path/to/token.json"
         mock_token_path.exists.return_value = True
@@ -67,11 +85,11 @@ class TestCLICommands:
         mock_tm.token_path = mock_token_path
         mock_tm_class.return_value = mock_tm
 
-        # Mock the API verification (now uses test query)
-        mock_api = Mock()
+        # Mock the API verification with context manager support
         mock_answer = Mock()
         mock_answer.text = "test answer"
         mock_answer.references = []
+        mock_api = _make_api_mock()
         mock_api.get_complete_answer.return_value = mock_answer
         mock_api_class.return_value = mock_api
 
@@ -119,16 +137,16 @@ class TestCLICommands:
 
         # Mock token manager
         mock_tm = Mock()
-        mock_tm.load_token.return_value = "test-token"
+        mock_tm.load_token.return_value = ("test-token", None)
         mock_tm_class.return_value = mock_tm
 
-        # Mock API
-        mock_api = Mock()
+        # Mock API with context manager support
+        mock_api = _make_api_mock()
         mock_api.get_complete_answer.return_value = Answer(text="Test answer", references=[])
         mock_api._format_references.return_value = ""
         mock_api_class.return_value = mock_api
 
-        result = runner.invoke(query, ["What is Python?"])
+        result = runner.invoke(query, ["--no-stream", "What is Python?"])
 
         assert result.exit_code == 0
         assert "Test answer" in result.output
@@ -150,7 +168,7 @@ class TestCLICommands:
 
         # Mock token manager
         mock_tm = Mock()
-        mock_tm.load_token.return_value = "test-token"
+        mock_tm.load_token.return_value = ("test-token", None)
         mock_tm_class.return_value = mock_tm
 
         # Create web results
@@ -165,12 +183,12 @@ class TestCLICommands:
             ),
         ]
 
-        # Mock API
-        mock_api = Mock()
+        # Mock API with context manager support
+        mock_api = _make_api_mock()
         mock_api.get_complete_answer.return_value = Answer(text="Test answer", references=refs)
         mock_api_class.return_value = mock_api
 
-        result = runner.invoke(query, ["What is Python?"])
+        result = runner.invoke(query, ["--no-stream", "What is Python?"])
 
         assert result.exit_code == 0
         assert "Test answer" in result.output
@@ -183,14 +201,14 @@ class TestCLICommands:
     def test_query_not_authenticated(self, mock_tm_class, runner):
         """Test query when not authenticated."""
         mock_tm = Mock()
-        mock_tm.load_token.return_value = None
+        mock_tm.load_token.return_value = (None, None)
         mock_tm_class.return_value = mock_tm
 
         result = runner.invoke(query, ["test query"])
 
         assert result.exit_code == 1
         assert "Not authenticated" in result.output
-        assert "perplexity-cli auth" in result.output
+        assert "pxcli auth" in result.output
 
     @patch("perplexity_cli.cli.StyleManager")
     @patch("perplexity_cli.cli.TokenManager")
@@ -206,15 +224,15 @@ class TestCLICommands:
 
         # Mock token manager
         mock_tm = Mock()
-        mock_tm.load_token.return_value = "test-token"
+        mock_tm.load_token.return_value = ("test-token", None)
         mock_tm_class.return_value = mock_tm
 
-        # Mock API to raise network error
-        mock_api = Mock()
+        # Mock API with context manager support
+        mock_api = _make_api_mock()
         mock_api.get_complete_answer.side_effect = httpx.RequestError("Connection failed")
         mock_api_class.return_value = mock_api
 
-        result = runner.invoke(query, ["test"])
+        result = runner.invoke(query, ["--no-stream", "test"])
 
         assert result.exit_code == 1
         assert "Network error" in result.output
@@ -223,8 +241,9 @@ class TestCLICommands:
     @patch("perplexity_cli.cli.authenticate_sync")
     def test_auth_success(self, mock_auth, mock_tm_class, runner):
         """Test successful authentication."""
-        # Mock authentication
-        mock_auth.return_value = "new-token-123"
+        # Mock authentication - returns (token, cookies) tuple
+        mock_cookies = {"__cf_bm": "test", "__cflb": "test2"}
+        mock_auth.return_value = ("new-token-123", mock_cookies)
 
         # Mock token manager
         mock_tm = Mock()
@@ -235,7 +254,7 @@ class TestCLICommands:
 
         assert result.exit_code == 0
         assert "Authentication successful" in result.output
-        mock_tm.save_token.assert_called_once_with("new-token-123")
+        mock_tm.save_token.assert_called_once_with("new-token-123", cookies=mock_cookies)
 
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.authenticate_sync")
@@ -254,11 +273,6 @@ class TestCLICommands:
 @pytest.mark.integration
 class TestCLIIntegration:
     """Integration tests for CLI with real components."""
-
-    @pytest.fixture
-    def runner(self):
-        """Create CLI test runner."""
-        return CliRunner()
 
     def test_status_with_real_token(self, runner):
         """Test status command with real token if available."""
@@ -352,7 +366,7 @@ class TestCLIIntegration:
         """Test query appends style to query text."""
         # Mock token manager
         mock_tm = Mock()
-        mock_tm.load_token.return_value = "test_token"
+        mock_tm.load_token.return_value = ("test_token", None)
         mock_tm_class.return_value = mock_tm
 
         # Mock style manager
@@ -360,12 +374,12 @@ class TestCLIIntegration:
         mock_sm.load_style.return_value = "be brief"
         mock_sm_class.return_value = mock_sm
 
-        # Mock API
-        mock_api = Mock()
+        # Mock API with context manager support
+        mock_api = _make_api_mock()
         mock_api.get_complete_answer.return_value = Answer(text="Test answer", references=[])
         mock_api_class.return_value = mock_api
 
-        result = runner.invoke(query, ["What is Python?"])
+        result = runner.invoke(query, ["--no-stream", "What is Python?"])
         assert result.exit_code == 0
         assert "Test answer" in result.output
 
@@ -374,3 +388,164 @@ class TestCLIIntegration:
         assert "What is Python?" in called_query
         assert "be brief" in called_query
         assert "\n\n" in called_query
+
+
+class TestShowConfig:
+    """Test show-config command with Pydantic model returns."""
+
+    @patch("perplexity_cli.utils.config.get_feature_config_path")
+    @patch("perplexity_cli.utils.config.get_feature_config")
+    def test_show_config_uses_attribute_access(self, mock_get_config, mock_get_path, runner):
+        """Test that show_config accesses Pydantic model attributes, not dict keys."""
+        from pathlib import Path
+
+        from perplexity_cli.config.models import FeatureConfig
+
+        mock_get_config.return_value = FeatureConfig(save_cookies=True, debug_mode=False)
+        mock_get_path.return_value = Path("/tmp/test-config.json")
+
+        result = runner.invoke(show_config)
+
+        assert result.exit_code == 0
+        assert "save_cookies: True" in result.output
+        assert "debug_mode:   False" in result.output
+
+    @patch("perplexity_cli.utils.config.get_feature_config_path")
+    @patch("perplexity_cli.utils.config.get_feature_config")
+    def test_show_config_default_values(self, mock_get_config, mock_get_path, runner):
+        """Test show_config with default FeatureConfig values."""
+        from pathlib import Path
+
+        from perplexity_cli.config.models import FeatureConfig
+
+        mock_get_config.return_value = FeatureConfig()
+        mock_get_path.return_value = Path("/tmp/test-config.json")
+
+        result = runner.invoke(show_config)
+
+        assert result.exit_code == 0
+        assert "save_cookies: False" in result.output
+        assert "debug_mode:   False" in result.output
+
+
+class TestExportThreadsRateLimitConfig:
+    """Test export-threads command uses Pydantic model attribute access for rate limiting."""
+
+    @patch("perplexity_cli.cli.TokenManager")
+    @patch("perplexity_cli.utils.config.get_rate_limiting_config")
+    def test_export_threads_rate_limit_attribute_access(
+        self, mock_get_rl_config, mock_tm_class, runner
+    ):
+        """Test that export_threads accesses RateLimitConfig attributes, not dict keys."""
+        from perplexity_cli.config.models import RateLimitConfig
+
+        # Mock token manager - not authenticated to exit early after rate limit setup
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = (None, None)
+        mock_tm_class.return_value = mock_tm
+
+        mock_get_rl_config.return_value = RateLimitConfig(
+            enabled=True, requests_per_period=10, period_seconds=30.0
+        )
+
+        result = runner.invoke(export_threads)
+
+        # Should exit with auth error, but the rate limit config access should not raise TypeError
+        assert "Not authenticated" in result.output
+
+    @patch("perplexity_cli.cli.TokenManager")
+    @patch("perplexity_cli.utils.config.get_rate_limiting_config")
+    def test_export_threads_rate_limit_disabled(self, mock_get_rl_config, mock_tm_class, runner):
+        """Test export_threads when rate limiting is disabled."""
+        from perplexity_cli.config.models import RateLimitConfig
+
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = (None, None)
+        mock_tm_class.return_value = mock_tm
+
+        mock_get_rl_config.return_value = RateLimitConfig(
+            enabled=False, requests_per_period=20, period_seconds=60.0
+        )
+
+        result = runner.invoke(export_threads)
+
+        # Should exit with auth error, no TypeError on rate limit config
+        assert "Not authenticated" in result.output
+
+
+class TestStreamingDefault:
+    """Tests for batch mode as the default query mode."""
+
+    @patch("perplexity_cli.cli.StyleManager")
+    @patch("perplexity_cli.cli.TokenManager")
+    @patch("perplexity_cli.cli.PerplexityAPI")
+    def test_query_default_batch_mode(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
+        """Test that invoking query without flags uses batch (non-streaming) path."""
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = None
+        mock_sm_class.return_value = mock_sm
+
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        mock_tm_class.return_value = mock_tm
+
+        mock_api = _make_api_mock()
+        mock_api.get_complete_answer.return_value = Answer(text="Batch answer", references=[])
+        mock_api_class.return_value = mock_api
+
+        result = runner.invoke(query, ["What is 2+2?"])
+
+        assert result.exit_code == 0
+        assert "Batch answer" in result.output
+        # Verify batch path was used (get_complete_answer), not streaming path (submit_query)
+        mock_api.get_complete_answer.assert_called_once()
+        mock_api.submit_query.assert_not_called()
+
+    @patch("perplexity_cli.cli.StyleManager")
+    @patch("perplexity_cli.cli.TokenManager")
+    @patch("perplexity_cli.cli.PerplexityAPI")
+    def test_query_explicit_stream_uses_streaming(
+        self, mock_api_class, mock_tm_class, mock_sm_class, runner
+    ):
+        """Test that --stream explicitly uses the streaming path."""
+        from perplexity_cli.api.models import Block, SSEMessage
+
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = None
+        mock_sm_class.return_value = mock_sm
+
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        mock_tm_class.return_value = mock_tm
+
+        # Build a minimal final SSE message with answer text
+        mock_message = Mock(spec=SSEMessage)
+        mock_message.status = "COMPLETE"
+        mock_message.final_sse_message = True
+        mock_message.web_results = []
+
+        mock_block = Mock(spec=Block)
+        mock_block.intended_usage = "ask_text"
+        mock_block.content = {"markdown_block": {"chunks": ["Streamed answer"]}}
+        mock_message.blocks = [mock_block]
+
+        mock_api = _make_api_mock()
+        mock_api.submit_query.return_value = iter([mock_message])
+        mock_api._extract_text_from_block.return_value = "Streamed answer"
+        mock_api_class.return_value = mock_api
+
+        result = runner.invoke(query, ["--stream", "What is 2+2?"])
+
+        assert result.exit_code == 0
+        assert "Streamed answer" in result.output
+        # Verify streaming path was used (submit_query), not batch path (get_complete_answer)
+        mock_api.submit_query.assert_called_once()
+        mock_api.get_complete_answer.assert_not_called()
+
+    def test_query_help_shows_stream_option(self, runner):
+        """Test that --help output mentions --stream and --no-stream options."""
+        result = runner.invoke(query, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--stream" in result.output
+        assert "--no-stream" in result.output

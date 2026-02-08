@@ -8,7 +8,7 @@ invalidation - only fetching fresh data when necessary.
 import json
 import os
 import stat
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -152,7 +152,7 @@ class ThreadCacheManager:
                         "version": self.CACHE_VERSION,
                         "encrypted": True,
                         "cache": encrypted_cache,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "created_at": datetime.now(UTC).isoformat(),
                     },
                     f,
                 )
@@ -161,9 +161,7 @@ class ThreadCacheManager:
             os.chmod(self.cache_path, self.SECURE_PERMISSIONS)
 
             # Audit log: cache saved
-            self.logger.info(
-                f"Cache saved to {self.cache_path} ({len(threads)} threads)"
-            )
+            self.logger.info(f"Cache saved to {self.cache_path} ({len(threads)} threads)")
 
         except OSError as e:
             self.logger.error(f"Failed to save cache: {e}", exc_info=True)
@@ -237,14 +235,8 @@ class ThreadCacheManager:
         cache_newest = dateutil_parser.parse(cache_newest_str).date()
 
         # Parse request dates (use today if to_date not specified)
-        request_from = (
-            dateutil_parser.parse(from_date).date() if from_date else cache_oldest
-        )
-        request_to = (
-            dateutil_parser.parse(to_date).date()
-            if to_date
-            else datetime.now(timezone.utc).date()
-        )
+        request_from = dateutil_parser.parse(from_date).date() if from_date else cache_oldest
+        request_to = dateutil_parser.parse(to_date).date() if to_date else datetime.now(UTC).date()
 
         # Determine if gaps exist in cache coverage
         needs_older = request_from < cache_oldest
@@ -337,7 +329,7 @@ class ThreadCacheManager:
         """
         if not threads:
             return {
-                "last_sync_time": datetime.now(timezone.utc).isoformat(),
+                "last_sync_time": datetime.now(UTC).isoformat(),
                 "oldest_thread_date": None,
                 "newest_thread_date": None,
                 "total_threads": 0,
@@ -348,7 +340,7 @@ class ThreadCacheManager:
         newest = threads[0].created_at
 
         return {
-            "last_sync_time": datetime.now(timezone.utc).isoformat(),
+            "last_sync_time": datetime.now(UTC).isoformat(),
             "oldest_thread_date": oldest,
             "newest_thread_date": newest,
             "total_threads": len(threads),

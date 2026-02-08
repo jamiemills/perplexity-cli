@@ -3,14 +3,13 @@
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 from perplexity_cli.utils.config import get_config_dir
 
 
 def setup_logging(
     level: int = logging.WARNING,
-    log_file: Optional[Path] = None,
+    log_file: Path | None = None,
     verbose: bool = False,
     debug: bool = False,
 ) -> logging.Logger:
@@ -63,7 +62,7 @@ def setup_logging(
     return logger
 
 
-def get_logger(name: Optional[str] = None) -> logging.Logger:
+def get_logger(name: str | None = None) -> logging.Logger:
     """Get a logger instance.
 
     Args:
@@ -84,4 +83,3 @@ def get_default_log_file() -> Path:
         Path to default log file in config directory.
     """
     return get_config_dir() / "perplexity-cli.log"
-

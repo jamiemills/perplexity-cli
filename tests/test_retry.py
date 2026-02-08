@@ -1,7 +1,5 @@
 """Tests for retry utilities."""
 
-import pytest
-
 import httpx
 
 from perplexity_cli.utils.retry import is_retryable_error, sleep_with_backoff
@@ -64,4 +62,3 @@ class TestRetryUtilities:
         elapsed = time.time() - start
         # Should sleep approximately max_delay (0.1) seconds, not 2^10
         assert elapsed <= 0.2
-

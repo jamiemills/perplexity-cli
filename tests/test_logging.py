@@ -4,8 +4,6 @@ import logging
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from perplexity_cli.utils.logging import get_logger, setup_logging
 
 
@@ -48,4 +46,3 @@ class TestLoggingSetup:
         """Test getting logger with custom name."""
         logger = get_logger("test_module")
         assert logger.name == "perplexity_cli.test_module"
-

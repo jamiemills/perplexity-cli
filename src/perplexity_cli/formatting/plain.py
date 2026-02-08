@@ -24,7 +24,7 @@ class PlainTextFormatter(Formatter):
             text = re.sub(r"\[\d+\]", "", text)
 
         lines = text.split("\n")
-        result = [""]  # Start with blank line
+        result = []
         i = 0
         skip_next_blank = False
         blank_count = 0
@@ -46,7 +46,7 @@ class PlainTextFormatter(Formatter):
                 content = re.sub(r"\*(.+?)\*", r"\1", content)
 
                 # Add single blank line before header if result has content
-                if len(result) > 1:  # More than just the initial blank line
+                if result:  # Has preceding content
                     result.append("")
 
                 # Add header with underline
