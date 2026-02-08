@@ -8,7 +8,7 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 
 - **Persistent authentication** - Token stored securely and reused across invocations
 - **Encrypted tokens** - Tokens encrypted with system-derived keys
-- **Real-time streaming** - Responses stream as they arrive (default for fast perceived latency)
+- **Real-time streaming** - Optional streaming of responses as they arrive (use --stream flag)
 - **Multiple output formats** - Plain text, Markdown, rich terminal, or JSON output
 - **Source references** - Web sources extracted and displayed with inline citations
 - **Thread library export** - Export your entire Perplexity thread history to CSV with timestamps
@@ -266,7 +266,7 @@ alias chromefortesting='open ~/.local/bin/chrome/mac_arm-*/chrome-mac-arm64/Goog
 ### Query Perplexity
 
 ```bash
-# Default: streams response with rich terminal formatting (fastest perceived latency)
+# Default: batch mode (wait for complete response)
 pxcli query "What is machine learning?"
 
 # Plain text output (for scripts)
@@ -278,8 +278,8 @@ pxcli query --format markdown "Explain quantum computing" > answer.md
 # JSON format (structured output for programmatic use)
 pxcli query --format json "What is machine learning?" > answer.json
 
-# Batch mode: wait for complete response before displaying
-pxcli query --no-stream "What is Python?"
+# Streaming mode: see response incrementally as it arrives
+pxcli query --stream "What is Python?"
 
 # Remove citations and references section
 pxcli query --strip-references "What is Python?"
@@ -331,9 +331,9 @@ Submit a query and get an answer with source references.
   - `rich` - Terminal output with colours and formatting
   - `json` - Structured JSON with answer and references
 - `--strip-references` - Remove citations and references section
-- `--stream / --no-stream` - Stream response in real-time (default: --stream)
+- `--stream / --no-stream` - Stream response mode (default: --no-stream)
   - `--stream` - Response appears incrementally as it arrives (faster perceived latency)
-  - `--no-stream` - Wait for complete response before displaying (batch mode)
+  - `--no-stream` - Wait for complete response before displaying (batch mode, default)
 
 **Global Options:**
 - `--verbose, -v` - Enable verbose output (INFO level logging)
@@ -693,8 +693,11 @@ EOF
 
 pxcli is optimised for speed and responsiveness:
 
-### Real-Time Streaming (Default)
-By default, responses stream in real-time, making answers appear immediately as they're generated. This provides the fastest perceived latency—users see output within milliseconds rather than waiting for the complete response.
+### Batch Mode (Default)
+By default, responses are displayed after the complete response is fetched. This is reliable for scripts and most use cases.
+
+### Optional Real-Time Streaming
+Use the `--stream` flag to see responses incrementally as they're generated, providing the fastest perceived latency for interactive use—users see output within milliseconds.
 
 ### Connection Reuse
 HTTP connections are pooled and reused across multiple queries, eliminating TCP connection and TLS handshake overhead (typically 100-200ms per request on slow networks).
@@ -708,9 +711,7 @@ Deterministic functions like key derivation and version lookup are cached using 
 ### Typical Performance
 - First query response visible in: 500-800ms
 - Subsequent queries: 300-600ms faster (connection reuse)
-- Streaming updates: 10-50ms increments
-
-For batch processing requiring complete responses, use `--no-stream` flag.
+- Streaming updates (with `--stream`): 10-50ms increments
 
 ## Development
 
