@@ -187,9 +187,9 @@ def auth(ctx: click.Context, port: int) -> None:
     help="Remove all references section and inline citation numbers [1], [2], etc. from the answer.",
 )
 @click.option(
-    "--stream",
-    is_flag=True,
-    help="Stream response in real-time as it arrives (experimental).",
+    "--stream/--no-stream",
+    default=False,
+    help="Stream response in real-time. Use --stream for incremental output (experimental).",
 )
 @click.pass_context
 def query(
@@ -202,6 +202,7 @@ def query(
     """Submit a query to Perplexity.ai and get an answer.
 
     The answer is printed to stdout, making it easy to pipe to other commands.
+    By default, responses are displayed after the complete response is fetched (batch mode). Use --stream for real-time streaming.
 
     Output formats:
         plain    - Plain text with underlined headers (good for scripts)
@@ -212,7 +213,7 @@ def query(
     Use --strip-references to remove all citations [1], [2], etc. and the
     references section from the output.
 
-    Use --stream to see the response as it arrives in real-time.
+    Use --stream for real-time streaming of the response as it arrives.
 
     Examples:
         perplexity-cli query "What is Python?"
@@ -228,44 +229,48 @@ def query(
     JSON format tip: Use jq -r to display newlines properly:
         perplexity-cli query --format json "Question" | jq -r '.answer'
     """
-    import socket
+    import logging
 
-    from perplexity_cli.utils.config import get_save_cookies_enabled
     from perplexity_cli.utils.logging import get_logger
 
     logger = get_logger()
 
-    # Debug: Log environment details at startup
-    try:
-        hostname = socket.gethostname()
-        logger.debug(f"Hostname: {hostname}")
-    except Exception:
-        pass
-    logger.debug(f"Platform: {sys.platform}")
-    logger.debug(f"Python version: {sys.version.split()[0]}")
-    logger.debug(f"Python executable: {sys.executable}")
+    if logger.isEnabledFor(logging.DEBUG):
+        import socket
 
-    # Detect execution environment
-    exec_env = "unknown"
-    if hasattr(sys, "base_prefix"):
-        if sys.base_prefix != sys.prefix:
-            exec_env = "virtualenv"
-    if "VIRTUAL_ENV" in os.environ:
-        exec_env = "venv"
-    if "UV_ACTIVE" in os.environ or "UVXENV" in os.environ:
-        exec_env = "uvx"
+        from perplexity_cli.utils.config import get_save_cookies_enabled
 
-    logger.debug(f"Execution environment: {exec_env}")
+        # Debug: Log environment details at startup
+        try:
+            hostname = socket.gethostname()
+            logger.debug(f"Hostname: {hostname}")
+        except Exception:
+            pass
+        logger.debug(f"Platform: {sys.platform}")
+        logger.debug(f"Python version: {sys.version.split()[0]}")
+        logger.debug(f"Python executable: {sys.executable}")
 
-    # Log token and config paths
-    token_path = Path.home() / ".config" / "perplexity-cli" / "token.json"
-    logger.debug(f"Token path: {token_path}")
-    logger.debug(f"Token exists: {token_path.exists()}")
-    logger.debug(f"Cookie storage enabled: {get_save_cookies_enabled()}")
+        # Detect execution environment
+        exec_env = "unknown"
+        if hasattr(sys, "base_prefix"):
+            if sys.base_prefix != sys.prefix:
+                exec_env = "virtualenv"
+        if "VIRTUAL_ENV" in os.environ:
+            exec_env = "venv"
+        if "UV_ACTIVE" in os.environ or "UVXENV" in os.environ:
+            exec_env = "uvx"
 
-    logger.debug(
-        f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}"
-    )
+        logger.debug(f"Execution environment: {exec_env}")
+
+        # Log token and config paths
+        token_path = Path.home() / ".config" / "perplexity-cli" / "token.json"
+        logger.debug(f"Token path: {token_path}")
+        logger.debug(f"Token exists: {token_path.exists()}")
+        logger.debug(f"Cookie storage enabled: {get_save_cookies_enabled()}")
+
+        logger.debug(
+            f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}"
+        )
 
     # Load token and cookies
     tm = TokenManager()
@@ -305,31 +310,30 @@ def query(
             logger.debug(f"Applied style: {style[:50]}...")
 
         # Create API client with cookies
-        api = PerplexityAPI(token=token, cookies=cookies)
-
-        # Handle streaming vs complete answer
-        if stream:
-            logger.info("Streaming query response")
-            # Stream response
-            _stream_query_response(api, final_query, formatter, output_format, strip_references)
-        else:
-            logger.info("Fetching complete answer")
-            # Submit query and get answer
-            answer_obj = api.get_complete_answer(final_query)
-            logger.debug(
-                f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references"
-            )
-
-            # Format and output the answer
-            if output_format == "rich":
-                # Use Rich formatter's direct rendering for proper styling
-                formatter.render_complete(answer_obj, strip_references=strip_references)
+        with PerplexityAPI(token=token, cookies=cookies) as api:
+            # Handle streaming vs complete answer
+            if stream:
+                logger.info("Streaming query response")
+                # Stream response
+                _stream_query_response(api, final_query, formatter, output_format, strip_references)
             else:
-                # For plain and markdown, use click.echo
-                formatted_output = formatter.format_complete(
-                    answer_obj, strip_references=strip_references
+                logger.info("Fetching complete answer")
+                # Submit query and get answer
+                answer_obj = api.get_complete_answer(final_query)
+                logger.debug(
+                    f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references"
                 )
-                click.echo(formatted_output)
+
+                # Format and output the answer
+                if output_format == "rich":
+                    # Use Rich formatter's direct rendering for proper styling
+                    formatter.render_complete(answer_obj, strip_references=strip_references)
+                else:
+                    # For plain and markdown, use click.echo
+                    formatted_output = formatter.format_complete(
+                        answer_obj, strip_references=strip_references
+                    )
+                    click.echo(formatted_output)
 
     except httpx.HTTPStatusError as e:
         status = e.response.status_code
@@ -640,9 +644,9 @@ def status() -> None:
                 # Try to verify token works with a minimal test query
                 try:
                     logger.debug("Verifying token validity")
-                    api = PerplexityAPI(token=token, cookies=cookies, timeout=10)
-                    # Use a very short test query to verify token
-                    test_answer = api.get_complete_answer("test")
+                    with PerplexityAPI(token=token, cookies=cookies, timeout=10) as api:
+                        # Use a very short test query to verify token
+                        test_answer = api.get_complete_answer("test")
                     if test_answer and len(test_answer.text) > 0:
                         click.echo("\n✓ Token is valid and working")
                         logger.info("Token verification successful")
@@ -752,8 +756,8 @@ def show_config(ctx: click.Context) -> None:
         click.echo()
 
         click.echo("Feature Toggles:")
-        click.echo(f"  save_cookies: {config['features']['save_cookies']}")
-        click.echo(f"  debug_mode:   {config['features']['debug_mode']}")
+        click.echo(f"  save_cookies: {config.save_cookies}")
+        click.echo(f"  debug_mode:   {config.debug_mode}")
         click.echo()
 
         # Show environment variable overrides if present
@@ -895,14 +899,14 @@ def export_threads(
     rate_limit_config = get_rate_limiting_config()
 
     rate_limiter = None
-    if rate_limit_config.get("enabled", True):
+    if rate_limit_config.enabled:
         rate_limiter = RateLimiter(
-            requests_per_period=rate_limit_config["requests_per_period"],
-            period_seconds=rate_limit_config["period_seconds"],
+            requests_per_period=rate_limit_config.requests_per_period,
+            period_seconds=rate_limit_config.period_seconds,
         )
         logger.info(
-            f"Rate limiting enabled: {rate_limit_config['requests_per_period']} requests per "
-            f"{rate_limit_config['period_seconds']} seconds"
+            f"Rate limiting enabled: {rate_limit_config.requests_per_period} requests per "
+            f"{rate_limit_config.period_seconds} seconds"
         )
 
     # Initialise cache manager
