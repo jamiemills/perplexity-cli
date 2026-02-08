@@ -5,28 +5,14 @@ Tests the ThreadCacheManager class, cache invalidation logic, and encryption.
 
 import json
 import stat
-import tempfile
-from pathlib import Path
 
 import pytest
 
-from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.threads.exporter import ThreadRecord
 
 
 class TestThreadCacheManager:
     """Test ThreadCacheManager encryption and storage."""
-
-    @pytest.fixture
-    def temp_cache_path(self):
-        """Provide temporary cache file path."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield Path(tmpdir) / "test-cache.json"
-
-    @pytest.fixture
-    def cache_manager(self, temp_cache_path):
-        """Provide ThreadCacheManager instance with temp path."""
-        return ThreadCacheManager(cache_path=temp_cache_path)
 
     @pytest.fixture
     def sample_threads(self):
@@ -134,17 +120,6 @@ class TestCacheInvalidation:
     """Test cache invalidation logic."""
 
     @pytest.fixture
-    def temp_cache_path(self):
-        """Provide temporary cache file path."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield Path(tmpdir) / "test-cache.json"
-
-    @pytest.fixture
-    def cache_manager(self, temp_cache_path):
-        """Provide ThreadCacheManager instance."""
-        return ThreadCacheManager(cache_path=temp_cache_path)
-
-    @pytest.fixture
     def cached_threads(self):
         """Threads from 2025-12-21 to 2025-12-23."""
         return [
@@ -224,17 +199,6 @@ class TestCacheInvalidation:
 
 class TestThreadMerging:
     """Test thread deduplication and merging."""
-
-    @pytest.fixture
-    def temp_cache_path(self):
-        """Provide temporary cache file path."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield Path(tmpdir) / "test-cache.json"
-
-    @pytest.fixture
-    def cache_manager(self, temp_cache_path):
-        """Provide ThreadCacheManager instance."""
-        return ThreadCacheManager(cache_path=temp_cache_path)
 
     def test_merge_eliminates_duplicates(self, cache_manager):
         """Test that merge eliminates duplicate URLs."""
@@ -363,17 +327,6 @@ class TestThreadMerging:
 
 class TestCacheEncryption:
     """Test that cache encryption is machine-specific."""
-
-    @pytest.fixture
-    def temp_cache_path(self):
-        """Provide temporary cache file path."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield Path(tmpdir) / "test-cache.json"
-
-    @pytest.fixture
-    def cache_manager(self, temp_cache_path):
-        """Provide ThreadCacheManager instance."""
-        return ThreadCacheManager(cache_path=temp_cache_path)
 
     def test_encrypted_content_not_plaintext(self, cache_manager):
         """Test that encrypted cache content is not readable plaintext."""

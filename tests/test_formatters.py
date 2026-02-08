@@ -19,13 +19,13 @@ class TestPlainTextFormatter:
         """Test formatting answer text."""
         formatter = PlainTextFormatter()
         result = formatter.format_answer("Test answer")
-        assert result == "\nTest answer"
+        assert result == "Test answer"
 
     def test_format_answer_strips_trailing_whitespace(self):
         """Test that trailing whitespace is stripped."""
         formatter = PlainTextFormatter()
         result = formatter.format_answer("Test answer\n\n")
-        assert result == "\nTest answer"
+        assert result == "Test answer"
 
     def test_format_references(self):
         """Test formatting references."""

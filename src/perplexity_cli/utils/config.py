@@ -1,6 +1,7 @@
 """Configuration and path management utilities."""
 
 import json
+import logging
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -93,35 +94,6 @@ def _ensure_user_urls_config() -> None:
                 json.dump(default_urls, f, indent=2)
         except (OSError, json.JSONDecodeError) as e:
             raise RuntimeError(f"Failed to create URLs configuration file: {e}") from e
-
-
-def _validate_urls_config(urls: dict[str, Any]) -> None:
-    """Validate URLs configuration structure.
-
-    Args:
-        urls: Configuration dictionary to validate.
-
-    Raises:
-        RuntimeError: If configuration is invalid.
-    """
-    if not isinstance(urls, dict):
-        raise RuntimeError("URLs configuration must be a dictionary")
-
-    if "perplexity" not in urls:
-        raise RuntimeError("URLs configuration missing 'perplexity' section")
-
-    perplexity = urls["perplexity"]
-    if not isinstance(perplexity, dict):
-        raise RuntimeError("'perplexity' section must be a dictionary")
-
-    required_fields = ["base_url", "query_endpoint"]
-    for field in required_fields:
-        if field not in perplexity:
-            raise RuntimeError(f"URLs configuration missing 'perplexity.{field}'")
-        if not isinstance(perplexity[field], str):
-            raise RuntimeError(f"URLs configuration 'perplexity.{field}' must be a string")
-        if not perplexity[field].strip():
-            raise RuntimeError(f"URLs configuration 'perplexity.{field}' cannot be empty")
 
 
 @lru_cache(maxsize=1)
@@ -424,8 +396,6 @@ def get_feature_config() -> FeatureConfig:
 
     except (OSError, json.JSONDecodeError) as e:
         # If user config is invalid, log warning and use defaults
-        import logging
-
         logger = logging.getLogger(__name__)
         logger.warning(f"Failed to load feature config, using defaults: {e}")
 

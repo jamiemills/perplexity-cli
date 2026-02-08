@@ -1,7 +1,7 @@
 """Tests for API client module."""
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -209,8 +209,7 @@ class TestSSEClient:
         with pytest.raises(ValueError, match="Failed to parse SSE data"):
             list(client._parse_sse_stream(mock_response))
 
-    @patch("httpx.Client")
-    def test_stream_post_success(self, mock_client_class):
+    def test_stream_post_success(self):
         """Test successful POST request with SSE streaming."""
         client = SSEClient(token="test-token")
 
@@ -227,26 +226,22 @@ class TestSSEClient:
         mock_stream_context.__enter__ = Mock(return_value=mock_response)
         mock_stream_context.__exit__ = Mock(return_value=False)
 
-        mock_client_instance = Mock()
-        mock_client_instance.stream.return_value = mock_stream_context
+        mock_http_client = Mock()
+        mock_http_client.stream.return_value = mock_stream_context
 
-        mock_client_context = Mock()
-        mock_client_context.__enter__ = Mock(return_value=mock_client_instance)
-        mock_client_context.__exit__ = Mock(return_value=False)
-
-        mock_client_class.return_value = mock_client_context
+        # Inject the mock client directly
+        client._client = mock_http_client
 
         # Make request (consume iterator to trigger the call)
         list(client.stream_post("https://example.com/api", {"query": "test"}))
 
         # Verify request was made with correct headers
-        mock_client_instance.stream.assert_called_once()
-        call_args = mock_client_instance.stream.call_args
+        mock_http_client.stream.assert_called_once()
+        call_args = mock_http_client.stream.call_args
         assert call_args[0][0] == "POST"
         assert "Authorization" in call_args[1]["headers"]
 
-    @patch("httpx.Client")
-    def test_stream_post_401_error(self, mock_client_class):
+    def test_stream_post_401_error(self):
         """Test 401 error handling."""
         client = SSEClient(token="invalid-token")
 
@@ -263,15 +258,78 @@ class TestSSEClient:
         mock_stream_context.__enter__ = Mock(return_value=mock_response)
         mock_stream_context.__exit__ = Mock(return_value=False)
 
-        mock_client_instance = Mock()
-        mock_client_instance.stream.return_value = mock_stream_context
+        mock_http_client = Mock()
+        mock_http_client.stream.return_value = mock_stream_context
 
-        mock_client_context = Mock()
-        mock_client_context.__enter__ = Mock(return_value=mock_client_instance)
-        mock_client_context.__exit__ = Mock(return_value=False)
-
-        mock_client_class.return_value = mock_client_context
+        # Inject the mock client directly
+        client._client = mock_http_client
 
         # Should raise HTTPStatusError with helpful message
         with pytest.raises(httpx.HTTPStatusError, match="Authentication failed"):
             list(client.stream_post("https://example.com/api", {}))
+
+    def test_sse_client_creates_client_lazily(self):
+        """Test that _client is None after init and created on first _get_client() call."""
+        client = SSEClient(token="test-token")
+        assert client._client is None
+
+        http_client = client._get_client()
+        assert http_client is not None
+        assert isinstance(http_client, httpx.Client)
+
+        client.close()
+
+    def test_sse_client_reuses_client(self):
+        """Test that two _get_client() calls return the same object."""
+        client = SSEClient(token="test-token")
+
+        http_client_1 = client._get_client()
+        http_client_2 = client._get_client()
+        assert http_client_1 is http_client_2
+
+        client.close()
+
+    def test_sse_client_close(self):
+        """Test that close() calls client.close() and resets _client to None."""
+        client = SSEClient(token="test-token")
+
+        mock_http_client = Mock()
+        client._client = mock_http_client
+
+        client.close()
+
+        mock_http_client.close.assert_called_once()
+        assert client._client is None
+
+    def test_sse_client_close_when_no_client(self):
+        """Test that close() is safe when no client exists."""
+        client = SSEClient(token="test-token")
+        assert client._client is None
+
+        # Should not raise
+        client.close()
+        assert client._client is None
+
+
+class TestPerplexityAPIContextManager:
+    """Tests for PerplexityAPI context manager protocol."""
+
+    def test_context_manager_enter_returns_self(self):
+        """Test that __enter__ returns the PerplexityAPI instance."""
+        from perplexity_cli.api.endpoints import PerplexityAPI
+
+        api = PerplexityAPI(token="test-token")
+        result = api.__enter__()
+        assert result is api
+        api.__exit__(None, None, None)
+
+    def test_context_manager_exit_calls_close(self):
+        """Test that __exit__ calls close()."""
+        from perplexity_cli.api.endpoints import PerplexityAPI
+
+        api = PerplexityAPI(token="test-token")
+        api.client = Mock()
+
+        api.__exit__(None, None, None)
+
+        api.client.close.assert_called_once()

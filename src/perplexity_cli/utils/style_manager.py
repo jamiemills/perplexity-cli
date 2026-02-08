@@ -6,6 +6,8 @@ from datetime import datetime
 
 from perplexity_cli.utils.config import get_style_path
 
+MAX_STYLE_LENGTH = 10_000
+
 
 class StyleManager:
     """Manages user-defined style/prompt configurations."""
@@ -89,6 +91,6 @@ class StyleManager:
             return False
         if len(style.strip()) == 0:
             return False
-        if len(style) > 10000:  # Reasonable max length
+        if len(style) > MAX_STYLE_LENGTH:
             return False
         return True

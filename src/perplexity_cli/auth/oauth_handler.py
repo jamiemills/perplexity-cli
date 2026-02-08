@@ -7,6 +7,7 @@ authentication token via Chrome's DevTools Protocol.
 
 import asyncio
 import json
+import urllib.request
 from typing import Any
 
 import websockets
@@ -33,13 +34,10 @@ class ChromeDevToolsClient:
         Raises:
             RuntimeError: If Chrome is not running or endpoint is unavailable.
         """
-        import json as json_module
-        import urllib.request
-
         url = f"http://localhost:{self.port}/json"
         try:
             with urllib.request.urlopen(url, timeout=5) as response:
-                targets = json_module.loads(response.read())
+                targets = json.loads(response.read())
         except Exception as e:
             raise RuntimeError(
                 f"Failed to connect to Chrome on port {self.port}. "
