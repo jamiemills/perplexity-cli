@@ -36,23 +36,42 @@ class TestKeyDerivation:
 
     def test_different_hostname_produces_different_key(self) -> None:
         """Test that different hostnames produce different keys."""
+        derive_encryption_key.cache_clear()
         with mock.patch("socket.gethostname", return_value="host1"):
             key1 = derive_encryption_key()
 
+        derive_encryption_key.cache_clear()
         with mock.patch("socket.gethostname", return_value="host2"):
             key2 = derive_encryption_key()
 
+        derive_encryption_key.cache_clear()
         assert key1 != key2
 
     def test_different_username_produces_different_key(self) -> None:
         """Test that different usernames produce different keys."""
+        derive_encryption_key.cache_clear()
         with mock.patch.dict(os.environ, {"USER": "user1"}):
             key1 = derive_encryption_key()
 
+        derive_encryption_key.cache_clear()
         with mock.patch.dict(os.environ, {"USER": "user2"}):
             key2 = derive_encryption_key()
 
+        derive_encryption_key.cache_clear()
         assert key1 != key2
+
+    def test_derive_encryption_key_is_cached(self) -> None:
+        """Test that derive_encryption_key results are cached across calls."""
+        derive_encryption_key.cache_clear()
+        with mock.patch("perplexity_cli.utils.encryption.socket.gethostname") as mock_hostname:
+            mock_hostname.return_value = "cached-host"
+            key1 = derive_encryption_key()
+            key2 = derive_encryption_key()
+
+            assert key1 == key2
+            mock_hostname.assert_called_once()
+
+        derive_encryption_key.cache_clear()
 
 
 class TestTokenEncryption:

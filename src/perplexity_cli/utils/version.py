@@ -1,9 +1,11 @@
 """Version management utilities."""
 
 import re
+from functools import lru_cache
 from pathlib import Path
 
 
+@lru_cache(maxsize=1)
 def get_version() -> str:
     """Get package version from installed metadata, with fallback.
 

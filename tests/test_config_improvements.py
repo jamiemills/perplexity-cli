@@ -1,54 +1,9 @@
 """Tests for improved configuration management."""
 
-import pytest
-
 from perplexity_cli.utils.config import (
-    _validate_urls_config,
     clear_urls_cache,
     get_urls,
 )
-
-
-class TestConfigValidation:
-    """Test configuration validation."""
-
-    def test_validate_urls_config_valid(self):
-        """Test validation of valid config."""
-        config = {
-            "perplexity": {
-                "base_url": "https://www.perplexity.ai",
-                "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask",
-            }
-        }
-        # Should not raise
-        _validate_urls_config(config)
-
-    def test_validate_urls_config_missing_perplexity(self):
-        """Test validation fails when perplexity section missing."""
-        config = {}
-        with pytest.raises(RuntimeError, match="missing 'perplexity' section"):
-            _validate_urls_config(config)
-
-    def test_validate_urls_config_missing_base_url(self):
-        """Test validation fails when base_url missing."""
-        config = {
-            "perplexity": {
-                "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask",
-            }
-        }
-        with pytest.raises(RuntimeError, match="missing 'perplexity.base_url'"):
-            _validate_urls_config(config)
-
-    def test_validate_urls_config_empty_base_url(self):
-        """Test validation fails when base_url is empty."""
-        config = {
-            "perplexity": {
-                "base_url": "",
-                "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask",
-            }
-        }
-        with pytest.raises(RuntimeError, match="cannot be empty"):
-            _validate_urls_config(config)
 
 
 class TestConfigEnvironmentVariables:

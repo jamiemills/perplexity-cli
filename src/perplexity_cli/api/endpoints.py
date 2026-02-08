@@ -6,6 +6,7 @@ All API-specific code is isolated here to enable rapid adaptation if APIs change
 
 import uuid
 from collections.abc import Iterator
+from types import TracebackType
 
 from ..utils.config import get_query_endpoint
 from .client import SSEClient
@@ -26,6 +27,23 @@ class PerplexityAPI:
             timeout: Request timeout in seconds.
         """
         self.client = SSEClient(token=token, cookies=cookies, timeout=timeout)
+
+    def close(self) -> None:
+        """Close the underlying HTTP client."""
+        self.client.close()
+
+    def __enter__(self) -> "PerplexityAPI":
+        """Enter context manager."""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Exit context manager, closing the HTTP client."""
+        self.close()
 
     def submit_query(
         self,

@@ -9,6 +9,7 @@ import base64
 import hashlib
 import os
 import socket
+from functools import lru_cache
 
 from cryptography.fernet import Fernet
 
@@ -16,6 +17,7 @@ from cryptography.fernet import Fernet
 _KEY_DERIVATION_SALT = b"perplexity-cli-token-encryption"
 
 
+@lru_cache(maxsize=1)
 def derive_encryption_key() -> bytes:
     """Derive encryption key from system identifiers.
 

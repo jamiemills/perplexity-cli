@@ -93,6 +93,8 @@ addopts = "--strict-markers -v"
 markers = [
     "integration: marks tests as integration tests",
     "security: marks tests as security tests",
+    "slow: marks tests as slow-running",
+    "unit: marks tests as unit tests",
 ]
 filterwarnings = [
     "ignore::RuntimeWarning:.*coroutine.*authenticate_with_browser.*was never awaited",

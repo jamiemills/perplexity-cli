@@ -9,6 +9,8 @@ from perplexity_cli.utils.config import get_token_path
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
 from perplexity_cli.utils.logging import get_logger
 
+TOKEN_AGE_WARNING_DAYS = 30
+
 
 class TokenManager:
     """Manages persistent token storage with encryption and secure file permissions.
@@ -132,7 +134,7 @@ class TokenManager:
                 try:
                     created_at = datetime.fromisoformat(created_at_str)
                     age_days = (datetime.now() - created_at).days
-                    if age_days > 30:
+                    if age_days > TOKEN_AGE_WARNING_DAYS:
                         self.logger.warning(f"Token is {age_days} days old, may be expired")
                     else:
                         self.logger.debug(f"Token age: {age_days} days")
