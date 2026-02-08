@@ -4,11 +4,12 @@ import json
 import os
 import stat
 from datetime import datetime
-from pathlib import Path
 
 from perplexity_cli.utils.config import get_token_path
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
 from perplexity_cli.utils.logging import get_logger
+
+TOKEN_AGE_WARNING_DAYS = 30
 
 
 class TokenManager:
@@ -28,14 +29,15 @@ class TokenManager:
         self.token_path = get_token_path()
         self.logger = get_logger()
 
-    def save_token(self, token: str) -> None:
-        """Save authentication token securely to disk with encryption.
+    def save_token(self, token: str, cookies: dict[str, str] | None = None) -> None:
+        """Save authentication token and cookies securely to disk with encryption.
 
-        Encrypts the token using a system-derived key and creates the token file
+        Encrypts the token and cookies using a system-derived key and creates the token file
         with restricted permissions (0600). If the file already exists, it is overwritten.
 
         Args:
             token: The authentication token to store.
+            cookies: Optional dictionary of browser cookies to store.
 
         Raises:
             IOError: If the token cannot be written or permissions cannot be set.
@@ -45,23 +47,38 @@ class TokenManager:
             # Encrypt the token
             encrypted_token = encrypt_token(token)
 
-            # Write encrypted token to file with metadata
+            # Prepare data structure
+            data = {
+                "version": 2,
+                "encrypted": True,
+                "token": encrypted_token,
+                "created_at": datetime.now().isoformat(),
+            }
+
+            # Encrypt and store cookies if provided and enabled in config
+            if cookies:
+                from perplexity_cli.utils.config import get_save_cookies_enabled
+
+                if get_save_cookies_enabled():
+                    encrypted_cookies = encrypt_token(json.dumps(cookies))
+                    data["cookies"] = encrypted_cookies
+                    self.logger.debug(f"Saving {len(cookies)} cookies (cookie storage enabled)")
+                else:
+                    self.logger.debug(
+                        f"Skipping {len(cookies)} cookies (cookie storage disabled in config)"
+                    )
+
+            # Write encrypted data to file
             with open(self.token_path, "w") as f:
-                json.dump(
-                    {
-                        "version": 1,
-                        "encrypted": True,
-                        "token": encrypted_token,
-                        "created_at": datetime.now().isoformat(),
-                    },
-                    f,
-                )
+                json.dump(data, f)
 
             # Set restrictive permissions
             os.chmod(self.token_path, self.SECURE_PERMISSIONS)
 
-            # Audit log: token saved
-            self.logger.info(f"Token saved to {self.token_path}")
+            # Audit log
+            saved_cookies = "cookies" in data
+            cookie_msg = f" and {len(cookies)} cookies" if saved_cookies else ""
+            self.logger.info(f"Token{cookie_msg} saved to {self.token_path}")
 
         except OSError as e:
             self.logger.error(f"Failed to save token: {e}", exc_info=True)
@@ -69,22 +86,25 @@ class TokenManager:
                 f"Failed to save or set permissions on token file {self.token_path}: {e}"
             ) from e
 
-    def load_token(self) -> str | None:
-        """Load the authentication token from disk and decrypt it.
+    def load_token(self) -> tuple[str | None, dict[str, str] | None]:
+        """Load the authentication token and cookies from disk and decrypt them.
 
         Verifies file permissions are secure (0600) before reading.
-        Decrypts the token using the system-derived key.
-        Returns None if token does not exist.
+        Decrypts the token and cookies using the system-derived key.
+        Returns (None, None) if token does not exist.
+        Handles both v1 (token only) and v2 (token + cookies) formats.
 
         Returns:
-            The decrypted authentication token, or None if not found.
+            Tuple of (token, cookies) where:
+                - token: The decrypted authentication token, or None if not found
+                - cookies: Dictionary of cookies {name: value}, or None if not available
 
         Raises:
             IOError: If the token exists but cannot be read.
             RuntimeError: If token file has insecure permissions or decryption fails.
         """
         if not self.token_path.exists():
-            return None
+            return (None, None)
 
         # Verify file permissions
         self._verify_permissions()
@@ -97,7 +117,7 @@ class TokenManager:
             if not data.get("encrypted", False):
                 self.logger.warning("Token file is not encrypted")
                 raise RuntimeError(
-                    "Token file is not encrypted. Please re-authenticate with: perplexity-cli auth"
+                    "Token file is not encrypted. Please re-authenticate with: pxcli auth"
                 )
 
             encrypted_token = data.get("token")
@@ -105,13 +125,16 @@ class TokenManager:
                 self.logger.error("Token file missing encrypted token data")
                 raise RuntimeError("Token file is missing encrypted token data")
 
+            # Check version for backward compatibility
+            version = data.get("version", 1)
+
             # Check token age if created_at is present
             created_at_str = data.get("created_at")
             if created_at_str:
                 try:
                     created_at = datetime.fromisoformat(created_at_str)
                     age_days = (datetime.now() - created_at).days
-                    if age_days > 30:
+                    if age_days > TOKEN_AGE_WARNING_DAYS:
                         self.logger.warning(f"Token is {age_days} days old, may be expired")
                     else:
                         self.logger.debug(f"Token age: {age_days} days")
@@ -120,11 +143,37 @@ class TokenManager:
 
             # Decrypt the token
             token = decrypt_token(encrypted_token)
-            
-            # Audit log: token loaded
-            self.logger.info(f"Token loaded from {self.token_path}")
-            
-            return token
+
+            # Decrypt cookies if v2 format
+            cookies = None
+            if version == 2 and "cookies" in data:
+                encrypted_cookies = data.get("cookies")
+                if encrypted_cookies:
+                    cookies_json = decrypt_token(encrypted_cookies)
+                    cookies = json.loads(cookies_json)
+
+                    # Debug logging: identify Cloudflare-related cookies
+                    cf_cookies = {
+                        k: v
+                        for k, v in cookies.items()
+                        if k.startswith("cf") or k.startswith("__cf")
+                    }
+                    self.logger.debug(
+                        f"Loaded {len(cookies)} cookies, including {len(cf_cookies)} Cloudflare cookies"
+                    )
+                    if cf_cookies:
+                        self.logger.debug(f"Cloudflare cookies: {', '.join(cf_cookies.keys())}")
+            else:
+                if version == 2:
+                    self.logger.debug("Token is v2 format but no cookies stored")
+                else:
+                    self.logger.debug(f"Token is v{version} format (no cookies)")
+
+            # Audit log
+            cookie_msg = f" and {len(cookies)} cookies" if cookies else ""
+            self.logger.info(f"Token{cookie_msg} loaded from {self.token_path}")
+
+            return (token, cookies)
 
         except (OSError, json.JSONDecodeError) as e:
             self.logger.error(f"Failed to load token: {e}", exc_info=True)

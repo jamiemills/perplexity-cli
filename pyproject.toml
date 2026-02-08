@@ -3,18 +3,28 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "perplexity-cli"
-version = "0.3.0"
+name = "pxcli"
+version = "0.4.3"
 description = "A command-line interface for querying Perplexity.ai with persistent authentication"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
+license = {text = "MIT"}
+authors = [
+    {name = "Jamie Mills", email = "jamie.mills@gmail.com"},
+]
+keywords = ["cli", "perplexity", "ai", "query", "command-line"]
+
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Internet",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
 ]
 
 dependencies = [
@@ -25,6 +35,7 @@ dependencies = [
     "rich>=13.0",
     "tenacity>=8.0",
     "python-dateutil>=2.8.0",
+    "pydantic>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -35,9 +46,17 @@ dev = [
     "pytest-asyncio>=1.2.0",
     "ruff>=0.1",
     "mypy>=1.0",
+    "pre-commit>=3.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/jamiemills/perplexity-cli"
+Repository = "https://github.com/jamiemills/perplexity-cli"
+"Bug Tracker" = "https://github.com/jamiemills/perplexity-cli/issues"
+"Source Code" = "https://github.com/jamiemills/perplexity-cli"
+
 [project.scripts]
+pxcli = "perplexity_cli.cli:main"
 perplexity-cli = "perplexity_cli.cli:main"
 
 [tool.setuptools]
@@ -74,7 +93,17 @@ addopts = "--strict-markers -v"
 markers = [
     "integration: marks tests as integration tests",
     "security: marks tests as security tests",
+    "slow: marks tests as slow-running",
+    "unit: marks tests as unit tests",
 ]
 filterwarnings = [
     "ignore::RuntimeWarning:.*coroutine.*authenticate_with_browser.*was never awaited",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = [
+    "B101",  # assert_used (required for pytest)
+    "B110",  # try_except_pass (acceptable error handling pattern)
+    "B310",  # urllib_urlopen (false positive on requests library)
 ]
