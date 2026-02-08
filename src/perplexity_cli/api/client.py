@@ -1,6 +1,7 @@
 """HTTP client for Perplexity API with SSE streaming support."""
 
 import json
+import logging
 import time
 from collections.abc import Iterator
 
@@ -34,6 +35,7 @@ class SSEClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.logger = get_logger()
+        self._client: httpx.Client | None = None
 
     def get_headers(self) -> dict[str, str]:
         """Get HTTP headers for API requests.
@@ -57,6 +59,22 @@ class SSEClient:
 
         return headers
 
+    def _get_client(self) -> httpx.Client:
+        """Get or create the persistent httpx client.
+
+        Returns:
+            The shared httpx.Client instance.
+        """
+        if self._client is None:
+            self._client = httpx.Client(timeout=self.timeout)
+        return self._client
+
+    def close(self) -> None:
+        """Close the persistent httpx client if open."""
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
     def stream_post(self, url: str, json_data: dict) -> Iterator[dict]:
         """POST request with SSE streaming response.
 
@@ -75,34 +93,37 @@ class SSEClient:
         headers = self.get_headers()
         attempt = 0
 
-        # Debug: Log request details at startup
-        self.logger.debug(f"API Request to: {url}")
-        self.logger.debug(
-            f"Request headers: Content-Type={headers.get('Content-Type')}, User-Agent={headers.get('User-Agent')}"
-        )
-
-        # Debug: Log authentication and cookie status
-        has_auth = bool(self.token)
-        has_cookies = bool(self.cookies)
-        self.logger.debug(f"Authentication: Bearer token present={has_auth}")
-        if has_cookies:
-            cookie_names = list(self.cookies.keys())
-            cf_cookies = [c for c in cookie_names if c.startswith("cf") or c.startswith("__cf")]
+        if self.logger.isEnabledFor(logging.DEBUG):
+            # Debug: Log request details at startup
+            self.logger.debug(f"API Request to: {url}")
             self.logger.debug(
-                f"Cookies: {len(self.cookies)} total, {len(cf_cookies)} Cloudflare-related"
+                f"Request headers: Content-Type={headers.get('Content-Type')}, User-Agent={headers.get('User-Agent')}"
             )
-            self.logger.debug(f"Cloudflare cookies present: {cf_cookies}")
-        else:
-            self.logger.debug("Cookies: None (no Cloudflare bypass)")
+
+            # Debug: Log authentication and cookie status
+            has_auth = bool(self.token)
+            has_cookies = bool(self.cookies)
+            self.logger.debug(f"Authentication: Bearer token present={has_auth}")
+            if has_cookies:
+                cookie_names = list(self.cookies.keys())
+                cf_cookies = [c for c in cookie_names if c.startswith("cf") or c.startswith("__cf")]
+                self.logger.debug(
+                    f"Cookies: {len(self.cookies)} total, {len(cf_cookies)} Cloudflare-related"
+                )
+                self.logger.debug(f"Cloudflare cookies present: {cf_cookies}")
+            else:
+                self.logger.debug("Cookies: None (no Cloudflare bypass)")
 
         while attempt < self.max_retries:
             try:
-                self.logger.debug(
-                    f"Streaming POST to {url} (attempt {attempt + 1}/{self.max_retries})"
-                )
+                if self.logger.isEnabledFor(logging.DEBUG):
+                    self.logger.debug(
+                        f"Streaming POST to {url} (attempt {attempt + 1}/{self.max_retries})"
+                    )
 
-                with httpx.Client(timeout=self.timeout) as client:
-                    with client.stream("POST", url, headers=headers, json=json_data) as response:
+                client = self._get_client()
+                with client.stream("POST", url, headers=headers, json=json_data) as response:
+                    if self.logger.isEnabledFor(logging.DEBUG):
                         # Debug: Log response status and Cloudflare headers
                         self.logger.debug(f"HTTP {response.status_code} {response.reason_phrase}")
                         cf_ray = response.headers.get("cf-ray")
@@ -115,33 +136,38 @@ class SSEClient:
                         if server:
                             self.logger.debug(f"Server: {server}")
 
-                        # Check for HTTP errors
-                        response.raise_for_status()
+                    # Check for HTTP errors
+                    response.raise_for_status()
 
+                    if self.logger.isEnabledFor(logging.DEBUG):
                         # Parse SSE stream - once streaming starts, we can't retry
                         self.logger.debug("Starting SSE stream parsing")
-                        yield from self._parse_sse_stream(response)
+
+                    yield from self._parse_sse_stream(response)
+
+                    if self.logger.isEnabledFor(logging.DEBUG):
                         self.logger.debug("SSE stream completed successfully")
-                        return  # Success, exit retry loop
+                    return  # Success, exit retry loop
 
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
 
-                # Debug: Log response headers and body preview for all errors
-                self.logger.debug(f"HTTP Error {status}: {e}")
-                cf_ray = e.response.headers.get("cf-ray")
-                if cf_ray:
-                    self.logger.debug(f"Cloudflare Ray ID: {cf_ray}")
-                cf_cache = e.response.headers.get("cf-cache-status")
-                if cf_cache:
-                    self.logger.debug(f"Cloudflare Cache Status: {cf_cache}")
+                if self.logger.isEnabledFor(logging.DEBUG):
+                    # Debug: Log response headers and body preview for all errors
+                    self.logger.debug(f"HTTP Error {status}: {e}")
+                    cf_ray = e.response.headers.get("cf-ray")
+                    if cf_ray:
+                        self.logger.debug(f"Cloudflare Ray ID: {cf_ray}")
+                    cf_cache = e.response.headers.get("cf-cache-status")
+                    if cf_cache:
+                        self.logger.debug(f"Cloudflare Cache Status: {cf_cache}")
 
-                # Log response body preview for debugging
-                try:
-                    response_text = e.response.text[:500]
-                    self.logger.debug(f"Response body preview: {response_text}")
-                except Exception:
-                    pass
+                    # Log response body preview for debugging
+                    try:
+                        response_text = e.response.text[:500]
+                        self.logger.debug(f"Response body preview: {response_text}")
+                    except Exception:
+                        pass
 
                 # Don't retry 401 (invalid token), but 403 might be temporary Cloudflare blocking
                 if status == 401:
