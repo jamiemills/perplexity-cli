@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
+from perplexity_cli.api.models import QueryParams
 from perplexity_cli.auth.models import CookieData, TokenFormat, TokenMetadata
 from perplexity_cli.threads.models import CacheContent, CacheFormat, CacheMetadata
 from perplexity_cli.utils.rate_limiter_models import (
@@ -301,3 +302,42 @@ class TestRateLimiterStats:
                 total_requests=-1,
                 total_wait_time=0.0,
             )
+
+
+class TestQueryParamsSearchMode:
+    """Test QueryParams search_implementation_mode field."""
+
+    def test_search_mode_default_is_standard(self):
+        """Test that search_implementation_mode defaults to 'standard'."""
+        params = QueryParams()
+        assert params.search_implementation_mode == "standard"
+
+    def test_search_mode_standard_accepted(self):
+        """Test that 'standard' mode is accepted."""
+        params = QueryParams(search_implementation_mode="standard")
+        assert params.search_implementation_mode == "standard"
+
+    def test_search_mode_multi_step_accepted(self):
+        """Test that 'multi_step' mode is accepted."""
+        params = QueryParams(search_implementation_mode="multi_step")
+        assert params.search_implementation_mode == "multi_step"
+
+    def test_search_mode_invalid_rejected(self):
+        """Test that invalid modes are rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            QueryParams(search_implementation_mode="invalid_mode")
+        assert "standard" in str(exc_info.value)
+        assert "multi_step" in str(exc_info.value)
+
+    def test_search_mode_serialization(self):
+        """Test that search_implementation_mode is serialized correctly."""
+        params = QueryParams(search_implementation_mode="multi_step")
+        data = params.to_dict()
+        assert data["search_implementation_mode"] == "multi_step"
+
+    def test_search_mode_in_request_dict(self):
+        """Test that search_implementation_mode is included in API request dict."""
+        params = QueryParams(search_implementation_mode="multi_step")
+        request_dict = params.to_dict()
+        assert "search_implementation_mode" in request_dict
+        assert request_dict["search_implementation_mode"] == "multi_step"

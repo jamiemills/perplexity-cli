@@ -93,12 +93,22 @@ class SSEClient:
         headers = self.get_headers()
         attempt = 0
 
+        # Check if deep research is requested and adjust timeout accordingly
+        is_deep_research = (
+            json_data.get("params", {}).get("search_implementation_mode") == "multi_step"
+        )
+        effective_timeout = 360 if is_deep_research else self.timeout
+
         if self.logger.isEnabledFor(logging.DEBUG):
             # Debug: Log request details at startup
             self.logger.debug(f"API Request to: {url}")
             self.logger.debug(
                 f"Request headers: Content-Type={headers.get('Content-Type')}, User-Agent={headers.get('User-Agent')}"
             )
+            if is_deep_research:
+                self.logger.debug(
+                    f"Deep research mode detected, timeout set to {effective_timeout}s"
+                )
 
             # Debug: Log authentication and cookie status
             has_auth = bool(self.token)
@@ -122,7 +132,11 @@ class SSEClient:
                     )
 
                 client = self._get_client()
-                with client.stream("POST", url, headers=headers, json=json_data) as response:
+                # Create timeout object for this request
+                request_timeout = httpx.Timeout(effective_timeout)
+                with client.stream(
+                    "POST", url, headers=headers, json=json_data, timeout=request_timeout
+                ) as response:
                     if self.logger.isEnabledFor(logging.DEBUG):
                         # Debug: Log response status and Cloudflare headers
                         self.logger.debug(f"HTTP {response.status_code} {response.reason_phrase}")

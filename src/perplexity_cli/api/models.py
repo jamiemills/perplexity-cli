@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from perplexity_cli.utils.version import get_api_version
 
@@ -39,6 +39,28 @@ class QueryParams(BaseModel):
     override_no_search: bool = Field(default=False)
     should_ask_for_mcp_tool_confirmation: bool = Field(default=True)
     browser_agent_allow_once_from_toggle: bool = Field(default=False)
+    search_implementation_mode: str = Field(
+        default="standard",
+        description="Controls research depth; 'standard' = quick query (~30s), 'multi_step' = deep research (2-4 min)",
+    )
+
+    @field_validator("search_implementation_mode")
+    @classmethod
+    def validate_search_mode(cls, v: str) -> str:
+        """Validate search implementation mode.
+
+        Args:
+            v: The search implementation mode value.
+
+        Returns:
+            The validated mode value.
+
+        Raises:
+            ValueError: If mode is not 'standard' or 'multi_step'.
+        """
+        if v not in ["standard", "multi_step"]:
+            raise ValueError('search_implementation_mode must be "standard" or "multi_step"')
+        return v
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API request."""

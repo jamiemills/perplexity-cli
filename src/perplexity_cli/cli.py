@@ -191,6 +191,12 @@ def auth(ctx: click.Context, port: int) -> None:
     default=False,
     help="Stream response in real-time. Use --stream for incremental output (experimental).",
 )
+@click.option(
+    "--deep-research",
+    is_flag=True,
+    default=False,
+    help="Enable deep research mode for comprehensive multi-step research. Takes 2-4 minutes but provides 50+ citations.",
+)
 @click.pass_context
 def query(
     ctx: click.Context,
@@ -198,6 +204,7 @@ def query(
     format: str,
     strip_references: bool,
     stream: bool,
+    deep_research: bool,
 ) -> None:
     """Submit a query to Perplexity.ai and get an answer.
 
@@ -215,6 +222,10 @@ def query(
 
     Use --stream for real-time streaming of the response as it arrives.
 
+    Use --deep-research for comprehensive multi-step research queries. Performs
+    decomposition, retrieval, synthesis, and verification for more citations.
+    Note: Deep research takes 2-4 minutes (vs 30 seconds for standard queries).
+
     Examples:
         perplexity-cli query "What is Python?"
         perplexity-cli query "What is the capital of France?" > answer.txt
@@ -225,6 +236,7 @@ def query(
         perplexity-cli query --strip-references "What is Python?"
         perplexity-cli query -f plain --strip-references "What is Python?"
         perplexity-cli query --stream "What is Python?"
+        perplexity-cli query --deep-research "Tell me about Kubernetes architecture"
 
     JSON format tip: Use jq -r to display newlines properly:
         perplexity-cli query --format json "Question" | jq -r '.answer'
@@ -311,15 +323,26 @@ def query(
 
         # Create API client with cookies
         with PerplexityAPI(token=token, cookies=cookies) as api:
+            # Determine search mode
+            search_mode = "multi_step" if deep_research else "standard"
+
+            # Log deep research mode
+            if deep_research:
+                logger.info("Deep research mode enabled")
+
             # Handle streaming vs complete answer
             if stream:
                 logger.info("Streaming query response")
                 # Stream response
-                _stream_query_response(api, final_query, formatter, output_format, strip_references)
+                _stream_query_response(
+                    api, final_query, formatter, output_format, strip_references, deep_research
+                )
             else:
                 logger.info("Fetching complete answer")
                 # Submit query and get answer
-                answer_obj = api.get_complete_answer(final_query)
+                answer_obj = api.get_complete_answer(
+                    final_query, search_implementation_mode=search_mode
+                )
                 logger.debug(
                     f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references"
                 )
@@ -386,6 +409,7 @@ def _stream_query_response(
     formatter,
     output_format: str,
     strip_references: bool,
+    deep_research: bool = False,
 ) -> None:
     """Stream query response in real-time.
 
@@ -395,6 +419,7 @@ def _stream_query_response(
         formatter: Formatter instance.
         output_format: Output format name.
         strip_references: Whether to strip references.
+        deep_research: Whether to use deep research mode.
     """
     from perplexity_cli.api.models import Answer, WebResult
     from perplexity_cli.utils.logging import get_logger
@@ -404,13 +429,31 @@ def _stream_query_response(
     references: list[WebResult] = []
 
     try:
-        for message in api.submit_query(query):
+        # Determine search mode
+        search_mode = "multi_step" if deep_research else "standard"
+
+        # Display deep research notice if enabled
+        if deep_research:
+            click.echo("🔍 Performing deep research... (this may take 2-4 minutes)")
+
+        for message in api.submit_query(query, search_implementation_mode=search_mode):
             logger.debug(
                 f"Received SSE message: status={message.status}, final={message.final_sse_message}"
             )
 
-            # Extract text from blocks
+            # Extract text from blocks and check for plan blocks (deep research progress)
             for block in message.blocks:
+                # Check for plan block (deep research progress)
+                if deep_research:
+                    plan_info = api._extract_plan_block_info(block)
+                    if plan_info:
+                        eta = plan_info.get("eta_seconds")
+                        if eta:
+                            click.echo(
+                                f"\r  Deep research in progress... (~{eta}s remaining)", nl=False
+                            )
+
+                # Extract answer text
                 if block.intended_usage == "ask_text":
                     text = api._extract_text_from_block(block.content)
                     if text and text != accumulated_text:
