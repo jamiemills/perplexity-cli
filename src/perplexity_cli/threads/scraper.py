@@ -6,8 +6,8 @@ for efficient repeated exports.
 """
 
 import json
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any
 
 import httpx
 
@@ -52,7 +52,7 @@ class ThreadScraper:
         self,
         from_date: str | None = None,
         to_date: str | None = None,
-        progress_callback: Any = None,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[ThreadRecord]:
         """Scrape all threads from library using cache-aware strategy.
 
@@ -172,7 +172,7 @@ class ThreadScraper:
     async def _fetch_all_threads_from_api(
         self,
         session_token: str,
-        progress_callback: Any = None,
+        progress_callback: Callable[[int, int], None] | None = None,
         from_date: str | None = None,
         to_date: str | None = None,
     ) -> list[ThreadRecord]:

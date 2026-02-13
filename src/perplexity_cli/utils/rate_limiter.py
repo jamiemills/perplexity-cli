@@ -100,7 +100,7 @@ class RateLimiter:
 
         return wait_time
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> dict[str, int | float]:
         """Get rate limiter statistics.
 
         Returns:

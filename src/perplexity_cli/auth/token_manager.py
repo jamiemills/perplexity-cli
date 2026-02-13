@@ -69,7 +69,7 @@ class TokenManager:
                     )
 
             # Write encrypted data to file
-            with open(self.token_path, "w") as f:
+            with open(self.token_path, "w", encoding="utf-8") as f:
                 json.dump(data, f)
 
             # Set restrictive permissions
@@ -110,7 +110,7 @@ class TokenManager:
         self._verify_permissions()
 
         try:
-            with open(self.token_path) as f:
+            with open(self.token_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             # Check if token is encrypted

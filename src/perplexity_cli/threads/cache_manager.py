@@ -75,7 +75,7 @@ class ThreadCacheManager:
         self._verify_permissions()
 
         try:
-            with open(self.cache_path) as f:
+            with open(self.cache_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             # Check if cache is encrypted
@@ -146,7 +146,7 @@ class ThreadCacheManager:
             encrypted_cache = encrypt_token(cache_json)
 
             # Write encrypted cache to file with metadata
-            with open(self.cache_path, "w") as f:
+            with open(self.cache_path, "w", encoding="utf-8") as f:
                 json.dump(
                     {
                         "version": self.CACHE_VERSION,
