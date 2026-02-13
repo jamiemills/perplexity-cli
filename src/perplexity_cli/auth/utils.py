@@ -33,7 +33,7 @@ def load_or_prompt_token(
     token, cookies = tm.load_token()
 
     if not token:
-        click.echo("✗ Not authenticated.", err=True)
+        click.echo("[ERROR] Not authenticated.", err=True)
         click.echo(
             "\nPlease authenticate first with: pxcli auth",
             err=True,

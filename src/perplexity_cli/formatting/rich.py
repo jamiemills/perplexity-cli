@@ -15,7 +15,7 @@ class RichFormatter(Formatter):
     """Formatter using Rich library for advanced terminal output."""
 
     def __init__(self) -> None:
-        """Initialize Rich formatter."""
+        """Initialise Rich formatter."""
         # Console for direct output to terminal with styling
         # width=200 allows long URLs to not be truncated
         self.console = Console(force_terminal=True, legacy_windows=False, width=200)

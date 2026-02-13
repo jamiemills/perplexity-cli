@@ -15,6 +15,7 @@ from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.threads.utils import convert_cache_dicts_to_thread_records
+from perplexity_cli.utils.config import get_thread_list_url
 from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.rate_limiter import RateLimiter
 
@@ -46,7 +47,7 @@ class ThreadScraper:
         self.cache_manager = cache_manager
         self.force_refresh = force_refresh
         self.logger = get_logger()
-        self.api_url = "https://www.perplexity.ai/rest/thread/list_ask_threads"
+        self.api_url = get_thread_list_url()
         self.api_version = "2.18"
 
     async def scrape_all_threads(
@@ -94,9 +95,7 @@ class ThreadScraper:
                 cache_data = self.cache_manager.load_cache()
                 if cache_data:
                     # Convert dicts back to ThreadRecord objects
-                    threads = convert_cache_dicts_to_thread_records(
-                        cache_data.get("threads", [])
-                    )
+                    threads = convert_cache_dicts_to_thread_records(cache_data.get("threads", []))
 
                     # Filter by date range if specified
                     if from_date or to_date:
@@ -113,9 +112,7 @@ class ThreadScraper:
                 self.logger.info(f"Cache gap detected, fetching {fetch_from} to {fetch_to}")
                 cache_data = self.cache_manager.load_cache()
                 if cache_data:
-                    threads = convert_cache_dicts_to_thread_records(
-                        cache_data.get("threads", [])
-                    )
+                    threads = convert_cache_dicts_to_thread_records(cache_data.get("threads", []))
         else:
             if self.force_refresh:
                 self.logger.info("Force refresh enabled, ignoring cache")
