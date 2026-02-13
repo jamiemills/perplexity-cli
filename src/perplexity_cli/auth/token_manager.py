@@ -2,11 +2,11 @@
 
 import json
 import os
-import stat
 from datetime import datetime
 
 from perplexity_cli.utils.config import get_token_path
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
+from perplexity_cli.utils.file_permissions import verify_secure_permissions
 from perplexity_cli.utils.logging import get_logger
 
 TOKEN_AGE_WARNING_DAYS = 30
@@ -207,16 +207,9 @@ class TokenManager:
         Raises:
             RuntimeError: If file permissions are not 0600.
         """
-        file_stat = self.token_path.stat()
-        actual_permissions = stat.S_IMODE(file_stat.st_mode)
-
-        if actual_permissions != self.SECURE_PERMISSIONS:
-            self.logger.error(
-                f"Token file has insecure permissions: {oct(actual_permissions)} "
-                f"(expected {oct(self.SECURE_PERMISSIONS)})"
-            )
-            raise RuntimeError(
-                f"Token file has insecure permissions: {oct(actual_permissions)}. "
-                f"Expected {oct(self.SECURE_PERMISSIONS)}. "
-                f"Token file may have been compromised."
-            )
+        verify_secure_permissions(
+            self.token_path,
+            expected_permissions=self.SECURE_PERMISSIONS,
+            file_type="token",
+            logger=self.logger,
+        )
