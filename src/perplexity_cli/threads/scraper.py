@@ -14,6 +14,7 @@ import httpx
 from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
+from perplexity_cli.threads.utils import convert_cache_dicts_to_thread_records
 from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.rate_limiter import RateLimiter
 
@@ -93,14 +94,9 @@ class ThreadScraper:
                 cache_data = self.cache_manager.load_cache()
                 if cache_data:
                     # Convert dicts back to ThreadRecord objects
-                    threads = [
-                        ThreadRecord(
-                            title=t["title"],
-                            url=t["url"],
-                            created_at=t["created_at"],
-                        )
-                        for t in cache_data.get("threads", [])
-                    ]
+                    threads = convert_cache_dicts_to_thread_records(
+                        cache_data.get("threads", [])
+                    )
 
                     # Filter by date range if specified
                     if from_date or to_date:
@@ -117,14 +113,9 @@ class ThreadScraper:
                 self.logger.info(f"Cache gap detected, fetching {fetch_from} to {fetch_to}")
                 cache_data = self.cache_manager.load_cache()
                 if cache_data:
-                    threads = [
-                        ThreadRecord(
-                            title=t["title"],
-                            url=t["url"],
-                            created_at=t["created_at"],
-                        )
-                        for t in cache_data.get("threads", [])
-                    ]
+                    threads = convert_cache_dicts_to_thread_records(
+                        cache_data.get("threads", [])
+                    )
         else:
             if self.force_refresh:
                 self.logger.info("Force refresh enabled, ignoring cache")
