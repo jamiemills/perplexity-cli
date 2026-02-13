@@ -13,7 +13,7 @@ class StyleManager:
     """Manages user-defined style/prompt configurations."""
 
     def __init__(self) -> None:
-        """Initialize style manager."""
+        """Initialise style manager."""
         self.style_path = get_style_path()
 
     def load_style(self) -> str | None:

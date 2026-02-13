@@ -78,7 +78,7 @@ def _get_default_urls() -> dict:
     """
     package_config = Path(__file__).parent.parent / "config" / "urls.json"
     try:
-        with open(package_config) as f:
+        with open(package_config, encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         raise RuntimeError(f"Failed to load default URLs configuration: {e}") from e
@@ -90,7 +90,7 @@ def _ensure_user_urls_config() -> None:
     if not urls_path.exists():
         try:
             default_urls = _get_default_urls()
-            with open(urls_path, "w") as f:
+            with open(urls_path, "w", encoding="utf-8") as f:
                 json.dump(default_urls, f, indent=2)
         except (OSError, json.JSONDecodeError) as e:
             raise RuntimeError(f"Failed to create URLs configuration file: {e}") from e
@@ -115,7 +115,7 @@ def get_urls() -> URLConfig:
 
     urls_path = get_urls_path()
     try:
-        with open(urls_path) as f:
+        with open(urls_path, encoding="utf-8") as f:
             urls_dict = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         raise RuntimeError(f"Failed to load URLs configuration: {e}") from e
@@ -133,6 +133,9 @@ def get_urls() -> URLConfig:
         url_config = URLConfig(
             base_url=perplexity_config.get("base_url", "https://www.perplexity.ai"),
             query_endpoint=perplexity_config.get("query_endpoint", "/api/pplx.generateStream"),
+            thread_list_endpoint=perplexity_config.get(
+                "thread_list_endpoint", "/rest/thread/list_ask_threads"
+            ),
         )
     except ValueError as e:
         raise RuntimeError(f"Invalid URLs configuration: {e}") from e
@@ -144,9 +147,16 @@ def get_urls() -> URLConfig:
     if "PERPLEXITY_QUERY_ENDPOINT" in os.environ:
         url_config.query_endpoint = os.environ["PERPLEXITY_QUERY_ENDPOINT"]
 
+    if "PERPLEXITY_THREAD_LIST_ENDPOINT" in os.environ:
+        url_config.thread_list_endpoint = os.environ["PERPLEXITY_THREAD_LIST_ENDPOINT"]
+
     # Validate after environment overrides using Pydantic
     try:
-        URLConfig(base_url=url_config.base_url, query_endpoint=url_config.query_endpoint)
+        URLConfig(
+            base_url=url_config.base_url,
+            query_endpoint=url_config.query_endpoint,
+            thread_list_endpoint=url_config.thread_list_endpoint,
+        )
     except ValueError as e:
         raise RuntimeError(f"Invalid URLs configuration after environment overrides: {e}") from e
 
@@ -187,6 +197,22 @@ def get_query_endpoint() -> str:
     return url_config.query_endpoint
 
 
+def get_thread_list_url() -> str:
+    """Get the full URL for the Perplexity thread list API endpoint.
+
+    Composes the base URL and thread list endpoint from configuration.
+
+    Returns:
+        str: The full thread list URL (e.g.,
+            https://www.perplexity.ai/rest/thread/list_ask_threads).
+
+    Raises:
+        RuntimeError: If configuration is invalid or missing required fields.
+    """
+    url_config = get_urls()
+    return url_config.base_url + url_config.thread_list_endpoint
+
+
 def _get_default_rate_limiting() -> dict[str, Any]:
     """Get default rate limiting configuration.
 
@@ -198,34 +224,6 @@ def _get_default_rate_limiting() -> dict[str, Any]:
         "requests_per_period": 20,
         "period_seconds": 60,
     }
-
-
-def _validate_rate_limiting_config(config: dict[str, Any]) -> None:
-    """Validate rate limiting configuration structure.
-
-    Args:
-        config: Configuration dictionary to validate.
-
-    Raises:
-        RuntimeError: If configuration is invalid.
-    """
-    if not isinstance(config, dict):
-        raise RuntimeError("Rate limiting configuration must be a dictionary")
-
-    if "enabled" in config and not isinstance(config["enabled"], bool):
-        raise RuntimeError("Rate limiting 'enabled' must be a boolean")
-
-    if "requests_per_period" in config:
-        if not isinstance(config["requests_per_period"], int):
-            raise RuntimeError("Rate limiting 'requests_per_period' must be an integer")
-        if config["requests_per_period"] <= 0:
-            raise RuntimeError("Rate limiting 'requests_per_period' must be greater than 0")
-
-    if "period_seconds" in config:
-        if not isinstance(config["period_seconds"], int | float):
-            raise RuntimeError("Rate limiting 'period_seconds' must be a number")
-        if config["period_seconds"] <= 0:
-            raise RuntimeError("Rate limiting 'period_seconds' must be greater than 0")
 
 
 def get_rate_limiting_config() -> RateLimitConfig:
@@ -250,12 +248,12 @@ def get_rate_limiting_config() -> RateLimitConfig:
     try:
         urls_path = get_urls_path()
         if urls_path.exists():
-            with open(urls_path) as f:
+            with open(urls_path, encoding="utf-8") as f:
                 urls_data = json.load(f)
                 if "rate_limiting" in urls_data:
                     user_config = urls_data["rate_limiting"]
-                    _validate_rate_limiting_config(user_config)
                     # Merge user config with defaults
+                    # Pydantic validates when RateLimitConfig is constructed
                     config_dict.update(user_config)
     except (OSError, json.JSONDecodeError, RuntimeError):
         # If urls.json doesn't have rate_limiting section, just use defaults
@@ -313,37 +311,6 @@ def _get_default_feature_config() -> dict[str, Any]:
     }
 
 
-def _validate_feature_config(config: dict[str, Any]) -> None:
-    """Validate feature configuration structure.
-
-    Args:
-        config: Feature configuration dictionary to validate.
-
-    Raises:
-        RuntimeError: If configuration is invalid.
-    """
-    if not isinstance(config, dict):
-        raise RuntimeError("Feature configuration must be a dictionary")
-
-    if "version" not in config:
-        raise RuntimeError("Feature configuration missing 'version' field")
-
-    if "features" not in config:
-        raise RuntimeError("Feature configuration missing 'features' field")
-
-    features = config["features"]
-    if not isinstance(features, dict):
-        raise RuntimeError("Feature configuration 'features' must be a dictionary")
-
-    # Validate save_cookies
-    if "save_cookies" in features and not isinstance(features["save_cookies"], bool):
-        raise RuntimeError("Feature 'save_cookies' must be a boolean")
-
-    # Validate debug_mode
-    if "debug_mode" in features and not isinstance(features["debug_mode"], bool):
-        raise RuntimeError("Feature 'debug_mode' must be a boolean")
-
-
 def _ensure_user_feature_config() -> None:
     """Ensure user feature configuration file exists.
 
@@ -355,7 +322,7 @@ def _ensure_user_feature_config() -> None:
         defaults = _get_default_feature_config()
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(defaults, f, indent=2)
 
 
@@ -387,7 +354,7 @@ def get_feature_config() -> FeatureConfig:
     # Try to load user configuration
     config_path = get_feature_config_path()
     try:
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             user_config = json.load(f)
 
         # Merge features from user config
@@ -477,7 +444,7 @@ def set_feature(key: str, value: bool) -> None:
 
     # Write to file
     config_path = get_feature_config_path()
-    with open(config_path, "w") as f:
+    with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config_content, f, indent=2)
 
     # Clear cache so next call loads fresh config

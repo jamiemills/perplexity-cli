@@ -7,6 +7,8 @@ This prevents overwhelming the API with too many concurrent requests.
 import asyncio
 import time
 
+from perplexity_cli.utils.rate_limiter_models import RateLimiterState, RateLimiterStats
+
 
 class RateLimiter:
     """Token bucket-based rate limiter for API requests.
@@ -41,9 +43,13 @@ class RateLimiter:
         self.requests_per_period = requests_per_period
         self.period_seconds = period_seconds
 
-        # Token bucket state
-        self.tokens = float(requests_per_period)  # Start with full capacity
-        self.last_refill_time = time.monotonic()
+        # Token bucket state managed by Pydantic model
+        self._state = RateLimiterState(
+            tokens=float(requests_per_period),
+            last_refill_time=time.monotonic(),
+            requests_per_period=requests_per_period,
+            period_seconds=period_seconds,
+        )
 
         # Statistics
         self.total_requests = 0
@@ -62,7 +68,7 @@ class RateLimiter:
             float: The time waited in seconds (0 if no wait was necessary).
         """
         current_time = time.monotonic()
-        time_elapsed = current_time - self.last_refill_time
+        time_elapsed = current_time - self._state.last_refill_time
 
         # Refill tokens based on elapsed time
         # Rate of refill: requests_per_period / period_seconds tokens per second
@@ -70,20 +76,20 @@ class RateLimiter:
         tokens_earned = time_elapsed * refill_rate
 
         # Cap tokens at the maximum (don't accumulate beyond capacity)
-        self.tokens = min(self.requests_per_period, self.tokens + tokens_earned)
-        self.last_refill_time = current_time
+        self._state.tokens = min(self.requests_per_period, self._state.tokens + tokens_earned)
+        self._state.last_refill_time = current_time
 
         wait_time = 0.0
 
         # Check if we have tokens available
-        if self.tokens >= 1.0:
+        if self._state.tokens >= 1.0:
             # Consume one token and proceed immediately
-            self.tokens -= 1.0
+            self._state.tokens -= 1.0
         else:
             # No tokens available, calculate wait time
-            # We need 1 token, and we have self.tokens
+            # We need 1 token, and we have self._state.tokens
             # Time to earn remaining tokens: (1 - tokens) / refill_rate
-            tokens_needed = 1.0 - self.tokens
+            tokens_needed = 1.0 - self._state.tokens
             wait_time = tokens_needed / refill_rate
 
             # Sleep asynchronously
@@ -91,8 +97,8 @@ class RateLimiter:
                 await asyncio.sleep(wait_time)
 
             # After sleep, reset state and consume one token
-            self.tokens = 0.0
-            self.last_refill_time = time.monotonic()
+            self._state.tokens = 0.0
+            self._state.last_refill_time = time.monotonic()
 
         # Update statistics
         self.total_requests += 1
@@ -112,15 +118,19 @@ class RateLimiter:
                 - average_wait_per_request: Average wait time per request
                 - current_tokens: Current token bucket fill level
         """
-        avg_wait = self.total_wait_time / self.total_requests if self.total_requests > 0 else 0.0
+        stats = RateLimiterStats.from_data(
+            total_requests=self.total_requests,
+            total_wait_time=self.total_wait_time,
+        )
+        stats_dict = stats.model_dump()
 
         return {
             "requests_per_period": self.requests_per_period,
             "period_seconds": self.period_seconds,
-            "total_requests": self.total_requests,
-            "total_wait_time": self.total_wait_time,
-            "average_wait_per_request": avg_wait,
-            "current_tokens": self.tokens,
+            "total_requests": stats_dict["total_requests"],
+            "total_wait_time": stats_dict["total_wait_time"],
+            "average_wait_per_request": stats_dict["average_wait_time"],
+            "current_tokens": self._state.tokens,
         }
 
     def __repr__(self) -> str:
