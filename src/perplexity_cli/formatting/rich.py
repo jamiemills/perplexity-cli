@@ -32,7 +32,7 @@ class RichFormatter(Formatter):
         """
         # Strip citation references if requested
         if strip_references:
-            text = re.sub(r"\[\d+\]", "", text)
+            text = self.strip_citations(text)
 
         # Process the text to highlight code blocks
         formatted_text = self._process_answer_text(text)
@@ -81,7 +81,7 @@ class RichFormatter(Formatter):
         # Parse and style markdown while keeping text left-aligned
         answer_text = answer.text
         if strip_references:
-            answer_text = re.sub(r"\[\d+\]", "", answer_text)
+            answer_text = self.strip_citations(answer_text)
 
         self._print_formatted_text(answer_text)
 
@@ -124,7 +124,7 @@ class RichFormatter(Formatter):
         # Answer section
         answer_text = answer.text
         if strip_references:
-            answer_text = re.sub(r"\[\d+\]", "", answer_text)
+            answer_text = self.strip_citations(answer_text)
 
         formatted_answer = self._process_answer_text(answer_text)
         output_console.print(formatted_answer)

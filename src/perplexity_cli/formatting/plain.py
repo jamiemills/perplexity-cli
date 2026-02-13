@@ -21,7 +21,7 @@ class PlainTextFormatter(Formatter):
         """
         # Strip citation references if requested
         if strip_references:
-            text = re.sub(r"\[\d+\]", "", text)
+            text = self.strip_citations(text)
 
         lines = text.split("\n")
         result = []

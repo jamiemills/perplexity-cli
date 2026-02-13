@@ -1,5 +1,6 @@
 """Base formatter interface for output formatting."""
 
+import re
 from abc import ABC, abstractmethod
 
 from perplexity_cli.api.models import Answer, WebResult
@@ -7,6 +8,20 @@ from perplexity_cli.api.models import Answer, WebResult
 
 class Formatter(ABC):
     """Abstract base class for output formatters."""
+
+    @staticmethod
+    def strip_citations(text: str) -> str:
+        """Remove citation references from text.
+
+        Removes citation markers like [1], [2], etc. from answer text.
+
+        Args:
+            text: The text containing citations to remove.
+
+        Returns:
+            Text with citation numbers removed.
+        """
+        return re.sub(r"\[\d+\]", "", text)
 
     @abstractmethod
     def format_answer(self, text: str, strip_references: bool = False) -> str:
