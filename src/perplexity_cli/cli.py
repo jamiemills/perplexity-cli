@@ -11,8 +11,11 @@ import httpx
 from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.auth.oauth_handler import authenticate_sync
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.auth.utils import load_or_prompt_token
 from perplexity_cli.formatting import get_formatter, list_formatters
+from perplexity_cli.formatting.base import Formatter
 from perplexity_cli.utils.config import get_perplexity_base_url
+from perplexity_cli.utils.http_errors import handle_http_error, handle_network_error
 from perplexity_cli.utils.logging import get_default_log_file, setup_logging
 from perplexity_cli.utils.style_manager import StyleManager
 from perplexity_cli.utils.version import get_version
@@ -140,6 +143,26 @@ def auth(ctx: click.Context, port: int) -> None:
             click.echo("  To enable cookie storage: pxcli set-config save_cookies true")
 
         click.echo('\nYou can now use: pxcli query "<your question>"')
+
+    except TimeoutError as e:
+        logger.error(f"Authentication timeout: {e}", exc_info=True)
+        click.echo(f"✗ Authentication timeout: {e}", err=True)
+        click.echo("\nTroubleshooting:", err=True)
+        click.echo(
+            f"  1. Start Chrome with: --remote-debugging-port={port}",
+            err=True,
+        )
+        click.echo(
+            "  2. Ensure Chrome is running and accessible",
+            err=True,
+        )
+        click.echo(
+            f"  3. Navigate to {base_url} in Chrome",
+            err=True,
+        )
+        click.echo("  4. Log in with your Google account", err=True)
+        click.echo("  5. Run this command again", err=True)
+        sys.exit(1)
 
     except RuntimeError as e:
         logger.error(f"Authentication failed: {e}", exc_info=True)
@@ -286,16 +309,7 @@ def query(
 
     # Load token and cookies
     tm = TokenManager()
-    token, cookies = tm.load_token()
-
-    if not token:
-        click.echo("✗ Not authenticated.", err=True)
-        click.echo(
-            "\nPlease authenticate first with: pxcli auth",
-            err=True,
-        )
-        logger.warning("Query attempted without authentication")
-        sys.exit(1)
+    token, cookies = load_or_prompt_token(tm, logger, command_context="query")
 
     try:
         # Determine output format
@@ -359,27 +373,12 @@ def query(
                     click.echo(formatted_output)
 
     except httpx.HTTPStatusError as e:
-        status = e.response.status_code
-        logger.error(f"HTTP error {status}: {e}")
-        if status == 401:
-            click.echo("✗ Authentication failed. Token may be expired.", err=True)
-            click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
-        elif status == 403:
-            click.echo("✗ Access forbidden. Check your permissions.", err=True)
-        elif status == 429:
-            click.echo("✗ Rate limit exceeded. Please wait and try again.", err=True)
-        else:
-            click.echo(f"✗ HTTP error {status}.", err=True)
-            if ctx.obj.get("debug", False):
-                click.echo(f"Details: {e}", err=True)
-        sys.exit(1)
+        debug_mode = ctx.obj.get("debug", False) if ctx.obj else False
+        handle_http_error(e, logger, debug_mode=debug_mode)
 
     except httpx.RequestError as e:
-        logger.error(f"Network error: {e}")
-        click.echo("✗ Network error. Please check your internet connection.", err=True)
-        if ctx.obj.get("debug", False):
-            click.echo(f"Details: {e}", err=True)
-        sys.exit(1)
+        debug_mode = ctx.obj.get("debug", False) if ctx.obj else False
+        handle_network_error(e, logger, debug_mode=debug_mode)
 
     except ValueError as e:
         logger.error(f"Value error: {e}")
@@ -406,7 +405,7 @@ def query(
 def _stream_query_response(
     api: PerplexityAPI,
     query: str,
-    formatter,
+    formatter: Formatter,
     output_format: str,
     strip_references: bool,
     deep_research: bool = False,
@@ -489,28 +488,12 @@ def _stream_query_response(
                     click.echo(formatted_refs)
 
     except httpx.HTTPStatusError as e:
-        status = e.response.status_code
-        logger.error(f"HTTP error {status} during streaming: {e}")
         click.echo()  # Newline after streamed content
-        if status == 401:
-            click.echo("✗ Authentication failed. Token may be expired.", err=True)
-            click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
-            sys.exit(1)
-        elif status == 403:
-            click.echo("✗ Access forbidden. Check your permissions.", err=True)
-            sys.exit(1)
-        elif status == 429:
-            click.echo("✗ Rate limit exceeded. Please wait and try again.", err=True)
-            sys.exit(1)
-        else:
-            click.echo(f"✗ HTTP error {status}.", err=True)
-            sys.exit(1)
+        handle_http_error(e, logger, debug_mode=False, context="during streaming")
 
     except httpx.RequestError as e:
-        logger.error(f"Network error during streaming: {e}")
         click.echo()  # Newline after streamed content
-        click.echo("✗ Network error. Please check your internet connection.", err=True)
-        sys.exit(1)
+        handle_network_error(e, logger, debug_mode=False, context="during streaming")
 
     except KeyboardInterrupt:
         logger.info("Streaming interrupted by user")

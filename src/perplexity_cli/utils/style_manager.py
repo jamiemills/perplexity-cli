@@ -42,7 +42,7 @@ class StyleManager:
             style: The style/prompt string to save.
 
         Raises:
-            ValueError: If style is empty or invalid.
+            ValueError: If style is empty, invalid, or exceeds maximum length.
             OSError: If file cannot be written.
         """
         if not style or not isinstance(style, str):
@@ -50,6 +50,12 @@ class StyleManager:
 
         if len(style.strip()) == 0:
             raise ValueError("Style cannot be blank or whitespace only")
+
+        if len(style) > MAX_STYLE_LENGTH:
+            raise ValueError(
+                f"Style exceeds maximum length of {MAX_STYLE_LENGTH} characters "
+                f"(current length: {len(style)} characters)"
+            )
 
         # Create config directory if it doesn't exist
         self.style_path.parent.mkdir(parents=True, exist_ok=True)
