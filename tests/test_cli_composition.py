@@ -52,95 +52,6 @@ def runner():
     return CliRunner()
 
 
-class TestDeepResearchWithStream:
-    """Test --deep-research combined with --stream."""
-
-    @patch("perplexity_cli.cli.StyleManager")
-    @patch("perplexity_cli.cli.TokenManager")
-    @patch("perplexity_cli.cli.PerplexityAPI")
-    def test_deep_research_and_stream(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
-        """Test that --deep-research and --stream work together."""
-        mock_sm = Mock()
-        mock_sm.load_style.return_value = None
-        mock_sm_class.return_value = mock_sm
-
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = ("test-token", None)
-        mock_tm_class.return_value = mock_tm
-
-        mock_api = _make_streaming_mock(text="Deep streamed answer")
-        mock_api_class.return_value = mock_api
-
-        result = runner.invoke(query, ["--deep-research", "--stream", "Explain Kubernetes"])
-
-        assert result.exit_code == 0
-        assert "Deep streamed answer" in result.output
-        # Verify submit_query was called with multi_step mode
-        mock_api.submit_query.assert_called_once()
-        call_kwargs = mock_api.submit_query.call_args
-        assert call_kwargs[1]["search_implementation_mode"] == "multi_step"
-
-    @patch("perplexity_cli.cli.StyleManager")
-    @patch("perplexity_cli.cli.TokenManager")
-    @patch("perplexity_cli.cli.PerplexityAPI")
-    def test_deep_research_without_stream_uses_batch(
-        self, mock_api_class, mock_tm_class, mock_sm_class, runner
-    ):
-        """Test that --deep-research without --stream uses batch mode."""
-        mock_sm = Mock()
-        mock_sm.load_style.return_value = None
-        mock_sm_class.return_value = mock_sm
-
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = ("test-token", None)
-        mock_tm_class.return_value = mock_tm
-
-        mock_api = _make_api_mock()
-        mock_api.get_complete_answer.return_value = Answer(text="Deep batch answer", references=[])
-        mock_api_class.return_value = mock_api
-
-        result = runner.invoke(query, ["--deep-research", "Explain Kubernetes"])
-
-        assert result.exit_code == 0
-        assert "Deep batch answer" in result.output
-        mock_api.get_complete_answer.assert_called_once_with(
-            "Explain Kubernetes", search_implementation_mode="multi_step"
-        )
-
-
-class TestDeepResearchWithFormatJson:
-    """Test --deep-research combined with --format json."""
-
-    @patch("perplexity_cli.cli.StyleManager")
-    @patch("perplexity_cli.cli.TokenManager")
-    @patch("perplexity_cli.cli.PerplexityAPI")
-    def test_deep_research_json_format(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
-        """Test that --deep-research works with --format json."""
-        mock_sm = Mock()
-        mock_sm.load_style.return_value = None
-        mock_sm_class.return_value = mock_sm
-
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = ("test-token", None)
-        mock_tm_class.return_value = mock_tm
-
-        refs = [
-            WebResult(name="Source", url="https://source.com", snippet="Source content"),
-        ]
-        mock_api = _make_api_mock()
-        mock_api.get_complete_answer.return_value = Answer(text="Deep JSON answer", references=refs)
-        mock_api_class.return_value = mock_api
-
-        result = runner.invoke(query, ["--deep-research", "--format", "json", "Explain Kubernetes"])
-
-        assert result.exit_code == 0
-        # JSON format should output valid JSON
-        import json
-
-        output = json.loads(result.output)
-        assert "answer" in output or "Deep JSON answer" in result.output
-
-
 class TestStripReferencesWithMarkdown:
     """Test --strip-references combined with --format markdown."""
 
@@ -207,56 +118,6 @@ class TestFlagPassthrough:
     @patch("perplexity_cli.cli.StyleManager")
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.PerplexityAPI")
-    def test_deep_research_passes_multi_step_mode(
-        self, mock_api_class, mock_tm_class, mock_sm_class, runner
-    ):
-        """Test that --deep-research passes search_implementation_mode='multi_step'."""
-        mock_sm = Mock()
-        mock_sm.load_style.return_value = None
-        mock_sm_class.return_value = mock_sm
-
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = ("test-token", None)
-        mock_tm_class.return_value = mock_tm
-
-        mock_api = _make_api_mock()
-        mock_api.get_complete_answer.return_value = Answer(text="Answer", references=[])
-        mock_api_class.return_value = mock_api
-
-        runner.invoke(query, ["--deep-research", "test query"])
-
-        mock_api.get_complete_answer.assert_called_once_with(
-            "test query", search_implementation_mode="multi_step"
-        )
-
-    @patch("perplexity_cli.cli.StyleManager")
-    @patch("perplexity_cli.cli.TokenManager")
-    @patch("perplexity_cli.cli.PerplexityAPI")
-    def test_no_deep_research_passes_standard_mode(
-        self, mock_api_class, mock_tm_class, mock_sm_class, runner
-    ):
-        """Test that without --deep-research, search_implementation_mode='standard'."""
-        mock_sm = Mock()
-        mock_sm.load_style.return_value = None
-        mock_sm_class.return_value = mock_sm
-
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = ("test-token", None)
-        mock_tm_class.return_value = mock_tm
-
-        mock_api = _make_api_mock()
-        mock_api.get_complete_answer.return_value = Answer(text="Answer", references=[])
-        mock_api_class.return_value = mock_api
-
-        runner.invoke(query, ["test query"])
-
-        mock_api.get_complete_answer.assert_called_once_with(
-            "test query", search_implementation_mode="standard"
-        )
-
-    @patch("perplexity_cli.cli.StyleManager")
-    @patch("perplexity_cli.cli.TokenManager")
-    @patch("perplexity_cli.cli.PerplexityAPI")
     def test_stream_flag_uses_submit_query(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -308,30 +169,6 @@ class TestMultipleFlagCombinations:
     @patch("perplexity_cli.cli.StyleManager")
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.PerplexityAPI")
-    def test_deep_research_stream_plain(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
-        """Test --deep-research --stream --format plain all together."""
-        mock_sm = Mock()
-        mock_sm.load_style.return_value = None
-        mock_sm_class.return_value = mock_sm
-
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = ("test-token", None)
-        mock_tm_class.return_value = mock_tm
-
-        mock_api = _make_streaming_mock(text="Full combo answer")
-        mock_api_class.return_value = mock_api
-
-        result = runner.invoke(
-            query,
-            ["--deep-research", "--stream", "--format", "plain", "test"],
-        )
-
-        assert result.exit_code == 0
-        assert "Full combo answer" in result.output
-
-    @patch("perplexity_cli.cli.StyleManager")
-    @patch("perplexity_cli.cli.TokenManager")
-    @patch("perplexity_cli.cli.PerplexityAPI")
     def test_strip_references_json_no_stream(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -360,10 +197,10 @@ class TestMultipleFlagCombinations:
     @patch("perplexity_cli.cli.StyleManager")
     @patch("perplexity_cli.cli.TokenManager")
     @patch("perplexity_cli.cli.PerplexityAPI")
-    def test_deep_research_strip_references_markdown(
+    def test_stream_strip_references_plain(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
-        """Test --deep-research --strip-references --format markdown together."""
+        """Test --stream --strip-references --format plain all together."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = None
         mock_sm_class.return_value = mock_sm
@@ -372,16 +209,13 @@ class TestMultipleFlagCombinations:
         mock_tm.load_token.return_value = ("test-token", None)
         mock_tm_class.return_value = mock_tm
 
-        mock_api = _make_api_mock()
-        mock_api.get_complete_answer.return_value = Answer(
-            text="Deep stripped markdown", references=[]
-        )
+        mock_api = _make_streaming_mock(text="Streamed plain stripped")
         mock_api_class.return_value = mock_api
 
         result = runner.invoke(
             query,
-            ["--deep-research", "--strip-references", "--format", "markdown", "test"],
+            ["--stream", "--strip-references", "--format", "plain", "test"],
         )
 
         assert result.exit_code == 0
-        assert "Deep stripped markdown" in result.output
+        assert "Streamed plain stripped" in result.output

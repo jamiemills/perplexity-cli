@@ -22,7 +22,6 @@ def stream_query_response(
     formatter: Formatter,
     output_format: str,
     strip_references: bool,
-    deep_research: bool = False,
 ) -> None:
     """Stream query response in real-time.
 
@@ -32,37 +31,19 @@ def stream_query_response(
         formatter: Formatter instance.
         output_format: Output format name.
         strip_references: Whether to strip references.
-        deep_research: Whether to use deep research mode.
     """
     logger = get_logger()
     accumulated_text = ""
     references: list[WebResult] = []
 
     try:
-        # Determine search mode
-        search_mode = "multi_step" if deep_research else "standard"
-
-        # Display deep research notice if enabled
-        if deep_research:
-            click.echo("[INFO] Performing deep research... (this may take 2-4 minutes)")
-
-        for message in api.submit_query(query, search_implementation_mode=search_mode):
+        for message in api.submit_query(query):
             logger.debug(
                 f"Received SSE message: status={message.status}, final={message.final_sse_message}"
             )
 
-            # Extract text from blocks and check for plan blocks (deep research progress)
+            # Extract text from blocks
             for block in message.blocks:
-                # Check for plan block (deep research progress)
-                if deep_research:
-                    plan_info = api._extract_plan_block_info(block)
-                    if plan_info:
-                        eta = plan_info.get("eta_seconds")
-                        if eta:
-                            click.echo(
-                                f"\r  Deep research in progress... (~{eta}s remaining)", nl=False
-                            )
-
                 # Extract answer text
                 if block.intended_usage == "ask_text":
                     text = api._extract_text_from_block(block.content)

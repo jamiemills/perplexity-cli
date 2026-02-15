@@ -215,12 +215,6 @@ def auth(ctx: click.Context, port: int) -> None:
     default=False,
     help="Stream response in real-time. Use --stream for incremental output (experimental).",
 )
-@click.option(
-    "--deep-research",
-    is_flag=True,
-    default=False,
-    help="Enable deep research mode for comprehensive multi-step research. Takes 2-4 minutes but provides 50+ citations.",
-)
 @click.pass_context
 def query(
     ctx: click.Context,
@@ -228,7 +222,6 @@ def query(
     output_format: str,
     strip_references: bool,
     stream: bool,
-    deep_research: bool,
 ) -> None:
     """Submit a query to Perplexity.ai and get an answer.
 
@@ -246,10 +239,6 @@ def query(
 
     Use --stream for real-time streaming of the response as it arrives.
 
-    Use --deep-research for comprehensive multi-step research queries. Performs
-    decomposition, retrieval, synthesis, and verification for more citations.
-    Note: Deep research takes 2-4 minutes (vs 30 seconds for standard queries).
-
     Examples:
         perplexity-cli query "What is Python?"
         perplexity-cli query "What is the capital of France?" > answer.txt
@@ -260,7 +249,6 @@ def query(
         perplexity-cli query --strip-references "What is Python?"
         perplexity-cli query -f plain --strip-references "What is Python?"
         perplexity-cli query --stream "What is Python?"
-        perplexity-cli query --deep-research "Tell me about Kubernetes architecture"
 
     JSON format tip: Use jq -r to display newlines properly:
         perplexity-cli query --format json "Question" | jq -r '.answer'
@@ -338,26 +326,13 @@ def query(
 
         # Create API client with cookies
         with PerplexityAPI(token=token, cookies=cookies) as api:
-            # Determine search mode
-            search_mode = "multi_step" if deep_research else "standard"
-
-            # Log deep research mode
-            if deep_research:
-                logger.info("Deep research mode enabled")
-
             # Handle streaming vs complete answer
             if stream:
                 logger.info("Streaming query response")
-                # Stream response
-                stream_query_response(
-                    api, final_query, formatter, output_format, strip_references, deep_research
-                )
+                stream_query_response(api, final_query, formatter, output_format, strip_references)
             else:
                 logger.info("Fetching complete answer")
-                # Submit query and get answer
-                answer_obj = api.get_complete_answer(
-                    final_query, search_implementation_mode=search_mode
-                )
+                answer_obj = api.get_complete_answer(final_query)
                 logger.debug(
                     f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references"
                 )
