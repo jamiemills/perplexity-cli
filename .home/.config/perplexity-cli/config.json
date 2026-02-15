@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "features": {
+    "save_cookies": false,
+    "debug_mode": false
+  }
+}

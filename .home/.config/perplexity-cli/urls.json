@@ -1,0 +1,12 @@
+{
+  "perplexity": {
+    "base_url": "https://www.perplexity.ai",
+    "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask"
+  },
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_period": 20,
+    "period_seconds": 60,
+    "description": "Allow 20 requests per 60 seconds (~3s delay). Override via PERPLEXITY_RATE_LIMITING_* env vars or edit ~/.config/perplexity-cli/urls.json"
+  }
+}

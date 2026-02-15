@@ -9,7 +9,7 @@ import sys
 import click
 
 from perplexity_cli.api.endpoints import PerplexityAPI
-from perplexity_cli.api.models import Answer, WebResult
+from perplexity_cli.api.models import Answer, FileAttachment, WebResult
 from perplexity_cli.formatting.base import Formatter
 from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, PerplexityRequestError
 from perplexity_cli.utils.http_errors import handle_http_error, handle_network_error
@@ -22,6 +22,7 @@ def stream_query_response(
     formatter: Formatter,
     output_format: str,
     strip_references: bool,
+    attachments: list[FileAttachment] | None = None,
 ) -> None:
     """Stream query response in real-time.
 
@@ -31,13 +32,14 @@ def stream_query_response(
         formatter: Formatter instance.
         output_format: Output format name.
         strip_references: Whether to strip references.
+        attachments: Optional list of file attachments for the query.
     """
     logger = get_logger()
     accumulated_text = ""
     references: list[WebResult] = []
 
     try:
-        for message in api.submit_query(query):
+        for message in api.submit_query(query, attachments=attachments):
             logger.debug(
                 f"Received SSE message: status={message.status}, final={message.final_sse_message}"
             )

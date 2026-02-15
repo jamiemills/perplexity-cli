@@ -556,6 +556,28 @@ mypy src/                       # type check
 - **python-dateutil** -- Date parsing for thread exports
 - **websockets** -- WebSocket support
 
+## Updating your .profile / .zshrc / etc
+
+Useful functions to add into your profile e.g. `$HOME/.zshrc` of choice.
+
+```
+px() {
+  local q="$*"
+  uvx pxcli query --strip-references --format rich "${q}."
+}
+
+pxc() {
+  local q="$*"
+  uvx pxcli query --strip-references --format plain "${q}. Just give me the commands to run on a Mac. Put them on a single line"
+}
+```
+
+after which you can run, for example
+
+```
+pxc "how can I find what remote branches exist for this repo"
+```
+
 ## Licence
 
 MIT
