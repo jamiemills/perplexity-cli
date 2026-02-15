@@ -1,11 +1,70 @@
 """File handling utilities for attachment support."""
 
 import logging
+import re
 from pathlib import Path
 
 from perplexity_cli.api.models import FileAttachment
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_file_paths_from_text(text: str) -> list[Path]:
+    """Extract file paths mentioned in text.
+
+    Looks for absolute paths (starting with / or drive letters for Windows).
+    Patterns matched:
+    - Unix absolute paths: /path/to/file
+    - Windows absolute paths: C:\\path\\to\\file
+    - Tilde paths: ~/path/to/file
+
+    Args:
+        text: Text that may contain file paths.
+
+    Returns:
+        List of Path objects for any paths found.
+    """
+    paths: set[Path] = set()
+
+    # Pattern for Unix absolute paths (/path/to/file)
+    # Matches /followed by any non-whitespace characters that include at least one dot
+    unix_pattern = r"/[^\s]+(?:\.[a-zA-Z0-9]+)?"
+
+    # Pattern for tilde paths (~/path/to/file)
+    tilde_pattern = r"~[^\s]*(?:\.[a-zA-Z0-9]+)?"
+
+    # Find all potential paths
+    for match in re.finditer(unix_pattern, text):
+        candidate = match.group()
+        # Remove trailing punctuation that's likely from the sentence
+        candidate = candidate.rstrip(".,;:!?'\"")
+        path = Path(candidate)
+        if _looks_like_file_path(candidate):
+            paths.add(path)
+
+    for match in re.finditer(tilde_pattern, text):
+        candidate = match.group()
+        candidate = candidate.rstrip(".,;:!?'\"")
+        path = Path(candidate).expanduser()
+        if _looks_like_file_path(candidate):
+            paths.add(path)
+
+    return sorted(paths)
+
+
+def _looks_like_file_path(path_str: str) -> bool:
+    """Check if a string looks like a file path.
+
+    Args:
+        path_str: String to check.
+
+    Returns:
+        True if it looks like a file path.
+    """
+    # Must contain a file extension or be a directory-like path
+    has_extension = "." in path_str and not path_str.endswith(".")
+    looks_like_dir = "/" in path_str or "\\" in path_str
+    return has_extension or looks_like_dir
 
 
 def resolve_file_arguments(
@@ -15,7 +74,7 @@ def resolve_file_arguments(
     """Resolve file paths from query arguments and --attach flags.
 
     Handles three input methods:
-    1. Inline file paths in query arguments
+    1. Inline file paths mentioned in query text (e.g., "/tmp/file.md")
     2. --attach flag with comma-separated paths
     3. --attach flag with directory paths (recursive)
 
@@ -32,21 +91,22 @@ def resolve_file_arguments(
     """
     files: set[Path] = set()
 
-    # Process inline file paths from query arguments
+    # Extract file paths from query text
     for arg in query_args:
-        path = Path(arg)
-        # Only treat as file if it looks like a path (contains / or . or is a valid file/dir)
-        if "/" in arg or "\\" in arg or "." in arg or path.exists():
+        # Extract any mentioned file paths from the query text
+        extracted_paths = _extract_file_paths_from_text(arg)
+        for path in extracted_paths:
             if path.exists():
                 if path.is_file():
                     files.add(path.resolve())
+                    logger.debug(f"Extracted file path from query: {path}")
                 elif path.is_dir():
-                    # Recursively add all files from directory
                     _add_directory_files(path, files)
+                    logger.debug(f"Extracted directory path from query: {path}")
                 else:
                     raise ValueError(f"Not a file or directory: {path}")
-            elif path.is_absolute() or path.parent.exists():
-                # Path looks intentional but doesn't exist
+            else:
+                # Path was mentioned but doesn't exist
                 raise FileNotFoundError(f"File or directory not found: {path}")
 
     # Process --attach flag values
@@ -57,7 +117,7 @@ def resolve_file_arguments(
                 path_str = path_str.strip()
                 if not path_str:
                     continue
-                path = Path(path_str)
+                path = Path(path_str).expanduser()
                 if not path.exists():
                     raise FileNotFoundError(f"File or directory not found: {path}")
                 if path.is_file():
