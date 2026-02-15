@@ -239,6 +239,7 @@ class SSEMessage(BaseModel):
     cursor: str | None = Field(default=None)
     read_write_token: str | None = Field(default=None)
     web_results: list[WebResult] | None = Field(default=None)
+    attachments: list[str] = Field(default_factory=list, description="S3 URLs of attached files")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SSEMessage":
@@ -272,6 +273,7 @@ class SSEMessage(BaseModel):
             cursor=data.get("cursor"),
             read_write_token=data.get("read_write_token"),
             web_results=web_results,
+            attachments=data.get("attachments", []),
         )
 
 
