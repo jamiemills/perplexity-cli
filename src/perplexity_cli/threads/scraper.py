@@ -9,13 +9,19 @@ import json
 from collections.abc import Callable
 from datetime import datetime
 
-import httpx
+from curl_cffi.requests import AsyncSession
+from curl_cffi.requests.exceptions import RequestException
 
 from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.threads.utils import convert_cache_dicts_to_thread_records
 from perplexity_cli.utils.config import get_thread_list_url
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+    SimpleRequest,
+    SimpleResponse,
+)
 from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.rate_limiter import RateLimiter
 
@@ -63,8 +69,8 @@ class ThreadScraper:
         2. If cache covers range: use cache only (fast path)
         3. If cache doesn't cover range: fetch gap from API only
         4. Merge cached + fetched threads (dedup by URL)
-        5. Update cache with newly fetched data
-        6. Filter by date range and return
+        5. Filter by requested date range
+        6. Update cache with filtered threads only
 
         Args:
             from_date: Start date for filtering (YYYY-MM-DD format), inclusive
@@ -76,7 +82,7 @@ class ThreadScraper:
 
         Raises:
             RuntimeError: If API request fails
-            httpx.HTTPStatusError: If API returns error status
+            PerplexityHTTPStatusError: If API returns error status
         """
         # Check if we should use cache
         threads = []
@@ -143,17 +149,16 @@ class ThreadScraper:
         else:
             threads = fetched_threads
 
-        # Update cache with merged threads
+        # Filter by date range before caching so only requested threads are persisted
+        if from_date or to_date:
+            threads = self._filter_by_date_range(threads, from_date, to_date)
+            self.logger.info(
+                f"Filtered to {len(threads)} threads " f"(from_date={from_date}, to_date={to_date})"
+            )
+
+        # Update cache with filtered threads
         if self.cache_manager:
             self.cache_manager.save_cache(threads)
-
-        # Filter by date range if specified
-        if from_date or to_date:
-            filtered = self._filter_by_date_range(threads, from_date, to_date)
-            self.logger.info(
-                f"Filtered to {len(filtered)} threads (from_date={from_date}, to_date={to_date})"
-            )
-            return filtered
 
         return threads
 
@@ -181,7 +186,7 @@ class ThreadScraper:
 
         Raises:
             RuntimeError: If API request fails
-            httpx.HTTPStatusError: If API returns error status
+            PerplexityHTTPStatusError: If API returns error status
         """
         threads = []
         offset = 0
@@ -189,13 +194,17 @@ class ThreadScraper:
         total_threads = None
 
         # Build headers with authentication
+        # curl_cffi sets User-Agent automatically from the impersonation profile
         headers = {
             "Content-Type": "application/json",
-            "Cookie": f"__Secure-next-auth.session-token={session_token}",
-            "User-Agent": "perplexity-cli",
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        # Build cookies dict for curl_cffi (passed via cookies parameter, not header)
+        cookies = {
+            "__Secure-next-auth.session-token": session_token,
+        }
+
+        async with AsyncSession(impersonate="chrome", timeout=30) as client:
             while True:
                 # Prepare API request body
                 request_body = {
@@ -212,11 +221,13 @@ class ThreadScraper:
                     response = await client.post(
                         f"{self.api_url}?version={self.api_version}&source=default",
                         headers=headers,
+                        cookies=cookies,
                         json=request_body,
                     )
 
-                    # Check for errors
-                    response.raise_for_status()
+                    # Check for HTTP errors
+                    if not response.ok:
+                        self._raise_http_status_error(response)
 
                     # Parse response
                     thread_data = response.json()
@@ -296,7 +307,7 @@ class ThreadScraper:
                     # Move to next page
                     offset += limit
 
-                except httpx.HTTPStatusError as e:
+                except PerplexityHTTPStatusError as e:
                     if e.response.status_code == 401:
                         raise RuntimeError(
                             "Authentication failed. Token may be expired. "
@@ -304,7 +315,45 @@ class ThreadScraper:
                         ) from e
                     raise
 
+                except RequestException as e:
+                    raise RuntimeError(f"Network error while fetching threads: {e}") from e
+
         return threads
+
+    @staticmethod
+    def _raise_http_status_error(response) -> None:
+        """Convert a curl_cffi error response into a PerplexityHTTPStatusError.
+
+        Constructs SimpleRequest and SimpleResponse objects so that
+        downstream error handlers can inspect the status code, headers,
+        and body text.
+
+        Args:
+            response: The curl_cffi Response object with a non-2xx status.
+
+        Raises:
+            PerplexityHTTPStatusError: Always raised with the converted response.
+        """
+        request = SimpleRequest(method="POST", url=str(response.url))
+
+        try:
+            body = response.content
+            text = body.decode("utf-8") if isinstance(body, bytes) else str(body)
+        except Exception:
+            text = ""
+
+        simple_response = SimpleResponse(
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            text=text,
+            request=request,
+        )
+
+        raise PerplexityHTTPStatusError(
+            f"HTTP Error {response.status_code}",
+            request=request,
+            response=simple_response,
+        )
 
     def _filter_by_date_range(
         self,

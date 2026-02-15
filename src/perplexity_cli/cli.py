@@ -790,8 +790,6 @@ def export_threads(
     """
     import asyncio
 
-    import httpx
-
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.threads.exporter import write_threads_csv
     from perplexity_cli.threads.scraper import ThreadScraper
@@ -917,7 +915,7 @@ def export_threads(
             click.echo("  perplexity-cli auth", err=True)
         sys.exit(1)
 
-    except (PerplexityHTTPStatusError, httpx.HTTPStatusError) as e:
+    except PerplexityHTTPStatusError as e:
         status = e.response.status_code
         logger.error(f"HTTP error {status}: {e}")
         if status == 401:

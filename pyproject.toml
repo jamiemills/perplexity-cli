@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pxcli"
-version = "0.4.7"
+version = "0.4.8"
 description = "CLI for Perplexity.ai with persistent authentication, encrypted tokens, streaming responses, multiple output formats, source references, thread export with date filtering, configurable URLs, logging, and automatic retry logic"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "Jamie Mills", email = "jamie.mills@gmail.com"},
@@ -22,6 +22,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Utilities",
@@ -97,6 +98,7 @@ markers = [
     "slow: marks tests as slow-running",
     "unit: marks tests as unit tests",
     "real_api: marks tests that call the real Perplexity API (skipped in CI)",
+    "manual: marks tests that require interactive input (run with pytest -m manual -s)",
 ]
 filterwarnings = [
     "ignore::RuntimeWarning:.*coroutine.*authenticate_with_browser.*was never awaited",
