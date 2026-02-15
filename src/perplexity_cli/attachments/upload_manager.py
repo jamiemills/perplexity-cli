@@ -31,14 +31,21 @@ class AttachmentUploader:
     S3_BUCKET_URL = "https://ppl-ai-file-upload.s3.amazonaws.com/"
     UPLOAD_URL_ENDPOINT = "/rest/uploads/batch_create_upload_urls"
 
-    def __init__(self, token: str, base_url: str = "https://www.perplexity.ai"):
-        """Initialize the uploader with authentication token.
+    def __init__(
+        self,
+        token: str,
+        cookies: dict[str, str] | None = None,
+        base_url: str = "https://www.perplexity.ai",
+    ):
+        """Initialise the uploader with authentication token and cookies.
 
         Args:
             token: JWT authentication token for API requests.
+            cookies: Optional browser cookies for Cloudflare bypass and session auth.
             base_url: Base URL for Perplexity API (default: https://www.perplexity.ai).
         """
         self.token = token
+        self.cookies = cookies
         self.base_url = base_url
 
     async def upload_files(self, attachments: list[FileAttachment]) -> list[str]:
@@ -120,13 +127,24 @@ class AttachmentUploader:
 
         request_body = {"files": files_metadata}
 
+        # Build headers matching the SSE client (Origin, Referer, CSRF token)
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+            "Origin": "https://www.perplexity.ai",
+            "Referer": "https://www.perplexity.ai/",
+        }
+        if self.cookies and "csrftoken" in self.cookies:
+            headers["X-CSRFToken"] = self.cookies["csrftoken"]
+
         # Make API request for presigned URLs
         async with AsyncSession(impersonate="chrome", timeout=30) as session:
             try:
                 response = await session.post(
                     f"{self.base_url}{self.UPLOAD_URL_ENDPOINT}",
                     json=request_body,
-                    headers={"Authorization": f"Bearer {self.token}"},
+                    headers=headers,
+                    cookies=self.cookies or {},
                 )
             except RequestException as e:
                 raise RuntimeError(f"Failed to request upload URLs: {e}") from e
@@ -144,6 +162,31 @@ class AttachmentUploader:
         response_json = response.json()
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"API response for upload URLs: {response_json}")
+
+        # Check if API returned valid presigned URLs
+        # The API may return HTTP 200 but with null fields when the account's
+        # file upload quota is exhausted or the request is rate limited.
+        if response_json.get("results"):
+            for _file_uuid, upload_data in response_json["results"].items():
+                if not upload_data.get("fields") or not upload_data.get("s3_object_url"):
+                    if upload_data.get("rate_limited"):
+                        error_msg = (
+                            "File upload quota exhausted. "
+                            "Your Perplexity plan's document analysis allowance "
+                            "has been reached. Check your account at "
+                            "https://www.perplexity.ai/settings/account"
+                        )
+                    elif upload_data.get("error"):
+                        error_msg = (
+                            f"API failed to generate upload URL: " f"{upload_data.get('error')}"
+                        )
+                    else:
+                        error_msg = (
+                            "API returned an empty presigned URL response. "
+                            "This may indicate an authentication or account issue."
+                        )
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
 
         logger.info(f"Received presigned URLs for {len(files_metadata)} file(s)")
         return response_json, uuid_to_attachment
