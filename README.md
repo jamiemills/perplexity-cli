@@ -67,7 +67,15 @@ perplexity-cli query "Tell me what happened in AI this week"
 
 ## Quick start
 
-### 1. Authenticate (one time)
+### 1. Try it immediately (no authentication required)
+
+```bash
+pxcli query "Tell me what happened in AI this week"
+```
+
+The `query` command works without authentication for simple questions.
+
+### 2. Authenticate for full features (optional, one-time setup)
 
 ```bash
 pxcli auth
@@ -75,16 +83,22 @@ pxcli auth
 
 This opens Chrome via the DevTools Protocol, waits for you to log in to Perplexity.ai, extracts your session token, and saves it encrypted locally. See [Authentication setup](#authentication-setup) for full instructions.
 
-### 2. Ask a question
+### 3. Use authenticated features
+
+After authentication, you can:
 
 ```bash
-pxcli query "Tell me what happened in AI this week"
-```
+# Attach files to queries (requires auth)
+pxcli query --attach README.md "What is this project?"
 
-### 3. Check status
+# Export your thread library to CSV
+pxcli export-threads
 
-```bash
+# Check your authentication status
 pxcli status
+
+# Configure a response style to apply to all queries
+pxcli configure "be concise and technical"
 ```
 
 ## Querying
@@ -202,6 +216,31 @@ pxcli clear-style
 ```
 
 The style is stored in `~/.config/perplexity-cli/style.json` and persists across sessions.
+
+## Authentication
+
+Most commands require authentication, but the `query` command is an exception. Here's what requires authentication and what doesn't:
+
+### Commands requiring authentication
+
+- `export-threads` -- Export your thread library to CSV
+- `status` -- Check your authentication status
+- `configure`, `view-style`, `clear-style` -- Configure response styles
+
+### Commands that do NOT require authentication
+
+- `query` -- Submit queries to Perplexity.ai (works with or without a token, with exceptions below)
+
+If you have authenticated with `pxcli auth`, your token will be used automatically with `query`. If you haven't authenticated, `query` will attempt to run without a token (behaviour depends on whether the Perplexity API permits unauthenticated requests).
+
+### Features requiring authentication within `query`
+
+Even though the `query` command can run without authentication, some features require a token:
+
+- **File attachments** -- The `--attach` flag or file paths detected in the query text require authentication to upload files to Perplexity
+- **Thread export** -- The `export-threads` command requires authentication to access your thread library
+
+For most users, we recommend authenticating to ensure the best experience. For automated scripts or testing, you can use `query` for simple questions without authentication. Any queries involving file uploads will require authentication.
 
 ## Authentication setup
 

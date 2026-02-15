@@ -1,8 +1,8 @@
 # Perplexity CLI - AI Development Log
 
 **Project:** perplexity-cli
-**Status:** Active Development (branch: `deep-research`)
-**Last Updated:** 2026-02-15 (v0.4.9: remove hard Python 3.12 pins)
+**Status:** Active Development (branch: `feature/file-attachments`)
+**Last Updated:** 2026-02-15 (v0.5.0: optional authentication for query command)
 
 ## Project Overview
 
@@ -33,7 +33,7 @@ uv pip install -e ".[dev]"
 ### Version Management
 
 - **Source of truth:** `pyproject.toml` (field: `version`)
-- **Current version:** 0.4.9
+- **Current version:** 0.5.0
 - **Versioning scheme:** Semantic versioning (MAJOR.MINOR.PATCH)
 - **Synchronisation:** `src/perplexity_cli/__init__.py` must always match `pyproject.toml`
 - **Runtime version:** Use `from importlib.metadata import version; version("pxcli")`
@@ -190,6 +190,49 @@ perplexity-cli/
 ```
 
 ## Recent Changes
+
+### Version 0.5.0: Optional Authentication for Query Command (2026-02-15)
+
+**Query command no longer requires authentication.** The `query` command can now run without a stored authentication token, enabling unauthenticated usage of Perplexity's API if the service permits it. All other commands remain authentication-required.
+
+**Implementation:**
+- Created `load_token_optional()` in `auth/utils.py` that returns `(None, None)` if no token is found (instead of prompting and exiting like `load_or_prompt_token()`)
+- Updated `query` command to use `load_token_optional()` instead of `load_or_prompt_token()`
+- Existing authenticated behaviour unchanged - users with tokens continue to work identically
+
+**Protected commands** (still require authentication):
+- `export-threads` - Thread library export (already enforced)
+- `status` - Authentication status check (already enforced)
+- All configuration commands (`configure`, `view-style`, `clear-style`, `logout`)
+
+**Protected features within `query`:**
+- File attachments via `--attach` flag - Fails with error message if no token
+- Inline file paths detected in query text - Fails with error message if no token
+
+**Backward compatibility:** Full. Users with tokens see no change in behaviour.
+
+**Files modified:**
+- `src/perplexity_cli/auth/utils.py` - Added `load_token_optional()` function
+- `src/perplexity_cli/cli.py` - Updated query command (line 328) to use `load_token_optional()`, added auth check for attachments (line 345)
+- `tests/test_cli.py` - Updated `test_query_not_authenticated` to test new behaviour (query succeeds without token)
+- `tests/test_optional_auth.py` (new) - 14 comprehensive tests covering optional auth scenarios
+- `README.md` - New "Authentication" section documenting which commands require authentication
+- `.claude/CLAUDE.md` - Project log update
+
+**Tests added (14 total):**
+- 3 unit tests for `load_token_optional()` function
+- 6 integration tests for query without authentication (multiple formats and options)
+- 2 error handling tests (API rejection, rate limits)
+- 3 attachment authentication tests (--attach flag, inline paths, with auth)
+
+**Test results:** All tests passing (488 tests total: 485 existing + 3 new attachment tests).
+
+**Note on authentication enforcement:**
+The implementation ensures optional authentication while protecting features that require it:
+- The `query` command works without authentication for simple queries
+- File attachments (via `--attach` flag or inline file paths) require authentication and fail with clear error messages if no token is present
+- The `export-threads` command continues to require authentication (already enforced)
+- All configuration and status commands remain authentication-required
 
 ### Version 0.4.9: Remove hard Python 3.12 pins (2026-02-15)
 
