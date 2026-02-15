@@ -2,7 +2,7 @@
 
 **Project:** perplexity-cli
 **Status:** Active Development (branch: `deep-research`)
-**Last Updated:** 2026-02-15 (v0.4.8: thread cache date-range fix, curl_cffi migration, Python 3.13 support)
+**Last Updated:** 2026-02-15 (v0.4.9: remove hard Python 3.12 pins)
 
 ## Project Overview
 
@@ -33,7 +33,7 @@ uv pip install -e ".[dev]"
 ### Version Management
 
 - **Source of truth:** `pyproject.toml` (field: `version`)
-- **Current version:** 0.4.8
+- **Current version:** 0.4.9
 - **Versioning scheme:** Semantic versioning (MAJOR.MINOR.PATCH)
 - **Synchronisation:** `src/perplexity_cli/__init__.py` must always match `pyproject.toml`
 - **Runtime version:** Use `from importlib.metadata import version; version("pxcli")`
@@ -190,6 +190,18 @@ perplexity-cli/
 ```
 
 ## Recent Changes
+
+### Version 0.4.9: Remove hard Python 3.12 pins (2026-02-15)
+
+Removed all hard pins to Python 3.12 across tooling and documentation. The project requires Python 3.12 or later (enforced by `requires-python = ">=3.12"` in `pyproject.toml`) but no longer forces a specific minor version in development or CI workflows.
+
+**Files modified:**
+- `README.md` - Prerequisites changed from "Python 3.12+" to "Python 3.12 or later"
+- `.pre-commit-config.yaml` - `default_language_version` changed from `python3.12` to `python3`
+- `.github/workflows/publish-to-pypi.yml` - `python-version` changed from `'3.12'` to `'3.x'`
+- `README.md` - `uv venv --python=3.12` changed to `uv venv` (two locations)
+- `pyproject.toml` - Version bump to 0.4.9
+- `src/perplexity_cli/__init__.py` - Version bump to 0.4.9
 
 ### Version 0.4.8: Thread cache date-range fix, curl_cffi migration, Python 3.13 (2026-02-15)
 

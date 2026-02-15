@@ -21,7 +21,7 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 
 ## Prerequisites
 
-- Python 3.12+
+- Python 3.12 or later
 - Google Chrome (for initial authentication only)
 
 ## Installation
