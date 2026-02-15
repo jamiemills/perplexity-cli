@@ -132,10 +132,21 @@ class AttachmentUploader:
                 raise RuntimeError(f"Failed to request upload URLs: {e}") from e
 
             if not response.ok:
+                # Log response details for debugging authentication issues
+                logger.error(
+                    f"Upload URL request failed with status {response.status_code}. "
+                    f"This may indicate an invalid or expired token. "
+                    f"Try running 'pxcli auth' to refresh authentication."
+                )
                 self._raise_http_status_error(response)
 
+        # Log the API response for debugging
+        response_json = response.json()
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"API response for upload URLs: {response_json}")
+
         logger.info(f"Received presigned URLs for {len(files_metadata)} file(s)")
-        return response.json(), uuid_to_attachment
+        return response_json, uuid_to_attachment
 
     async def _upload_to_s3(
         self,
@@ -163,7 +174,15 @@ class AttachmentUploader:
         form_data = {}
 
         # Add all fields from the presigned URL response (contain policy, signature, etc.)
-        fields = upload_data.get("fields", {})
+        # Handle case where API returns "fields": null (authentication/validation issue)
+        fields = upload_data.get("fields") or {}
+        if not isinstance(fields, dict):
+            logger.warning(
+                f"Unexpected fields type from API: {type(fields).__name__}. "
+                f"Full upload_data: {upload_data}"
+            )
+            fields = {}
+
         for key, value in fields.items():
             if key not in ["file"]:
                 form_data[key] = str(value)
