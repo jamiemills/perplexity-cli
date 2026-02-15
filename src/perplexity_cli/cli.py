@@ -2,38 +2,19 @@
 
 import os
 import sys
-from importlib.resources import files
 from pathlib import Path
 
 import click
-import httpx
 
-from perplexity_cli.api.endpoints import PerplexityAPI
-from perplexity_cli.api.streaming import stream_query_response
-from perplexity_cli.auth.oauth_handler import authenticate_sync
-from perplexity_cli.auth.token_manager import TokenManager
-from perplexity_cli.auth.utils import load_or_prompt_token
-from perplexity_cli.formatting import get_formatter, list_formatters
-from perplexity_cli.utils.config import get_perplexity_base_url
-from perplexity_cli.utils.http_errors import handle_http_error, handle_network_error
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+    PerplexityRequestError,
+)
 from perplexity_cli.utils.logging import get_default_log_file, setup_logging
-from perplexity_cli.utils.style_manager import StyleManager
-from perplexity_cli.utils.version import get_version
-
-# Load Agent Skill definition for display via show-skill command
-try:
-    SKILL_CONTENT = (
-        files("perplexity_cli.resources").joinpath("skill.md").read_text(encoding="utf-8")
-    )
-except (FileNotFoundError, AttributeError):
-    # Fallback if skill.md is not found
-    SKILL_CONTENT = (
-        "Agent Skill definition not available. Run 'perplexity-cli --help' for usage information."
-    )
 
 
 @click.group()
-@click.version_option(version=get_version())
+@click.version_option(package_name="pxcli")
 @click.option(
     "--verbose",
     "-v",
@@ -109,6 +90,9 @@ def auth(ctx: click.Context, port: int) -> None:
         perplexity-cli auth
         perplexity-cli auth --port 9223
     """
+    from perplexity_cli.auth.oauth_handler import authenticate_sync
+    from perplexity_cli.auth.token_manager import TokenManager
+    from perplexity_cli.utils.config import get_perplexity_base_url
     from perplexity_cli.utils.logging import get_logger
 
     logger = get_logger()
@@ -255,7 +239,14 @@ def query(
     """
     import logging
 
+    from perplexity_cli.api.endpoints import PerplexityAPI
+    from perplexity_cli.api.streaming import stream_query_response
+    from perplexity_cli.auth.token_manager import TokenManager
+    from perplexity_cli.auth.utils import load_or_prompt_token
+    from perplexity_cli.formatting import get_formatter, list_formatters
+    from perplexity_cli.utils.http_errors import handle_http_error, handle_network_error
     from perplexity_cli.utils.logging import get_logger
+    from perplexity_cli.utils.style_manager import StyleManager
 
     logger = get_logger()
 
@@ -348,11 +339,11 @@ def query(
                     )
                     click.echo(formatted_output)
 
-    except httpx.HTTPStatusError as e:
+    except PerplexityHTTPStatusError as e:
         debug_mode = ctx.obj.get("debug", False) if ctx.obj else False
         handle_http_error(e, logger, debug_mode=debug_mode)
 
-    except httpx.RequestError as e:
+    except PerplexityRequestError as e:
         debug_mode = ctx.obj.get("debug", False) if ctx.obj else False
         handle_network_error(e, logger, debug_mode=debug_mode)
 
@@ -388,6 +379,8 @@ def logout() -> None:
     Example:
         perplexity-cli logout
     """
+    from perplexity_cli.auth.token_manager import TokenManager
+
     tm = TokenManager()
 
     if not tm.token_exists():
@@ -424,6 +417,8 @@ def configure(style: str) -> None:
         perplexity-cli configure "be brief and concise"
         perplexity-cli configure "provide super brief answers in minimal words"
     """
+    from perplexity_cli.utils.style_manager import StyleManager
+
     sm = StyleManager()
 
     try:
@@ -450,6 +445,8 @@ def view_style() -> None:
     Example:
         perplexity-cli view-style
     """
+    from perplexity_cli.utils.style_manager import StyleManager
+
     sm = StyleManager()
 
     try:
@@ -479,6 +476,8 @@ def clear_style() -> None:
     Example:
         perplexity-cli clear-style
     """
+    from perplexity_cli.utils.style_manager import StyleManager
+
     sm = StyleManager()
 
     try:
@@ -509,6 +508,8 @@ def status() -> None:
     """
     from datetime import datetime
 
+    from perplexity_cli.api.endpoints import PerplexityAPI
+    from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.utils.logging import get_logger
 
     logger = get_logger()
@@ -549,7 +550,7 @@ def status() -> None:
                     else:
                         click.echo("\n[INFO] Token verification returned empty response")
                         logger.warning("Token verification returned empty response")
-                except httpx.HTTPStatusError as e:
+                except PerplexityHTTPStatusError as e:
                     if e.response.status_code == 401:
                         click.echo("\n[ERROR] Token is invalid or expired")
                         logger.warning("Token verification failed: 401 Unauthorized")
@@ -696,7 +697,15 @@ def show_skill() -> None:
     Example:
         perplexity-cli show-skill
     """
-    click.echo(SKILL_CONTENT)
+    from importlib.resources import files
+
+    try:
+        skill_content = (
+            files("perplexity_cli.resources").joinpath("skill.md").read_text(encoding="utf-8")
+        )
+    except (FileNotFoundError, AttributeError):
+        skill_content = "Agent Skill definition not available. Run 'perplexity-cli --help' for usage information."
+    click.echo(skill_content)
 
 
 @main.command()
@@ -768,6 +777,9 @@ def export_threads(
     """
     import asyncio
 
+    import httpx
+
+    from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.threads.exporter import write_threads_csv
     from perplexity_cli.threads.scraper import ThreadScraper
     from perplexity_cli.utils.logging import get_logger
@@ -892,7 +904,7 @@ def export_threads(
             click.echo("  perplexity-cli auth", err=True)
         sys.exit(1)
 
-    except httpx.HTTPStatusError as e:
+    except (PerplexityHTTPStatusError, httpx.HTTPStatusError) as e:
         status = e.response.status_code
         logger.error(f"HTTP error {status}: {e}")
         if status == 401:

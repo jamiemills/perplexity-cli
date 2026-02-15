@@ -6,8 +6,8 @@ cf_clearance cookie is bound to the TLS fingerprint of the client that
 solved the JavaScript challenge, so Python's default TLS stack (used by
 httpx/urllib3) is rejected even with valid cookies.
 
-Exceptions are converted to httpx types so that downstream error handling
-(cli.py, http_errors.py, retry.py) does not need to change.
+Exceptions are raised as custom PerplexityHTTPStatusError and
+PerplexityRequestError types defined in utils/exceptions.py.
 """
 
 import json
@@ -15,10 +15,15 @@ import logging
 import time
 from collections.abc import Iterator
 
-import httpx
 from curl_cffi.requests import Session
 from curl_cffi.requests.exceptions import RequestException
 
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+    PerplexityRequestError,
+    SimpleRequest,
+    SimpleResponse,
+)
 from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.retry import is_retryable_error
 
@@ -103,8 +108,8 @@ class SSEClient:
             Parsed JSON data from each SSE message.
 
         Raises:
-            httpx.HTTPStatusError: For HTTP errors (401, 403, 500, etc.).
-            httpx.RequestError: For network/connection errors.
+            PerplexityHTTPStatusError: For HTTP errors (401, 403, 500, etc.).
+            PerplexityRequestError: For network/connection errors.
             ValueError: For malformed SSE messages.
         """
         headers = self.get_headers()
@@ -178,7 +183,7 @@ class SSEClient:
                         self.logger.debug("SSE stream completed successfully")
                     return  # Success, exit retry loop
 
-            except httpx.HTTPStatusError as e:
+            except PerplexityHTTPStatusError as e:
                 status = e.response.status_code
 
                 if self.logger.isEnabledFor(logging.DEBUG):
@@ -199,7 +204,7 @@ class SSEClient:
                 # Don't retry 401 (invalid token)
                 if status == 401:
                     self.logger.error(f"HTTP {status} error (not retryable): {e}")
-                    raise httpx.HTTPStatusError(
+                    raise PerplexityHTTPStatusError(
                         "Authentication failed. Token may be invalid or expired.",
                         request=e.request,
                         response=e.response,
@@ -220,7 +225,7 @@ class SSEClient:
                         self.logger.error(
                             f"HTTP {status} error (not retryable after {self.max_retries} attempts): {e}"
                         )
-                        raise httpx.HTTPStatusError(
+                        raise PerplexityHTTPStatusError(
                             "Access forbidden. Check API permissions or try again later.",
                             request=e.request,
                             response=e.response,
@@ -236,14 +241,14 @@ class SSEClient:
 
                 # Re-raise if not retryable or out of retries
                 if status == 429:
-                    raise httpx.HTTPStatusError(
+                    raise PerplexityHTTPStatusError(
                         "Rate limit exceeded. Please wait and try again.",
                         request=e.request,
                         response=e.response,
                     ) from e
                 raise
 
-            except httpx.RequestError as e:
+            except PerplexityRequestError as e:
                 # Retry network errors
                 if is_retryable_error(e) and attempt < self.max_retries - 1:
                     attempt += 1
@@ -255,9 +260,9 @@ class SSEClient:
                 raise
 
             except RequestException as e:
-                # Convert curl_cffi network errors to httpx.RequestError
+                # Convert curl_cffi network errors to PerplexityRequestError
                 self.logger.error(f"Network error after {attempt + 1} attempts: {e}")
-                raise httpx.RequestError(str(e)) from e
+                raise PerplexityRequestError(str(e)) from e
 
             except Exception as e:
                 self.logger.error(f"Unexpected error during streaming: {e}", exc_info=True)
@@ -265,42 +270,38 @@ class SSEClient:
 
     @staticmethod
     def _raise_http_status_error(response) -> None:
-        """Convert a curl_cffi error response into an httpx.HTTPStatusError.
+        """Convert a curl_cffi error response into a PerplexityHTTPStatusError.
 
-        Constructs a minimal httpx.Request and httpx.Response so that
+        Constructs SimpleRequest and SimpleResponse objects so that
         downstream error handlers can access ``.status_code``, ``.headers``,
-        and ``.text`` as they would with a native httpx error.
+        and ``.text``.
 
         Args:
             response: The curl_cffi Response object with a non-2xx status.
 
         Raises:
-            httpx.HTTPStatusError: Always raised with the converted response.
+            PerplexityHTTPStatusError: Always raised with the converted response.
         """
-        # Build an httpx-compatible Request object
-        httpx_request = httpx.Request(
-            method="POST",
-            url=response.url,
-        )
+        request = SimpleRequest(method="POST", url=str(response.url))
 
-        # Read the response body so it's available via .text on the httpx Response
+        # Read the response body
         try:
             body = response.content
+            text = body.decode("utf-8") if isinstance(body, bytes) else str(body)
         except Exception:
-            body = b""
+            text = ""
 
-        # Build an httpx-compatible Response object
-        httpx_response = httpx.Response(
+        simple_response = SimpleResponse(
             status_code=response.status_code,
             headers=dict(response.headers),
-            content=body,
-            request=httpx_request,
+            text=text,
+            request=request,
         )
 
-        raise httpx.HTTPStatusError(
+        raise PerplexityHTTPStatusError(
             f"HTTP Error {response.status_code}: {response.reason}",
-            request=httpx_request,
-            response=httpx_response,
+            request=request,
+            response=simple_response,
         )
 
     def _parse_sse_stream(self, response) -> Iterator[dict]:

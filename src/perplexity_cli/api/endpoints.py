@@ -64,8 +64,8 @@ class PerplexityAPI:
             SSEMessage objects from the streaming response.
 
         Raises:
-            httpx.HTTPStatusError: For HTTP errors (401, 403, 429, etc.).
-            httpx.RequestError: For network/connection errors.
+            PerplexityHTTPStatusError: For HTTP errors (401, 403, 429, etc.).
+            PerplexityRequestError: For network/connection errors.
             ValueError: For malformed responses.
         """
         # Generate UUIDs for request tracking
@@ -105,8 +105,8 @@ class PerplexityAPI:
             Answer object containing text and references list.
 
         Raises:
-            httpx.HTTPStatusError: For HTTP errors.
-            httpx.RequestError: For network errors.
+            PerplexityHTTPStatusError: For HTTP errors.
+            PerplexityRequestError: For network errors.
             ValueError: For malformed responses or if no answer is found.
         """
         final_answer = None

@@ -4,11 +4,12 @@ import logging
 import sys
 
 import click
-import httpx
+
+from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, PerplexityRequestError
 
 
 def handle_http_error(
-    error: httpx.HTTPStatusError,
+    error: PerplexityHTTPStatusError,
     logger: logging.Logger,
     debug_mode: bool = False,
     context: str | None = None,
@@ -19,7 +20,7 @@ def handle_http_error(
     Falls back to generic error message for other status codes.
 
     Args:
-        error: The HTTPStatusError exception to handle.
+        error: The PerplexityHTTPStatusError exception to handle.
         logger: Logger instance for error logging.
         debug_mode: If True, include detailed error information in output.
         context: Optional context string for more specific error messages
@@ -49,7 +50,7 @@ def handle_http_error(
 
 
 def handle_network_error(
-    error: httpx.RequestError,
+    error: PerplexityRequestError,
     logger: logging.Logger,
     debug_mode: bool = False,
     context: str | None = None,
@@ -57,7 +58,7 @@ def handle_network_error(
     """Handle network request errors with user-friendly messages.
 
     Args:
-        error: The RequestError exception to handle.
+        error: The PerplexityRequestError exception to handle.
         logger: Logger instance for error logging.
         debug_mode: If True, include detailed error information in output.
         context: Optional context string for more specific error messages
