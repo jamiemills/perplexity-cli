@@ -37,24 +37,15 @@ from perplexity_cli.utils.logging import get_default_log_file, setup_logging
 def main(ctx: click.Context, verbose: bool, debug: bool, log_file: Path | None) -> None:
     """Perplexity CLI - Query Perplexity.ai from the command line.
 
-    Query Perplexity.ai without authentication for basic questions, or authenticate
-    once to unlock file attachments and thread management features.
-
     \b
-    Commands:
-      query           Submit queries (works without auth, --attach requires auth)
-      auth            One-time setup: extract and store your authentication token
-      export-threads  Export your thread library to CSV (requires auth)
-      status          Check authentication status
-      configure       Set a style prompt for all queries
-      logout          Remove stored credentials
-
-    \b
-    Common usage:
-      pxcli query "What is Python?"                    # No auth needed
-      pxcli auth                                       # One-time setup
-      pxcli query --attach file.pdf "Summarise this"   # Now with attachments
-      pxcli export-threads                             # Export your threads
+    Command options:
+      query           -f {plain,markdown,rich,json}  --strip-references
+                      --stream / --no-stream
+      auth            --port PORT
+      export-threads  --from-date DATE  --to-date DATE  --output PATH
+                      --force-refresh  --clear-cache
+      configure       STYLE
+      set-config      KEY VALUE
 
     Run any command with --help for full details, e.g. pxcli query --help
     """
@@ -244,11 +235,6 @@ def query(
     other commands. By default, responses are displayed after the complete response
     is fetched (batch mode). Use --stream for real-time streaming.
 
-    Authentication:
-        - Simple queries work WITHOUT authentication
-        - File attachments (--attach or inline paths) REQUIRE authentication
-        - Run 'pxcli auth' once to enable file uploads
-
     Output formats:
         plain    - Plain text with underlined headers (good for scripts)
         markdown - GitHub-flavoured Markdown with proper structure
@@ -260,23 +246,22 @@ def query(
 
     Use --stream for real-time streaming of the response as it arrives.
 
-    Use --attach to include files with your query (requires authentication).
-    Supports multiple methods:
+    Use --attach to include files with your query. Supports multiple methods:
         --attach file.txt           - Single file
         --attach file1.txt,file2.txt - Comma-separated files
         --attach ./directory        - All files in directory (recursive)
         --attach -a file1.txt -a file2.txt - Repeated flags
 
-    Examples (no authentication required):
+    Examples:
         perplexity-cli query "What is Python?"
         perplexity-cli query "What is the capital of France?" > answer.txt
         perplexity-cli query --format plain "What is Python?"
         perplexity-cli query --format markdown "What is Python?" > answer.md
         perplexity-cli query --format json "What is Python?" | jq -r '.answer'
+        perplexity-cli query --format json "What is Python?" > answer.json
         perplexity-cli query --strip-references "What is Python?"
+        perplexity-cli query -f plain --strip-references "What is Python?"
         perplexity-cli query --stream "What is Python?"
-
-    Examples (authentication required for file upload):
         perplexity-cli query --attach README.md "What is this project?"
         perplexity-cli query --attach config.json,data.txt "Analyse these files"
         perplexity-cli query --attach ./docs "Summarise all documentation"
@@ -340,7 +325,7 @@ def query(
             f"Query command invoked: query='{query_text[:50]}...', format={output_format}, stream={stream}"
         )
 
-    # Load token and cookies (optional - query can run without authentication)
+    # Load token and cookies
     tm = TokenManager()
     token, cookies = load_token_optional(tm, logger)
 
@@ -380,7 +365,7 @@ def query(
                 # Upload attachments to S3 and get URLs
                 if file_attachments:
                     logger.debug("Starting S3 upload for attachments")
-                    uploader = AttachmentUploader(token=token)
+                    uploader = AttachmentUploader(token=token, cookies=cookies)
                     try:
                         attachment_urls = asyncio.run(uploader.upload_files(file_attachments))
                         logger.debug(f"S3 upload complete: {len(attachment_urls)} file(s) uploaded")
@@ -861,9 +846,6 @@ def export_threads(
 ) -> None:
     """Export thread library with titles and creation dates as CSV.
 
-    REQUIRES AUTHENTICATION: This command needs your stored authentication token
-    from 'pxcli auth'. Run authentication once before using this command.
-
     Extracts all threads from your Perplexity.ai library using your stored
     authentication token. No browser required after initial auth setup.
 
@@ -885,11 +867,9 @@ def export_threads(
         perplexity-cli export-threads --force-refresh
         perplexity-cli export-threads --clear-cache
 
-    Setup (one-time):
-        pxcli auth
-
-    Then you can export your threads anytime:
-        pxcli export-threads
+    The command uses your stored authentication token from the initial
+    'perplexity-cli auth' setup. If you haven't authenticated yet, run:
+        perplexity-cli auth
     """
     import asyncio
 
