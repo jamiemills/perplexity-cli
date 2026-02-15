@@ -2,7 +2,7 @@
 
 **Project:** perplexity-cli
 **Status:** Active Development (branch: `deep-research`)
-**Last Updated:** 2026-02-15 (curl_cffi TLS fingerprint bypass)
+**Last Updated:** 2026-02-15 (v0.4.8: thread cache date-range fix, curl_cffi migration, Python 3.13 support)
 
 ## Project Overview
 
@@ -33,7 +33,7 @@ uv pip install -e ".[dev]"
 ### Version Management
 
 - **Source of truth:** `pyproject.toml` (field: `version`)
-- **Current version:** 0.4.6 (on `deep-research` branch)
+- **Current version:** 0.4.8
 - **Versioning scheme:** Semantic versioning (MAJOR.MINOR.PATCH)
 - **Synchronisation:** `src/perplexity_cli/__init__.py` must always match `pyproject.toml`
 - **Runtime version:** Use `from importlib.metadata import version; version("pxcli")`
@@ -191,6 +191,52 @@ perplexity-cli/
 
 ## Recent Changes
 
+### Version 0.4.8: Thread cache date-range fix, curl_cffi migration, Python 3.13 (2026-02-15)
+
+**Thread cache restricted to requested date range.** Previously, `save_cache()` was called before the date-range filter, so the cache accumulated all threads ever fetched regardless of the user's `--from-date` / `--to-date` arguments. The filter now runs before `save_cache()`, so only threads within the requested range are persisted. Cache metadata (`oldest_thread_date`, `newest_thread_date`) correctly reflects the narrower range, and `requires_fresh_data()` triggers a fresh fetch when a subsequent request falls outside the cached range.
+
+**Thread scraper migrated to curl_cffi.** Both HTTP paths (query via `api/client.py` and thread export via `threads/scraper.py`) now use `curl_cffi` with Chrome TLS fingerprint impersonation, bypassing Cloudflare's fingerprint-bound bot protection.
+
+**Python 3.13 support.** With both HTTP paths using curl_cffi, the Python version constraint has been relaxed from `>=3.12,<3.13` to `>=3.12`.
+
+**Files modified:**
+- `src/perplexity_cli/threads/scraper.py` - Date-range filter moved before `save_cache()`; curl_cffi migration
+- `src/perplexity_cli/cli.py` - Removed `httpx` import from `export_threads`; simplified exception catch
+- `pyproject.toml` - Version bump to 0.4.8; `requires-python` relaxed to `>=3.12`; Python 3.13 classifier
+- `src/perplexity_cli/__init__.py` - Version bump to 0.4.8
+- `README.md` - Updated Python version, caching description, dependency list
+- `tests/test_scraper_cache_filter.py` (new) - 4 tests verifying cache receives only date-filtered threads
+
+**Test results:** 414 passed, 8 skipped.
+
+### Thread scraper curl_cffi migration and Python 3.13 support (2026-02-15)
+
+Migrated the thread scraper (`threads/scraper.py`) from `httpx.AsyncClient` to `curl_cffi.requests.AsyncSession` to bypass Cloudflare's TLS fingerprint-bound bot protection on the thread export path. This is the same fix previously applied to the query path (`api/client.py`). With both HTTP paths now using curl_cffi, the Python version constraint has been relaxed from `>=3.12,<3.13` to `>=3.12`, enabling Python 3.13 support.
+
+**Changes:**
+
+- **`src/perplexity_cli/threads/scraper.py`:**
+  - Replaced `import httpx` with `from curl_cffi.requests import AsyncSession` and `from curl_cffi.requests.exceptions import RequestException`.
+  - Added imports for `PerplexityHTTPStatusError`, `SimpleRequest`, `SimpleResponse` from `utils/exceptions.py`.
+  - Replaced `httpx.AsyncClient(timeout=30.0)` with `AsyncSession(impersonate="chrome", timeout=30)`.
+  - Cookies now passed as a dict via the `cookies` parameter on `post()` instead of serialised into a `Cookie` header string.
+  - Removed manual `User-Agent` header (curl_cffi sets this automatically from impersonation profile).
+  - Replaced `response.raise_for_status()` with `response.ok` check and `_raise_http_status_error()` static method (same pattern as `api/client.py`).
+  - Exception handling updated: catches `PerplexityHTTPStatusError` instead of `httpx.HTTPStatusError`, and catches `RequestException` (curl_cffi) converting to `RuntimeError`.
+  - Docstrings updated: `httpx.HTTPStatusError` references changed to `PerplexityHTTPStatusError`.
+
+- **`src/perplexity_cli/cli.py`:**
+  - Removed `import httpx` from `export_threads` function.
+  - Simplified exception catch from `except (PerplexityHTTPStatusError, httpx.HTTPStatusError)` to `except PerplexityHTTPStatusError`.
+
+- **`pyproject.toml`:**
+  - Changed `requires-python` from `">=3.12,<3.13"` to `">=3.12"`.
+  - Added `"Programming Language :: Python :: 3.13"` classifier.
+
+**httpx retained as dependency:** `httpx>=0.25` remains in `pyproject.toml`. It is used in `tests/test_exceptions.py` for type verification, and may be needed by other development tooling.
+
+**Test results:** 417 passed, 1 failed (pre-existing `test_manual_auth.py` failure requiring running Chrome instance).
+
 ### Version 0.4.6: Hide deep research, curl_cffi migration (2026-02-15)
 
 **Deep research CLI flag hidden.** The `--deep-research` flag has been removed from the CLI, README, and streaming module. The underlying API support (`search_implementation_mode` in models, endpoints, client timeout logic) remains in place but is not exposed to users. The feature was not proven to work reliably. Tests referencing the CLI flag have been removed; API model tests for `search_implementation_mode` remain.
@@ -208,7 +254,7 @@ perplexity-cli/
 Replaced httpx with curl_cffi in the SSEClient (the query path) to bypass Cloudflare's TLS fingerprint-bound bot protection. Cloudflare now binds the `cf_clearance` cookie to the TLS fingerprint of the client that solved the JavaScript challenge. Since httpx uses Python's default TLS stack (which has a distinct fingerprint from Chrome), Cloudflare rejects requests even with valid cookies. `curl_cffi` solves this by impersonating Chrome's TLS fingerprint.
 
 **Branch:** `deep-research`
-**Scope:** SSEClient only; the thread scraper continues to use httpx (different auth mechanism, unaffected path).
+**Scope:** SSEClient only (at time of this change). The thread scraper was subsequently migrated to curl_cffi as well (see above).
 
 **Changes:**
 
@@ -230,12 +276,12 @@ Replaced httpx with curl_cffi in the SSEClient (the query path) to bypass Cloudf
   - Lazy instantiation test checks for `curl_cffi.requests.Session` instead of `httpx.Client`.
   - Test count: 386 test functions (up from 375).
 
-**Files NOT modified (no changes needed):**
+**Files NOT modified (at time of this change):**
 - `src/perplexity_cli/api/endpoints.py` - Calls `self.client.stream_post()` (interface unchanged)
-- `src/perplexity_cli/cli.py` - Catches `httpx.HTTPStatusError`/`RequestError` (still valid via conversion layer)
+- `src/perplexity_cli/cli.py` - Catches `httpx.HTTPStatusError`/`RequestError` (still valid via conversion layer; subsequently updated)
 - `src/perplexity_cli/utils/http_errors.py` - Handles `httpx.HTTPStatusError` (still valid)
 - `src/perplexity_cli/utils/retry.py` - Uses httpx exception types (still valid)
-- `src/perplexity_cli/threads/scraper.py` - Uses `httpx.AsyncClient` independently (unchanged)
+- `src/perplexity_cli/threads/scraper.py` - Used `httpx.AsyncClient` independently (subsequently migrated to curl_cffi)
 
 ### Comprehensive Enhancement (2026-02-13)
 

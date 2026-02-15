@@ -21,7 +21,7 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 
 ## Prerequisites
 
-- Python 3.12
+- Python 3.12+
 - Google Chrome (for initial authentication only)
 
 ## Installation
@@ -291,7 +291,7 @@ Fields: `created_at` (ISO 8601 UTC), `title`, `url`.
 
 ### Caching
 
-Thread exports are cached locally in encrypted form at `~/.config/perplexity-cli/threads-cache.json`. On subsequent exports, only new threads are fetched from the API. Use `--force-refresh` to bypass the cache or `--clear-cache` to delete it.
+Thread exports are cached locally in encrypted form at `~/.config/perplexity-cli/threads-cache.json`. The cache stores only threads within the requested date range, so subsequent exports with different date filters will fetch fresh data as needed. Use `--force-refresh` to bypass the cache or `--clear-cache` to delete it.
 
 ### Rate limiting
 
@@ -548,8 +548,7 @@ mypy src/                       # type check
 ## Dependencies
 
 - **click** -- CLI framework
-- **curl-cffi** -- HTTP client with Chrome TLS fingerprint impersonation (query path)
-- **httpx** -- HTTP client (thread export path)
+- **curl-cffi** -- HTTP client with Chrome TLS fingerprint impersonation (query and thread export paths)
 - **rich** -- Terminal formatting
 - **cryptography** -- Token encryption
 - **tenacity** -- Retry logic with exponential backoff
