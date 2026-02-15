@@ -26,12 +26,12 @@ def _extract_file_paths_from_text(text: str) -> list[Path]:
     """
     paths: set[Path] = set()
 
-    # Pattern for Unix absolute paths (/path/to/file)
-    # Matches /followed by any non-whitespace characters that include at least one dot
-    unix_pattern = r"/[^\s]+(?:\.[a-zA-Z0-9]+)?"
+    # Pattern for Unix absolute paths with file extensions (/path/to/file.ext)
+    # Requires at least one dot (file extension)
+    unix_pattern = r"/[a-zA-Z0-9._\-/]+\.[a-zA-Z0-9]+"
 
-    # Pattern for tilde paths (~/path/to/file)
-    tilde_pattern = r"~[^\s]*(?:\.[a-zA-Z0-9]+)?"
+    # Pattern for tilde paths (~/path/to/file.ext)
+    tilde_pattern = r"~[a-zA-Z0-9._\-/]*\.[a-zA-Z0-9]+"
 
     # Find all potential paths
     for match in re.finditer(unix_pattern, text):
@@ -39,32 +39,15 @@ def _extract_file_paths_from_text(text: str) -> list[Path]:
         # Remove trailing punctuation that's likely from the sentence
         candidate = candidate.rstrip(".,;:!?'\"")
         path = Path(candidate)
-        if _looks_like_file_path(candidate):
-            paths.add(path)
+        paths.add(path)
 
     for match in re.finditer(tilde_pattern, text):
         candidate = match.group()
         candidate = candidate.rstrip(".,;:!?'\"")
         path = Path(candidate).expanduser()
-        if _looks_like_file_path(candidate):
-            paths.add(path)
+        paths.add(path)
 
     return sorted(paths)
-
-
-def _looks_like_file_path(path_str: str) -> bool:
-    """Check if a string looks like a file path.
-
-    Args:
-        path_str: String to check.
-
-    Returns:
-        True if it looks like a file path.
-    """
-    # Must contain a file extension or be a directory-like path
-    has_extension = "." in path_str and not path_str.endswith(".")
-    looks_like_dir = "/" in path_str or "\\" in path_str
-    return has_extension or looks_like_dir
 
 
 def resolve_file_arguments(
