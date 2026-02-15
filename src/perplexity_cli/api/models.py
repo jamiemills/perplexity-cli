@@ -124,9 +124,9 @@ class QueryParams(BaseModel):
     frontend_context_uuid: str = Field(default="")
     version: str = Field(default_factory=get_api_version)
     sources: list[str] = Field(default_factory=lambda: ["web"])
-    attachments: list[FileAttachment] = Field(
+    attachments: list[str] = Field(
         default_factory=list,
-        description="List of file attachments for the query",
+        description="S3 URLs of attached files",
     )
     search_recency_filter: str | None = Field(default=None)
     model_preference: str = Field(default="pplx_pro")

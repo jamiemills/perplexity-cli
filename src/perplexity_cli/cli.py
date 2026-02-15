@@ -267,10 +267,12 @@ def query(
     JSON format tip: Use jq -r to display newlines properly:
         perplexity-cli query --format json "Question" | jq -r '.answer'
     """
+    import asyncio
     import logging
 
     from perplexity_cli.api.endpoints import PerplexityAPI
     from perplexity_cli.api.streaming import stream_query_response
+    from perplexity_cli.attachments import AttachmentUploader
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.auth.utils import load_or_prompt_token
     from perplexity_cli.formatting import get_formatter, list_formatters
@@ -325,8 +327,8 @@ def query(
     tm = TokenManager()
     token, cookies = load_or_prompt_token(tm, logger, command_context="query")
 
-    # Load file attachments if provided
-    attachments = []
+    # Load and upload file attachments if provided
+    attachment_urls: list[str] = []
     # Combine inline query args and --attach flag values
     attachment_list = (
         attachments_str if isinstance(attachments_str, list) else list(attachments_str)
@@ -339,9 +341,22 @@ def query(
             )
             if file_paths:
                 click.echo(f"[INFO] Loading {len(file_paths)} file(s)...")
-                attachments = load_attachments(file_paths)
-                logger.info(f"Loaded {len(attachments)} attachment(s)")
-                click.echo(f"[OK] Loaded {len(attachments)} attachment(s)")
+                file_attachments = load_attachments(file_paths)
+                logger.info(f"Loaded {len(file_attachments)} attachment(s)")
+                click.echo(f"[OK] Loaded {len(file_attachments)} attachment(s)")
+
+                # Upload attachments to S3 and get URLs
+                if file_attachments:
+                    click.echo("[INFO] Uploading files to S3...")
+                    uploader = AttachmentUploader(token=token)
+                    try:
+                        attachment_urls = asyncio.run(uploader.upload_files(file_attachments))
+                        logger.info(f"Uploaded {len(attachment_urls)} file(s)")
+                        click.echo(f"[OK] Uploaded {len(attachment_urls)} file(s)")
+                    except Exception as e:
+                        click.echo(f"[ERROR] Failed to upload attachments: {e}", err=True)
+                        logger.error(f"Attachment upload failed: {e}")
+                        sys.exit(1)
         except (FileNotFoundError, ValueError) as e:
             click.echo(f"[ERROR] Failed to load attachments: {e}", err=True)
             logger.error(f"Attachment loading failed: {e}")
@@ -382,11 +397,11 @@ def query(
                     formatter,
                     output_format,
                     strip_references,
-                    attachments=attachments,
+                    attachments=attachment_urls,
                 )
             else:
                 logger.info("Fetching complete answer")
-                answer_obj = api.get_complete_answer(final_query, attachments=attachments)
+                answer_obj = api.get_complete_answer(final_query, attachments=attachment_urls)
                 logger.debug(
                     f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references"
                 )

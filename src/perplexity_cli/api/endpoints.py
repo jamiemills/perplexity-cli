@@ -10,7 +10,7 @@ from types import TracebackType
 
 from ..utils.config import get_query_endpoint
 from .client import SSEClient
-from .models import Answer, FileAttachment, QueryParams, QueryRequest, SSEMessage, WebResult
+from .models import Answer, QueryParams, QueryRequest, SSEMessage, WebResult
 
 
 class PerplexityAPI:
@@ -51,7 +51,7 @@ class PerplexityAPI:
         language: str = "en-US",
         timezone: str = "Europe/London",
         search_implementation_mode: str = "standard",
-        attachments: list[FileAttachment] | None = None,
+        attachments: list[str] | None = None,
     ) -> Iterator[SSEMessage]:
         """Submit a query to Perplexity and stream responses.
 
@@ -60,7 +60,7 @@ class PerplexityAPI:
             language: Language code (default: en-US).
             timezone: Timezone string (default: Europe/London).
             search_implementation_mode: Search mode ('standard' or 'multi_step' for deep research).
-            attachments: Optional list of file attachments for the query.
+            attachments: Optional list of S3 URLs for file attachments.
 
         Yields:
             SSEMessage objects from the streaming response.
@@ -96,7 +96,7 @@ class PerplexityAPI:
         self,
         query: str,
         search_implementation_mode: str = "standard",
-        attachments: list[FileAttachment] | None = None,
+        attachments: list[str] | None = None,
     ) -> Answer:
         """Submit a query and return the complete answer with references.
 
@@ -106,7 +106,7 @@ class PerplexityAPI:
         Args:
             query: The user's query text.
             search_implementation_mode: Search mode ('standard' or 'multi_step' for deep research).
-            attachments: Optional list of file attachments for the query.
+            attachments: Optional list of S3 URLs for file attachments.
 
         Returns:
             Answer object containing text and references list.

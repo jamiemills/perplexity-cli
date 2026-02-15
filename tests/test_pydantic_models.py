@@ -376,47 +376,31 @@ class TestFileAttachment:
         assert data_dict["data"] == encoded_data
 
     def test_file_attachment_in_query_params(self):
-        """Test FileAttachment integration with QueryParams."""
-        encoded_data = base64.b64encode(b"test content").decode("ascii")
-        attachment = FileAttachment(
-            filename="test.txt",
-            content_type="text/plain",
-            data=encoded_data,
-        )
-        params = QueryParams(attachments=[attachment])
+        """Test S3 URL attachment integration with QueryParams."""
+        s3_url = "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test.txt"
+        params = QueryParams(attachments=[s3_url])
         assert len(params.attachments) == 1
-        assert params.attachments[0].filename == "test.txt"
+        assert params.attachments[0] == s3_url
 
     def test_file_attachment_multiple_in_query_params(self):
-        """Test multiple FileAttachments in QueryParams."""
-        attachment1 = FileAttachment(
-            filename="file1.txt",
-            content_type="text/plain",
-            data=base64.b64encode(b"content1").decode("ascii"),
-        )
-        attachment2 = FileAttachment(
-            filename="file2.txt",
-            content_type="text/plain",
-            data=base64.b64encode(b"content2").decode("ascii"),
-        )
-        params = QueryParams(attachments=[attachment1, attachment2])
+        """Test multiple S3 URL attachments in QueryParams."""
+        s3_urls = [
+            "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file1.txt",
+            "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file2.txt",
+        ]
+        params = QueryParams(attachments=s3_urls)
         assert len(params.attachments) == 2
-        assert params.attachments[0].filename == "file1.txt"
-        assert params.attachments[1].filename == "file2.txt"
+        assert params.attachments[0] == s3_urls[0]
+        assert params.attachments[1] == s3_urls[1]
 
     def test_file_attachment_serialization_in_request_dict(self):
-        """Test that attachments are properly serialized in request dict."""
-        encoded_data = base64.b64encode(b"test").decode("ascii")
-        attachment = FileAttachment(
-            filename="test.txt",
-            content_type="text/plain",
-            data=encoded_data,
-        )
-        params = QueryParams(attachments=[attachment])
+        """Test that S3 URL attachments are properly serialized in request dict."""
+        s3_url = "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test.txt"
+        params = QueryParams(attachments=[s3_url])
         request_dict = params.to_dict()
         assert "attachments" in request_dict
         assert len(request_dict["attachments"]) == 1
-        assert request_dict["attachments"][0]["filename"] == "test.txt"
+        assert request_dict["attachments"][0] == s3_url
 
 
 class TestQueryParamsSearchMode:
