@@ -96,7 +96,7 @@ Test coverage includes:
 
 ### Standards
 
-- Python 3.12+ required
+- Python 3.12 or later required
 - PEP 8 compliance via ruff
 - Type hints throughout codebase
 - Comprehensive docstrings
@@ -591,7 +591,7 @@ pytest -m security     # Security tests only
 Triggered on pushing tags matching `v*` pattern (e.g., `v0.3.0`):
 
 1. Checkout code
-2. Set up Python 3.12
+2. Set up Python
 3. Install dependencies
 4. Format code (ruff format)
 5. Check linting (ruff check)
