@@ -52,7 +52,7 @@ Clone the repository and install in development mode:
 ```bash
 git clone https://github.com/jamiemills/perplexity-cli.git
 cd perplexity-cli
-uv venv --python=3.12
+uv venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
 pytest  # verify setup
@@ -514,7 +514,7 @@ pxcli auth
 ```bash
 git clone https://github.com/jamiemills/perplexity-cli.git
 cd perplexity-cli
-uv venv --python=3.12
+uv venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
 ```
