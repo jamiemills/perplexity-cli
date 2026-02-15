@@ -9,7 +9,6 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 - **Persistent authentication** - Token stored securely and reused across invocations
 - **Encrypted tokens** - Tokens encrypted with system-derived keys
 - **Real-time streaming** - Optional streaming of responses as they arrive (use --stream flag)
-- **Deep research** - Comprehensive multi-step research mode for in-depth answers with 50+ citations (use --deep-research flag)
 - **Multiple output formats** - Plain text, Markdown, rich terminal, or JSON output
 - **Source references** - Web sources extracted and displayed with inline citations
 - **Thread library export** - Export your entire Perplexity thread history to CSV with timestamps
@@ -285,15 +284,8 @@ pxcli query --stream "What is Python?"
 # Remove citations and references section
 pxcli query --strip-references "What is Python?"
 
-# Deep research: comprehensive multi-step research (takes 2-4 minutes)
-# Provides 50+ citations and in-depth analysis
-pxcli query --deep-research "Tell me about Kubernetes architecture"
-
 # Combine options
 pxcli query --format plain --strip-references "What is 2+2?"
-
-# Deep research with streaming and custom format
-pxcli query --deep-research --stream --format markdown "Explain machine learning algorithms"
 
 # Use in scripts (plain text by default)
 ANSWER=$(pxcli query --format plain "What is 2+2?")
@@ -342,11 +334,6 @@ Submit a query and get an answer with source references.
 - `--stream / --no-stream` - Stream response mode (default: --no-stream)
   - `--stream` - Response appears incrementally as it arrives (faster perceived latency)
   - `--no-stream` - Wait for complete response before displaying (batch mode, default)
-- `--deep-research` - Enable deep research mode (default: disabled)
-  - Performs comprehensive multi-step research including decomposition, retrieval, synthesis, and verification
-  - Generates in-depth answers with 50+ citations instead of standard 20 citations
-  - Processing takes 2-4 minutes (compared to 30 seconds for standard queries)
-  - Useful for complex topics requiring thorough research
 
 **Global Options:**
 - `--verbose, -v` - Enable verbose output (INFO level logging)
@@ -790,7 +777,8 @@ MIT
 ## Dependencies
 
 - click - CLI framework
-- httpx - HTTP client
+- curl-cffi - HTTP client with Chrome TLS fingerprint impersonation
+- httpx - HTTP client (thread export)
 - websockets - WebSocket support
 - rich - Terminal formatting
 - cryptography - Token encryption
