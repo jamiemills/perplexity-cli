@@ -158,36 +158,70 @@ class AttachmentUploader:
         """
         logger.info(f"Uploading file: {attachment.filename}")
 
-        # Prepare multipart form data for S3
-        form_data: dict[str, Any] = {}
+        # S3 presigned form uploads require multipart/form-data
+        # Build form data with all policy/signature fields, then file content
+        form_data = {}
 
-        # Add all fields from the presigned URL response
-        fields = upload_data["fields"]
+        # Add all fields from the presigned URL response (contain policy, signature, etc.)
+        fields = upload_data.get("fields", {})
         for key, value in fields.items():
             if key not in ["file"]:
-                form_data[key] = value
+                form_data[key] = str(value)
 
-        # Add the actual file content (last field per S3 spec)
-        form_data["file"] = (
-            attachment.filename,
-            base64.b64decode(attachment.data),
-            attachment.content_type,
-        )
+        # Decode file content
+        file_content = base64.b64decode(attachment.data)
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"S3 upload form fields: {list(form_data.keys())}")
+            logger.debug(f"File size: {len(file_content)} bytes")
 
         try:
-            response = await session.post(
-                self.S3_BUCKET_URL,
-                data=form_data,
-            )
+            # curl_cffi's data parameter doesn't handle file uploads
+            # We need to use a different approach: post with bytes and set headers
+            # Actually, let's use httpx since curl_cffi doesn't support multipart well
+            import httpx
+
+            # Build form data dictionary for httpx
+            files_dict = {}
+            for key, value in form_data.items():
+                files_dict[key] = (None, value)
+            files_dict["file"] = (attachment.filename, file_content, attachment.content_type)
+
+            # Use httpx for the multipart upload (more reliable than curl_cffi for this)
+            async with httpx.AsyncClient(timeout=300) as client:
+                response = await client.post(
+                    self.S3_BUCKET_URL,
+                    files=files_dict,
+                )
         except RequestException as e:
+            logger.error(f"S3 request exception: {e}")
+            raise RuntimeError(f"Failed to upload {attachment.filename} to S3: {e}") from e
+        except ImportError:
+            raise RuntimeError(
+                "httpx is required for S3 file uploads but is not installed"
+            ) from None
+        except Exception as e:
+            logger.error(f"S3 upload error: {e}")
             raise RuntimeError(f"Failed to upload {attachment.filename} to S3: {e}") from e
 
         # S3 returns 204 No Content on successful upload
         if response.status_code == 204:
-            s3_url = upload_data["s3_object_url"]
+            s3_url = upload_data.get("s3_object_url", "")
             logger.info(f"Successfully uploaded to: {s3_url}")
             return s3_url
         else:
+            # Log response details for debugging
+            response_text = ""
+            try:
+                response_text = (
+                    response.text[:500] if response.text else str(response.content)[:500]
+                )
+            except Exception:
+                pass
+
+            logger.error(
+                f"S3 upload failed: status {response.status_code}, response: {response_text}"
+            )
             raise RuntimeError(
                 f"S3 upload failed for {attachment.filename}: " f"status {response.status_code}"
             )
