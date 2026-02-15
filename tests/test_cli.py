@@ -50,7 +50,11 @@ class TestCLICommands:
         """Test version option."""
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.4.4" in result.output
+        # Assert dynamically using the CLI's version resolver
+        from perplexity_cli.utils.version import get_version
+
+        expected_version = get_version()
+        assert expected_version in result.output
 
     @patch("perplexity_cli.cli.TokenManager")
     def test_status_not_authenticated(self, mock_tm_class, runner):
