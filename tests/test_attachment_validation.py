@@ -134,7 +134,7 @@ def test_file_attachment_from_file():
     try:
         # Test 5: Load from file
         attachment = FileAttachment.from_file(test_file)
-        assert attachment.filename == "test_attachment.txt"
+        assert attachment.filename == test_file.name  # Use actual filename
         assert attachment.content_type == "text/plain"
 
         # Verify we can decode it
@@ -149,13 +149,13 @@ def test_file_attachment_from_file():
         )
         query_dict = query.model_dump()
         assert len(query_dict["attachments"]) == 1
-        assert query_dict["attachments"][0]["filename"] == "test_attachment.txt"
+        assert query_dict["attachments"][0]["filename"] == test_file.name
         print("✓ Test 6: QueryParams with attachments passed")
 
         # Test 7: Serialize to JSON (simulating API request)
         json_str = json.dumps(query_dict)
         parsed = json.loads(json_str)
-        assert parsed["attachments"][0]["filename"] == "test_attachment.txt"
+        assert parsed["attachments"][0]["filename"] == test_file.name
         print("✓ Test 7: JSON serialization for API passed")
 
     finally:
