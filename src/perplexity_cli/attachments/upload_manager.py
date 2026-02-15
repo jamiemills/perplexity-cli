@@ -10,7 +10,11 @@ from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.exceptions import RequestException
 
 from perplexity_cli.api.models import FileAttachment
-from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, SimpleRequest, SimpleResponse
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+    SimpleRequest,
+    SimpleResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,20 +65,18 @@ class AttachmentUploader:
         logger.info(f"Requesting presigned URLs for {len(attachments)} file(s)")
 
         # Step 1: Request presigned upload URLs from API
-        upload_urls_response = await self._request_upload_urls(attachments)
+        # Returns both the API response and UUID->attachment mapping
+        upload_urls_response, uuid_to_attachment = await self._request_upload_urls(attachments)
 
         # Step 2: Upload files to S3 in parallel
         async with AsyncSession(impersonate="chrome", timeout=300) as session:
             tasks = []
-            for attachment in attachments:
-                # Map attachment to its UUID from response
-                file_uuid = self._find_uuid_for_attachment(attachment, upload_urls_response)
-                if not file_uuid:
-                    raise RuntimeError(f"Failed to find upload URL for {attachment.filename}")
-
+            uuid_list = []
+            for file_uuid, attachment in uuid_to_attachment.items():
                 upload_data = upload_urls_response["results"][file_uuid]
                 task = self._upload_to_s3(attachment, upload_data, session)
                 tasks.append(task)
+                uuid_list.append(file_uuid)
 
             # Execute all uploads in parallel
             s3_urls = await asyncio.gather(*tasks)
@@ -82,20 +84,25 @@ class AttachmentUploader:
         logger.info(f"Successfully uploaded {len(s3_urls)} file(s)")
         return s3_urls
 
-    async def _request_upload_urls(self, attachments: list[FileAttachment]) -> dict[str, Any]:
+    async def _request_upload_urls(
+        self, attachments: list[FileAttachment]
+    ) -> tuple[dict[str, Any], dict[str, FileAttachment]]:
         """Request presigned S3 upload URLs from Perplexity API.
 
         Args:
             attachments: List of FileAttachment objects.
 
         Returns:
-            API response containing presigned upload URLs and form fields.
+            Tuple of (API response, UUID to FileAttachment mapping).
 
         Raises:
             PerplexityHTTPStatusError: If API request fails.
         """
         # Build request body with file metadata
+        # Keep track of UUID -> attachment mapping for later lookup
         files_metadata: dict[str, dict[str, Any]] = {}
+        uuid_to_attachment: dict[str, FileAttachment] = {}
+
         for attachment in attachments:
             file_uuid = str(uuid.uuid4())
             # Calculate decoded file size
@@ -109,6 +116,7 @@ class AttachmentUploader:
                 "force_image": False,
                 "search_mode": "search",
             }
+            uuid_to_attachment[file_uuid] = attachment
 
         request_body = {"files": files_metadata}
 
@@ -127,10 +135,13 @@ class AttachmentUploader:
                 self._raise_http_status_error(response)
 
         logger.info(f"Received presigned URLs for {len(files_metadata)} file(s)")
-        return response.json()
+        return response.json(), uuid_to_attachment
 
     async def _upload_to_s3(
-        self, attachment: FileAttachment, upload_data: dict[str, Any], session: AsyncSession
+        self,
+        attachment: FileAttachment,
+        upload_data: dict[str, Any],
+        session: AsyncSession,
     ) -> str:
         """Upload file to S3 using presigned URL.
 
@@ -180,30 +191,6 @@ class AttachmentUploader:
             raise RuntimeError(
                 f"S3 upload failed for {attachment.filename}: " f"status {response.status_code}"
             )
-
-    @staticmethod
-    def _find_uuid_for_attachment(
-        attachment: FileAttachment, upload_urls_response: dict[str, Any]
-    ) -> str | None:
-        """Find the UUID for an attachment in the API response.
-
-        The API response maps UUIDs to file metadata. We need to find which UUID
-        corresponds to our attachment by matching filename and content type.
-
-        Args:
-            attachment: The FileAttachment to find.
-            upload_urls_response: API response containing the mapping.
-
-        Returns:
-            The UUID string if found, None otherwise.
-        """
-        for file_uuid, upload_info in upload_urls_response["results"].items():
-            if (
-                upload_info.get("filename") == attachment.filename
-                # Note: API response might not include content_type, so we can't rely on it
-            ):
-                return file_uuid
-        return None
 
     @staticmethod
     def _raise_http_status_error(response: Any) -> None:
