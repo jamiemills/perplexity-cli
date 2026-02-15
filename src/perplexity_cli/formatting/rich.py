@@ -34,6 +34,9 @@ class RichFormatter(Formatter):
         if strip_references:
             text = self.strip_citations(text)
 
+        # Unwrap artificial line breaks from the API response
+        text = self.unwrap_paragraph_lines(text)
+
         # Process the text to highlight code blocks
         formatted_text = self._process_answer_text(text)
         return formatted_text.rstrip()
@@ -82,6 +85,7 @@ class RichFormatter(Formatter):
         answer_text = answer.text
         if strip_references:
             answer_text = self.strip_citations(answer_text)
+        answer_text = self.unwrap_paragraph_lines(answer_text)
 
         self._print_formatted_text(answer_text)
 
