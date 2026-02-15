@@ -201,18 +201,39 @@ class TestCLICommands:
         assert "https://en.wikipedia.org/wiki/Python" in result.output
         assert "https://www.python.org" in result.output
 
+    @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.auth.token_manager.TokenManager")
-    def test_query_not_authenticated(self, mock_tm_class, runner):
-        """Test query when not authenticated."""
+    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    def test_query_not_authenticated(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
+        """Test query when not authenticated - should attempt to run without token."""
         mock_tm = Mock()
         mock_tm.load_token.return_value = (None, None)
         mock_tm_class.return_value = mock_tm
 
+        # Mock style manager
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = None
+        mock_sm_class.return_value = mock_sm
+
+        # Mock API response
+        mock_answer = Mock()
+        mock_answer.text = "test answer"
+        mock_answer.references = []
+        mock_api = MagicMock()
+        mock_api.__enter__ = Mock(return_value=mock_api)
+        mock_api.__exit__ = Mock(return_value=False)
+        mock_api.get_complete_answer.return_value = mock_answer
+        mock_api_class.return_value = mock_api
+
         result = runner.invoke(query, ["test query"])
 
-        assert result.exit_code == 1
-        assert "Not authenticated" in result.output
-        assert "pxcli auth" in result.output
+        # Should succeed - query no longer requires authentication
+        assert result.exit_code == 0
+        assert "test answer" in result.output
+        # Verify API was called with None token
+        mock_api_class.assert_called_once()
+        call_kwargs = mock_api_class.call_args[1]
+        assert call_kwargs["token"] is None
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.auth.token_manager.TokenManager")

@@ -42,3 +42,34 @@ def load_or_prompt_token(
         sys.exit(1)
 
     return token, cookies
+
+
+def load_token_optional(
+    tm: TokenManager,
+    logger: logging.Logger,
+) -> tuple[str | None, dict[str, str] | None]:
+    """Load authentication token if available, otherwise return None values.
+
+    Attempts to load an existing token from disk. Unlike load_or_prompt_token(),
+    this function does not prompt the user or exit if no token is found.
+    Used by commands that can operate with or without authentication.
+
+    Args:
+        tm: TokenManager instance to use for loading.
+        logger: Logger instance for logging authentication attempts.
+
+    Returns:
+        Tuple of (token, cookies) where:
+            - token: The authentication token string, or None if not found
+            - cookies: Dictionary of browser cookies {name: value}, or None if not found
+
+    Does not exit or prompt if token is unavailable.
+    """
+    token, cookies = tm.load_token()
+
+    if token:
+        logger.debug("Authentication token loaded")
+    else:
+        logger.debug("No authentication token found; proceeding without authentication")
+
+    return token, cookies

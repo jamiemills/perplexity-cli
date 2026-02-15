@@ -3,6 +3,9 @@
 .claude
 .claudecode
 
+# GitHub Actions
+.github/
+
 # Python cache
 __pycache__/
 *.py[cod]
@@ -10,6 +13,7 @@ __pycache__/
 
 # Testing
 .coverage
+.mypy_cache/
 htmlcov/
 .pytest_cache/
 
@@ -20,6 +24,7 @@ build/
 
 # Virtual environments
 .venv/
+.venv313/
 venv/
 ENV/
 
@@ -37,3 +42,6 @@ ENV/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Generated exports
+threads-*
