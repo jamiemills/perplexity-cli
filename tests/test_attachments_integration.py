@@ -1,6 +1,5 @@
 """Integration tests for file attachment feature with CLI."""
 
-import base64
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -36,48 +35,64 @@ class TestAttachmentsIntegration:
 
         with patch("perplexity_cli.utils.style_manager.StyleManager") as mock_sm_class:
             with patch("perplexity_cli.auth.token_manager.TokenManager") as mock_tm_class:
-                with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
-                    # Mock style manager (no style configured)
-                    mock_sm = Mock()
-                    mock_sm.load_style.return_value = None
-                    mock_sm_class.return_value = mock_sm
+                with patch("perplexity_cli.attachments.AttachmentUploader") as mock_uploader_class:
+                    with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
+                        # Mock style manager (no style configured)
+                        mock_sm = Mock()
+                        mock_sm.load_style.return_value = None
+                        mock_sm_class.return_value = mock_sm
 
-                    # Mock token manager
-                    mock_tm = Mock()
-                    mock_tm.load_token.return_value = ("test-token", None)
-                    mock_tm_class.return_value = mock_tm
+                        # Mock token manager
+                        mock_tm = Mock()
+                        mock_tm.load_token.return_value = ("test-token", None)
+                        mock_tm_class.return_value = mock_tm
 
-                    # Mock API
-                    mock_api = _make_api_mock()
-                    mock_api.get_complete_answer.return_value = Answer(
-                        text="Test answer", references=[]
-                    )
-                    mock_api_class.return_value = mock_api
+                        # Mock uploader to return S3 URLs
+                        mock_uploader = Mock()
+                        mock_uploader.upload_files = Mock(
+                            return_value=[
+                                "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test.txt"
+                            ]
+                        )
 
-                    # Run query with attachment
-                    result = runner.invoke(
-                        query,
-                        ["--no-stream", "--attach", str(test_file), "What is this file?"],
-                    )
+                        # Make upload_files async
+                        async def mock_upload(*args, **kwargs):
+                            return [
+                                "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test.txt"
+                            ]
 
-                    assert result.exit_code == 0
-                    assert "Test answer" in result.output
-                    assert "Loading 1 file(s)" in result.output
-                    assert "Loaded 1 attachment(s)" in result.output
+                        mock_uploader.upload_files = mock_upload
+                        mock_uploader_class.return_value = mock_uploader
 
-                    # Verify API was called with attachment
-                    call_args = mock_api.get_complete_answer.call_args
-                    assert call_args is not None
-                    assert call_args[0][0] == "What is this file?"
-                    assert "attachments" in call_args[1]
-                    assert len(call_args[1]["attachments"]) == 1
+                        # Mock API
+                        mock_api = _make_api_mock()
+                        mock_api.get_complete_answer.return_value = Answer(
+                            text="Test answer", references=[]
+                        )
+                        mock_api_class.return_value = mock_api
 
-                    # Verify attachment content
-                    attachment = call_args[1]["attachments"][0]
-                    assert attachment.filename == "test.txt"
-                    assert attachment.content_type == "text/plain"
-                    decoded = base64.b64decode(attachment.data).decode("utf-8")
-                    assert decoded == "Test content"
+                        # Run query with attachment
+                        result = runner.invoke(
+                            query,
+                            ["--no-stream", "--attach", str(test_file), "What is this file?"],
+                        )
+
+                        assert result.exit_code == 0
+                        assert "Test answer" in result.output
+                        assert "Loading 1 file(s)" in result.output
+                        assert "Loaded 1 attachment(s)" in result.output
+
+                        # Verify API was called with attachment S3 URLs
+                        call_args = mock_api.get_complete_answer.call_args
+                        assert call_args is not None
+                        assert call_args[0][0] == "What is this file?"
+                        assert "attachments" in call_args[1]
+                        attachments = call_args[1]["attachments"]
+                        assert len(attachments) == 1
+                        assert isinstance(attachments[0], str)
+                        assert attachments[0].startswith(
+                            "https://ppl-ai-file-upload.s3.amazonaws.com/"
+                        )
 
     def test_query_with_multiple_attachments(self, runner, tmp_path):
         """Test query with multiple file attachments."""
@@ -89,45 +104,60 @@ class TestAttachmentsIntegration:
 
         with patch("perplexity_cli.utils.style_manager.StyleManager") as mock_sm_class:
             with patch("perplexity_cli.auth.token_manager.TokenManager") as mock_tm_class:
-                with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
-                    # Mock style manager
-                    mock_sm = Mock()
-                    mock_sm.load_style.return_value = None
-                    mock_sm_class.return_value = mock_sm
+                with patch("perplexity_cli.attachments.AttachmentUploader") as mock_uploader_class:
+                    with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
+                        # Mock style manager
+                        mock_sm = Mock()
+                        mock_sm.load_style.return_value = None
+                        mock_sm_class.return_value = mock_sm
 
-                    # Mock token manager
-                    mock_tm = Mock()
-                    mock_tm.load_token.return_value = ("test-token", None)
-                    mock_tm_class.return_value = mock_tm
+                        # Mock token manager
+                        mock_tm = Mock()
+                        mock_tm.load_token.return_value = ("test-token", None)
+                        mock_tm_class.return_value = mock_tm
 
-                    # Mock API
-                    mock_api = _make_api_mock()
-                    mock_api.get_complete_answer.return_value = Answer(
-                        text="Comparison result", references=[]
-                    )
-                    mock_api_class.return_value = mock_api
+                        # Mock uploader to return S3 URLs
+                        async def mock_upload(*args, **kwargs):
+                            return [
+                                "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file1.txt",
+                                "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file2.md",
+                            ]
 
-                    # Run query with multiple attachments
-                    result = runner.invoke(
-                        query,
-                        [
-                            "--no-stream",
-                            "--attach",
-                            f"{file1},{file2}",
-                            "Compare these files",
-                        ],
-                    )
+                        mock_uploader = Mock()
+                        mock_uploader.upload_files = mock_upload
+                        mock_uploader_class.return_value = mock_uploader
 
-                    assert result.exit_code == 0
-                    assert "Comparison result" in result.output
-                    assert "Loading 2 file(s)" in result.output
-                    assert "Loaded 2 attachment(s)" in result.output
+                        # Mock API
+                        mock_api = _make_api_mock()
+                        mock_api.get_complete_answer.return_value = Answer(
+                            text="Comparison result", references=[]
+                        )
+                        mock_api_class.return_value = mock_api
 
-                    # Verify API received both attachments
-                    call_args = mock_api.get_complete_answer.call_args
-                    attachments = call_args[1]["attachments"]
-                    assert len(attachments) == 2
-                    assert {a.filename for a in attachments} == {"file1.txt", "file2.md"}
+                        # Run query with multiple attachments
+                        result = runner.invoke(
+                            query,
+                            [
+                                "--no-stream",
+                                "--attach",
+                                f"{file1},{file2}",
+                                "Compare these files",
+                            ],
+                        )
+
+                        assert result.exit_code == 0
+                        assert "Comparison result" in result.output
+                        assert "Loading 2 file(s)" in result.output
+                        assert "Loaded 2 attachment(s)" in result.output
+
+                        # Verify API received both S3 URL attachments
+                        call_args = mock_api.get_complete_answer.call_args
+                        attachments = call_args[1]["attachments"]
+                        assert len(attachments) == 2
+                        assert all(
+                            isinstance(url, str) and url.startswith("https://")
+                            for url in attachments
+                        )
 
     def test_query_with_repeated_attach_flags(self, runner, tmp_path):
         """Test query with repeated --attach flags."""
@@ -139,43 +169,61 @@ class TestAttachmentsIntegration:
 
         with patch("perplexity_cli.utils.style_manager.StyleManager") as mock_sm_class:
             with patch("perplexity_cli.auth.token_manager.TokenManager") as mock_tm_class:
-                with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
-                    # Mock style manager
-                    mock_sm = Mock()
-                    mock_sm.load_style.return_value = None
-                    mock_sm_class.return_value = mock_sm
+                with patch("perplexity_cli.attachments.AttachmentUploader") as mock_uploader_class:
+                    with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
+                        # Mock style manager
+                        mock_sm = Mock()
+                        mock_sm.load_style.return_value = None
+                        mock_sm_class.return_value = mock_sm
 
-                    # Mock token manager
-                    mock_tm = Mock()
-                    mock_tm.load_token.return_value = ("test-token", None)
-                    mock_tm_class.return_value = mock_tm
+                        # Mock token manager
+                        mock_tm = Mock()
+                        mock_tm.load_token.return_value = ("test-token", None)
+                        mock_tm_class.return_value = mock_tm
 
-                    # Mock API
-                    mock_api = _make_api_mock()
-                    mock_api.get_complete_answer.return_value = Answer(text="Result", references=[])
-                    mock_api_class.return_value = mock_api
+                        # Mock uploader
+                        async def mock_upload(*args, **kwargs):
+                            return [
+                                "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file1.txt",
+                                "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file2.txt",
+                            ]
 
-                    # Run query with repeated --attach flags
-                    result = runner.invoke(
-                        query,
-                        [
-                            "--no-stream",
-                            "--attach",
-                            str(file1),
-                            "--attach",
-                            str(file2),
-                            "Process these",
-                        ],
-                    )
+                        mock_uploader = Mock()
+                        mock_uploader.upload_files = mock_upload
+                        mock_uploader_class.return_value = mock_uploader
 
-                    assert result.exit_code == 0
-                    assert "Loading 2 file(s)" in result.output
-                    assert "Loaded 2 attachment(s)" in result.output
+                        # Mock API
+                        mock_api = _make_api_mock()
+                        mock_api.get_complete_answer.return_value = Answer(
+                            text="Result", references=[]
+                        )
+                        mock_api_class.return_value = mock_api
 
-                    # Verify both attachments received
-                    call_args = mock_api.get_complete_answer.call_args
-                    attachments = call_args[1]["attachments"]
-                    assert len(attachments) == 2
+                        # Run query with repeated --attach flags
+                        result = runner.invoke(
+                            query,
+                            [
+                                "--no-stream",
+                                "--attach",
+                                str(file1),
+                                "--attach",
+                                str(file2),
+                                "Process these",
+                            ],
+                        )
+
+                        assert result.exit_code == 0
+                        assert "Loading 2 file(s)" in result.output
+                        assert "Loaded 2 attachment(s)" in result.output
+
+                        # Verify both S3 URLs received
+                        call_args = mock_api.get_complete_answer.call_args
+                        attachments = call_args[1]["attachments"]
+                        assert len(attachments) == 2
+                        assert all(
+                            isinstance(url, str) and url.startswith("https://")
+                            for url in attachments
+                        )
 
     def test_query_attachment_nonexistent_file_error(self, runner):
         """Test query with nonexistent file produces error."""
@@ -211,39 +259,52 @@ class TestAttachmentsIntegration:
 
         with patch("perplexity_cli.utils.style_manager.StyleManager") as mock_sm_class:
             with patch("perplexity_cli.auth.token_manager.TokenManager") as mock_tm_class:
-                with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
-                    # Mock style manager
-                    mock_sm = Mock()
-                    mock_sm.load_style.return_value = None
-                    mock_sm_class.return_value = mock_sm
+                with patch("perplexity_cli.attachments.AttachmentUploader") as mock_uploader_class:
+                    with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
+                        # Mock style manager
+                        mock_sm = Mock()
+                        mock_sm.load_style.return_value = None
+                        mock_sm_class.return_value = mock_sm
 
-                    # Mock token manager
-                    mock_tm = Mock()
-                    mock_tm.load_token.return_value = ("test-token", None)
-                    mock_tm_class.return_value = mock_tm
+                        # Mock token manager
+                        mock_tm = Mock()
+                        mock_tm.load_token.return_value = ("test-token", None)
+                        mock_tm_class.return_value = mock_tm
 
-                    # Mock API
-                    mock_api = _make_api_mock()
-                    mock_api.get_complete_answer.return_value = Answer(
-                        text="Analysis complete", references=[]
-                    )
-                    mock_api_class.return_value = mock_api
+                        # Mock uploader
+                        async def mock_upload(*args, **kwargs):
+                            return [
+                                "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file1.txt",
+                                "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file2.txt",
+                                "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file3.txt",
+                            ]
 
-                    # Run query with directory attachment
-                    result = runner.invoke(
-                        query,
-                        ["--no-stream", "--attach", str(tmp_path), "Analyse all files"],
-                    )
+                        mock_uploader = Mock()
+                        mock_uploader.upload_files = mock_upload
+                        mock_uploader_class.return_value = mock_uploader
 
-                    assert result.exit_code == 0
-                    assert "Loading 3 file(s)" in result.output
-                    assert "Loaded 3 attachment(s)" in result.output
+                        # Mock API
+                        mock_api = _make_api_mock()
+                        mock_api.get_complete_answer.return_value = Answer(
+                            text="Analysis complete", references=[]
+                        )
+                        mock_api_class.return_value = mock_api
 
-                    # Verify all files from directory are included
-                    call_args = mock_api.get_complete_answer.call_args
-                    attachments = call_args[1]["attachments"]
-                    assert len(attachments) == 3
-                    filenames = {a.filename for a in attachments}
-                    assert "file1.txt" in filenames
-                    assert "file2.txt" in filenames
-                    assert "file3.txt" in filenames
+                        # Run query with directory attachment
+                        result = runner.invoke(
+                            query,
+                            ["--no-stream", "--attach", str(tmp_path), "Analyse all files"],
+                        )
+
+                        assert result.exit_code == 0
+                        assert "Loading 3 file(s)" in result.output
+                        assert "Loaded 3 attachment(s)" in result.output
+
+                        # Verify all files from directory are included
+                        call_args = mock_api.get_complete_answer.call_args
+                        attachments = call_args[1]["attachments"]
+                        assert len(attachments) == 3
+                        assert all(
+                            isinstance(url, str) and url.startswith("https://")
+                            for url in attachments
+                        )
