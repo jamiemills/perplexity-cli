@@ -21,6 +21,9 @@ class MarkdownFormatter(Formatter):
         if strip_references:
             text = self.strip_citations(text)
 
+        # Unwrap artificial line breaks from the API response
+        text = self.unwrap_paragraph_lines(text)
+
         return text.rstrip()
 
     def format_references(self, references: list[WebResult]) -> str:

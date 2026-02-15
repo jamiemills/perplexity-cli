@@ -220,6 +220,203 @@ class TestStripReferences:
         assert "https://test.com" not in result
 
 
+class TestUnwrapParagraphLines:
+    """Test Formatter.unwrap_paragraph_lines for joining artificial line breaks."""
+
+    def test_joins_continuation_lines(self):
+        """Test that continuation lines within a paragraph are joined."""
+        formatter = PlainTextFormatter()
+        text = (
+            "Cloud Run runs your container image as a stateless HTTP service,\n"
+            "and automatically scales instances up and down."
+        )
+        result = formatter.unwrap_paragraph_lines(text)
+        assert "\n" not in result
+        assert "service, and" in result
+
+    def test_preserves_blank_line_paragraph_breaks(self):
+        """Test that blank lines between paragraphs are preserved."""
+        formatter = PlainTextFormatter()
+        text = "First paragraph line one\nand line two.\n\nSecond paragraph."
+        result = formatter.unwrap_paragraph_lines(text)
+        assert "First paragraph line one and line two." in result
+        assert "\n\n" in result
+        assert "Second paragraph." in result
+
+    def test_preserves_code_blocks(self):
+        """Test that fenced code blocks are preserved exactly."""
+        formatter = PlainTextFormatter()
+        text = (
+            "Some text before.\n\n"
+            "```text\n"
+            "  +---------------------------+\n"
+            "  |      Cloud Run Service    |\n"
+            "  +---------------------------+\n"
+            "```\n\n"
+            "Some text after."
+        )
+        result = formatter.unwrap_paragraph_lines(text)
+        assert "+---------------------------+" in result
+        assert "|      Cloud Run Service    |" in result
+        # Code block lines must not be joined
+        assert "Service    |" in result
+
+    def test_preserves_headers(self):
+        """Test that markdown headers remain on their own line."""
+        formatter = PlainTextFormatter()
+        text = "## High-level model\n\nSome description\nacross two lines."
+        result = formatter.unwrap_paragraph_lines(text)
+        lines = result.split("\n")
+        assert lines[0] == "## High-level model"
+        assert "Some description across two lines." in result
+
+    def test_preserves_list_items_dash(self):
+        """Test that dash list items remain on their own line."""
+        formatter = PlainTextFormatter()
+        text = "- First item\n- Second item\n- Third item"
+        result = formatter.unwrap_paragraph_lines(text)
+        lines = result.split("\n")
+        assert "- First item" in lines
+        assert "- Second item" in lines
+        assert "- Third item" in lines
+
+    def test_preserves_list_items_asterisk(self):
+        """Test that asterisk list items remain on their own line."""
+        formatter = PlainTextFormatter()
+        text = "* First item\n* Second item"
+        result = formatter.unwrap_paragraph_lines(text)
+        lines = result.split("\n")
+        assert "* First item" in lines
+        assert "* Second item" in lines
+
+    def test_preserves_numbered_list_items(self):
+        """Test that numbered list items remain on their own line."""
+        formatter = PlainTextFormatter()
+        text = "1. First item\n2. Second item\n3. Third item"
+        result = formatter.unwrap_paragraph_lines(text)
+        lines = result.split("\n")
+        assert "1. First item" in lines
+        assert "2. Second item" in lines
+        assert "3. Third item" in lines
+
+    def test_unwraps_continuation_within_list_item(self):
+        """Test that continuation lines within a list item are joined."""
+        formatter = PlainTextFormatter()
+        text = "- First item that spans\n  across two lines\n- Second item"
+        result = formatter.unwrap_paragraph_lines(text)
+        assert "First item that spans across two lines" in result
+        assert "- Second item" in result
+
+    def test_preserves_horizontal_rules(self):
+        """Test that horizontal rules are preserved."""
+        formatter = PlainTextFormatter()
+        text = "Above.\n\n---\n\nBelow."
+        result = formatter.unwrap_paragraph_lines(text)
+        assert "---" in result
+
+    def test_empty_text(self):
+        """Test that empty text returns empty string."""
+        formatter = PlainTextFormatter()
+        assert formatter.unwrap_paragraph_lines("") == ""
+
+    def test_single_line(self):
+        """Test that single line text is returned unchanged."""
+        formatter = PlainTextFormatter()
+        text = "A single line of text."
+        assert formatter.unwrap_paragraph_lines(text) == text
+
+    def test_complex_mixed_content(self):
+        """Test mixed content with code blocks, lists, headers, and prose."""
+        formatter = PlainTextFormatter()
+        text = (
+            "## Overview\n\n"
+            "Cloud Run is a fully managed\n"
+            "container runtime.\n\n"
+            "Key points:\n"
+            "- You deploy a container image.\n"
+            "- It automatically scales.\n\n"
+            "```text\n"
+            "+---+\n"
+            "| X |\n"
+            "+---+\n"
+            "```\n\n"
+            "Final paragraph that wraps\n"
+            "across lines."
+        )
+        result = formatter.unwrap_paragraph_lines(text)
+        # Prose lines should be joined
+        assert "Cloud Run is a fully managed container runtime." in result
+        assert "Final paragraph that wraps across lines." in result
+        # List items preserved
+        assert "- You deploy a container image." in result
+        assert "- It automatically scales." in result
+        # Code block preserved
+        assert "+---+" in result
+        assert "| X |" in result
+        # Header preserved
+        assert "## Overview" in result
+
+    def test_preserves_indented_code_blocks(self):
+        """Test that code blocks with language specifiers are preserved."""
+        formatter = PlainTextFormatter()
+        text = "Example:\n\n" "```python\n" "def hello():\n" "    print('hello')\n" "```"
+        result = formatter.unwrap_paragraph_lines(text)
+        assert "def hello():" in result
+        assert "    print('hello')" in result
+
+    def test_preserves_blockquotes(self):
+        """Test that blockquote lines are preserved."""
+        formatter = PlainTextFormatter()
+        text = "> This is a quote\n> continued here"
+        result = formatter.unwrap_paragraph_lines(text)
+        lines = result.split("\n")
+        assert "> This is a quote" in lines
+        assert "> continued here" in lines
+
+    def test_preserves_table_lines(self):
+        """Test that pipe-delimited table lines are preserved."""
+        formatter = PlainTextFormatter()
+        text = "| Header | Value |\n|--------|-------|\n| A      | 1     |"
+        result = formatter.unwrap_paragraph_lines(text)
+        lines = result.split("\n")
+        assert "| Header | Value |" in lines
+        assert "|--------|-------|" in lines
+        assert "| A      | 1     |" in lines
+
+    def test_plain_formatter_uses_unwrap(self):
+        """Test that PlainTextFormatter.format_answer unwraps lines."""
+        formatter = PlainTextFormatter()
+        text = (
+            "Cloud Run runs your container image as a stateless HTTP service,\n"
+            "and automatically scales instances up and down."
+        )
+        result = formatter.format_answer(text)
+        assert "\n" not in result
+        assert "service, and" in result
+
+    def test_markdown_formatter_uses_unwrap(self):
+        """Test that MarkdownFormatter.format_answer unwraps lines."""
+        formatter = MarkdownFormatter()
+        text = (
+            "Cloud Run runs your container image as a stateless HTTP service,\n"
+            "and automatically scales instances up and down."
+        )
+        result = formatter.format_answer(text)
+        assert "service, and" in result
+        # Should be a single line
+        assert result.count("\n") == 0
+
+    def test_rich_formatter_uses_unwrap(self):
+        """Test that RichFormatter.format_answer unwraps lines."""
+        formatter = RichFormatter()
+        text = (
+            "Cloud Run runs your container image as a stateless HTTP service,\n"
+            "and automatically scales instances up and down."
+        )
+        result = formatter.format_answer(text)
+        assert "service, and" in result
+
+
 class TestJSONFormatter:
     """Test JSONFormatter."""
 

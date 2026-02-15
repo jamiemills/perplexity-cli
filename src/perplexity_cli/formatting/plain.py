@@ -23,6 +23,9 @@ class PlainTextFormatter(Formatter):
         if strip_references:
             text = self.strip_citations(text)
 
+        # Unwrap artificial line breaks from the API response
+        text = self.unwrap_paragraph_lines(text)
+
         lines = text.split("\n")
         result = []
         i = 0
