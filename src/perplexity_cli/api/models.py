@@ -171,7 +171,7 @@ class QueryParams(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API request."""
-        return self.model_dump()
+        return self.model_dump(mode="json")
 
 
 class QueryRequest(BaseModel):
