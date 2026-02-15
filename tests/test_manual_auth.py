@@ -14,8 +14,11 @@ Usage:
     python test_manual_auth.py
 """
 
+import os
 import sys
 import time
+
+import pytest
 
 from perplexity_cli.auth.oauth_handler import authenticate_sync
 from perplexity_cli.auth.token_manager import TokenManager
@@ -29,6 +32,9 @@ def print_section(title: str) -> None:
     print(f"{'=' * 60}\n")
 
 
+@pytest.mark.real_api
+@pytest.mark.slow
+@pytest.mark.skipif(os.environ.get("CI") is not None, reason="Skipped in CI: requires real API")
 def test_2_4_1_actual_perplexity_login() -> bool:
     """Test 2.4.1: Manual test with actual Perplexity login.
 

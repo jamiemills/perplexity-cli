@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pxcli"
-version = "0.4.4"
+version = "0.4.6"
 description = "CLI for Perplexity.ai with persistent authentication, encrypted tokens, streaming responses, multiple output formats, source references, thread export with date filtering, configurable URLs, logging, and automatic retry logic"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -30,6 +30,7 @@ classifiers = [
 dependencies = [
     "click>=8.0",
     "cryptography>=41.0",
+    "curl-cffi>=0.14.0",
     "httpx>=0.25",
     "websockets>=12.0",
     "rich>=13.0",
@@ -89,12 +90,13 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "--strict-markers -v"
+addopts = "--strict-markers -v --cov=perplexity_cli --cov-report=term-missing"
 markers = [
     "integration: marks tests as integration tests",
     "security: marks tests as security tests",
     "slow: marks tests as slow-running",
     "unit: marks tests as unit tests",
+    "real_api: marks tests that call the real Perplexity API (skipped in CI)",
 ]
 filterwarnings = [
     "ignore::RuntimeWarning:.*coroutine.*authenticate_with_browser.*was never awaited",

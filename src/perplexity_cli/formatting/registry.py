@@ -7,7 +7,7 @@ class FormatterRegistry:
     """Registry for formatter classes."""
 
     def __init__(self) -> None:
-        """Initialize the registry."""
+        """Initialise the registry."""
         self._formatters: dict[str, type[Formatter]] = {}
 
     def register(self, name: str, formatter_class: type[Formatter]) -> None:

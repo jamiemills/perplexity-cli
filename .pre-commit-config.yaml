@@ -28,7 +28,7 @@ repos:
     hooks:
       - id: pytest-check
         name: pytest-check
-        entry: python -m pytest tests/ -q --tb=line -x --ignore=tests/test_manual_auth.py
+        entry: python -m pytest tests/ -q --tb=line -x -m "not integration" --ignore=tests/test_manual_auth.py
         language: system
         pass_filenames: false
         always_run: true

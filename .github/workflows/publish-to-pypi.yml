@@ -1,20 +1,31 @@
 name: Publish to PyPI
 
-on:
+'on':
   push:
     tags:
       - 'v*'
 
+# Required for creating releases and OIDC to PyPI
+permissions:
+  contents: write
+  id-token: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    concurrency:
+      group: publish-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
       - name: Set up Python 3.12
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -22,7 +33,22 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install uv setuptools wheel twine
+          pip install setuptools wheel twine
+
+      - name: Validate version matches tag and package
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          TAG_VERSION="${TAG_VERSION#v}"
+          echo "Tag version: ${TAG_VERSION}"
+          PY_VERSION=$(python -c "import tomllib; f=open('pyproject.toml','rb'); print(tomllib.load(f)['project']['version']); f.close()")
+          echo "pyproject.toml version: ${PY_VERSION}"
+          INIT_VERSION=$(sed -n 's/^__version__ = \"\([^\"]*\)\"/\1/p' src/perplexity_cli/__init__.py)
+          echo "__init__ version: ${INIT_VERSION}"
+          if [ "${TAG_VERSION}" != "${PY_VERSION}" ] || [ "${TAG_VERSION}" != "${INIT_VERSION}" ]; then
+            echo "Error: Tag version (${TAG_VERSION}) must match pyproject (${PY_VERSION}) and __init__ (${INIT_VERSION})."
+            exit 1
+          fi
 
       - name: Install dev dependencies
         run: |
@@ -42,6 +68,7 @@ jobs:
 
       - name: Build distributions
         run: |
+          rm -rf dist
           uv build
 
       - name: Verify distributions
@@ -49,15 +76,13 @@ jobs:
           ls -lh dist/
           twine check dist/*
 
-      - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          twine upload dist/* --non-interactive
+      - name: Publish to PyPI (OIDC)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           draft: false

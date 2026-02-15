@@ -12,8 +12,11 @@ class URLConfig(BaseModel):
     query_endpoint: str = Field(
         default="/api/pplx.generateStream", alias="perplexity_query_endpoint"
     )
+    thread_list_endpoint: str = Field(
+        default="/rest/thread/list_ask_threads", alias="perplexity_thread_list_endpoint"
+    )
 
-    @field_validator("base_url", "query_endpoint")
+    @field_validator("base_url", "query_endpoint", "thread_list_endpoint")
     @classmethod
     def validate_urls(cls, v: str) -> str:
         """Validate that URLs are non-empty strings."""

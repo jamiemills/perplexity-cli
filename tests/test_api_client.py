@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
+from curl_cffi.requests import Session
 
 from perplexity_cli.api.client import SSEClient
 from perplexity_cli.api.models import Block, QueryParams, QueryRequest, SSEMessage, WebResult
@@ -128,8 +129,8 @@ class TestSSEMessage:
 class TestSSEClient:
     """Tests for SSEClient."""
 
-    def test_get_headers(self):
-        """Test headers include Bearer authentication."""
+    def test_get_headers_without_cookies(self):
+        """Test headers include Bearer authentication but no User-Agent or Cookie."""
         client = SSEClient(token="test-token-123")
 
         headers = client.get_headers()
@@ -137,13 +138,47 @@ class TestSSEClient:
         assert headers["Authorization"] == "Bearer test-token-123"
         assert headers["Content-Type"] == "application/json"
         assert headers["Accept"] == "text/event-stream"
-        assert "User-Agent" in headers
+        # curl_cffi sets User-Agent automatically via impersonation
+        assert "User-Agent" not in headers
+        # No cookies, so no CSRF token
+        assert "X-CSRFToken" not in headers
+
+    def test_get_headers_with_csrf_cookie(self):
+        """Test that X-CSRFToken header is set from csrftoken cookie."""
+        client = SSEClient(token="test-token", cookies={"csrftoken": "abc123"})
+
+        headers = client.get_headers()
+
+        assert headers["X-CSRFToken"] == "abc123"
+
+    def test_get_headers_with_cookies_no_csrf(self):
+        """Test that cookies without csrftoken do not produce X-CSRFToken."""
+        client = SSEClient(token="test-token", cookies={"cf_clearance": "xyz"})
+
+        headers = client.get_headers()
+
+        assert "X-CSRFToken" not in headers
 
     def test_parse_sse_stream_single_message(self):
-        """Test parsing single SSE message."""
+        """Test parsing single SSE message with bytes input."""
         client = SSEClient(token="test-token")
 
-        # Mock response with SSE data
+        mock_response = Mock()
+        mock_response.iter_lines.return_value = [
+            b"event: message",
+            b'data: {"test": "value"}',
+            b"",
+        ]
+
+        messages = list(client._parse_sse_stream(mock_response))
+
+        assert len(messages) == 1
+        assert messages[0]["test"] == "value"
+
+    def test_parse_sse_stream_string_input(self):
+        """Test parsing SSE message with string input (backward compatibility)."""
+        client = SSEClient(token="test-token")
+
         mock_response = Mock()
         mock_response.iter_lines.return_value = [
             "event: message",
@@ -162,12 +197,12 @@ class TestSSEClient:
 
         mock_response = Mock()
         mock_response.iter_lines.return_value = [
-            "event: message",
-            'data: {"msg": 1}',
-            "",
-            "event: message",
-            'data: {"msg": 2}',
-            "",
+            b"event: message",
+            b'data: {"msg": 1}',
+            b"",
+            b"event: message",
+            b'data: {"msg": 2}',
+            b"",
         ]
 
         messages = list(client._parse_sse_stream(mock_response))
@@ -182,16 +217,15 @@ class TestSSEClient:
 
         mock_response = Mock()
         mock_response.iter_lines.return_value = [
-            "event: message",
-            'data: {"line1":',
-            'data: "value"}',
-            "",
+            b"event: message",
+            b'data: {"line1":',
+            b'data: "value"}',
+            b"",
         ]
 
         messages = list(client._parse_sse_stream(mock_response))
 
         assert len(messages) == 1
-        # Multi-line data joined with newlines
         expected_json = '{"line1":\n"value"}'
         assert messages[0] == json.loads(expected_json)
 
@@ -201,9 +235,9 @@ class TestSSEClient:
 
         mock_response = Mock()
         mock_response.iter_lines.return_value = [
-            "event: message",
-            "data: {invalid json}",
-            "",
+            b"event: message",
+            b"data: {invalid json}",
+            b"",
         ]
 
         with pytest.raises(ValueError, match="Failed to parse SSE data"):
@@ -213,69 +247,116 @@ class TestSSEClient:
         """Test successful POST request with SSE streaming."""
         client = SSEClient(token="test-token")
 
-        # Mock httpx client and response
+        # Mock curl_cffi response
         mock_response = Mock()
+        mock_response.ok = True
+        mock_response.status_code = 200
+        mock_response.reason = "OK"
+        mock_response.headers = {}
         mock_response.iter_lines.return_value = [
-            "event: message",
-            '{"status": "OK"}',
-            "",
+            b"event: message",
+            b'data: {"status": "OK"}',
+            b"",
         ]
-        mock_response.raise_for_status = Mock()
 
         mock_stream_context = Mock()
         mock_stream_context.__enter__ = Mock(return_value=mock_response)
         mock_stream_context.__exit__ = Mock(return_value=False)
 
-        mock_http_client = Mock()
-        mock_http_client.stream.return_value = mock_stream_context
+        mock_session = Mock()
+        mock_session.stream.return_value = mock_stream_context
 
-        # Inject the mock client directly
-        client._client = mock_http_client
+        client._client = mock_session
 
-        # Make request (consume iterator to trigger the call)
-        list(client.stream_post("https://example.com/api", {"query": "test"}))
+        results = list(client.stream_post("https://example.com/api", {"query": "test"}))
 
-        # Verify request was made with correct headers
-        mock_http_client.stream.assert_called_once()
-        call_args = mock_http_client.stream.call_args
+        assert len(results) == 1
+        assert results[0]["status"] == "OK"
+
+        mock_session.stream.assert_called_once()
+        call_args = mock_session.stream.call_args
         assert call_args[0][0] == "POST"
         assert "Authorization" in call_args[1]["headers"]
+        # Cookies passed as separate parameter
+        assert "cookies" in call_args[1]
 
     def test_stream_post_401_error(self):
-        """Test 401 error handling."""
+        """Test 401 error raises httpx.HTTPStatusError."""
         client = SSEClient(token="invalid-token")
 
-        # Mock 401 response
+        # Mock a 401 response from curl_cffi
         mock_response = Mock()
+        mock_response.ok = False
         mock_response.status_code = 401
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Unauthorized",
-            request=Mock(),
-            response=mock_response,
-        )
+        mock_response.reason = "Unauthorized"
+        mock_response.url = "https://example.com/api"
+        mock_response.headers = {}
+        mock_response.content = b"Unauthorized"
 
         mock_stream_context = Mock()
         mock_stream_context.__enter__ = Mock(return_value=mock_response)
         mock_stream_context.__exit__ = Mock(return_value=False)
 
-        mock_http_client = Mock()
-        mock_http_client.stream.return_value = mock_stream_context
+        mock_session = Mock()
+        mock_session.stream.return_value = mock_stream_context
 
-        # Inject the mock client directly
-        client._client = mock_http_client
+        client._client = mock_session
 
-        # Should raise HTTPStatusError with helpful message
         with pytest.raises(httpx.HTTPStatusError, match="Authentication failed"):
             list(client.stream_post("https://example.com/api", {}))
+
+    def test_stream_post_403_error_retries(self):
+        """Test 403 error triggers retries with backoff."""
+        client = SSEClient(token="test-token", max_retries=2)
+
+        # Mock a 403 response from curl_cffi
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 403
+        mock_response.reason = "Forbidden"
+        mock_response.url = "https://example.com/api"
+        mock_response.headers = {}
+        mock_response.content = b"Forbidden"
+
+        mock_stream_context = Mock()
+        mock_stream_context.__enter__ = Mock(return_value=mock_response)
+        mock_stream_context.__exit__ = Mock(return_value=False)
+
+        mock_session = Mock()
+        mock_session.stream.return_value = mock_stream_context
+
+        client._client = mock_session
+
+        with pytest.raises(httpx.HTTPStatusError, match="Access forbidden"):
+            list(client.stream_post("https://example.com/api", {}))
+
+        # Should have retried (2 calls total for max_retries=2)
+        assert mock_session.stream.call_count == 2
+
+    def test_raise_http_status_error(self):
+        """Test _raise_http_status_error constructs valid httpx exceptions."""
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.reason = "Internal Server Error"
+        mock_response.url = "https://example.com/api"
+        mock_response.headers = {"content-type": "text/plain"}
+        mock_response.content = b"Server error"
+
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            SSEClient._raise_http_status_error(mock_response)
+
+        error = exc_info.value
+        assert error.response.status_code == 500
+        assert error.response.text == "Server error"
 
     def test_sse_client_creates_client_lazily(self):
         """Test that _client is None after init and created on first _get_client() call."""
         client = SSEClient(token="test-token")
         assert client._client is None
 
-        http_client = client._get_client()
-        assert http_client is not None
-        assert isinstance(http_client, httpx.Client)
+        session = client._get_client()
+        assert session is not None
+        assert isinstance(session, Session)
 
         client.close()
 
@@ -283,9 +364,9 @@ class TestSSEClient:
         """Test that two _get_client() calls return the same object."""
         client = SSEClient(token="test-token")
 
-        http_client_1 = client._get_client()
-        http_client_2 = client._get_client()
-        assert http_client_1 is http_client_2
+        session_1 = client._get_client()
+        session_2 = client._get_client()
+        assert session_1 is session_2
 
         client.close()
 
@@ -293,12 +374,12 @@ class TestSSEClient:
         """Test that close() calls client.close() and resets _client to None."""
         client = SSEClient(token="test-token")
 
-        mock_http_client = Mock()
-        client._client = mock_http_client
+        mock_session = Mock()
+        client._client = mock_session
 
         client.close()
 
-        mock_http_client.close.assert_called_once()
+        mock_session.close.assert_called_once()
         assert client._client is None
 
     def test_sse_client_close_when_no_client(self):
