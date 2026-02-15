@@ -269,11 +269,7 @@ class TestExtractTextFromBlock:
 
     def test_extract_from_diff_block(self):
         """Test extracting text from a diff_block with patches."""
-        content = {
-            "diff_block": {
-                "patches": [{"value": "Diff text"}]
-            }
-        }
+        content = {"diff_block": {"patches": [{"value": "Diff text"}]}}
         result = self.api._extract_text_from_block(content)
         assert result == "Diff text"
 

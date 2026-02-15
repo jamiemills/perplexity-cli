@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from perplexity_cli.config.models import FeatureConfig, RateLimitConfig, URLConfig
+from perplexity_cli.config.models import FeatureConfig, URLConfig
 from perplexity_cli.utils.config import (
     clear_feature_config_cache,
     clear_urls_cache,
@@ -246,14 +246,18 @@ class TestRateLimitingValidation:
 
     def test_negative_requests_per_period_raises(self):
         """Test that negative requests_per_period in config raises RuntimeError."""
-        with patch(
-            "perplexity_cli.utils.config.get_urls_path"
-        ) as mock_path:
+        with patch("perplexity_cli.utils.config.get_urls_path") as mock_path:
             import tempfile
 
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 json.dump(
-                    {"rate_limiting": {"enabled": True, "requests_per_period": -1, "period_seconds": 60}},
+                    {
+                        "rate_limiting": {
+                            "enabled": True,
+                            "requests_per_period": -1,
+                            "period_seconds": 60,
+                        }
+                    },
                     f,
                 )
                 f.flush()
@@ -264,14 +268,18 @@ class TestRateLimitingValidation:
 
     def test_zero_period_seconds_raises(self):
         """Test that zero period_seconds in config raises RuntimeError."""
-        with patch(
-            "perplexity_cli.utils.config.get_urls_path"
-        ) as mock_path:
+        with patch("perplexity_cli.utils.config.get_urls_path") as mock_path:
             import tempfile
 
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 json.dump(
-                    {"rate_limiting": {"enabled": True, "requests_per_period": 10, "period_seconds": 0}},
+                    {
+                        "rate_limiting": {
+                            "enabled": True,
+                            "requests_per_period": 10,
+                            "period_seconds": 0,
+                        }
+                    },
                     f,
                 )
                 f.flush()
@@ -286,9 +294,7 @@ class TestRateLimitingValidation:
         The runtime code does not perform manual validation of the enabled field;
         Pydantic's bool coercion accepts string values like 'yes'.
         """
-        with patch(
-            "perplexity_cli.utils.config.get_urls_path"
-        ) as mock_path:
+        with patch("perplexity_cli.utils.config.get_urls_path") as mock_path:
             import tempfile
 
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
