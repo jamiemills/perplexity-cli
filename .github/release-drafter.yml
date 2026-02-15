@@ -1,0 +1,43 @@
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+change-template: "- $TITLE (#$NUMBER) by @$AUTHOR"
+categories:
+  - title: "Features"
+    labels: ["feature", "enhancement"]
+  - title: "Fixes"
+    labels: ["bug", "fix", "hotfix"]
+  - title: "Maintenance"
+    labels: ["chore", "build", "infra"]
+  - title: "Tests & CI"
+    labels: ["test", "tests", "ci"]
+  - title: "Documentation"
+    labels: ["docs", "documentation"]
+  - title: "Dependencies"
+    labels: ["deps", "dependencies", "dependabot"]
+  - title: "Refactor"
+    labels: ["refactor"]
+  - title: "Performance"
+    labels: ["perf", "performance"]
+exclude-labels:
+  - "skip-changelog"
+  - "no-changelog"
+version-resolver:
+  major:
+    labels: ["semver:major", "breaking", "breaking change"]
+  minor:
+    labels: ["semver:minor", "feature", "enhancement"]
+  patch:
+    labels: ["semver:patch", "bug", "fix", "hotfix", "docs", "test", "tests", "ci", "chore"]
+  default: patch
+template: |
+  ## Changes
+
+  $CHANGES
+
+  ## Contributors
+  Thanks to everyone who contributed to this release.
+  $CONTRIBUTORS
+
+replacers:
+  - search: '/\s*\(#[0-9]+\)/g'
+    replace: ''
