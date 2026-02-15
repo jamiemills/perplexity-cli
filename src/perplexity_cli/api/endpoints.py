@@ -50,6 +50,7 @@ class PerplexityAPI:
         query: str,
         language: str = "en-US",
         timezone: str = "Europe/London",
+        search_implementation_mode: str = "standard",
     ) -> Iterator[SSEMessage]:
         """Submit a query to Perplexity and stream responses.
 
@@ -57,6 +58,7 @@ class PerplexityAPI:
             query: The user's query text.
             language: Language code (default: en-US).
             timezone: Timezone string (default: Europe/London).
+            search_implementation_mode: Search mode ('standard' or 'multi_step' for deep research).
 
         Yields:
             SSEMessage objects from the streaming response.
@@ -76,6 +78,7 @@ class PerplexityAPI:
             timezone=timezone,
             frontend_uuid=frontend_uuid,
             frontend_context_uuid=frontend_context_uuid,
+            search_implementation_mode=search_implementation_mode,
         )
 
         # Build request
@@ -86,7 +89,9 @@ class PerplexityAPI:
         for message_data in self.client.stream_post(query_endpoint, request.to_dict()):
             yield SSEMessage.from_dict(message_data)
 
-    def get_complete_answer(self, query: str) -> Answer:
+    def get_complete_answer(
+        self, query: str, search_implementation_mode: str = "standard"
+    ) -> Answer:
         """Submit a query and return the complete answer with references.
 
         This is a convenience method that handles the streaming response
@@ -94,6 +99,7 @@ class PerplexityAPI:
 
         Args:
             query: The user's query text.
+            search_implementation_mode: Search mode ('standard' or 'multi_step' for deep research).
 
         Returns:
             Answer object containing text and references list.
@@ -106,7 +112,9 @@ class PerplexityAPI:
         final_answer = None
         references: list[WebResult] = []
 
-        for message in self.submit_query(query):
+        for message in self.submit_query(
+            query, search_implementation_mode=search_implementation_mode
+        ):
             # Only extract from final message to avoid duplicates
             if message.final_sse_message:
                 # Extract text from blocks in final message
@@ -128,6 +136,29 @@ class PerplexityAPI:
             raise ValueError("No answer found in response")
 
         return Answer(text=final_answer, references=references)
+
+    def _extract_plan_block_info(self, block) -> dict | None:
+        """Extract progress information from a plan block.
+
+        Args:
+            block: Block object that may contain plan information.
+
+        Returns:
+            Dictionary with progress info if this is a plan block, None otherwise.
+        """
+        if block.intended_usage not in ["pro_search_steps", "plan"]:
+            return None
+
+        plan_block = block.content.get("plan_block", {})
+        if not plan_block:
+            return None
+
+        return {
+            "progress": plan_block.get("progress"),
+            "eta_seconds": plan_block.get("eta_seconds_remaining"),
+            "goals": plan_block.get("goals", []),
+            "pct_complete": plan_block.get("pct_complete"),
+        }
 
     def _extract_text_from_block(self, block_content: dict) -> str | None:
         """Extract text from a block's content.

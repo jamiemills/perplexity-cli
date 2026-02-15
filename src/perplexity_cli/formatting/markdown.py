@@ -1,7 +1,5 @@
 """GitHub-flavoured Markdown formatter for structured output."""
 
-import re
-
 from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting.base import Formatter
 
@@ -21,7 +19,7 @@ class MarkdownFormatter(Formatter):
         """
         # Strip citation references if requested
         if strip_references:
-            text = re.sub(r"\[\d+\]", "", text)
+            text = self.strip_citations(text)
 
         return text.rstrip()
 

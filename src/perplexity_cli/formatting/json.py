@@ -1,7 +1,6 @@
 """JSON formatter for structured JSON output."""
 
 import json
-import re
 from typing import Any
 
 from perplexity_cli.api.models import Answer, WebResult
@@ -25,7 +24,7 @@ class JSONFormatter(Formatter):
             The text (passed through).
         """
         if strip_references:
-            text = re.sub(r"\[\d+\]", "", text)
+            text = self.strip_citations(text)
         return text.rstrip()
 
     def format_references(self, references: list[WebResult]) -> str:

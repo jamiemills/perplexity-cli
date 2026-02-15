@@ -1,5 +1,7 @@
 """Integration tests for Perplexity API client."""
 
+import os
+
 import httpx
 import pytest
 
@@ -9,6 +11,9 @@ from perplexity_cli.auth.token_manager import TokenManager
 
 
 @pytest.mark.integration
+@pytest.mark.real_api
+@pytest.mark.slow
+@pytest.mark.skipif(os.environ.get("CI") is not None, reason="Skipped in CI: requires real API")
 class TestPerplexityAPIIntegration:
     """Integration tests with actual Perplexity API."""
 
@@ -95,6 +100,9 @@ class TestPerplexityAPIIntegration:
 
 
 @pytest.mark.integration
+@pytest.mark.real_api
+@pytest.mark.slow
+@pytest.mark.skipif(os.environ.get("CI") is not None, reason="Skipped in CI: requires real API")
 class TestAPIErrorHandling:
     """Test error handling with actual API."""
 

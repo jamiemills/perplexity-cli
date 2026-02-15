@@ -4,13 +4,13 @@ This module handles exporting thread data to CSV format.
 """
 
 import csv
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from pydantic import BaseModel
 
-@dataclass
-class ThreadRecord:
+
+class ThreadRecord(BaseModel):
     """Data class representing a single thread record.
 
     Attributes:

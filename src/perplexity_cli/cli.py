@@ -9,10 +9,13 @@ import click
 import httpx
 
 from perplexity_cli.api.endpoints import PerplexityAPI
+from perplexity_cli.api.streaming import stream_query_response
 from perplexity_cli.auth.oauth_handler import authenticate_sync
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.auth.utils import load_or_prompt_token
 from perplexity_cli.formatting import get_formatter, list_formatters
 from perplexity_cli.utils.config import get_perplexity_base_url
+from perplexity_cli.utils.http_errors import handle_http_error, handle_network_error
 from perplexity_cli.utils.logging import get_default_log_file, setup_logging
 from perplexity_cli.utils.style_manager import StyleManager
 from perplexity_cli.utils.version import get_version
@@ -129,21 +132,41 @@ def auth(ctx: click.Context, port: int) -> None:
         tm.save_token(token, cookies=cookies)
         logger.info(f"Token and cookies saved to {tm.token_path}")
 
-        click.echo("✓ Authentication successful!")
-        click.echo(f"✓ Token saved to: {tm.token_path}")
+        click.echo("[OK] Authentication successful!")
+        click.echo(f"[OK] Token saved to: {tm.token_path}")
 
         # Show cookie message based on config
         if get_save_cookies_enabled():
-            click.echo(f"✓ {len(cookies)} cookies saved (including Cloudflare cookies)")
+            click.echo(f"[OK] {len(cookies)} cookies saved (including Cloudflare cookies)")
         else:
-            click.echo("ℹ Cookies not saved (disabled in config)")
+            click.echo("[INFO] Cookies not saved (disabled in config)")
             click.echo("  To enable cookie storage: pxcli set-config save_cookies true")
 
         click.echo('\nYou can now use: pxcli query "<your question>"')
 
+    except TimeoutError as e:
+        logger.error(f"Authentication timeout: {e}", exc_info=True)
+        click.echo(f"[ERROR] Authentication timeout: {e}", err=True)
+        click.echo("\nTroubleshooting:", err=True)
+        click.echo(
+            f"  1. Start Chrome with: --remote-debugging-port={port}",
+            err=True,
+        )
+        click.echo(
+            "  2. Ensure Chrome is running and accessible",
+            err=True,
+        )
+        click.echo(
+            f"  3. Navigate to {base_url} in Chrome",
+            err=True,
+        )
+        click.echo("  4. Log in with your Google account", err=True)
+        click.echo("  5. Run this command again", err=True)
+        sys.exit(1)
+
     except RuntimeError as e:
         logger.error(f"Authentication failed: {e}", exc_info=True)
-        click.echo(f"✗ Authentication failed: {e}", err=True)
+        click.echo(f"[ERROR] Authentication failed: {e}", err=True)
         click.echo("\nTroubleshooting:", err=True)
         click.echo(
             f"  1. Start Chrome with: --remote-debugging-port={port}",
@@ -159,12 +182,12 @@ def auth(ctx: click.Context, port: int) -> None:
 
     except KeyboardInterrupt:
         logger.info("Authentication interrupted by user")
-        click.echo("\n✗ Authentication interrupted.", err=True)
+        click.echo("\n[ERROR] Authentication interrupted.", err=True)
         sys.exit(130)
 
     except Exception as e:
         logger.exception(f"Unexpected error during authentication: {e}")
-        click.echo(f"✗ Unexpected error: {e}", err=True)
+        click.echo(f"[ERROR] Unexpected error: {e}", err=True)
         if ctx.obj.get("debug", False):
             import traceback
 
@@ -177,6 +200,7 @@ def auth(ctx: click.Context, port: int) -> None:
 @click.option(
     "--format",
     "-f",
+    "output_format",
     type=click.Choice(["plain", "markdown", "rich", "json"]),
     default=None,
     help="Output format: plain (text), markdown (GitHub-flavoured), rich (terminal with colours), or json (structured JSON). Defaults to 'rich'.",
@@ -195,7 +219,7 @@ def auth(ctx: click.Context, port: int) -> None:
 def query(
     ctx: click.Context,
     query_text: str,
-    format: str,
+    output_format: str,
     strip_references: bool,
     stream: bool,
 ) -> None:
@@ -269,34 +293,25 @@ def query(
         logger.debug(f"Cookie storage enabled: {get_save_cookies_enabled()}")
 
         logger.debug(
-            f"Query command invoked: query='{query_text[:50]}...', format={format}, stream={stream}"
+            f"Query command invoked: query='{query_text[:50]}...', format={output_format}, stream={stream}"
         )
 
     # Load token and cookies
     tm = TokenManager()
-    token, cookies = tm.load_token()
-
-    if not token:
-        click.echo("✗ Not authenticated.", err=True)
-        click.echo(
-            "\nPlease authenticate first with: pxcli auth",
-            err=True,
-        )
-        logger.warning("Query attempted without authentication")
-        sys.exit(1)
+    token, cookies = load_or_prompt_token(tm, logger, command_context="query")
 
     try:
         # Determine output format
-        output_format = format or "rich"
+        output_format = output_format or "rich"
 
         # Get formatter instance
         try:
             formatter = get_formatter(output_format)
         except ValueError as e:
-            click.echo(f"✗ {e}", err=True)
+            click.echo(f"[ERROR] {e}", err=True)
             available = ", ".join(list_formatters())
             click.echo(f"Available formats: {available}", err=True)
-            logger.error(f"Invalid formatter: {format}")
+            logger.error(f"Invalid formatter: {output_format}")
             sys.exit(1)
 
         # Load style if configured
@@ -314,11 +329,9 @@ def query(
             # Handle streaming vs complete answer
             if stream:
                 logger.info("Streaming query response")
-                # Stream response
-                _stream_query_response(api, final_query, formatter, output_format, strip_references)
+                stream_query_response(api, final_query, formatter, output_format, strip_references)
             else:
                 logger.info("Fetching complete answer")
-                # Submit query and get answer
                 answer_obj = api.get_complete_answer(final_query)
                 logger.debug(
                     f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references"
@@ -336,149 +349,32 @@ def query(
                     click.echo(formatted_output)
 
     except httpx.HTTPStatusError as e:
-        status = e.response.status_code
-        logger.error(f"HTTP error {status}: {e}")
-        if status == 401:
-            click.echo("✗ Authentication failed. Token may be expired.", err=True)
-            click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
-        elif status == 403:
-            click.echo("✗ Access forbidden. Check your permissions.", err=True)
-        elif status == 429:
-            click.echo("✗ Rate limit exceeded. Please wait and try again.", err=True)
-        else:
-            click.echo(f"✗ HTTP error {status}.", err=True)
-            if ctx.obj.get("debug", False):
-                click.echo(f"Details: {e}", err=True)
-        sys.exit(1)
+        debug_mode = ctx.obj.get("debug", False) if ctx.obj else False
+        handle_http_error(e, logger, debug_mode=debug_mode)
 
     except httpx.RequestError as e:
-        logger.error(f"Network error: {e}")
-        click.echo("✗ Network error. Please check your internet connection.", err=True)
-        if ctx.obj.get("debug", False):
-            click.echo(f"Details: {e}", err=True)
-        sys.exit(1)
+        debug_mode = ctx.obj.get("debug", False) if ctx.obj else False
+        handle_network_error(e, logger, debug_mode=debug_mode)
 
     except ValueError as e:
         logger.error(f"Value error: {e}")
-        click.echo(f"✗ Error: {e}", err=True)
+        click.echo(f"[ERROR] Error: {e}", err=True)
         sys.exit(1)
 
     except KeyboardInterrupt:
         logger.info("Query interrupted by user")
-        click.echo("\n✗ Query interrupted.", err=True)
+        click.echo("\n[ERROR] Query interrupted.", err=True)
         sys.exit(130)
 
     except Exception as e:
         logger.exception(f"Unexpected error: {e}")
-        click.echo("✗ An unexpected error occurred.", err=True)
+        click.echo("[ERROR] An unexpected error occurred.", err=True)
         if ctx.obj.get("debug", False):
             import traceback
 
             click.echo(f"Debug info:\n{traceback.format_exc()}", err=True)
         else:
             click.echo("Run with --debug for more information.", err=True)
-        sys.exit(1)
-
-
-def _stream_query_response(
-    api: PerplexityAPI,
-    query: str,
-    formatter,
-    output_format: str,
-    strip_references: bool,
-) -> None:
-    """Stream query response in real-time.
-
-    Args:
-        api: PerplexityAPI instance.
-        query: Query text.
-        formatter: Formatter instance.
-        output_format: Output format name.
-        strip_references: Whether to strip references.
-    """
-    from perplexity_cli.api.models import Answer, WebResult
-    from perplexity_cli.utils.logging import get_logger
-
-    logger = get_logger()
-    accumulated_text = ""
-    references: list[WebResult] = []
-
-    try:
-        for message in api.submit_query(query):
-            logger.debug(
-                f"Received SSE message: status={message.status}, final={message.final_sse_message}"
-            )
-
-            # Extract text from blocks
-            for block in message.blocks:
-                if block.intended_usage == "ask_text":
-                    text = api._extract_text_from_block(block.content)
-                    if text and text != accumulated_text:
-                        # Only print new text
-                        new_text = text[len(accumulated_text) :]
-                        if new_text:
-                            if output_format == "rich":
-                                # For rich, print incrementally
-                                click.echo(new_text, nl=False)
-                            else:
-                                click.echo(new_text, nl=False)
-                            accumulated_text = text
-
-            # Extract references from final message
-            if message.final_sse_message and message.web_results:
-                references = message.web_results
-                logger.debug(f"Extracted {len(references)} references")
-
-        # Print newline after streaming
-        click.echo()
-
-        # Print references if not stripped
-        if references and not strip_references:
-            click.echo()
-            if output_format == "rich":
-                formatter.render_complete(
-                    Answer(text=accumulated_text, references=references),
-                    strip_references=True,  # Already printed text
-                )
-            else:
-                formatted_refs = formatter.format_references(references)
-                if formatted_refs:
-                    click.echo(formatted_refs)
-
-    except httpx.HTTPStatusError as e:
-        status = e.response.status_code
-        logger.error(f"HTTP error {status} during streaming: {e}")
-        click.echo()  # Newline after streamed content
-        if status == 401:
-            click.echo("✗ Authentication failed. Token may be expired.", err=True)
-            click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
-            sys.exit(1)
-        elif status == 403:
-            click.echo("✗ Access forbidden. Check your permissions.", err=True)
-            sys.exit(1)
-        elif status == 429:
-            click.echo("✗ Rate limit exceeded. Please wait and try again.", err=True)
-            sys.exit(1)
-        else:
-            click.echo(f"✗ HTTP error {status}.", err=True)
-            sys.exit(1)
-
-    except httpx.RequestError as e:
-        logger.error(f"Network error during streaming: {e}")
-        click.echo()  # Newline after streamed content
-        click.echo("✗ Network error. Please check your internet connection.", err=True)
-        sys.exit(1)
-
-    except KeyboardInterrupt:
-        logger.info("Streaming interrupted by user")
-        click.echo("\n✗ Streaming interrupted.", err=True)
-        sys.exit(130)
-
-    except Exception as e:
-        logger.exception(f"Unexpected error during streaming: {e}")
-        click.echo()  # Newline after streamed content
-        click.echo("✗ An unexpected error occurred.", err=True)
-        click.echo("Run with --debug for more information.", err=True)
         sys.exit(1)
 
 
@@ -500,15 +396,15 @@ def logout() -> None:
 
     try:
         tm.clear_token()
-        click.echo("✓ Logged out successfully.")
-        click.echo("✓ Stored credentials removed.")
+        click.echo("[OK] Logged out successfully.")
+        click.echo("[OK] Stored credentials removed.")
 
     except Exception as e:
         from perplexity_cli.utils.logging import get_logger
 
         logger = get_logger()
         logger.error(f"Error during logout: {e}", exc_info=True)
-        click.echo(f"✗ Error during logout: {e}", err=True)
+        click.echo(f"[ERROR] Error during logout: {e}", err=True)
         sys.exit(1)
 
 
@@ -532,15 +428,15 @@ def configure(style: str) -> None:
 
     try:
         sm.save_style(style)
-        click.echo("✓ Style configured successfully.")
-        click.echo("✓ Style will be applied to all future queries.")
+        click.echo("[OK] Style configured successfully.")
+        click.echo("[OK] Style will be applied to all future queries.")
         click.echo("\nStyle preview:")
         click.echo(f"  {style}")
     except ValueError as e:
-        click.echo(f"✗ Invalid style: {e}", err=True)
+        click.echo(f"[ERROR] Invalid style: {e}", err=True)
         sys.exit(1)
     except OSError as e:
-        click.echo(f"✗ Failed to save style: {e}", err=True)
+        click.echo(f"[ERROR] Failed to save style: {e}", err=True)
         sys.exit(1)
 
 
@@ -569,7 +465,7 @@ def view_style() -> None:
             click.echo(style)
             click.echo("-" * 50)
     except OSError as e:
-        click.echo(f"✗ Error reading style: {e}", err=True)
+        click.echo(f"[ERROR] Error reading style: {e}", err=True)
         sys.exit(1)
 
 
@@ -593,11 +489,11 @@ def clear_style() -> None:
             return
 
         sm.clear_style()
-        click.echo("✓ Style cleared successfully.")
-        click.echo("✓ Queries will no longer include a style prompt.")
+        click.echo("[OK] Style cleared successfully.")
+        click.echo("[OK] Queries will no longer include a style prompt.")
 
     except OSError as e:
-        click.echo(f"✗ Error clearing style: {e}", err=True)
+        click.echo(f"[ERROR] Error clearing style: {e}", err=True)
         sys.exit(1)
 
 
@@ -625,7 +521,7 @@ def status() -> None:
         try:
             token, cookies = tm.load_token()
             if token:
-                click.echo("Status: ✓ Authenticated")
+                click.echo("Status: [OK] Authenticated")
                 click.echo(f"Token file: {tm.token_path}")
                 click.echo(f"Token length: {len(token)} characters")
                 if cookies:
@@ -648,31 +544,33 @@ def status() -> None:
                         # Use a very short test query to verify token
                         test_answer = api.get_complete_answer("test")
                     if test_answer and len(test_answer.text) > 0:
-                        click.echo("\n✓ Token is valid and working")
+                        click.echo("\n[OK] Token is valid and working")
                         logger.info("Token verification successful")
                     else:
-                        click.echo("\n⚠ Token verification returned empty response")
+                        click.echo("\n[INFO] Token verification returned empty response")
                         logger.warning("Token verification returned empty response")
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 401:
-                        click.echo("\n✗ Token is invalid or expired")
+                        click.echo("\n[ERROR] Token is invalid or expired")
                         logger.warning("Token verification failed: 401 Unauthorized")
                     else:
-                        click.echo(f"\n⚠ Token verification failed (HTTP {e.response.status_code})")
+                        click.echo(
+                            f"\n[INFO] Token verification failed (HTTP {e.response.status_code})"
+                        )
                         logger.warning(f"Token verification failed: HTTP {e.response.status_code}")
                 except Exception as e:
-                    click.echo("\n⚠ Token verification failed (unable to test)")
+                    click.echo("\n[INFO] Token verification failed (unable to test)")
                     logger.debug(f"Token verification error: {e}", exc_info=True)
 
             else:
-                click.echo("Status: ✗ Not authenticated")
+                click.echo("Status: [ERROR] Not authenticated")
         except RuntimeError as e:
-            click.echo("Status: ⚠ Token file has insecure permissions")
+            click.echo("Status: [INFO] Token file has insecure permissions")
             click.echo(f"Error: {e}")
             click.echo(f"\nFix with: chmod 0600 {tm.token_path}")
             logger.error(f"Token file has insecure permissions: {e}")
     else:
-        click.echo("Status: ✗ Not authenticated")
+        click.echo("Status: [ERROR] Not authenticated")
         click.echo("\nAuthenticate with: pxcli auth")
 
 
@@ -708,25 +606,25 @@ def set_config(ctx: click.Context, key: str, value: str) -> None:
         # Clear cache to ensure new value is used
         clear_feature_config_cache()
 
-        click.echo(f"✓ Configuration updated: {key} = {bool_value}")
+        click.echo(f"[OK] Configuration updated: {key} = {bool_value}")
         logger.info(f"Configuration updated: {key} = {bool_value}")
 
         # Show helpful messages
         if key == "save_cookies" and bool_value:
-            click.echo("\nℹ Cookie storage enabled.")
+            click.echo("\n[INFO] Cookie storage enabled.")
             click.echo("  Re-authenticate to save cookies: pxcli auth")
         elif key == "save_cookies" and not bool_value:
-            click.echo("\nℹ Cookie storage disabled.")
+            click.echo("\n[INFO] Cookie storage disabled.")
             click.echo("  Only JWT token will be saved on next authentication.")
         elif key == "debug_mode" and bool_value:
-            click.echo("\nℹ Debug mode enabled.")
+            click.echo("\n[INFO] Debug mode enabled.")
             click.echo("  All commands will now log at DEBUG level.")
         elif key == "debug_mode" and not bool_value:
-            click.echo("\nℹ Debug mode disabled.")
+            click.echo("\n[INFO] Debug mode disabled.")
             click.echo("  Use --debug flag for one-time debug output.")
 
     except RuntimeError as e:
-        click.echo(f"✗ Failed to update configuration: {e}", err=True)
+        click.echo(f"[ERROR] Failed to update configuration: {e}", err=True)
         logger.error(f"Configuration update failed: {e}", exc_info=True)
         sys.exit(1)
 
@@ -782,7 +680,7 @@ def show_config(ctx: click.Context) -> None:
         logger.debug("Configuration displayed successfully")
 
     except RuntimeError as e:
-        click.echo(f"✗ Failed to load configuration: {e}", err=True)
+        click.echo(f"[ERROR] Failed to load configuration: {e}", err=True)
         logger.error(f"Configuration display failed: {e}", exc_info=True)
         sys.exit(1)
 
@@ -884,7 +782,7 @@ def export_threads(
     token, cookies = tm.load_token()
 
     if not token:
-        click.echo("✗ Not authenticated.", err=True)
+        click.echo("[ERROR] Not authenticated.", err=True)
         click.echo(
             "\nPlease authenticate first with: pxcli auth",
             err=True,
@@ -918,10 +816,10 @@ def export_threads(
     if clear_cache:
         if cache_manager.cache_exists():
             cache_manager.clear_cache()
-            click.echo("✓ Cache cleared")
+            click.echo("[OK] Cache cleared")
             logger.info("Cache cleared by user")
         else:
-            click.echo("ℹ No cache file to clear")
+            click.echo("[INFO] No cache file to clear")
 
     # Validate date range if provided
     if from_date or to_date:
@@ -933,7 +831,7 @@ def export_threads(
             if to_date:
                 dateutil_parser.parse(to_date)
         except ValueError as e:
-            click.echo(f"✗ Invalid date format: {e}", err=True)
+            click.echo(f"[ERROR] Invalid date format: {e}", err=True)
             click.echo("Please use YYYY-MM-DD format (e.g., 2025-12-23)", err=True)
             sys.exit(1)
 
@@ -965,7 +863,7 @@ def export_threads(
         click.echo()
 
         if not threads:
-            click.echo("\n✗ No threads found matching criteria.", err=True)
+            click.echo("\n[ERROR] No threads found matching criteria.", err=True)
             if from_date or to_date:
                 click.echo(
                     f"Date range: {from_date or 'beginning'} to {to_date or 'end'}",
@@ -978,17 +876,17 @@ def export_threads(
         logger.info(f"Exported {len(threads)} threads to {output_path}")
 
         # Success message
-        click.echo("\n✓ Export complete")
-        click.echo(f"✓ Exported {len(threads)} threads")
+        click.echo("\n[OK] Export complete")
+        click.echo(f"[OK] Exported {len(threads)} threads")
         if from_date or to_date:
             click.echo(
-                f"✓ Filtered by date range: {from_date or 'beginning'} to {to_date or 'end'}"
+                f"[OK] Filtered by date range: {from_date or 'beginning'} to {to_date or 'end'}"
             )
-        click.echo(f"✓ Saved to: {output_path.resolve()}")
+        click.echo(f"[OK] Saved to: {output_path.resolve()}")
 
     except RuntimeError as e:
         logger.error(f"Export failed: {e}", exc_info=True)
-        click.echo(f"\n✗ Export failed: {e}", err=True)
+        click.echo(f"\n[ERROR] Export failed: {e}", err=True)
         if "Authentication failed" in str(e):
             click.echo("\nYour token may have expired. Please re-authenticate:", err=True)
             click.echo("  perplexity-cli auth", err=True)
@@ -998,26 +896,26 @@ def export_threads(
         status = e.response.status_code
         logger.error(f"HTTP error {status}: {e}")
         if status == 401:
-            click.echo("✗ Authentication failed. Token may be expired.", err=True)
+            click.echo("[ERROR] Authentication failed. Token may be expired.", err=True)
             click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
         elif status == 403:
-            click.echo("✗ Access forbidden. Check your permissions.", err=True)
+            click.echo("[ERROR] Access forbidden. Check your permissions.", err=True)
         elif status == 429:
-            click.echo("✗ Rate limit exceeded. Please wait and try again later.", err=True)
+            click.echo("[ERROR] Rate limit exceeded. Please wait and try again later.", err=True)
         else:
-            click.echo(f"✗ HTTP error {status}.", err=True)
+            click.echo(f"[ERROR] HTTP error {status}.", err=True)
             if ctx.obj.get("debug", False):
                 click.echo(f"Details: {e}", err=True)
         sys.exit(1)
 
     except KeyboardInterrupt:
         logger.info("Export interrupted by user")
-        click.echo("\n✗ Export interrupted.", err=True)
+        click.echo("\n[ERROR] Export interrupted.", err=True)
         sys.exit(130)
 
     except Exception as e:
         logger.exception(f"Unexpected error during export: {e}")
-        click.echo(f"\n✗ Unexpected error: {e}", err=True)
+        click.echo(f"\n[ERROR] Unexpected error: {e}", err=True)
         if ctx.obj.get("debug", False):
             import traceback
 

@@ -777,7 +777,8 @@ MIT
 ## Dependencies
 
 - click - CLI framework
-- httpx - HTTP client
+- curl-cffi - HTTP client with Chrome TLS fingerprint impersonation
+- httpx - HTTP client (thread export)
 - websockets - WebSocket support
 - rich - Terminal formatting
 - cryptography - Token encryption

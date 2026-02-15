@@ -1,4 +1,14 @@
-"""HTTP client for Perplexity API with SSE streaming support."""
+"""HTTP client for Perplexity API with SSE streaming support.
+
+Uses curl_cffi to impersonate Chrome's TLS fingerprint, which is required
+to pass Cloudflare's bot protection on Perplexity's API endpoints. The
+cf_clearance cookie is bound to the TLS fingerprint of the client that
+solved the JavaScript challenge, so Python's default TLS stack (used by
+httpx/urllib3) is rejected even with valid cookies.
+
+Exceptions are converted to httpx types so that downstream error handling
+(cli.py, http_errors.py, retry.py) does not need to change.
+"""
 
 import json
 import logging
@@ -6,14 +16,19 @@ import time
 from collections.abc import Iterator
 
 import httpx
+from curl_cffi.requests import Session
+from curl_cffi.requests.exceptions import RequestException
 
 from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.retry import is_retryable_error
-from perplexity_cli.utils.version import get_version
 
 
 class SSEClient:
-    """HTTP client with Server-Sent Events (SSE) streaming support."""
+    """HTTP client with Server-Sent Events (SSE) streaming support.
+
+    Uses curl_cffi with Chrome TLS fingerprint impersonation to bypass
+    Cloudflare's bot protection.
+    """
 
     def __init__(
         self,
@@ -35,42 +50,44 @@ class SSEClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.logger = get_logger()
-        self._client: httpx.Client | None = None
+        self._client: Session | None = None
 
     def get_headers(self) -> dict[str, str]:
         """Get HTTP headers for API requests.
 
+        curl_cffi sets User-Agent automatically based on the impersonated
+        browser, so it is not included here. Cookies are passed separately
+        via the ``cookies`` parameter on requests rather than as a header.
+
         Returns:
-            Dictionary of HTTP headers including authentication and cookies.
+            Dictionary of HTTP headers including authentication.
         """
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
-            "User-Agent": f"perplexity-cli/{get_version()}",
             "Origin": "https://www.perplexity.ai",
             "Referer": "https://www.perplexity.ai/",
         }
 
-        # Add cookies if available (for Cloudflare bypass)
-        if self.cookies:
-            cookie_str = "; ".join(f"{k}={v}" for k, v in self.cookies.items())
-            headers["Cookie"] = cookie_str
+        # Add CSRF token from cookies if available
+        if self.cookies and "csrftoken" in self.cookies:
+            headers["X-CSRFToken"] = self.cookies["csrftoken"]
 
         return headers
 
-    def _get_client(self) -> httpx.Client:
-        """Get or create the persistent httpx client.
+    def _get_client(self) -> Session:
+        """Get or create the persistent curl_cffi session.
 
         Returns:
-            The shared httpx.Client instance.
+            The shared Session instance with Chrome TLS impersonation.
         """
         if self._client is None:
-            self._client = httpx.Client(timeout=self.timeout)
+            self._client = Session(impersonate="chrome", timeout=self.timeout)
         return self._client
 
     def close(self) -> None:
-        """Close the persistent httpx client if open."""
+        """Close the persistent session if open."""
         if self._client is not None:
             self._client.close()
             self._client = None
@@ -93,14 +110,20 @@ class SSEClient:
         headers = self.get_headers()
         attempt = 0
 
-        if self.logger.isEnabledFor(logging.DEBUG):
-            # Debug: Log request details at startup
-            self.logger.debug(f"API Request to: {url}")
-            self.logger.debug(
-                f"Request headers: Content-Type={headers.get('Content-Type')}, User-Agent={headers.get('User-Agent')}"
-            )
+        # Check if deep research is requested and adjust timeout accordingly
+        is_deep_research = (
+            json_data.get("params", {}).get("search_implementation_mode") == "multi_step"
+        )
+        effective_timeout = 360 if is_deep_research else self.timeout
 
-            # Debug: Log authentication and cookie status
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"API Request to: {url}")
+            self.logger.debug(f"Request headers: Content-Type={headers.get('Content-Type')}")
+            if is_deep_research:
+                self.logger.debug(
+                    f"Deep research mode detected, timeout set to {effective_timeout}s"
+                )
+
             has_auth = bool(self.token)
             has_cookies = bool(self.cookies)
             self.logger.debug(f"Authentication: Bearer token present={has_auth}")
@@ -122,10 +145,16 @@ class SSEClient:
                     )
 
                 client = self._get_client()
-                with client.stream("POST", url, headers=headers, json=json_data) as response:
+                with client.stream(
+                    "POST",
+                    url,
+                    headers=headers,
+                    json=json_data,
+                    cookies=self.cookies or {},
+                    timeout=effective_timeout,
+                ) as response:
                     if self.logger.isEnabledFor(logging.DEBUG):
-                        # Debug: Log response status and Cloudflare headers
-                        self.logger.debug(f"HTTP {response.status_code} {response.reason_phrase}")
+                        self.logger.debug(f"HTTP {response.status_code} {response.reason}")
                         cf_ray = response.headers.get("cf-ray")
                         if cf_ray:
                             self.logger.debug(f"Cloudflare Ray ID: {cf_ray}")
@@ -136,11 +165,11 @@ class SSEClient:
                         if server:
                             self.logger.debug(f"Server: {server}")
 
-                    # Check for HTTP errors
-                    response.raise_for_status()
+                    # Check for HTTP errors - convert to httpx exception types
+                    if not response.ok:
+                        self._raise_http_status_error(response)
 
                     if self.logger.isEnabledFor(logging.DEBUG):
-                        # Parse SSE stream - once streaming starts, we can't retry
                         self.logger.debug("Starting SSE stream parsing")
 
                     yield from self._parse_sse_stream(response)
@@ -153,7 +182,6 @@ class SSEClient:
                 status = e.response.status_code
 
                 if self.logger.isEnabledFor(logging.DEBUG):
-                    # Debug: Log response headers and body preview for all errors
                     self.logger.debug(f"HTTP Error {status}: {e}")
                     cf_ray = e.response.headers.get("cf-ray")
                     if cf_ray:
@@ -162,14 +190,13 @@ class SSEClient:
                     if cf_cache:
                         self.logger.debug(f"Cloudflare Cache Status: {cf_cache}")
 
-                    # Log response body preview for debugging
                     try:
                         response_text = e.response.text[:500]
                         self.logger.debug(f"Response body preview: {response_text}")
                     except Exception:
                         pass
 
-                # Don't retry 401 (invalid token), but 403 might be temporary Cloudflare blocking
+                # Don't retry 401 (invalid token)
                 if status == 401:
                     self.logger.error(f"HTTP {status} error (not retryable): {e}")
                     raise httpx.HTTPStatusError(
@@ -182,7 +209,6 @@ class SSEClient:
                 if status == 403:
                     if attempt < self.max_retries - 1:
                         attempt += 1
-                        # Use exponential backoff: 2s, 4s, 8s
                         wait_time = 2**attempt
                         self.logger.warning(
                             f"HTTP 403 error (may be Cloudflare blocking), retrying in {wait_time}s "
@@ -225,16 +251,59 @@ class SSEClient:
                         f"Network error, retrying (attempt {attempt + 1}/{self.max_retries}): {e}"
                     )
                     continue
-                # Re-raise if out of retries
                 self.logger.error(f"Network error after {attempt + 1} attempts: {e}")
                 raise
 
+            except RequestException as e:
+                # Convert curl_cffi network errors to httpx.RequestError
+                self.logger.error(f"Network error after {attempt + 1} attempts: {e}")
+                raise httpx.RequestError(str(e)) from e
+
             except Exception as e:
-                # Don't retry other exceptions
                 self.logger.error(f"Unexpected error during streaming: {e}", exc_info=True)
                 raise
 
-    def _parse_sse_stream(self, response: httpx.Response) -> Iterator[dict]:
+    @staticmethod
+    def _raise_http_status_error(response) -> None:
+        """Convert a curl_cffi error response into an httpx.HTTPStatusError.
+
+        Constructs a minimal httpx.Request and httpx.Response so that
+        downstream error handlers can access ``.status_code``, ``.headers``,
+        and ``.text`` as they would with a native httpx error.
+
+        Args:
+            response: The curl_cffi Response object with a non-2xx status.
+
+        Raises:
+            httpx.HTTPStatusError: Always raised with the converted response.
+        """
+        # Build an httpx-compatible Request object
+        httpx_request = httpx.Request(
+            method="POST",
+            url=response.url,
+        )
+
+        # Read the response body so it's available via .text on the httpx Response
+        try:
+            body = response.content
+        except Exception:
+            body = b""
+
+        # Build an httpx-compatible Response object
+        httpx_response = httpx.Response(
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            content=body,
+            request=httpx_request,
+        )
+
+        raise httpx.HTTPStatusError(
+            f"HTTP Error {response.status_code}: {response.reason}",
+            request=httpx_request,
+            response=httpx_response,
+        )
+
+    def _parse_sse_stream(self, response) -> Iterator[dict]:
         """Parse Server-Sent Events stream.
 
         SSE format:
@@ -244,8 +313,11 @@ class SSEClient:
             event: message
             data: {json}
 
+        curl_cffi's ``iter_lines()`` yields bytes, so each line is decoded
+        to a string before parsing.
+
         Args:
-            response: The streaming HTTP response.
+            response: The streaming HTTP response (curl_cffi Response).
 
         Yields:
             Parsed JSON data from each SSE message.
@@ -256,11 +328,13 @@ class SSEClient:
         event_type = None
         data_lines = []
 
-        for line in response.iter_lines():
+        for raw_line in response.iter_lines():
+            # Decode bytes to string
+            line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+
             # Empty line indicates end of message
             if not line:
                 if event_type and data_lines:
-                    # Join multi-line data and parse JSON
                     data_str = "\n".join(data_lines)
                     try:
                         yield json.loads(data_str)
