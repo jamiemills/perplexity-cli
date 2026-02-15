@@ -327,12 +327,16 @@ def query(
 
     # Load file attachments if provided
     attachments = []
-    if attachments_str:
+    # Combine inline query args and --attach flag values
+    attachment_list = (
+        attachments_str if isinstance(attachments_str, list) else list(attachments_str)
+    )
+    if attachment_list or "/" in query_text or "\\" in query_text:
         try:
-            attachment_list = (
-                attachments_str if isinstance(attachments_str, list) else list(attachments_str)
+            # Parse both query text and --attach flags for file paths
+            file_paths = resolve_file_arguments(
+                [query_text], attach_args=attachment_list if attachment_list else None
             )
-            file_paths = resolve_file_arguments([], attach_args=attachment_list)
             if file_paths:
                 click.echo(f"[INFO] Loading {len(file_paths)} file(s)...")
                 attachments = load_attachments(file_paths)
