@@ -340,19 +340,24 @@ def query(
                 [query_text], attach_args=attachment_list if attachment_list else None
             )
             if file_paths:
-                click.echo(f"[INFO] Loading {len(file_paths)} file(s)...")
+                logger.debug(f"Resolving attachments: found {len(file_paths)} file(s)")
                 file_attachments = load_attachments(file_paths)
-                logger.info(f"Loaded {len(file_attachments)} attachment(s)")
-                click.echo(f"[OK] Loaded {len(file_attachments)} attachment(s)")
+                logger.debug(f"Attachment loading complete: {len(file_attachments)} file(s) loaded")
+                for attachment in file_attachments:
+                    logger.debug(
+                        f"  - {attachment.filename} ({attachment.content_type}, "
+                        f"{len(attachment.data)} bytes base64)"
+                    )
 
                 # Upload attachments to S3 and get URLs
                 if file_attachments:
-                    click.echo("[INFO] Uploading files to S3...")
+                    logger.debug("Starting S3 upload for attachments")
                     uploader = AttachmentUploader(token=token)
                     try:
                         attachment_urls = asyncio.run(uploader.upload_files(file_attachments))
-                        logger.info(f"Uploaded {len(attachment_urls)} file(s)")
-                        click.echo(f"[OK] Uploaded {len(attachment_urls)} file(s)")
+                        logger.debug(f"S3 upload complete: {len(attachment_urls)} file(s) uploaded")
+                        for i, url in enumerate(attachment_urls, 1):
+                            logger.debug(f"  [{i}] {url}")
                     except Exception as e:
                         click.echo(f"[ERROR] Failed to upload attachments: {e}", err=True)
                         logger.error(f"Attachment upload failed: {e}")

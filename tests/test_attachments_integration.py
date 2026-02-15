@@ -79,8 +79,6 @@ class TestAttachmentsIntegration:
 
                         assert result.exit_code == 0
                         assert "Test answer" in result.output
-                        assert "Loading 1 file(s)" in result.output
-                        assert "Loaded 1 attachment(s)" in result.output
 
                         # Verify API was called with attachment S3 URLs
                         call_args = mock_api.get_complete_answer.call_args
@@ -147,8 +145,6 @@ class TestAttachmentsIntegration:
 
                         assert result.exit_code == 0
                         assert "Comparison result" in result.output
-                        assert "Loading 2 file(s)" in result.output
-                        assert "Loaded 2 attachment(s)" in result.output
 
                         # Verify API received both S3 URL attachments
                         call_args = mock_api.get_complete_answer.call_args
@@ -213,8 +209,6 @@ class TestAttachmentsIntegration:
                         )
 
                         assert result.exit_code == 0
-                        assert "Loading 2 file(s)" in result.output
-                        assert "Loaded 2 attachment(s)" in result.output
 
                         # Verify both S3 URLs received
                         call_args = mock_api.get_complete_answer.call_args
@@ -297,8 +291,6 @@ class TestAttachmentsIntegration:
                         )
 
                         assert result.exit_code == 0
-                        assert "Loading 3 file(s)" in result.output
-                        assert "Loaded 3 attachment(s)" in result.output
 
                         # Verify all files from directory are included
                         call_args = mock_api.get_complete_answer.call_args

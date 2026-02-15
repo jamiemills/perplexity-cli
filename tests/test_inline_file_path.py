@@ -75,8 +75,6 @@ Status: Complete""",
                         assert (
                             result.exit_code == 0
                         ), f"Exit code: {result.exit_code}, Output: {result.output}"
-                        assert "Loading 1 file(s)" in result.output
-                        assert "Loaded 1 attachment(s)" in result.output
 
                         # Verify file was attached as S3 URL
                         call_args = mock_api.get_complete_answer.call_args
