@@ -1,11 +1,12 @@
 """Tests for Pydantic models validation and serialization."""
 
+import base64
 from datetime import datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
 
-from perplexity_cli.api.models import QueryParams
+from perplexity_cli.api.models import FileAttachment, QueryParams
 from perplexity_cli.auth.models import CookieData, TokenFormat, TokenMetadata
 from perplexity_cli.threads.models import CacheContent, CacheFormat, CacheMetadata
 from perplexity_cli.utils.rate_limiter_models import (
@@ -302,6 +303,120 @@ class TestRateLimiterStats:
                 total_requests=-1,
                 total_wait_time=0.0,
             )
+
+
+class TestFileAttachment:
+    """Test FileAttachment model."""
+
+    def test_file_attachment_creation_valid(self):
+        """Test FileAttachment creation with valid data."""
+        encoded_data = base64.b64encode(b"test content").decode("ascii")
+        attachment = FileAttachment(
+            filename="test.txt",
+            content_type="text/plain",
+            data=encoded_data,
+        )
+        assert attachment.filename == "test.txt"
+        assert attachment.content_type == "text/plain"
+        assert attachment.data == encoded_data
+
+    def test_file_attachment_empty_filename_rejected(self):
+        """Test that empty filename is rejected."""
+        encoded_data = base64.b64encode(b"test").decode("ascii")
+        with pytest.raises(ValidationError) as exc_info:
+            FileAttachment(
+                filename="",
+                content_type="text/plain",
+                data=encoded_data,
+            )
+        assert "non-empty" in str(exc_info.value).lower()
+
+    def test_file_attachment_long_filename_rejected(self):
+        """Test that filename exceeding 255 characters is rejected."""
+        encoded_data = base64.b64encode(b"test").decode("ascii")
+        long_name = "a" * 256 + ".txt"
+        with pytest.raises(ValidationError):
+            FileAttachment(
+                filename=long_name,
+                content_type="text/plain",
+                data=encoded_data,
+            )
+
+    def test_file_attachment_empty_content_type_rejected(self):
+        """Test that empty content_type is rejected."""
+        encoded_data = base64.b64encode(b"test").decode("ascii")
+        with pytest.raises(ValidationError):
+            FileAttachment(
+                filename="test.txt",
+                content_type="",
+                data=encoded_data,
+            )
+
+    def test_file_attachment_invalid_base64_rejected(self):
+        """Test that invalid base64 data is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            FileAttachment(
+                filename="test.txt",
+                content_type="text/plain",
+                data="not-valid-base64!!!",
+            )
+        assert "base64" in str(exc_info.value).lower()
+
+    def test_file_attachment_serialization(self):
+        """Test FileAttachment serialization to dict."""
+        encoded_data = base64.b64encode(b"test content").decode("ascii")
+        attachment = FileAttachment(
+            filename="test.txt",
+            content_type="text/plain",
+            data=encoded_data,
+        )
+        data_dict = attachment.model_dump()
+        assert data_dict["filename"] == "test.txt"
+        assert data_dict["content_type"] == "text/plain"
+        assert data_dict["data"] == encoded_data
+
+    def test_file_attachment_in_query_params(self):
+        """Test FileAttachment integration with QueryParams."""
+        encoded_data = base64.b64encode(b"test content").decode("ascii")
+        attachment = FileAttachment(
+            filename="test.txt",
+            content_type="text/plain",
+            data=encoded_data,
+        )
+        params = QueryParams(attachments=[attachment])
+        assert len(params.attachments) == 1
+        assert params.attachments[0].filename == "test.txt"
+
+    def test_file_attachment_multiple_in_query_params(self):
+        """Test multiple FileAttachments in QueryParams."""
+        attachment1 = FileAttachment(
+            filename="file1.txt",
+            content_type="text/plain",
+            data=base64.b64encode(b"content1").decode("ascii"),
+        )
+        attachment2 = FileAttachment(
+            filename="file2.txt",
+            content_type="text/plain",
+            data=base64.b64encode(b"content2").decode("ascii"),
+        )
+        params = QueryParams(attachments=[attachment1, attachment2])
+        assert len(params.attachments) == 2
+        assert params.attachments[0].filename == "file1.txt"
+        assert params.attachments[1].filename == "file2.txt"
+
+    def test_file_attachment_serialization_in_request_dict(self):
+        """Test that attachments are properly serialized in request dict."""
+        encoded_data = base64.b64encode(b"test").decode("ascii")
+        attachment = FileAttachment(
+            filename="test.txt",
+            content_type="text/plain",
+            data=encoded_data,
+        )
+        params = QueryParams(attachments=[attachment])
+        request_dict = params.to_dict()
+        assert "attachments" in request_dict
+        assert len(request_dict["attachments"]) == 1
+        assert request_dict["attachments"][0]["filename"] == "test.txt"
 
 
 class TestQueryParamsSearchMode:

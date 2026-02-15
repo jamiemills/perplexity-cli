@@ -212,6 +212,13 @@ def auth(ctx: click.Context, port: int) -> None:
     default=False,
     help="Stream response in real-time. Use --stream for incremental output (experimental).",
 )
+@click.option(
+    "--attach",
+    "-a",
+    "attachments_str",
+    multiple=True,
+    help="File(s) to attach: comma-separated paths or repeated use. Supports directories (recursive). Examples: --attach file.txt or --attach 'file1.txt,file2.txt' or --attach ./docs",
+)
 @click.pass_context
 def query(
     ctx: click.Context,
@@ -219,6 +226,7 @@ def query(
     output_format: str,
     strip_references: bool,
     stream: bool,
+    attachments_str: tuple[str, ...],
 ) -> None:
     """Submit a query to Perplexity.ai and get an answer.
 
@@ -236,6 +244,12 @@ def query(
 
     Use --stream for real-time streaming of the response as it arrives.
 
+    Use --attach to include files with your query. Supports multiple methods:
+        --attach file.txt           - Single file
+        --attach file1.txt,file2.txt - Comma-separated files
+        --attach ./directory        - All files in directory (recursive)
+        --attach -a file1.txt -a file2.txt - Repeated flags
+
     Examples:
         perplexity-cli query "What is Python?"
         perplexity-cli query "What is the capital of France?" > answer.txt
@@ -246,6 +260,9 @@ def query(
         perplexity-cli query --strip-references "What is Python?"
         perplexity-cli query -f plain --strip-references "What is Python?"
         perplexity-cli query --stream "What is Python?"
+        perplexity-cli query --attach README.md "What is this project?"
+        perplexity-cli query --attach config.json,data.txt "Analyse these files"
+        perplexity-cli query --attach ./docs "Summarise all documentation"
 
     JSON format tip: Use jq -r to display newlines properly:
         perplexity-cli query --format json "Question" | jq -r '.answer'
@@ -257,6 +274,10 @@ def query(
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.auth.utils import load_or_prompt_token
     from perplexity_cli.formatting import get_formatter, list_formatters
+    from perplexity_cli.utils.file_handler import (
+        load_attachments,
+        resolve_file_arguments,
+    )
     from perplexity_cli.utils.http_errors import handle_http_error, handle_network_error
     from perplexity_cli.utils.logging import get_logger
     from perplexity_cli.utils.style_manager import StyleManager
@@ -304,6 +325,24 @@ def query(
     tm = TokenManager()
     token, cookies = load_or_prompt_token(tm, logger, command_context="query")
 
+    # Load file attachments if provided
+    attachments = []
+    if attachments_str:
+        try:
+            attachment_list = (
+                attachments_str if isinstance(attachments_str, list) else list(attachments_str)
+            )
+            file_paths = resolve_file_arguments([], attach_args=attachment_list)
+            if file_paths:
+                click.echo(f"[INFO] Loading {len(file_paths)} file(s)...")
+                attachments = load_attachments(file_paths)
+                logger.info(f"Loaded {len(attachments)} attachment(s)")
+                click.echo(f"[OK] Loaded {len(attachments)} attachment(s)")
+        except (FileNotFoundError, ValueError) as e:
+            click.echo(f"[ERROR] Failed to load attachments: {e}", err=True)
+            logger.error(f"Attachment loading failed: {e}")
+            sys.exit(1)
+
     try:
         # Determine output format
         output_format = output_format or "rich"
@@ -333,10 +372,17 @@ def query(
             # Handle streaming vs complete answer
             if stream:
                 logger.info("Streaming query response")
-                stream_query_response(api, final_query, formatter, output_format, strip_references)
+                stream_query_response(
+                    api,
+                    final_query,
+                    formatter,
+                    output_format,
+                    strip_references,
+                    attachments=attachments,
+                )
             else:
                 logger.info("Fetching complete answer")
-                answer_obj = api.get_complete_answer(final_query)
+                answer_obj = api.get_complete_answer(final_query, attachments=attachments)
                 logger.debug(
                     f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references"
                 )

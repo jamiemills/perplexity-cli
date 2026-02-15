@@ -1,10 +1,114 @@
 """Data models for Perplexity API requests and responses."""
 
+import base64
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from perplexity_cli.utils.version import get_api_version
+
+
+class FileAttachment(BaseModel):
+    """File attachment for API requests.
+
+    Represents a file attachment with base64-encoded content to be sent
+    to the Perplexity API.
+    """
+
+    filename: str = Field(
+        ...,
+        description="Base filename (no path), must be non-empty and ≤255 characters",
+    )
+    content_type: str = Field(
+        ...,
+        description="MIME type of the file (e.g., 'text/plain', 'application/json')",
+    )
+    data: str = Field(
+        ...,
+        description="Base64-encoded file content",
+    )
+
+    @field_validator("filename")
+    @classmethod
+    def validate_filename(cls, v: str) -> str:
+        """Validate filename is non-empty and within length limit."""
+        if not v:
+            raise ValueError("Filename must be non-empty")
+        if len(v) > 255:
+            raise ValueError("Filename must be ≤255 characters")
+        return v
+
+    @field_validator("content_type")
+    @classmethod
+    def validate_content_type(cls, v: str) -> str:
+        """Validate content_type is non-empty."""
+        if not v:
+            raise ValueError("Content type must be non-empty")
+        return v
+
+    @field_validator("data")
+    @classmethod
+    def validate_data(cls, v: str) -> str:
+        """Validate data is valid base64."""
+        try:
+            base64.b64decode(v, validate=True)
+        except Exception as e:
+            raise ValueError(f"Invalid base64 data: {e}") from e
+        return v
+
+    @classmethod
+    def from_file(cls, path: Path) -> "FileAttachment":
+        """Create attachment from file path.
+
+        Args:
+            path: Path to the file to attach.
+
+        Returns:
+            FileAttachment instance with file content base64-encoded.
+
+        Raises:
+            FileNotFoundError: If file does not exist.
+            ValueError: If path is not a file.
+        """
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {path}")
+        if not path.is_file():
+            raise ValueError(f"Not a file: {path}")
+
+        # Read file and base64 encode
+        with open(path, "rb") as f:
+            content = f.read()
+        encoded = base64.b64encode(content).decode("ascii")
+
+        # Detect content type from extension
+        extension_to_type = {
+            ".txt": "text/plain",
+            ".md": "text/markdown",
+            ".json": "application/json",
+            ".py": "text/plain",
+            ".js": "text/plain",
+            ".ts": "text/plain",
+            ".tsx": "text/plain",
+            ".jsx": "text/plain",
+            ".yaml": "text/plain",
+            ".yml": "text/plain",
+            ".toml": "text/plain",
+            ".csv": "text/csv",
+            ".html": "text/html",
+            ".xml": "text/xml",
+            ".pdf": "application/pdf",
+            ".doc": "application/msword",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".rtf": "application/rtf",
+        }
+        content_type = extension_to_type.get(path.suffix.lower(), "application/octet-stream")
+
+        return cls(
+            filename=path.name,
+            content_type=content_type,
+            data=encoded,
+        )
 
 
 class QueryParams(BaseModel):
@@ -20,7 +124,10 @@ class QueryParams(BaseModel):
     frontend_context_uuid: str = Field(default="")
     version: str = Field(default_factory=get_api_version)
     sources: list[str] = Field(default_factory=lambda: ["web"])
-    attachments: list[Any] = Field(default_factory=list)
+    attachments: list[FileAttachment] = Field(
+        default_factory=list,
+        description="List of file attachments for the query",
+    )
     search_recency_filter: str | None = Field(default=None)
     model_preference: str = Field(default="pplx_pro")
     is_related_query: bool = Field(default=False)
