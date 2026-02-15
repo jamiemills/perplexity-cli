@@ -3,12 +3,14 @@
 import json
 from unittest.mock import Mock
 
-import httpx
 import pytest
 from curl_cffi.requests import Session
 
 from perplexity_cli.api.client import SSEClient
 from perplexity_cli.api.models import Block, QueryParams, QueryRequest, SSEMessage, WebResult
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+)
 
 
 class TestQueryParams:
@@ -281,7 +283,7 @@ class TestSSEClient:
         assert "cookies" in call_args[1]
 
     def test_stream_post_401_error(self):
-        """Test 401 error raises httpx.HTTPStatusError."""
+        """Test 401 error raises PerplexityHTTPStatusError."""
         client = SSEClient(token="invalid-token")
 
         # Mock a 401 response from curl_cffi
@@ -302,7 +304,7 @@ class TestSSEClient:
 
         client._client = mock_session
 
-        with pytest.raises(httpx.HTTPStatusError, match="Authentication failed"):
+        with pytest.raises(PerplexityHTTPStatusError, match="Authentication failed"):
             list(client.stream_post("https://example.com/api", {}))
 
     def test_stream_post_403_error_retries(self):
@@ -327,14 +329,14 @@ class TestSSEClient:
 
         client._client = mock_session
 
-        with pytest.raises(httpx.HTTPStatusError, match="Access forbidden"):
+        with pytest.raises(PerplexityHTTPStatusError, match="Access forbidden"):
             list(client.stream_post("https://example.com/api", {}))
 
         # Should have retried (2 calls total for max_retries=2)
         assert mock_session.stream.call_count == 2
 
     def test_raise_http_status_error(self):
-        """Test _raise_http_status_error constructs valid httpx exceptions."""
+        """Test _raise_http_status_error constructs valid custom exceptions."""
         mock_response = Mock()
         mock_response.status_code = 500
         mock_response.reason = "Internal Server Error"
@@ -342,7 +344,7 @@ class TestSSEClient:
         mock_response.headers = {"content-type": "text/plain"}
         mock_response.content = b"Server error"
 
-        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        with pytest.raises(PerplexityHTTPStatusError) as exc_info:
             SSEClient._raise_http_status_error(mock_response)
 
         error = exc_info.value

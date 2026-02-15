@@ -1,7 +1,11 @@
 """Tests for retry utilities."""
 
-import httpx
-
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+    PerplexityRequestError,
+    SimpleRequest,
+    SimpleResponse,
+)
 from perplexity_cli.utils.retry import is_retryable_error, sleep_with_backoff
 
 
@@ -10,37 +14,42 @@ class TestRetryUtilities:
 
     def test_is_retryable_error_network_error(self):
         """Test that network errors are retryable."""
-        error = httpx.RequestError("Connection failed")
+        error = PerplexityRequestError("Connection failed")
         assert is_retryable_error(error) is True
 
     def test_is_retryable_error_5xx(self):
         """Test that 5xx errors are retryable."""
-        response = httpx.Response(500, request=httpx.Request("GET", "http://example.com"))
-        error = httpx.HTTPStatusError("Server error", request=response.request, response=response)
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=500, request=req)
+        error = PerplexityHTTPStatusError("Server error", request=req, response=resp)
         assert is_retryable_error(error) is True
 
     def test_is_retryable_error_429(self):
         """Test that 429 errors are retryable."""
-        response = httpx.Response(429, request=httpx.Request("GET", "http://example.com"))
-        error = httpx.HTTPStatusError("Rate limit", request=response.request, response=response)
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=429, request=req)
+        error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
         assert is_retryable_error(error) is True
 
     def test_is_retryable_error_401(self):
         """Test that 401 errors are not retryable."""
-        response = httpx.Response(401, request=httpx.Request("GET", "http://example.com"))
-        error = httpx.HTTPStatusError("Unauthorized", request=response.request, response=response)
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=401, request=req)
+        error = PerplexityHTTPStatusError("Unauthorized", request=req, response=resp)
         assert is_retryable_error(error) is False
 
     def test_is_retryable_error_403(self):
         """Test that 403 errors are not retryable."""
-        response = httpx.Response(403, request=httpx.Request("GET", "http://example.com"))
-        error = httpx.HTTPStatusError("Forbidden", request=response.request, response=response)
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=403, request=req)
+        error = PerplexityHTTPStatusError("Forbidden", request=req, response=resp)
         assert is_retryable_error(error) is False
 
     def test_is_retryable_error_404(self):
         """Test that 404 errors are not retryable."""
-        response = httpx.Response(404, request=httpx.Request("GET", "http://example.com"))
-        error = httpx.HTTPStatusError("Not found", request=response.request, response=response)
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=404, request=req)
+        error = PerplexityHTTPStatusError("Not found", request=req, response=resp)
         assert is_retryable_error(error) is False
 
     def test_sleep_with_backoff(self):

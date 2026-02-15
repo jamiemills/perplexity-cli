@@ -4,12 +4,16 @@ import time
 from collections.abc import Callable
 from typing import TypeVar
 
-import httpx
 from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
+)
+
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+    PerplexityRequestError,
 )
 
 T = TypeVar("T")
@@ -35,7 +39,7 @@ def retry_with_backoff(
     return retry(
         stop=stop_after_attempt(max_attempts),
         wait=wait_exponential(multiplier=initial_wait, max=max_wait, exp_base=exponential_base),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+        retry=retry_if_exception_type((PerplexityRequestError, PerplexityHTTPStatusError)),
         reraise=True,
     )
 
@@ -58,8 +62,8 @@ def retry_http_request[T](
         Result of the function call.
 
     Raises:
-        httpx.RequestError: If all retry attempts fail.
-        httpx.HTTPStatusError: If HTTP error persists after retries.
+        PerplexityRequestError: If all retry attempts fail.
+        PerplexityHTTPStatusError: If HTTP error persists after retries.
     """
     retry_decorator = retry_with_backoff(
         max_attempts=max_attempts,
@@ -84,11 +88,11 @@ def is_retryable_error(exception: Exception) -> bool:
         True if exception is retryable, False otherwise.
     """
     # Network errors are retryable
-    if isinstance(exception, httpx.RequestError):
+    if isinstance(exception, PerplexityRequestError):
         return True
 
     # HTTP 5xx errors are retryable
-    if isinstance(exception, httpx.HTTPStatusError):
+    if isinstance(exception, PerplexityHTTPStatusError):
         if exception.response.status_code >= 500:
             return True
         # Rate limiting (429) is retryable

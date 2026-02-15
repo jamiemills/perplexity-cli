@@ -7,11 +7,11 @@ Perplexity API in real-time, extracted from cli.py for independent testability.
 import sys
 
 import click
-import httpx
 
 from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting.base import Formatter
+from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, PerplexityRequestError
 from perplexity_cli.utils.http_errors import handle_http_error, handle_network_error
 from perplexity_cli.utils.logging import get_logger
 
@@ -79,11 +79,11 @@ def stream_query_response(
                 if formatted_refs:
                     click.echo(formatted_refs)
 
-    except httpx.HTTPStatusError as e:
+    except PerplexityHTTPStatusError as e:
         click.echo()  # Newline after streamed content
         handle_http_error(e, logger, debug_mode=False, context="during streaming")
 
-    except httpx.RequestError as e:
+    except PerplexityRequestError as e:
         click.echo()  # Newline after streamed content
         handle_network_error(e, logger, debug_mode=False, context="during streaming")
 
