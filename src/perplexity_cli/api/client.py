@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from curl_cffi.requests import Session
 from curl_cffi.requests.exceptions import RequestException
 
+from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
@@ -155,7 +156,7 @@ class SSEClient:
                     url,
                     headers=headers,
                     json=json_data,
-                    cookies=self.cookies or {},
+                    cookies=to_curl_cffi_cookies(self.cookies),
                     timeout=effective_timeout,
                 ) as response:
                     if self.logger.isEnabledFor(logging.DEBUG):

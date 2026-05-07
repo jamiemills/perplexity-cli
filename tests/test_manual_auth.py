@@ -58,12 +58,12 @@ def test_2_4_1_actual_perplexity_login() -> None:
 
     print("\nAttempting to connect to Chrome on port 9222...")
     base_url = get_perplexity_base_url()
-    token = authenticate_sync(url=base_url, port=9222)
+    token, cookies = authenticate_sync(url=base_url, port=9222)
 
     assert token, "No token extracted"
 
     print(f"\nToken extracted (length: {len(token)} characters)")
-    print(f"  Token preview: {token[:50]}...")
+    print(f"Cookies extracted: {len(cookies)}")
 
 
 def test_2_4_2_token_persistence() -> None:

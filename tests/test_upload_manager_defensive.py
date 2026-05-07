@@ -472,7 +472,7 @@ class TestUploadManagerCookies:
 
             # Verify cookies were passed in the request
             call_args = mock_session.post.call_args
-            assert call_args.kwargs["cookies"] == cookies
+            assert dict(call_args.kwargs["cookies"]) == cookies
 
     @pytest.mark.asyncio
     async def test_csrf_token_in_headers(self):
