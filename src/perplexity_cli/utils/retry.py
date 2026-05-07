@@ -24,7 +24,7 @@ def retry_with_backoff(
     initial_wait: float = 1.0,
     max_wait: float = 10.0,
     exponential_base: float = 2.0,
-) -> Callable[[Callable[[], T]], T]:
+) -> Callable[[Callable[[], T]], Callable[[], T]]:
     """Create a retry decorator with exponential backoff.
 
     Args:

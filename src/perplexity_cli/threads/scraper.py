@@ -144,7 +144,7 @@ class ThreadScraper:
         self.logger.info(f"Fetched {len(fetched_threads)} threads from API")
 
         # Merge with cached threads
-        if threads:
+        if threads and self.cache_manager:
             threads = self.cache_manager.merge_threads(threads, fetched_threads)
             self.logger.info(f"Merged to {len(threads)} unique threads")
         else:
@@ -154,7 +154,7 @@ class ThreadScraper:
         if from_date or to_date:
             threads = self._filter_by_date_range(threads, from_date, to_date)
             self.logger.info(
-                f"Filtered to {len(threads)} threads " f"(from_date={from_date}, to_date={to_date})"
+                f"Filtered to {len(threads)} threads (from_date={from_date}, to_date={to_date})"
             )
 
         # Update cache with filtered threads

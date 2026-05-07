@@ -77,7 +77,8 @@ class TokenManager:
 
             # Audit log
             saved_cookies = "cookies" in data
-            cookie_msg = f" and {len(cookies)} cookies" if saved_cookies else ""
+            cookie_count = len(cookies) if cookies else 0
+            cookie_msg = f" and {cookie_count} cookies" if saved_cookies else ""
             self.logger.info(f"Token{cookie_msg} saved to {self.token_path}")
 
         except OSError as e:

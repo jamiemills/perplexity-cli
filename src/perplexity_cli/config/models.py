@@ -1,20 +1,14 @@
 """Pydantic models for configuration management."""
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class URLConfig(BaseModel):
     """URL configuration for Perplexity API."""
 
-    model_config = ConfigDict(populate_by_name=True)
-
-    base_url: str = Field(default="https://www.perplexity.ai", alias="perplexity_base_url")
-    query_endpoint: str = Field(
-        default="/api/pplx.generateStream", alias="perplexity_query_endpoint"
-    )
-    thread_list_endpoint: str = Field(
-        default="/rest/thread/list_ask_threads", alias="perplexity_thread_list_endpoint"
-    )
+    base_url: str = Field(default="https://www.perplexity.ai")
+    query_endpoint: str = Field(default="/api/pplx.generateStream")
+    thread_list_endpoint: str = Field(default="/rest/thread/list_ask_threads")
 
     @field_validator("base_url", "query_endpoint", "thread_list_endpoint")
     @classmethod

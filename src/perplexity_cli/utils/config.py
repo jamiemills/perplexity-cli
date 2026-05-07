@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from functools import lru_cache
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -76,9 +77,9 @@ def _get_default_urls() -> dict:
     Raises:
         RuntimeError: If default configuration cannot be loaded.
     """
-    package_config = Path(__file__).parent.parent / "config" / "urls.json"
     try:
-        with open(package_config, encoding="utf-8") as f:
+        package_config = resources.files("perplexity_cli.config").joinpath("urls.json")
+        with package_config.open("r", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         raise RuntimeError(f"Failed to load default URLs configuration: {e}") from e
