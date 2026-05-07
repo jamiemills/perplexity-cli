@@ -556,6 +556,7 @@ cd perplexity-cli
 uv venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
+uv run lefthook install
 ```
 
 ### Testing
@@ -567,12 +568,15 @@ pytest -m integration           # integration tests only
 pytest -m security              # security tests only
 ```
 
+Install Git hooks with `uv run lefthook install` and run them on demand with
+`uv run lefthook run pre-commit`.
+
 ### Linting and formatting
 
 ```bash
 ruff format src/ tests/         # auto-format
 ruff check src/ tests/          # lint
-mypy src/                       # type check
+ty check src/                   # type check
 ```
 
 ## Security

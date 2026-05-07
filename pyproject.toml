@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pxcli"
-version = "0.6.0"
+version = "0.6.1"
 description = "CLI for Perplexity.ai with persistent authentication, encrypted tokens, streaming responses, multiple output formats, source references, thread export with date filtering, configurable URLs, logging, and automatic retry logic"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -46,8 +46,8 @@ dev = [
     "pytest-cov>=7.0",
     "pytest-asyncio>=1.2.0",
     "ruff>=0.1",
-    "mypy>=1.0",
-    "pre-commit>=3.0",
+    "ty>=0.0.24",
+    "lefthook>=2.1.6",
 ]
 
 [project.urls]
@@ -67,7 +67,7 @@ package-dir = {"" = "src"}
 find = {where = ["src"]}
 
 [tool.setuptools.package-data]
-perplexity_cli = ["resources/skill.md"]
+perplexity_cli = ["resources/skill.md", "config/urls.json"]
 
 [tool.ruff]
 target-version = "py312"

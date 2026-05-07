@@ -38,7 +38,7 @@ class SSEClient:
 
     def __init__(
         self,
-        token: str,
+        token: str | None,
         cookies: dict[str, str] | None = None,
         timeout: int = 60,
         max_retries: int = 3,
@@ -46,7 +46,7 @@ class SSEClient:
         """Initialise SSE client.
 
         Args:
-            token: Authentication JWT token.
+            token: Optional authentication JWT token.
             cookies: Optional browser cookies for Cloudflare bypass.
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for initial connection.
@@ -69,12 +69,14 @@ class SSEClient:
             Dictionary of HTTP headers including authentication.
         """
         headers = {
-            "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
             "Origin": "https://www.perplexity.ai",
             "Referer": "https://www.perplexity.ai/",
         }
+
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
 
         # Add CSRF token from cookies if available
         if self.cookies and "csrftoken" in self.cookies:
@@ -131,13 +133,13 @@ class SSEClient:
                 )
 
             has_auth = bool(self.token)
-            has_cookies = bool(self.cookies)
+            cookies = self.cookies
             self.logger.debug(f"Authentication: Bearer token present={has_auth}")
-            if has_cookies:
-                cookie_names = list(self.cookies.keys())
+            if cookies:
+                cookie_names = list(cookies.keys())
                 cf_cookies = [c for c in cookie_names if c.startswith("cf") or c.startswith("__cf")]
                 self.logger.debug(
-                    f"Cookies: {len(self.cookies)} total, {len(cf_cookies)} Cloudflare-related"
+                    f"Cookies: {len(cookies)} total, {len(cf_cookies)} Cloudflare-related"
                 )
                 self.logger.debug(f"Cloudflare cookies present: {cf_cookies}")
             else:

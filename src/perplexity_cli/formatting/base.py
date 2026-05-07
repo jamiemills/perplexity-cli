@@ -175,6 +175,17 @@ class Formatter(ABC):
 
         return "\n".join(output_parts)
 
+    def render_complete(self, answer: Answer, strip_references: bool = False) -> None:
+        """Render complete output directly.
+
+        Formatters that support direct terminal rendering can override this.
+
+        Args:
+            answer: Answer object containing text and references.
+            strip_references: If True, exclude references section from output.
+        """
+        raise NotImplementedError("This formatter does not support direct rendering")
+
     def should_use_colors(self) -> bool:
         """Check if colours should be used based on TTY.
 

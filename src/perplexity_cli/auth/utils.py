@@ -12,7 +12,7 @@ def load_or_prompt_token(
     tm: TokenManager,
     logger: logging.Logger,
     command_context: str = "operation",
-) -> tuple[str, dict[str, str]]:
+) -> tuple[str, dict[str, str] | None]:
     """Load authentication token or prompt user to authenticate.
 
     Attempts to load an existing token from disk. If not found or invalid,
@@ -26,7 +26,7 @@ def load_or_prompt_token(
     Returns:
         Tuple of (token, cookies) where:
             - token: The authentication token string
-            - cookies: Dictionary of browser cookies {name: value}
+            - cookies: Dictionary of browser cookies {name: value}, if available
 
     Exits with status 1 if token cannot be loaded.
     """

@@ -17,12 +17,12 @@ class PerplexityAPI:
     """High-level interface to Perplexity API."""
 
     def __init__(
-        self, token: str, cookies: dict[str, str] | None = None, timeout: int = 60
+        self, token: str | None, cookies: dict[str, str] | None = None, timeout: int = 60
     ) -> None:
         """Initialise Perplexity API client.
 
         Args:
-            token: Authentication JWT token.
+            token: Optional authentication JWT token.
             cookies: Optional browser cookies for Cloudflare bypass.
             timeout: Request timeout in seconds.
         """

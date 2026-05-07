@@ -1,0 +1,68 @@
+pre-commit:
+  parallel: true
+  commands:
+    ruff-format:
+      glob: "*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+
+    ruff-check:
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files}
+      stage_fixed: true
+
+    ty-check:
+      glob: "*.py"
+      run: uv run ty check src
+
+    pytest-check:
+      run: uv run pytest tests/ -q --tb=line -x -m "not integration" --ignore=tests/test_manual_auth.py
+
+    trailing-whitespace:
+      run: uvx --from pre-commit-hooks trailing-whitespace-fixer {staged_files}
+      stage_fixed: true
+
+    end-of-file-fixer:
+      run: uvx --from pre-commit-hooks end-of-file-fixer {staged_files}
+      stage_fixed: true
+
+    check-yaml:
+      glob: "*.yml|*.yaml"
+      run: uvx --from pre-commit-hooks check-yaml {staged_files}
+
+    check-json:
+      glob: "*.json"
+      run: uvx --from pre-commit-hooks check-json {staged_files}
+
+    check-toml:
+      glob: "*.toml"
+      run: uvx --from pre-commit-hooks check-toml {staged_files}
+
+    check-added-large-files:
+      run: uvx --from pre-commit-hooks check-added-large-files --maxkb=1000 {staged_files}
+
+    check-merge-conflict:
+      run: uvx --from pre-commit-hooks check-merge-conflict {staged_files}
+
+    check-case-conflict:
+      run: uvx --from pre-commit-hooks check-case-conflict {staged_files}
+
+    check-ast:
+      glob: "*.py"
+      run: uvx --from pre-commit-hooks check-ast {staged_files}
+
+    check-docstring-first:
+      glob: "*.py"
+      run: uvx --from pre-commit-hooks check-docstring-first {staged_files}
+
+    debug-statements:
+      glob: "*.py"
+      run: uvx --from pre-commit-hooks debug-statement-hook {staged_files}
+
+    name-tests-test:
+      glob: "tests/**/*.py"
+      run: uvx --from pre-commit-hooks name-tests-test --pytest-test-first {staged_files}
+
+    bandit:
+      glob: "*.py"
+      run: uvx --from bandit bandit -c pyproject.toml {staged_files}
