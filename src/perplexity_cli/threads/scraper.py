@@ -17,6 +17,7 @@ from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.threads.utils import convert_cache_dicts_to_thread_records
 from perplexity_cli.utils.config import get_thread_list_url
+from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     SimpleRequest,
@@ -221,7 +222,7 @@ class ThreadScraper:
                     response = await client.post(
                         f"{self.api_url}?version={self.api_version}&source=default",
                         headers=headers,
-                        cookies=cookies,
+                        cookies=to_curl_cffi_cookies(cookies),
                         json=request_body,
                     )
 

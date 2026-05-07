@@ -10,6 +10,7 @@ from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.exceptions import RequestException
 
 from perplexity_cli.api.models import FileAttachment
+from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     SimpleRequest,
@@ -144,7 +145,7 @@ class AttachmentUploader:
                     f"{self.base_url}{self.UPLOAD_URL_ENDPOINT}",
                     json=request_body,
                     headers=headers,
-                    cookies=self.cookies or {},
+                    cookies=to_curl_cffi_cookies(self.cookies),
                 )
             except RequestException as e:
                 raise RuntimeError(f"Failed to request upload URLs: {e}") from e

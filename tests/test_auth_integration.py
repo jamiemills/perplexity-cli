@@ -74,6 +74,7 @@ class TestAuthenticationFlow:
             token = authenticate_sync(port=9222)
             assert token == "mocked_token"
             mock_run.assert_called_once()
+            mock_run.call_args.args[0].close()
 
 
 @pytest.mark.integration
