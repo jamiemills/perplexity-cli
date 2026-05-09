@@ -747,8 +747,9 @@ uv run lefthook install
 ### Testing
 
 ```bash
-uv run pytest                   # safe default test suite
+uv run pytest                   # safe default test suite (1276 tests)
 uv run pytest -m security       # security tests only
+uv run pytest -m fuzz           # fuzz tests (17 atheris harnesses)
 uv run pytest -m "integration and real_api and real_user_config"
 uv run pytest -m manual -s      # manual auth tests
 ```
@@ -756,13 +757,178 @@ uv run pytest -m manual -s      # manual auth tests
 Install Git hooks with `uv run lefthook install` and run them on demand with
 `uv run lefthook run pre-commit`.
 
-### Linting and formatting
+### Code analysis
+
+Every change passes through three layers of automated analysis: git hooks on commit and push, real-time checks during AI-assisted editing, and manual tool invocations. The tools and their roles are summarised below, followed by details on each layer.
+
+#### Tools
+
+| Tool | Purpose | Scope |
+|---|---|---|
+| **ruff** | Linting (PEP 8, imports, docstrings, debug statements) and auto-formatting | All Python files |
+| **ty** | Fast type checking (Astral, Rust-based) | `src/` |
+| **pyright** | Full type checking (Microsoft) | `src/` |
+| **bandit** | Static security analysis (eval, shell injection, hardcoded secrets) | `src/` |
+| **radon** | Cyclomatic complexity (CC) and maintainability index (MI) | `src/` |
+| **vulture** | Dead code detection | `src/` + `vulture_whitelist.py` |
+| **semgrep** | Clean Code rules (15 custom + community rulesets) | All Python files |
+| **safety** | Supply-chain vulnerability scanning (known CVEs in dependencies) | `pyproject.toml` |
+| **atheris** | Coverage-guided fuzz testing (17 harnesses) | Parser and validation code |
+| **pytest** | Unit, integration, and security tests (1276 tests, 94% coverage) | `tests/` |
+
+Complexity thresholds: every function must be A-grade (CC <= 5), every module must be A-grade (MI). These are enforced by radon in both the pre-commit hook and the real-time plugin.
+
+#### Layer 1: Git hooks (lefthook)
+
+Git hooks are managed by [lefthook](https://github.com/evilmartians/lefthook). Install them once after cloning:
 
 ```bash
-ruff format src/ tests/         # auto-format
-ruff check src/ tests/          # lint
-ty check src/                   # type check
+uv run lefthook install
 ```
+
+**Pre-commit** runs a three-stage pipeline. Each stage must pass before the next begins:
+
+```
+Stage 1 — Lint and validate (~4s, parallel)
+  pyright, ty, bandit, vulture, radon cc, radon mi, semgrep,
+  check-yaml, check-json, check-toml, check-merge-conflict,
+  check-case-conflict, check-added-large-files,
+  check-docstring-first, name-tests-test
+
+Stage 2 — Auto-fix (~0.7s, sequential)
+  ruff format, ruff check --fix,
+  trailing-whitespace-fixer, end-of-file-fixer
+
+Stage 3 — Tests (~21s)
+  pytest (safe default suite, no coverage, fail-fast)
+```
+
+Stage 1 runs all validators in parallel for the fastest possible feedback. If any validator fails (e.g. a bandit security finding or a pyright type error), the commit is rejected immediately without running fixers or tests.
+
+Stage 2 runs auto-fixers sequentially to avoid file races. Modified files are re-staged automatically (`stage_fixed: true`).
+
+Stage 3 runs the full safe test suite without coverage reporting. Coverage is deferred to pre-push.
+
+**Pre-push** runs three expensive checks in parallel:
+
+```
+pytest with coverage (--cov-fail-under=85, per-module 85% floor)
+safety scan (supply-chain vulnerability check)
+fuzz tests (17 atheris harnesses, 5000 iterations each)
+```
+
+Coverage enforcement uses two gates: pytest-cov's global `--cov-fail-under=85` and a custom `scripts/check_module_coverage.py` that verifies every individual module meets the 85% floor. The current project-wide coverage is 94%.
+
+Run hooks manually at any time:
+
+```bash
+uv run lefthook run pre-commit   # run the full pre-commit pipeline
+uv run lefthook run pre-push     # run pre-push checks
+```
+
+#### Layer 2: Real-time plugin (OpenCode)
+
+When developing with [OpenCode](https://opencode.ai), the plugin at `.opencode/plugins/pxcli-quality.ts` provides continuous quality feedback without waiting for a commit.
+
+**System prompt injection.** The plugin injects 20 coding conventions into every conversation via the `experimental.chat.system.transform` hook. These cover complexity limits, docstring requirements, logging style, security rules, naming conventions, and dependency practices. The AI assistant sees these conventions as part of its instructions and applies them when writing or modifying code.
+
+**Per-edit checks (~500ms).** After every Python file write or edit, four tools run in parallel:
+
+```
+ruff    — lint violations (unused imports, style, docstrings)
+radon   — cyclomatic complexity (flags anything above A-grade)
+bandit  — security issues (eval, exec, shell=True, hardcoded secrets)
+ty      — type errors
+```
+
+Findings are appended directly to the tool output, so the AI sees them immediately and can fix issues in the same turn. Test files, conftest, and fuzz harnesses are excluded.
+
+**Dependency security.** When `pyproject.toml` or `requirements.txt` is edited, a `safety scan` runs automatically and reports any known vulnerabilities in the dependency tree.
+
+**Session idle analysis.** When the editing session goes idle, two heavier tools run on all files modified during the session:
+
+```
+semgrep  — 15 custom Clean Code rules + community rulesets
+pyright  — full type checking
+```
+
+These are too slow for per-edit feedback but provide a thorough sweep before the next interactive round.
+
+**Tool availability.** Each tool is checked on first invocation. If a tool is missing from the environment, a warning is logged once and the tool is skipped for the remainder of the session. The plugin never blocks editing if a tool is unavailable.
+
+#### Layer 3: Manual invocation
+
+Run any tool directly for targeted analysis:
+
+```bash
+# Linting and formatting
+uv run ruff check src/ tests/                   # lint
+uv run ruff format src/ tests/                   # auto-format
+
+# Type checking
+uv run ty check src                              # fast type check
+uv run pyright src/                              # full type check
+
+# Security
+uvx --from bandit bandit -c pyproject.toml -r src/ -ll -ii  # static security
+uvx safety scan --target .                       # supply-chain vulnerabilities
+
+# Complexity
+uv run radon cc src/ -s -n B                     # cyclomatic complexity (B+ = violation)
+uv run radon mi src/ -s -n B                     # maintainability index (B+ = violation)
+
+# Dead code
+uv run vulture src/ vulture_whitelist.py --min-confidence 80
+
+# Clean Code rules
+semgrep --config .semgrep.yml --config p/python --config p/comment \
+        --config p/r2c-best-practices --severity ERROR --severity WARNING .
+
+# Fuzz testing
+uv run pytest -m fuzz                            # all 17 harnesses
+
+# Coverage
+uv run pytest --cov --cov-report=term-missing --cov-fail-under=85
+uv run python scripts/check_module_coverage.py --min-coverage 85
+```
+
+#### Semgrep rules
+
+The project includes 15 custom Clean Code rules in `.semgrep.yml`:
+
+- `bare-except` -- no bare `except:` or `except Exception: pass`
+- `raise-from` -- require `raise X from Y` in except blocks
+- `no-eval-exec` -- forbid `eval()` and `exec()`
+- `no-shell-true` -- forbid `subprocess` with `shell=True`
+- `no-hardcoded-secrets` -- detect hardcoded passwords, tokens, API keys
+- `no-random-for-security` -- require `secrets` module for security-sensitive randomness
+- `lazy-logger-formatting` -- require `%s`-style formatting in logger calls
+- `no-print-statements` -- use `logger`, not `print()`
+- `no-wildcard-imports` -- forbid `from x import *`
+- `identity-none-check` -- use `is None` / `is not None`
+- `no-single-letter-vars` -- forbid single-letter variables (except `e`, `f`, `i`, `j`, `k`, `v`, `x`, `y`, `n`)
+- `too-many-parameters` -- flag functions with more than 4 parameters
+- `no-commented-out-code` -- detect commented-out code blocks
+- `type-annotations-required` -- require type annotations on function signatures
+- `no-credential-logging` -- forbid logging tokens, cookies, or credentials
+
+These run alongside the `p/python`, `p/comment`, and `p/r2c-best-practices` community rulesets (254 rules total).
+
+#### Inline suppressions
+
+When a tool finding is a deliberate false positive, suppress it inline with a justification comment:
+
+```python
+# Bandit: B310 is safe here -- URL is hardcoded to localhost
+url = urllib.request.urlopen(f"http://localhost:{port}")  # nosec B310
+
+# Semgrep: function is a Click command; parameters are CLI options
+# nosemgrep: too-many-parameters
+def export_threads(output, from_date, to_date, force_refresh, clear_cache):
+    ...
+```
+
+Global skips are not used. All suppressions are inline with explanatory comments.
 
 ## Security
 
