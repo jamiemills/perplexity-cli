@@ -67,15 +67,16 @@ class HttpRequestContext:
 
 @dataclass(frozen=True, slots=True)
 class QueryInput:
-    """User query text and any file attachment URLs.
+    """User query text, file attachments, and optional model selection.
 
-    Pairs the query string with its resolved attachment URLs so that
-    downstream functions receive one domain object rather than two
-    loosely-related parameters.
+    Pairs the query string with its resolved attachment URLs and an
+    optional model preference so that downstream functions receive one
+    domain object rather than multiple loosely-related parameters.
     """
 
     query: str
     attachment_urls: list[str] = field(default_factory=list)
+    model_preference: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

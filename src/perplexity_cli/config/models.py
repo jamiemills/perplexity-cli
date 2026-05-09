@@ -25,6 +25,12 @@ class URLConfig(BaseModel):
     s3_bucket_url: str = Field(
         default="https://ppl-ai-file-upload.s3.amazonaws.com/",
     )
+    model_config_endpoint: str = Field(
+        default="https://www.perplexity.ai/rest/models/config",
+    )
+    user_settings_endpoint: str = Field(
+        default="https://www.perplexity.ai/rest/user/settings",
+    )
 
     @field_validator(
         "base_url",
@@ -32,6 +38,8 @@ class URLConfig(BaseModel):
         "thread_list_endpoint",
         "upload_url_endpoint",
         "s3_bucket_url",
+        "model_config_endpoint",
+        "user_settings_endpoint",
     )
     @classmethod
     def validate_urls(cls, v: str) -> str:

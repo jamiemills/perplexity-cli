@@ -70,7 +70,11 @@ def test_run_query_command_non_streaming_renders_answer(capsys):
 
     captured = capsys.readouterr()
     assert "Test answer" in captured.out
-    mock_api.get_complete_answer.assert_called_once_with("final query", attachments=[])
+    mock_api.get_complete_answer.assert_called_once_with(
+        "final query",
+        attachments=[],
+        model_preference=None,
+    )
 
 
 def test_run_query_command_streaming_delegates_to_stream_handler():

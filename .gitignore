@@ -6,6 +6,7 @@
 # OpenCode
 .opencode/node_modules/
 .opencode/bun.lock
+.opencode/plans/
 
 # Python cache
 __pycache__/

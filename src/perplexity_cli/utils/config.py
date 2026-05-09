@@ -134,6 +134,8 @@ def _apply_url_env_overrides(perplexity_config: dict) -> None:
         "PERPLEXITY_THREAD_LIST_ENDPOINT": "thread_list_endpoint",
         "PERPLEXITY_UPLOAD_URL_ENDPOINT": "upload_url_endpoint",
         "PERPLEXITY_S3_BUCKET_URL": "s3_bucket_url",
+        "PERPLEXITY_MODEL_CONFIG_ENDPOINT": "model_config_endpoint",
+        "PERPLEXITY_USER_SETTINGS_ENDPOINT": "user_settings_endpoint",
     }
     for env_var, field_name in env_overrides.items():
         if env_var in os.environ:
@@ -260,6 +262,34 @@ def get_s3_bucket_url() -> str:
     """
     url_config = get_urls()
     return url_config.s3_bucket_url
+
+
+def get_model_config_endpoint() -> str:
+    """Get the full URL for the model configuration endpoint.
+
+    Returns:
+        str: The model config endpoint URL (e.g.,
+            https://www.perplexity.ai/rest/models/config).
+
+    Raises:
+        RuntimeError: If configuration is invalid or missing required fields.
+    """
+    url_config = get_urls()
+    return url_config.model_config_endpoint
+
+
+def get_user_settings_endpoint() -> str:
+    """Get the full URL for the user settings endpoint.
+
+    Returns:
+        str: The user settings endpoint URL (e.g.,
+            https://www.perplexity.ai/rest/user/settings).
+
+    Raises:
+        RuntimeError: If configuration is invalid or missing required fields.
+    """
+    url_config = get_urls()
+    return url_config.user_settings_endpoint
 
 
 def _get_default_rate_limiting() -> dict[str, Any]:

@@ -437,7 +437,7 @@ def _fetch_and_render(
 
     Args:
         api: The PerplexityAPI instance.
-        query_input: Query text and attachment URLs.
+        query_input: Query text, attachment URLs, and model preference.
         render: Formatter and output options.
         trace: Trace and timing context.
     """
@@ -446,6 +446,7 @@ def _fetch_and_render(
     answer_obj = api.get_complete_answer(
         query_input.query,
         attachments=query_input.attachment_urls,
+        model_preference=query_input.model_preference,
     )
     logger.debug(
         "Received answer: %s characters, %s references",
@@ -481,6 +482,8 @@ def run_query_command(  # nosemgrep: too-many-parameters
     strip_references: bool,
     stream: bool,
     attachments_str: tuple[str, ...],
+    *,
+    model_preference: str | None = None,
 ) -> None:
     """Execute the query command while keeping cli.py focused on wiring."""
     from perplexity_cli.api.endpoints import PerplexityAPI
@@ -505,7 +508,11 @@ def run_query_command(  # nosemgrep: too-many-parameters
         resolved_output_format, formatter = get_query_formatter(output_format)
         final_query = build_final_query(query_text)
 
-        query_input = QueryInput(query=final_query, attachment_urls=attachment_urls)
+        query_input = QueryInput(
+            query=final_query,
+            attachment_urls=attachment_urls,
+            model_preference=model_preference,
+        )
         output_opts = OutputOptions(
             output_format=resolved_output_format,
             strip_references=strip_references,
