@@ -10,6 +10,7 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 - **Persistent authentication** with encrypted token storage (PBKDF2-HMAC key derivation)
 - **Multiple output formats** -- plain text, Markdown, rich terminal, or structured JSON
 - **Real-time streaming** -- optional incremental output as the response arrives
+- **File attachments** -- attach files or entire directories to queries for context-aware answers
 - **Source references** -- web sources extracted and displayed with inline citations
 - **Citation stripping** -- remove citation markers and references section from output
 - **Response style presets** -- configure a persistent style prompt applied to all queries
@@ -17,6 +18,8 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 - **Date filtering** -- filter exported threads by date range
 - **Automatic retry** -- exponential backoff on transient errors and rate limits
 - **Cloudflare bypass** -- Chrome TLS fingerprint impersonation via curl_cffi
+- **Diagnostics** -- `doctor security` reports local storage state and file permissions
+- **Agent integration** -- built-in skill definition for use with AI agents
 - **Configurable** -- URLs, rate limits, cookie storage, and debug mode all configurable via file or environment variables
 
 ## Prerequisites
@@ -169,6 +172,24 @@ pxcli query --format json "What is Python?" | jq '.references | length'
 pxcli query --format json --strip-references "What is Python?"
 ```
 
+### File attachments
+
+Attach files to provide context for your query. Requires authentication.
+
+```bash
+# Single file
+pxcli query --attach README.md "What is this project?"
+
+# Multiple files (comma-separated)
+pxcli query --attach config.json,data.txt "Analyse these files"
+
+# Repeated flag
+pxcli query -a file1.txt -a file2.txt "Compare these files"
+
+# Entire directory (recursive)
+pxcli query --attach ./docs "Summarise all documentation"
+```
+
 ### Combining flags
 
 Flags can be combined freely:
@@ -240,17 +261,20 @@ The style is stored in `~/.config/perplexity-cli/style.json` and persists across
 
 ## Authentication
 
-Most commands require authentication, but the `query` command is an exception. Here's what requires authentication and what doesn't:
+Most commands work without authentication. Only `export-threads` strictly requires a stored token. Here is a summary of authentication requirements:
 
 ### Commands requiring authentication
 
 - `export-threads` -- Export your thread library to CSV
-- `status` -- Check your authentication status
-- `configure`, `view-style`, `clear-style` -- Configure response styles
 
-### Commands that do NOT require authentication
+### Commands that work without authentication
 
-- `query` -- Submit queries to Perplexity.ai (works with or without a token, with exceptions below)
+- `query` -- Submit queries (authentication used automatically when available)
+- `status` -- Show authentication status (reports unauthenticated state gracefully)
+- `configure`, `view-style`, `clear-style` -- Manage response styles (local-only, no API calls)
+- `set-config`, `show-config` -- Manage configuration (local-only)
+- `show-skill` -- Display the Agent Skill definition
+- `doctor security` -- Report local storage security details
 
 If you have authenticated with `pxcli auth`, your token will be used automatically with `query`. If you haven't authenticated, `query` will attempt to run without a token (behaviour depends on whether the Perplexity API permits unauthenticated requests).
 
@@ -258,8 +282,7 @@ If you have authenticated with `pxcli auth`, your token will be used automatical
 
 Even though the `query` command can run without authentication, some features require a token:
 
-- **File attachments** -- The `--attach` flag or file paths detected in the query text require authentication to upload files to Perplexity
-- **Thread export** -- The `export-threads` command requires authentication to access your thread library
+- **File attachments** -- The `--attach` flag requires authentication to upload files to Perplexity
 
 For most users, we recommend authenticating to ensure the best experience. For automated scripts or testing, you can use `query` for simple questions without authentication. Any queries involving file uploads will require authentication.
 
@@ -478,7 +501,7 @@ Options:
 
 Command options:
   query           -f {plain,markdown,rich,json}  --strip-references
-                  --stream / --no-stream
+                  --stream / --no-stream  -a/--attach FILE
   auth            --port PORT
   export-threads  --from-date DATE  --to-date DATE  --output PATH
                   --force-refresh  --clear-cache
@@ -499,6 +522,7 @@ Submit a query and display the answer.
 | `--format`, `-f` | Output format: `plain`, `markdown`, `rich` (default), `json` |
 | `--strip-references` | Remove citation markers and references section |
 | `--stream` / `--no-stream` | Stream response incrementally (default: `--no-stream`) |
+| `--attach`, `-a` | Attach file(s): single path, comma-separated, repeated flag, or directory (recursive) |
 
 Exit codes: `0` success, `1` error, `130` interrupted.
 
@@ -651,12 +675,13 @@ ty check src/                   # type check
 
 - **click** -- CLI framework
 - **curl-cffi** -- HTTP client with Chrome TLS fingerprint impersonation (query and thread export paths)
+- **httpx** -- HTTP client fallback when curl_cffi is unavailable
 - **rich** -- Terminal formatting
 - **cryptography** -- Token encryption
 - **tenacity** -- Retry logic with exponential backoff
 - **pydantic** -- Data validation and serialisation
 - **python-dateutil** -- Date parsing for thread exports
-- **websockets** -- WebSocket support
+- **websockets** -- WebSocket support for Chrome DevTools Protocol authentication
 
 ## Updating your .profile / .zshrc / etc
 
