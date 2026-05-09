@@ -1,53 +1,41 @@
-"""Tests for deep research edge cases including _extract_plan_block_info and QueryParams."""
-
-from unittest.mock import Mock
+"""Tests for deep research edge cases including Block and QueryParams."""
 
 import pytest
 from pydantic import ValidationError
 
-from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.api.models import Block, QueryParams
 
 
 class TestExtractPlanBlockInfo:
-    """Test the _extract_plan_block_info() method on PerplexityAPI."""
-
-    def setup_method(self):
-        """Set up a PerplexityAPI instance for testing."""
-        self.api = PerplexityAPI(token="test-token")
+    """Test the extract_plan_info() method on Block."""
 
     def test_non_plan_block_returns_none(self):
         """Test that a block with intended_usage other than plan returns None."""
-        block = Mock(spec=Block)
-        block.intended_usage = "ask_text"
-        block.content = {"markdown_block": {"chunks": ["text"]}}
-
-        result = self.api._extract_plan_block_info(block)
+        block = Block(intended_usage="ask_text", content={"markdown_block": {"chunks": ["text"]}})
+        result = block.extract_plan_info()
         assert result is None
 
     def test_web_results_block_returns_none(self):
         """Test that a web_results block returns None."""
-        block = Mock(spec=Block)
-        block.intended_usage = "web_results"
-        block.content = {"web_result_block": {}}
-
-        result = self.api._extract_plan_block_info(block)
+        block = Block(intended_usage="web_results", content={"web_result_block": {}})
+        result = block.extract_plan_info()
         assert result is None
 
     def test_plan_block_with_full_data(self):
         """Test extracting info from a plan block with all fields."""
-        block = Mock(spec=Block)
-        block.intended_usage = "plan"
-        block.content = {
-            "plan_block": {
-                "progress": "Researching step 3 of 5",
-                "eta_seconds_remaining": 120,
-                "goals": ["Analyse sources", "Synthesise findings", "Verify claims"],
-                "pct_complete": 60,
-            }
-        }
+        block = Block(
+            intended_usage="plan",
+            content={
+                "plan_block": {
+                    "progress": "Researching step 3 of 5",
+                    "eta_seconds_remaining": 120,
+                    "goals": ["Analyse sources", "Synthesise findings", "Verify claims"],
+                    "pct_complete": 60,
+                }
+            },
+        )
 
-        result = self.api._extract_plan_block_info(block)
+        result = block.extract_plan_info()
 
         assert result is not None
         assert result["progress"] == "Researching step 3 of 5"
@@ -57,51 +45,43 @@ class TestExtractPlanBlockInfo:
 
     def test_pro_search_steps_intended_usage(self):
         """Test that 'pro_search_steps' intended_usage is also handled."""
-        block = Mock(spec=Block)
-        block.intended_usage = "pro_search_steps"
-        block.content = {
-            "plan_block": {
-                "progress": "Step 2",
-                "eta_seconds_remaining": 60,
-                "goals": ["Goal A"],
-                "pct_complete": 40,
-            }
-        }
+        block = Block(
+            intended_usage="pro_search_steps",
+            content={
+                "plan_block": {
+                    "progress": "Step 2",
+                    "eta_seconds_remaining": 60,
+                    "goals": ["Goal A"],
+                    "pct_complete": 40,
+                }
+            },
+        )
 
-        result = self.api._extract_plan_block_info(block)
+        result = block.extract_plan_info()
 
         assert result is not None
         assert result["progress"] == "Step 2"
 
     def test_plan_block_missing_plan_block_key(self):
         """Test that a plan block without 'plan_block' key returns None."""
-        block = Mock(spec=Block)
-        block.intended_usage = "plan"
-        block.content = {"other_data": "value"}
-
-        result = self.api._extract_plan_block_info(block)
+        block = Block(intended_usage="plan", content={"other_data": "value"})
+        result = block.extract_plan_info()
         assert result is None
 
     def test_plan_block_empty_plan_block(self):
         """Test that a plan block with an empty plan_block dict returns None."""
-        block = Mock(spec=Block)
-        block.intended_usage = "plan"
-        block.content = {"plan_block": {}}
-
-        result = self.api._extract_plan_block_info(block)
+        block = Block(intended_usage="plan", content={"plan_block": {}})
+        result = block.extract_plan_info()
         assert result is None
 
     def test_plan_block_missing_optional_keys(self):
         """Test that missing optional keys in plan_block return None values."""
-        block = Mock(spec=Block)
-        block.intended_usage = "plan"
-        block.content = {
-            "plan_block": {
-                "progress": "In progress",
-            }
-        }
+        block = Block(
+            intended_usage="plan",
+            content={"plan_block": {"progress": "In progress"}},
+        )
 
-        result = self.api._extract_plan_block_info(block)
+        result = block.extract_plan_info()
 
         assert result is not None
         assert result["progress"] == "In progress"
@@ -112,18 +92,19 @@ class TestExtractPlanBlockInfo:
     def test_plan_block_with_many_goals(self):
         """Test plan block with a large number of goals."""
         goals = [f"Goal {i}" for i in range(20)]
-        block = Mock(spec=Block)
-        block.intended_usage = "plan"
-        block.content = {
-            "plan_block": {
-                "progress": "Multi-goal research",
-                "eta_seconds_remaining": 300,
-                "goals": goals,
-                "pct_complete": 10,
-            }
-        }
+        block = Block(
+            intended_usage="plan",
+            content={
+                "plan_block": {
+                    "progress": "Multi-goal research",
+                    "eta_seconds_remaining": 300,
+                    "goals": goals,
+                    "pct_complete": 10,
+                }
+            },
+        )
 
-        result = self.api._extract_plan_block_info(block)
+        result = block.extract_plan_info()
 
         assert result is not None
         assert len(result["goals"]) == 20
@@ -132,18 +113,19 @@ class TestExtractPlanBlockInfo:
 
     def test_plan_block_with_zero_eta(self):
         """Test plan block with zero ETA (almost complete)."""
-        block = Mock(spec=Block)
-        block.intended_usage = "plan"
-        block.content = {
-            "plan_block": {
-                "progress": "Finalising",
-                "eta_seconds_remaining": 0,
-                "goals": ["Final step"],
-                "pct_complete": 99,
-            }
-        }
+        block = Block(
+            intended_usage="plan",
+            content={
+                "plan_block": {
+                    "progress": "Finalising",
+                    "eta_seconds_remaining": 0,
+                    "goals": ["Final step"],
+                    "pct_complete": 99,
+                }
+            },
+        )
 
-        result = self.api._extract_plan_block_info(block)
+        result = block.extract_plan_info()
 
         assert result is not None
         assert result["eta_seconds"] == 0
@@ -151,18 +133,19 @@ class TestExtractPlanBlockInfo:
 
     def test_plan_block_with_100_percent_complete(self):
         """Test plan block at 100% completion."""
-        block = Mock(spec=Block)
-        block.intended_usage = "plan"
-        block.content = {
-            "plan_block": {
-                "progress": "Complete",
-                "eta_seconds_remaining": 0,
-                "goals": ["Done"],
-                "pct_complete": 100,
-            }
-        }
+        block = Block(
+            intended_usage="plan",
+            content={
+                "plan_block": {
+                    "progress": "Complete",
+                    "eta_seconds_remaining": 0,
+                    "goals": ["Done"],
+                    "pct_complete": 100,
+                }
+            },
+        )
 
-        result = self.api._extract_plan_block_info(block)
+        result = block.extract_plan_info()
 
         assert result is not None
         assert result["pct_complete"] == 100
@@ -243,49 +226,43 @@ class TestQueryParamsDeepResearch:
 
 
 class TestExtractTextFromBlock:
-    """Test the _extract_text_from_block() method for completeness."""
-
-    def setup_method(self):
-        """Set up a PerplexityAPI instance for testing."""
-        self.api = PerplexityAPI(token="test-token")
+    """Test the Block.extract_text() method for completeness."""
 
     def test_extract_from_markdown_block(self):
         """Test extracting text from a markdown_block with chunks."""
-        content = {"markdown_block": {"chunks": ["Hello ", "world"]}}
-        result = self.api._extract_text_from_block(content)
-        assert result == "Hello world"
+        block = Block(
+            intended_usage="", content={"markdown_block": {"chunks": ["Hello ", "world"]}}
+        )
+        assert block.extract_text() == "Hello world"
 
     def test_extract_from_text_field(self):
         """Test extracting text from a direct 'text' field."""
-        content = {"text": "Direct text content"}
-        result = self.api._extract_text_from_block(content)
-        assert result == "Direct text content"
+        block = Block(intended_usage="", content={"text": "Direct text content"})
+        assert block.extract_text() == "Direct text content"
 
     def test_extract_from_answer_block(self):
         """Test extracting text from an answer_block."""
-        content = {"answer_block": {"text": "Answer text"}}
-        result = self.api._extract_text_from_block(content)
-        assert result == "Answer text"
+        block = Block(intended_usage="", content={"answer_block": {"text": "Answer text"}})
+        assert block.extract_text() == "Answer text"
 
     def test_extract_from_diff_block(self):
         """Test extracting text from a diff_block with patches."""
-        content = {"diff_block": {"patches": [{"value": "Diff text"}]}}
-        result = self.api._extract_text_from_block(content)
-        assert result == "Diff text"
+        block = Block(
+            intended_usage="", content={"diff_block": {"patches": [{"value": "Diff text"}]}}
+        )
+        assert block.extract_text() == "Diff text"
 
     def test_extract_from_web_result_block_returns_none(self):
         """Test that web_result_block does not produce answer text."""
-        content = {"web_result_block": {"web_results": []}}
-        result = self.api._extract_text_from_block(content)
-        assert result is None
+        block = Block(intended_usage="", content={"web_result_block": {"web_results": []}})
+        assert block.extract_text() is None
 
     def test_extract_from_empty_content_returns_none(self):
         """Test that empty content dict returns None."""
-        result = self.api._extract_text_from_block({})
-        assert result is None
+        block = Block(intended_usage="", content={})
+        assert block.extract_text() is None
 
     def test_extract_from_markdown_block_empty_chunks(self):
         """Test extracting text from markdown_block with empty chunks list."""
-        content = {"markdown_block": {"chunks": []}}
-        result = self.api._extract_text_from_block(content)
-        assert result == ""
+        block = Block(intended_usage="", content={"markdown_block": {"chunks": []}})
+        assert block.extract_text() == ""

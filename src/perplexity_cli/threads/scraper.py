@@ -5,31 +5,40 @@ API endpoint using stored authentication token. Supports local encrypted caching
 for efficient repeated exports.
 """
 
-import json
 from collections.abc import Callable
 from datetime import datetime
 
-from curl_cffi.requests import AsyncSession
-from curl_cffi.requests.exceptions import RequestException
+from dateutil import parser as dateutil_parser
+
+try:
+    from curl_cffi.requests import AsyncSession
+    from curl_cffi.requests.exceptions import RequestException
+
+    _CURL_CFFI_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    AsyncSession = None  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
+    RequestException = Exception  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
+    _CURL_CFFI_AVAILABLE = False
 
 from perplexity_cli.api.contracts import parse_thread_list_payload
+from perplexity_cli.auth.utils import extract_session_token
 from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.threads.utils import convert_cache_dicts_to_thread_records
-from perplexity_cli.utils.config import get_thread_list_url
+from perplexity_cli.utils.config import get_perplexity_base_url, get_thread_list_url
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
     AuthenticationError,
     PerplexityHTTPStatusError,
     PerplexityRequestError,
     RateLimitError,
-    SimpleRequest,
-    SimpleResponse,
     UpstreamSchemaError,
 )
+from perplexity_cli.utils.http_errors import raise_http_status_error
 from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.rate_limiter import RateLimiter
+from perplexity_cli.utils.version import get_api_version
 
 
 class ThreadScraper:
@@ -63,7 +72,24 @@ class ThreadScraper:
         self.force_refresh = force_refresh
         self.logger = get_logger()
         self.api_url = get_thread_list_url()
-        self.api_version = "2.18"
+        self.api_version = get_api_version()
+
+    @staticmethod
+    def _create_async_session(timeout: int = 30) -> AsyncSession:
+        """Create an AsyncSession with Chrome TLS impersonation.
+
+        Args:
+            timeout: Request timeout in seconds.
+
+        Returns:
+            An AsyncSession configured for Chrome impersonation.
+
+        Raises:
+            RuntimeError: If curl_cffi is not installed.
+        """
+        from perplexity_cli.utils.session_factory import create_async_session
+
+        return create_async_session(timeout=timeout)
 
     async def scrape_all_threads(
         self,
@@ -92,7 +118,11 @@ class ThreadScraper:
         Raises:
             RuntimeError: If API request fails
             PerplexityHTTPStatusError: If API returns error status
+            ValueError: If from_date or to_date is not a valid date string
         """
+        # Validate date format before proceeding
+        self._validate_date_params(from_date, to_date)
+
         # Check if we should use cache
         threads = []
         fetch_from = from_date
@@ -133,25 +163,7 @@ class ThreadScraper:
                 self.logger.info("Force refresh enabled, ignoring cache")
 
         # Parse token to get session cookie
-        try:
-            token_data = json.loads(self.token)
-            if not isinstance(token_data, dict):
-                raise AuthenticationError("Stored token has invalid session data format")
-
-            user_data = token_data.get("user")
-            if user_data is None:
-                session_token = self.token
-            else:
-                if not isinstance(user_data, dict):
-                    raise AuthenticationError("Stored token has invalid session user data")
-                session_token = user_data.get("accessToken")
-                if session_token is None:
-                    session_token = self.token
-                elif not isinstance(session_token, str) or not session_token:
-                    raise AuthenticationError("Stored token has invalid access token data")
-        except json.JSONDecodeError:
-            # Token might be a raw string
-            session_token = self.token
+        session_token = extract_session_token(self.token)
 
         # Fetch threads (either all or just the gap)
         fetched_threads = await self._fetch_all_threads_from_api(
@@ -178,6 +190,26 @@ class ThreadScraper:
             self.cache_manager.save_cache(threads)
 
         return threads
+
+    @staticmethod
+    def _validate_date_params(from_date: str | None, to_date: str | None) -> None:
+        """Validate that from_date and to_date are parseable date strings.
+
+        Args:
+            from_date: Start date string to validate (or None).
+            to_date: End date string to validate (or None).
+
+        Raises:
+            ValueError: If either date string cannot be parsed.
+        """
+        for label, value in [("from_date", from_date), ("to_date", to_date)]:
+            if value is not None:
+                try:
+                    dateutil_parser.parse(value)
+                except (ValueError, OverflowError) as exc:
+                    raise ValueError(
+                        f"Invalid {label} '{value}': expected YYYY-MM-DD format"
+                    ) from exc
 
     async def _fetch_all_threads_from_api(
         self,
@@ -220,7 +252,7 @@ class ThreadScraper:
         cookies = dict(self.cookies or {})
         cookies.setdefault("__Secure-next-auth.session-token", session_token)
 
-        async with AsyncSession(impersonate="chrome", timeout=30) as client:
+        async with self._create_async_session(timeout=30) as client:
             while True:
                 # Prepare API request body
                 request_body = {
@@ -248,7 +280,7 @@ class ThreadScraper:
 
                     # Check for HTTP errors
                     if not response.ok:
-                        self._raise_http_status_error(response)
+                        raise_http_status_error(response)
 
                     # Parse response
                     try:
@@ -304,7 +336,7 @@ class ThreadScraper:
                                 raise UpstreamSchemaError(
                                     "Malformed thread slug in upstream API response"
                                 )
-                            url = f"https://www.perplexity.ai/search/{slug}"
+                            url = f"{get_perplexity_base_url()}/search/{slug}"
 
                             # Get title
                             title = thread_dict.get("title", "Untitled")
@@ -360,41 +392,6 @@ class ThreadScraper:
                     ) from e
 
         return threads
-
-    @staticmethod
-    def _raise_http_status_error(response) -> None:
-        """Convert a curl_cffi error response into a PerplexityHTTPStatusError.
-
-        Constructs SimpleRequest and SimpleResponse objects so that
-        downstream error handlers can inspect the status code, headers,
-        and body text.
-
-        Args:
-            response: The curl_cffi Response object with a non-2xx status.
-
-        Raises:
-            PerplexityHTTPStatusError: Always raised with the converted response.
-        """
-        request = SimpleRequest(method="POST", url=str(response.url))
-
-        try:
-            body = response.content
-            text = body.decode("utf-8") if isinstance(body, bytes) else str(body)
-        except (AttributeError, TypeError, UnicodeDecodeError):
-            text = ""
-
-        simple_response = SimpleResponse(
-            status_code=response.status_code,
-            headers=dict(response.headers),
-            text=text,
-            request=request,
-        )
-
-        raise PerplexityHTTPStatusError(
-            f"HTTP Error {response.status_code}",
-            request=request,
-            response=simple_response,
-        )
 
     def _filter_by_date_range(
         self,

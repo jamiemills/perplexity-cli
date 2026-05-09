@@ -4,14 +4,20 @@ This module keeps Click wiring in ``cli.py`` thin while preserving the
 existing query behaviour.
 """
 
-import asyncio
+from __future__ import annotations
+
 import logging
 import os
 import sys
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 
+if TYPE_CHECKING:
+    from perplexity_cli.api.models import Answer
+    from perplexity_cli.formatting.base import Formatter
+
+from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
     AttachmentUploadError,
@@ -35,7 +41,7 @@ def log_query_debug_context(
 
     import socket
 
-    from perplexity_cli.utils.config import get_save_cookies_enabled
+    from perplexity_cli.utils.config import get_config_paths, get_save_cookies_enabled
 
     try:
         hostname = socket.gethostname()
@@ -57,7 +63,7 @@ def log_query_debug_context(
 
     logger.debug(f"Execution environment: {exec_env}")
 
-    token_path = Path.home() / ".config" / "perplexity-cli" / "token.json"
+    token_path = get_config_paths().token_path
     logger.debug(f"Token path: {redact_path(token_path)}")
     logger.debug(f"Token exists: {token_path.exists()}")
     logger.debug(f"Cookie storage enabled: {get_save_cookies_enabled()}")
@@ -111,7 +117,7 @@ def resolve_attachment_urls(
         logger.debug("Starting S3 upload for attachments")
         uploader = AttachmentUploader(token=token, cookies=cookies)
         try:
-            attachment_urls = asyncio.run(uploader.upload_files(file_attachments))
+            attachment_urls = run_async(uploader.upload_files(file_attachments))
         except AttachmentUploadError as e:
             click.echo(f"[ERROR] Failed to upload attachments: {e}", err=True)
             logger.error(f"Attachment upload failed: {e}")
@@ -128,7 +134,7 @@ def resolve_attachment_urls(
         sys.exit(1)
 
 
-def get_query_formatter(output_format: str | None):
+def get_query_formatter(output_format: str | None) -> tuple[str, Formatter]:
     """Resolve the configured formatter for the query command."""
     from perplexity_cli.formatting import get_formatter, list_formatters
 
@@ -160,7 +166,7 @@ def build_final_query(query_text: str) -> str:
 
 
 def render_complete_answer(
-    answer_obj, formatter, output_format: str, strip_references: bool
+    answer_obj: Answer, formatter: Formatter, output_format: str, strip_references: bool
 ) -> None:
     """Render the non-streaming query result."""
     if output_format == "rich":

@@ -30,17 +30,30 @@ def cache_manager(temp_cache_path):
 
 
 @pytest.fixture(autouse=True)
-def isolate_config_dir(tmp_path, monkeypatch, request):
-    """Route config-backed tests to an isolated temp directory by default."""
+def _clear_config_caches():
+    """Clear config caches before and after every test.
+
+    This ensures no stale URL or feature-config state leaks between tests,
+    regardless of whether the test uses real or isolated config paths.
+    """
+    clear_urls_cache()
+    clear_feature_config_cache()
+    yield
     clear_urls_cache()
     clear_feature_config_cache()
 
+
+@pytest.fixture(autouse=True)
+def isolate_config_dir(tmp_path, monkeypatch, request):
+    """Route config-backed tests to an isolated temp directory.
+
+    Tests marked with ``@pytest.mark.real_user_config`` opt out of path
+    isolation, allowing them to exercise the real config-loading path while
+    ``_clear_config_caches`` still prevents state leakage.
+    """
     if request.node.get_closest_marker("real_user_config"):
         yield
     else:
         config_dir = tmp_path / "perplexity-cli-config"
         monkeypatch.setenv("PERPLEXITY_CONFIG_DIR", str(config_dir))
         yield
-
-    clear_urls_cache()
-    clear_feature_config_cache()

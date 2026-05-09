@@ -40,7 +40,7 @@ def auth(ctx: click.Context, port: int) -> None:
         perplexity-cli auth
         perplexity-cli auth --port 9223
     """
-    from perplexity_cli.command_runner import run_auth_command
+    from perplexity_cli.runners import run_auth_command
 
     run_auth_command(ctx.obj, port)
 
@@ -144,7 +144,7 @@ def logout() -> None:
     Example:
         perplexity-cli logout
     """
-    from perplexity_cli.command_runner import run_logout_command
+    from perplexity_cli.runners import run_logout_command
 
     run_logout_command()
 
@@ -165,7 +165,7 @@ def configure(style: str) -> None:
         perplexity-cli configure "be brief and concise"
         perplexity-cli configure "provide super brief answers in minimal words"
     """
-    from perplexity_cli.command_runner import run_configure_command
+    from perplexity_cli.runners import run_configure_command
 
     run_configure_command(style)
 
@@ -180,7 +180,7 @@ def view_style() -> None:
     Example:
         perplexity-cli view-style
     """
-    from perplexity_cli.command_runner import run_view_style_command
+    from perplexity_cli.runners import run_view_style_command
 
     run_view_style_command()
 
@@ -195,7 +195,7 @@ def clear_style() -> None:
     Example:
         perplexity-cli clear-style
     """
-    from perplexity_cli.command_runner import run_clear_style_command
+    from perplexity_cli.runners import run_clear_style_command
 
     run_clear_style_command()
 
@@ -217,7 +217,7 @@ def status(verify: bool) -> None:
         perplexity-cli status
         perplexity-cli status --verify
     """
-    from perplexity_cli.command_runner import run_status_command
+    from perplexity_cli.runners import run_status_command
 
     run_status_command(verify)
 
@@ -239,7 +239,7 @@ def set_config(ctx: click.Context, key: str, value: str) -> None:
         pxcli set-config save_cookies true
         pxcli set-config debug_mode false
     """
-    from perplexity_cli.command_runner import run_set_config_command
+    from perplexity_cli.runners import run_set_config_command
 
     run_set_config_command(key, value)
 
@@ -254,7 +254,7 @@ def show_config(ctx: click.Context) -> None:
     Example:
         pxcli show-config
     """
-    from perplexity_cli.command_runner import run_show_config_command
+    from perplexity_cli.runners import run_show_config_command
 
     run_show_config_command()
 
@@ -271,7 +271,7 @@ def doctor_security() -> None:
     Shows the current storage backend, file locations, cookie-storage setting,
     and whether token/cache file permissions are restricted correctly.
     """
-    from perplexity_cli.command_runner import run_doctor_security_command
+    from perplexity_cli.runners import run_doctor_security_command
 
     run_doctor_security_command()
 
@@ -290,7 +290,7 @@ def show_skill() -> None:
     Example:
         perplexity-cli show-skill
     """
-    from perplexity_cli.command_runner import run_show_skill_command
+    from perplexity_cli.runners import run_show_skill_command
 
     run_show_skill_command()
 
@@ -363,7 +363,7 @@ def export_threads(
     'perplexity-cli auth' setup. If you haven't authenticated yet, run:
         perplexity-cli auth
     """
-    from perplexity_cli.command_runner import run_export_threads_command
+    from perplexity_cli.runners import run_export_threads_command
 
     run_export_threads_command(
         ctx.obj,

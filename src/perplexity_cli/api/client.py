@@ -15,17 +15,24 @@ import logging
 import time
 from collections.abc import Iterator
 
-from curl_cffi.requests import Session
-from curl_cffi.requests.exceptions import RequestException
+try:
+    from curl_cffi.requests import Session
+    from curl_cffi.requests.exceptions import RequestException
+
+    _CURL_CFFI_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    Session = None  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
+    RequestException = Exception  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
+    _CURL_CFFI_AVAILABLE = False
 
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
-    SimpleRequest,
-    SimpleResponse,
     UpstreamSchemaError,
 )
+from perplexity_cli.utils.http_errors import raise_http_status_error
+from perplexity_cli.utils.http_headers import build_perplexity_headers
 from perplexity_cli.utils.logging import (
     get_logger,
     redact_mapping_keys,
@@ -74,30 +81,25 @@ class SSEClient:
         Returns:
             Dictionary of HTTP headers including authentication.
         """
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream",
-            "Origin": "https://www.perplexity.ai",
-            "Referer": "https://www.perplexity.ai/",
-        }
-
-        if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
-
-        # Add CSRF token from cookies if available
-        if self.cookies and "csrftoken" in self.cookies:
-            headers["X-CSRFToken"] = self.cookies["csrftoken"]
-
-        return headers
+        return build_perplexity_headers(
+            self.token,
+            self.cookies,
+            accept="text/event-stream",
+        )
 
     def _get_client(self) -> Session:
         """Get or create the persistent curl_cffi session.
 
         Returns:
             The shared Session instance with Chrome TLS impersonation.
+
+        Raises:
+            RuntimeError: If curl_cffi is not installed.
         """
         if self._client is None:
-            self._client = Session(impersonate="chrome", timeout=self.timeout)
+            from perplexity_cli.utils.session_factory import create_sync_session
+
+            self._client = create_sync_session(timeout=self.timeout)
         return self._client
 
     def close(self) -> None:
@@ -105,6 +107,159 @@ class SSEClient:
         if self._client is not None:
             self._client.close()
             self._client = None
+
+    def _resolve_effective_timeout(self, json_data: dict) -> tuple[bool, int]:
+        """Determine the effective timeout based on query parameters.
+
+        Deep research requests use a longer timeout (360s) to accommodate
+        multi-step processing.
+
+        Args:
+            json_data: JSON request body.
+
+        Returns:
+            Tuple of (is_deep_research, effective_timeout_seconds).
+        """
+        is_deep_research = (
+            json_data.get("params", {}).get("search_implementation_mode") == "multi_step"
+        )
+        effective_timeout = 360 if is_deep_research else self.timeout
+        return is_deep_research, effective_timeout
+
+    def _log_request_context(
+        self,
+        url: str,
+        headers: dict[str, str],
+        is_deep_research: bool,
+        effective_timeout: int,
+    ) -> None:
+        """Log debug context for an outbound request.
+
+        Only emits output when the logger is at DEBUG level.
+
+        Args:
+            url: The API endpoint URL.
+            headers: Request headers.
+            is_deep_research: Whether deep research mode is active.
+            effective_timeout: The timeout that will be used.
+        """
+        if not self.logger.isEnabledFor(logging.DEBUG):
+            return
+
+        self.logger.debug(f"API Request to: {redact_url(url)}")
+        self.logger.debug(f"Request headers: Content-Type={headers.get('Content-Type')}")
+        if is_deep_research:
+            self.logger.debug(f"Deep research mode detected, timeout set to {effective_timeout}s")
+
+        has_auth = bool(self.token)
+        cookies = self.cookies
+        self.logger.debug(f"Authentication: Bearer token present={has_auth}")
+        if cookies:
+            cookie_names = list(cookies.keys())
+            cf_cookies = [c for c in cookie_names if c.startswith("cf") or c.startswith("__cf")]
+            self.logger.debug(
+                f"Cookies: {len(cookies)} total, {len(cf_cookies)} Cloudflare-related"
+            )
+            self.logger.debug(f"Cloudflare cookies present: {redact_mapping_keys(cookies)}")
+        else:
+            self.logger.debug("Cookies: None (no Cloudflare bypass)")
+
+    def _log_http_error_context(self, error: PerplexityHTTPStatusError) -> None:
+        """Log debug context for an HTTP error response.
+
+        Captures Cloudflare headers and a redacted response body preview.
+        Only emits output when the logger is at DEBUG level.
+
+        Args:
+            error: The HTTP status error to log.
+        """
+        if not self.logger.isEnabledFor(logging.DEBUG):
+            return
+
+        status = error.response.status_code
+        self.logger.debug(f"HTTP Error {status}: {error}")
+        cf_ray = error.response.headers.get("cf-ray")
+        if cf_ray:
+            self.logger.debug(f"Cloudflare Ray ID: {cf_ray}")
+        cf_cache = error.response.headers.get("cf-cache-status")
+        if cf_cache:
+            self.logger.debug(f"Cloudflare Cache Status: {cf_cache}")
+
+        try:
+            response_text = error.response.text[:500]
+            self.logger.debug(f"Response body preview: {redact_response_text(response_text)}")
+        except (AttributeError, TypeError):
+            pass
+
+    def _handle_http_error(self, error: PerplexityHTTPStatusError, attempt: int) -> float:
+        """Classify an HTTP error and decide whether to retry.
+
+        Returns the wait time in seconds when the error is retryable and
+        attempts remain.  Raises immediately for non-retryable errors or
+        when retries are exhausted.
+
+        Args:
+            error: The HTTP status error.
+            attempt: Current attempt number (0-indexed).
+
+        Returns:
+            Wait time in seconds if the request should be retried.
+
+        Raises:
+            PerplexityHTTPStatusError: When the error is not retryable or
+                retries are exhausted.
+        """
+        self._log_http_error_context(error)
+        status = error.response.status_code
+
+        # 401: never retry — token is invalid
+        if status == 401:
+            self.logger.error(f"HTTP {status} error (not retryable): {error}")
+            raise PerplexityHTTPStatusError(
+                "Authentication failed. Token may be invalid or expired.",
+                request=error.request,
+                response=error.response,
+            ) from error
+
+        # 403: retry (Cloudflare challenge / transient block)
+        if status == 403:
+            if attempt < self.max_retries - 1:
+                next_attempt = attempt + 1
+                wait_time = get_backoff_delay(next_attempt)
+                self.logger.warning(
+                    f"HTTP 403 error (may be Cloudflare blocking), retrying in {wait_time}s "
+                    f"(attempt {next_attempt + 1}/{self.max_retries})"
+                )
+                return wait_time
+            self.logger.error(
+                f"HTTP {status} error (not retryable after {self.max_retries} attempts): {error}"
+            )
+            raise PerplexityHTTPStatusError(
+                "Access forbidden. Check API permissions or try again later.",
+                request=error.request,
+                response=error.response,
+            ) from error
+
+        # 429 / 5xx: retry with Retry-After support
+        if is_retryable_error(error) and attempt < self.max_retries - 1:
+            next_attempt = attempt + 1
+            wait_time = get_retry_after_delay(error)
+            if wait_time is None:
+                wait_time = get_backoff_delay(next_attempt)
+            self.logger.warning(
+                f"HTTP {status} error, retrying in {wait_time}s "
+                f"(attempt {next_attempt + 1}/{self.max_retries})"
+            )
+            return wait_time
+
+        # Exhausted retries or non-retryable status
+        if status == 429:
+            raise PerplexityHTTPStatusError(
+                "Rate limit exceeded. Please wait and try again.",
+                request=error.request,
+                response=error.response,
+            ) from error
+        raise error
 
     def stream_post(self, url: str, json_data: dict) -> Iterator[dict]:
         """POST request with SSE streaming response.
@@ -122,35 +277,10 @@ class SSEClient:
             ValueError: For malformed SSE messages.
         """
         headers = self.get_headers()
+        is_deep_research, effective_timeout = self._resolve_effective_timeout(json_data)
+        self._log_request_context(url, headers, is_deep_research, effective_timeout)
+
         attempt = 0
-
-        # Check if deep research is requested and adjust timeout accordingly
-        is_deep_research = (
-            json_data.get("params", {}).get("search_implementation_mode") == "multi_step"
-        )
-        effective_timeout = 360 if is_deep_research else self.timeout
-
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"API Request to: {redact_url(url)}")
-            self.logger.debug(f"Request headers: Content-Type={headers.get('Content-Type')}")
-            if is_deep_research:
-                self.logger.debug(
-                    f"Deep research mode detected, timeout set to {effective_timeout}s"
-                )
-
-            has_auth = bool(self.token)
-            cookies = self.cookies
-            self.logger.debug(f"Authentication: Bearer token present={has_auth}")
-            if cookies:
-                cookie_names = list(cookies.keys())
-                cf_cookies = [c for c in cookie_names if c.startswith("cf") or c.startswith("__cf")]
-                self.logger.debug(
-                    f"Cookies: {len(cookies)} total, {len(cf_cookies)} Cloudflare-related"
-                )
-                self.logger.debug(f"Cloudflare cookies present: {redact_mapping_keys(cookies)}")
-            else:
-                self.logger.debug("Cookies: None (no Cloudflare bypass)")
-
         while attempt < self.max_retries:
             try:
                 if self.logger.isEnabledFor(logging.DEBUG):
@@ -179,9 +309,8 @@ class SSEClient:
                         if server:
                             self.logger.debug(f"Server: {server}")
 
-                    # Check for HTTP errors - convert to httpx exception types
                     if not response.ok:
-                        self._raise_http_status_error(response)
+                        raise_http_status_error(response)
 
                     if self.logger.isEnabledFor(logging.DEBUG):
                         self.logger.debug("Starting SSE stream parsing")
@@ -193,79 +322,12 @@ class SSEClient:
                     return  # Success, exit retry loop
 
             except PerplexityHTTPStatusError as e:
-                status = e.response.status_code
-
-                if self.logger.isEnabledFor(logging.DEBUG):
-                    self.logger.debug(f"HTTP Error {status}: {e}")
-                    cf_ray = e.response.headers.get("cf-ray")
-                    if cf_ray:
-                        self.logger.debug(f"Cloudflare Ray ID: {cf_ray}")
-                    cf_cache = e.response.headers.get("cf-cache-status")
-                    if cf_cache:
-                        self.logger.debug(f"Cloudflare Cache Status: {cf_cache}")
-
-                    try:
-                        response_text = e.response.text[:500]
-                        self.logger.debug(
-                            f"Response body preview: {redact_response_text(response_text)}"
-                        )
-                    except (AttributeError, TypeError):
-                        pass
-
-                # Don't retry 401 (invalid token)
-                if status == 401:
-                    self.logger.error(f"HTTP {status} error (not retryable): {e}")
-                    raise PerplexityHTTPStatusError(
-                        "Authentication failed. Token may be invalid or expired.",
-                        request=e.request,
-                        response=e.response,
-                    ) from e
-
-                # Retry 403 errors (might be Cloudflare challenge/rate limit)
-                if status == 403:
-                    if attempt < self.max_retries - 1:
-                        attempt += 1
-                        wait_time = get_backoff_delay(attempt)
-                        self.logger.warning(
-                            f"HTTP 403 error (may be Cloudflare blocking), retrying in {wait_time}s "
-                            f"(attempt {attempt + 1}/{self.max_retries})"
-                        )
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        self.logger.error(
-                            f"HTTP {status} error (not retryable after {self.max_retries} attempts): {e}"
-                        )
-                        raise PerplexityHTTPStatusError(
-                            "Access forbidden. Check API permissions or try again later.",
-                            request=e.request,
-                            response=e.response,
-                        ) from e
-
-                # Retry 429 and 5xx errors
-                if is_retryable_error(e) and attempt < self.max_retries - 1:
-                    attempt += 1
-                    wait_time = get_retry_after_delay(e)
-                    if wait_time is None:
-                        wait_time = get_backoff_delay(attempt)
-                    self.logger.warning(
-                        f"HTTP {status} error, retrying in {wait_time}s "
-                        f"(attempt {attempt + 1}/{self.max_retries})"
-                    )
-                    time.sleep(wait_time)
-                    continue
-
-                # Re-raise if not retryable or out of retries
-                if status == 429:
-                    raise PerplexityHTTPStatusError(
-                        "Rate limit exceeded. Please wait and try again.",
-                        request=e.request,
-                        response=e.response,
-                    ) from e
-                raise
+                wait_time = self._handle_http_error(e, attempt)
+                attempt += 1
+                time.sleep(wait_time)
+                continue
 
             except PerplexityRequestError as e:
-                # Retry network errors
                 if is_retryable_error(e) and attempt < self.max_retries - 1:
                     attempt += 1
                     self.logger.warning(
@@ -276,49 +338,12 @@ class SSEClient:
                 raise
 
             except RequestException as e:
-                # Convert curl_cffi network errors to PerplexityRequestError
                 self.logger.error(f"Network error after {attempt + 1} attempts: {e}")
                 raise PerplexityRequestError(str(e)) from e
 
             except (ValueError, TypeError, AttributeError) as e:
                 self.logger.error(f"Unexpected error during streaming: {e}", exc_info=True)
                 raise
-
-    @staticmethod
-    def _raise_http_status_error(response) -> None:
-        """Convert a curl_cffi error response into a PerplexityHTTPStatusError.
-
-        Constructs SimpleRequest and SimpleResponse objects so that
-        downstream error handlers can access ``.status_code``, ``.headers``,
-        and ``.text``.
-
-        Args:
-            response: The curl_cffi Response object with a non-2xx status.
-
-        Raises:
-            PerplexityHTTPStatusError: Always raised with the converted response.
-        """
-        request = SimpleRequest(method="POST", url=str(response.url))
-
-        # Read the response body
-        try:
-            body = response.content
-            text = body.decode("utf-8") if isinstance(body, bytes) else str(body)
-        except (AttributeError, UnicodeDecodeError, TypeError, ValueError):
-            text = ""
-
-        simple_response = SimpleResponse(
-            status_code=response.status_code,
-            headers=dict(response.headers),
-            text=text,
-            request=request,
-        )
-
-        raise PerplexityHTTPStatusError(
-            f"HTTP Error {response.status_code}: {response.reason}",
-            request=request,
-            response=simple_response,
-        )
 
     def _parse_sse_stream(self, response) -> Iterator[dict]:
         """Parse Server-Sent Events stream.

@@ -1,7 +1,6 @@
 """Configuration and path management utilities."""
 
 import json
-import logging
 import os
 from functools import lru_cache
 from importlib import resources
@@ -416,7 +415,9 @@ def get_feature_config() -> FeatureConfig:
 
     except (OSError, json.JSONDecodeError) as e:
         # If user config is invalid, log warning and use defaults
-        logger = logging.getLogger(__name__)
+        from perplexity_cli.utils.logging import get_logger
+
+        logger = get_logger()
         logger.warning(f"Failed to load feature config, using defaults: {e}")
     except ConfigurationError:
         raise

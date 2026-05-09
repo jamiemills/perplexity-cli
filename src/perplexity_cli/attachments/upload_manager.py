@@ -6,22 +6,30 @@ import logging
 import uuid
 from typing import Any
 
-from curl_cffi.requests import AsyncSession
-from curl_cffi.requests.exceptions import RequestException
+import httpx
+
+try:
+    from curl_cffi.requests import AsyncSession
+    from curl_cffi.requests.exceptions import RequestException
+
+    _CURL_CFFI_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    AsyncSession = None  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
+    RequestException = Exception  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
+    _CURL_CFFI_AVAILABLE = False
 
 from perplexity_cli.api.contracts import parse_upload_url_response, require_mapping
 from perplexity_cli.api.models import FileAttachment
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
     AttachmentUploadError,
-    PerplexityHTTPStatusError,
-    SimpleRequest,
-    SimpleResponse,
     UpstreamSchemaError,
 )
-from perplexity_cli.utils.logging import redact_path, redact_response_text
+from perplexity_cli.utils.http_errors import raise_http_status_error
+from perplexity_cli.utils.http_headers import build_perplexity_headers
+from perplexity_cli.utils.logging import get_logger, redact_path, redact_response_text
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 class AttachmentUploader:
@@ -53,6 +61,23 @@ class AttachmentUploader:
         self.cookies = cookies
         self.base_url = base_url
 
+    @staticmethod
+    def _create_async_session(timeout: int = 30) -> AsyncSession:
+        """Create an AsyncSession with Chrome TLS impersonation.
+
+        Args:
+            timeout: Request timeout in seconds.
+
+        Returns:
+            An AsyncSession configured for Chrome impersonation.
+
+        Raises:
+            RuntimeError: If curl_cffi is not installed.
+        """
+        from perplexity_cli.utils.session_factory import create_async_session
+
+        return create_async_session(timeout=timeout)
+
     async def upload_files(self, attachments: list[FileAttachment]) -> list[str]:
         """Upload files to S3 and return final S3 URLs.
 
@@ -78,10 +103,13 @@ class AttachmentUploader:
 
         # Step 1: Request presigned upload URLs from API
         # Returns both the API response and UUID->attachment mapping
-        upload_urls_response, uuid_to_attachment = await self._request_upload_urls(attachments)
+        # Use a single session for both the presigned URL request and S3 uploads
+        async with self._create_async_session(timeout=300) as session:
+            upload_urls_response, uuid_to_attachment = await self._request_upload_urls(
+                attachments, session
+            )
 
-        # Step 2: Upload files to S3 in parallel
-        async with AsyncSession(impersonate="chrome", timeout=300) as session:
+            # Step 2: Upload files to S3 in parallel
             tasks = []
             uuid_list = []
             for file_uuid, attachment in uuid_to_attachment.items():
@@ -107,12 +135,13 @@ class AttachmentUploader:
         return s3_urls
 
     async def _request_upload_urls(
-        self, attachments: list[FileAttachment]
+        self, attachments: list[FileAttachment], session: AsyncSession
     ) -> tuple[dict[str, Any], dict[str, FileAttachment]]:
         """Request presigned S3 upload URLs from Perplexity API.
 
         Args:
             attachments: List of FileAttachment objects.
+            session: The shared AsyncSession to use for the request.
 
         Returns:
             Tuple of (API response, UUID to FileAttachment mapping).
@@ -142,36 +171,28 @@ class AttachmentUploader:
 
         request_body = {"files": files_metadata}
 
-        # Build headers matching the SSE client (Origin, Referer, CSRF token)
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-            "Origin": "https://www.perplexity.ai",
-            "Referer": "https://www.perplexity.ai/",
-        }
-        if self.cookies and "csrftoken" in self.cookies:
-            headers["X-CSRFToken"] = self.cookies["csrftoken"]
+        # Build headers using shared helper (Origin, Referer, CSRF token)
+        headers = build_perplexity_headers(self.token, self.cookies)
 
         # Make API request for presigned URLs
-        async with AsyncSession(impersonate="chrome", timeout=30) as session:
-            try:
-                response = await session.post(
-                    f"{self.base_url}{self.UPLOAD_URL_ENDPOINT}",
-                    json=request_body,
-                    headers=headers,
-                    cookies=to_curl_cffi_cookies(self.cookies),
-                )
-            except RequestException as e:
-                raise AttachmentUploadError(f"Failed to request upload URLs: {e}") from e
+        try:
+            response = await session.post(
+                f"{self.base_url}{self.UPLOAD_URL_ENDPOINT}",
+                json=request_body,
+                headers=headers,
+                cookies=to_curl_cffi_cookies(self.cookies),
+            )
+        except RequestException as e:
+            raise AttachmentUploadError(f"Failed to request upload URLs: {e}") from e
 
-            if not response.ok:
-                # Log response details for debugging authentication issues
-                logger.error(
-                    f"Upload URL request failed with status {response.status_code}. "
-                    f"This may indicate an invalid or expired token. "
-                    f"Try running 'pxcli auth' to refresh authentication."
-                )
-                self._raise_http_status_error(response)
+        if not response.ok:
+            # Log response details for debugging authentication issues
+            logger.error(
+                f"Upload URL request failed with status {response.status_code}. "
+                f"This may indicate an invalid or expired token. "
+                f"Try running 'pxcli auth' to refresh authentication."
+            )
+            raise_http_status_error(response)
 
         # Log the API response for debugging
         try:
@@ -267,18 +288,13 @@ class AttachmentUploader:
             logger.debug(f"File size: {len(file_content)} bytes")
 
         try:
-            # curl_cffi's data parameter doesn't handle file uploads
-            # We need to use a different approach: post with bytes and set headers
-            # Actually, let's use httpx since curl_cffi doesn't support multipart well
-            import httpx
-
-            # Build form data dictionary for httpx
-            files_dict = {}
+            # curl_cffi doesn't support multipart file uploads well,
+            # so httpx is used for S3 uploads (imported at module level).
+            files_dict: dict[str, tuple] = {}
             for key, value in form_data.items():
                 files_dict[key] = (None, value)
             files_dict["file"] = (attachment.filename, file_content, attachment.content_type)
 
-            # Use httpx for the multipart upload (more reliable than curl_cffi for this)
             async with httpx.AsyncClient(timeout=300) as client:
                 response = await client.post(
                     self.S3_BUCKET_URL,
@@ -287,10 +303,6 @@ class AttachmentUploader:
         except RequestException as e:
             logger.error(f"S3 request exception: {e}")
             raise AttachmentUploadError(f"Failed to upload {attachment.filename} to S3: {e}") from e
-        except ImportError:
-            raise AttachmentUploadError(
-                "httpx is required for S3 file uploads but is not installed"
-            ) from None
         except Exception as e:
             # Intentionally broad: multipart upload failures can come from several transport,
             # encoding, or third-party client paths. Surface them as one upload failure.
@@ -321,26 +333,3 @@ class AttachmentUploader:
             raise AttachmentUploadError(
                 f"S3 upload failed for {attachment.filename}: status {response.status_code}"
             )
-
-    @staticmethod
-    def _raise_http_status_error(response: Any) -> None:
-        """Raise PerplexityHTTPStatusError from a failed HTTP response.
-
-        Args:
-            response: The HTTP response object from curl_cffi.
-
-        Raises:
-            PerplexityHTTPStatusError: Always raised with response details.
-        """
-        simple_request = SimpleRequest(method="POST", url=response.url)
-        simple_response = SimpleResponse(
-            status_code=response.status_code,
-            headers=dict(response.headers) if response.headers else {},
-            text=response.text,
-            request=simple_request,
-        )
-        raise PerplexityHTTPStatusError(
-            message=f"HTTP {response.status_code}",
-            request=simple_request,
-            response=simple_response,
-        )

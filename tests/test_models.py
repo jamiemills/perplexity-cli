@@ -28,31 +28,31 @@ class TestWebResult:
         assert result.timestamp is None
 
     def test_web_result_from_dict(self):
-        """Test WebResult creation from dictionary."""
+        """Test WebResult creation from dictionary via model_validate."""
         data = {
             "name": "Python.org",
             "url": "https://www.python.org",
             "snippet": "Official Python website",
             "timestamp": "2025-11-09",
         }
-        result = WebResult.from_dict(data)
+        result = WebResult.model_validate(data)
         assert result.name == "Python.org"
         assert result.url == "https://www.python.org"
         assert result.snippet == "Official Python website"
         assert result.timestamp == "2025-11-09"
 
     def test_web_result_from_dict_missing_optional(self):
-        """Test WebResult from_dict with missing optional fields."""
+        """Test WebResult model_validate with missing optional fields."""
         data = {"name": "Test", "url": "https://test.com", "snippet": "Test"}
-        result = WebResult.from_dict(data)
+        result = WebResult.model_validate(data)
         assert result.name == "Test"
         assert result.url == "https://test.com"
         assert result.timestamp is None
 
     def test_web_result_from_dict_missing_required(self):
-        """Test WebResult from_dict with missing required fields."""
+        """Test WebResult model_validate with missing fields uses defaults."""
         data = {"name": "Test"}
-        result = WebResult.from_dict(data)
+        result = WebResult.model_validate(data)
         assert result.name == "Test"
         assert result.url == ""
         assert result.snippet is None
@@ -98,7 +98,7 @@ class TestSSEMessageWithWebResults:
             "blocks": [],
             "final_sse_message": True,
         }
-        msg = SSEMessage.from_dict(data)
+        msg = SSEMessage.model_validate(data)
         assert msg.web_results is None
 
     def test_sse_message_with_web_results(self):
@@ -134,7 +134,7 @@ class TestSSEMessageWithWebResults:
             ],
             "final_sse_message": True,
         }
-        msg = SSEMessage.from_dict(data)
+        msg = SSEMessage.model_validate(data)
         assert msg.web_results is not None
         assert len(msg.web_results) == 2
         assert msg.web_results[0].url == "https://wikipedia.org"
@@ -162,7 +162,7 @@ class TestSSEMessageWithWebResults:
             ],
             "final_sse_message": True,
         }
-        msg = SSEMessage.from_dict(data)
+        msg = SSEMessage.model_validate(data)
         # Should set web_results to empty list
         assert msg.web_results == []
 
@@ -198,7 +198,7 @@ class TestSSEMessageWithWebResults:
             ],
             "final_sse_message": True,
         }
-        msg = SSEMessage.from_dict(data)
+        msg = SSEMessage.model_validate(data)
         assert msg.web_results is not None
         assert len(msg.web_results) == 1
         assert msg.web_results[0].url == "https://source.com"
@@ -228,6 +228,6 @@ class TestSSEMessageWithWebResults:
             "final_sse_message": True,
         }
 
-        msg = SSEMessage.from_dict(data)
+        msg = SSEMessage.model_validate(data)
 
         assert msg.extract_answer_text() == "Model answer"

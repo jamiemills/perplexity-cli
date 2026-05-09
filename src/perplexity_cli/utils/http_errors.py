@@ -9,10 +9,57 @@ Shared policy:
 
 import logging
 import sys
+from typing import Any
 
 import click
 
-from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, PerplexityRequestError
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+    PerplexityRequestError,
+    SimpleRequest,
+    SimpleResponse,
+)
+
+
+def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
+    """Convert a curl_cffi error response into a PerplexityHTTPStatusError.
+
+    Constructs ``SimpleRequest`` and ``SimpleResponse`` objects so that
+    downstream error handlers can access ``.status_code``, ``.headers``,
+    and ``.text``.
+
+    This is the single shared implementation replacing the identical
+    ``_raise_http_status_error`` static methods that were previously
+    duplicated across ``api/client.py``, ``threads/scraper.py``, and
+    ``attachments/upload_manager.py``.
+
+    Args:
+        response: The curl_cffi Response object with a non-2xx status.
+        method: HTTP method used for the request (default: ``"POST"``).
+
+    Raises:
+        PerplexityHTTPStatusError: Always raised with the converted response.
+    """
+    request = SimpleRequest(method=method, url=str(response.url))
+
+    try:
+        body = response.content
+        text = body.decode("utf-8") if isinstance(body, bytes) else str(body)
+    except (AttributeError, UnicodeDecodeError, TypeError, ValueError):
+        text = ""
+
+    simple_response = SimpleResponse(
+        status_code=response.status_code,
+        headers=dict(response.headers) if response.headers else {},
+        text=text,
+        request=request,
+    )
+
+    raise PerplexityHTTPStatusError(
+        f"HTTP Error {response.status_code}",
+        request=request,
+        response=simple_response,
+    )
 
 
 def handle_unexpected_cli_error(

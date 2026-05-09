@@ -164,12 +164,8 @@ class TestUploadManagerDefensive:
         mock_response.text = '{"error": "Invalid token"}'
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("curl_cffi.requests.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            with pytest.raises(PerplexityHTTPStatusError):
-                await uploader._request_upload_urls(attachments)
+        with pytest.raises(PerplexityHTTPStatusError):
+            await uploader._request_upload_urls(attachments, mock_session)
 
     @pytest.mark.asyncio
     async def test_upload_files_with_null_fields_in_response(self, uploader):
@@ -189,7 +185,7 @@ class TestUploadManagerDefensive:
         mock_s3_response = MagicMock()
         mock_s3_response.status_code = 204
 
-        async def mock_request_upload_urls(attachments):
+        async def mock_request_upload_urls(attachments, session):
             """Mock _request_upload_urls to return null fields."""
             uuid_to_attachment = {"uuid-1": attachments[0]}
             api_response = {
@@ -203,9 +199,7 @@ class TestUploadManagerDefensive:
             return api_response, uuid_to_attachment
 
         with patch.object(uploader, "_request_upload_urls", side_effect=mock_request_upload_urls):
-            with patch(
-                "perplexity_cli.attachments.upload_manager.AsyncSession"
-            ) as mock_session_class:
+            with patch("perplexity_cli.utils.session_factory.AsyncSession") as mock_session_class:
                 with patch("httpx.AsyncClient") as mock_httpx_client:
                     mock_s3_session = AsyncMock()
                     mock_session_class.return_value.__aenter__ = AsyncMock(
@@ -265,12 +259,8 @@ class TestUploadManagerQuotaHandling:
         mock_response.json = MagicMock(return_value=api_response)
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            with pytest.raises(RuntimeError, match="File upload quota exhausted"):
-                await uploader._request_upload_urls(attachments)
+        with pytest.raises(RuntimeError, match="File upload quota exhausted"):
+            await uploader._request_upload_urls(attachments, mock_session)
 
     @pytest.mark.asyncio
     async def test_rate_limited_error_mentions_account_settings(self, uploader):
@@ -300,12 +290,8 @@ class TestUploadManagerQuotaHandling:
         mock_response.json = MagicMock(return_value=api_response)
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            with pytest.raises(RuntimeError, match="perplexity.ai/settings/account"):
-                await uploader._request_upload_urls(attachments)
+        with pytest.raises(RuntimeError, match="perplexity.ai/settings/account"):
+            await uploader._request_upload_urls(attachments, mock_session)
 
     @pytest.mark.asyncio
     async def test_api_error_in_response_body(self, uploader):
@@ -336,12 +322,8 @@ class TestUploadManagerQuotaHandling:
         mock_response.json = MagicMock(return_value=api_response)
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            with pytest.raises(RuntimeError, match="File type not supported"):
-                await uploader._request_upload_urls(attachments)
+        with pytest.raises(RuntimeError, match="File type not supported"):
+            await uploader._request_upload_urls(attachments, mock_session)
 
     @pytest.mark.asyncio
     async def test_null_fields_no_rate_limit_no_error(self, uploader):
@@ -372,12 +354,8 @@ class TestUploadManagerQuotaHandling:
         mock_response.json = MagicMock(return_value=api_response)
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            with pytest.raises(RuntimeError, match="authentication or account issue"):
-                await uploader._request_upload_urls(attachments)
+        with pytest.raises(RuntimeError, match="authentication or account issue"):
+            await uploader._request_upload_urls(attachments, mock_session)
 
     @pytest.mark.asyncio
     async def test_valid_response_passes_through(self, uploader):
@@ -411,17 +389,13 @@ class TestUploadManagerQuotaHandling:
         mock_response.json = MagicMock(return_value=api_response)
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
+        # Patch uuid4 to return a known UUID matching our response
+        with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
+            mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
+            response_json, uuid_map = await uploader._request_upload_urls(attachments, mock_session)
 
-            # Patch uuid4 to return a known UUID matching our response
-            with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
-                mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
-                response_json, uuid_map = await uploader._request_upload_urls(attachments)
-
-            assert "uuid-1" in response_json["results"]
-            assert response_json["results"]["uuid-1"]["fields"] is not None
+        assert "uuid-1" in response_json["results"]
+        assert response_json["results"]["uuid-1"]["fields"] is not None
 
     @pytest.mark.asyncio
     async def test_request_upload_urls_rejects_non_dict_response(self, uploader):
@@ -441,12 +415,8 @@ class TestUploadManagerQuotaHandling:
         mock_response.json = MagicMock(return_value=[])
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            with pytest.raises(UpstreamSchemaError, match="Malformed upload URL response"):
-                await uploader._request_upload_urls(attachments)
+        with pytest.raises(UpstreamSchemaError, match="Malformed upload URL response"):
+            await uploader._request_upload_urls(attachments, mock_session)
 
     @pytest.mark.asyncio
     async def test_request_upload_urls_rejects_non_dict_results(self, uploader):
@@ -466,12 +436,8 @@ class TestUploadManagerQuotaHandling:
         mock_response.json = MagicMock(return_value={"results": []})
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            with pytest.raises(UpstreamSchemaError, match="Malformed upload results payload"):
-                await uploader._request_upload_urls(attachments)
+        with pytest.raises(UpstreamSchemaError, match="Malformed upload results payload"):
+            await uploader._request_upload_urls(attachments, mock_session)
 
 
 class TestUploadManagerCookies:
@@ -512,17 +478,13 @@ class TestUploadManagerCookies:
         mock_response.json = MagicMock(return_value=api_response)
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
+        with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
+            mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
+            await uploader._request_upload_urls(attachments, mock_session)
 
-            with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
-                mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
-                await uploader._request_upload_urls(attachments)
-
-            # Verify cookies were passed in the request
-            call_args = mock_session.post.call_args
-            assert dict(call_args.kwargs["cookies"]) == cookies
+        # Verify cookies were passed in the request
+        call_args = mock_session.post.call_args
+        assert dict(call_args.kwargs["cookies"]) == cookies
 
     @pytest.mark.asyncio
     async def test_csrf_token_in_headers(self):
@@ -555,17 +517,13 @@ class TestUploadManagerCookies:
         mock_response.json = MagicMock(return_value=api_response)
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
+        with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
+            mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
+            await uploader._request_upload_urls(attachments, mock_session)
 
-            with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
-                mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
-                await uploader._request_upload_urls(attachments)
-
-            call_args = mock_session.post.call_args
-            headers = call_args.kwargs["headers"]
-            assert headers["X-CSRFToken"] == "test-csrf-value"
+        call_args = mock_session.post.call_args
+        headers = call_args.kwargs["headers"]
+        assert headers["X-CSRFToken"] == "test-csrf-value"
 
     @pytest.mark.asyncio
     async def test_origin_and_referer_headers_sent(self):
@@ -597,18 +555,14 @@ class TestUploadManagerCookies:
         mock_response.json = MagicMock(return_value=api_response)
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
+        with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
+            mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
+            await uploader._request_upload_urls(attachments, mock_session)
 
-            with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
-                mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
-                await uploader._request_upload_urls(attachments)
-
-            call_args = mock_session.post.call_args
-            headers = call_args.kwargs["headers"]
-            assert headers["Origin"] == "https://www.perplexity.ai"
-            assert headers["Referer"] == "https://www.perplexity.ai/"
+        call_args = mock_session.post.call_args
+        headers = call_args.kwargs["headers"]
+        assert headers["Origin"] == "https://www.perplexity.ai"
+        assert headers["Referer"] == "https://www.perplexity.ai/"
 
     @pytest.mark.asyncio
     async def test_no_cookies_sends_empty_dict(self):
@@ -640,16 +594,12 @@ class TestUploadManagerCookies:
         mock_response.json = MagicMock(return_value=api_response)
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
+        with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
+            mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
+            await uploader._request_upload_urls(attachments, mock_session)
 
-            with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
-                mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
-                await uploader._request_upload_urls(attachments)
-
-            call_args = mock_session.post.call_args
-            assert call_args.kwargs["cookies"] == {}
+        call_args = mock_session.post.call_args
+        assert call_args.kwargs["cookies"] == {}
 
 
 class TestUploadManagerLogging:
@@ -680,13 +630,9 @@ class TestUploadManagerLogging:
         mock_response.text = '{"error": "Unauthorized"}'
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with patch("curl_cffi.requests.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            with caplog.at_level(logging.ERROR):
-                with pytest.raises(PerplexityHTTPStatusError):
-                    await uploader._request_upload_urls(attachments)
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(PerplexityHTTPStatusError):
+                await uploader._request_upload_urls(attachments, mock_session)
 
             error_logs = [record for record in caplog.records if record.levelname == "ERROR"]
             assert any(

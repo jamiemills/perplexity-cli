@@ -6,9 +6,16 @@ from datetime import datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from perplexity_cli.api.models import FileAttachment, QueryParams
+from perplexity_cli.api.models import (
+    Block,
+    FileAttachment,
+    QueryParams,
+    SSEMessage,
+    WebResult,
+)
 from perplexity_cli.auth.models import CookieData, TokenFormat, TokenMetadata
 from perplexity_cli.threads.models import CacheContent, CacheFormat, CacheMetadata
+from perplexity_cli.utils.exceptions import UpstreamSchemaError
 from perplexity_cli.utils.rate_limiter_models import (
     RateLimiterConfig,
     RateLimiterState,
@@ -440,3 +447,304 @@ class TestQueryParamsSearchMode:
         request_dict = params.to_dict()
         assert "search_implementation_mode" in request_dict
         assert request_dict["search_implementation_mode"] == "multi_step"
+
+
+# ---------------------------------------------------------------------------
+# Item 15: WebResult, Block, SSEMessage -- model_validate and validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestWebResultModelValidate:
+    """Test WebResult via model_validate (no from_dict)."""
+
+    def test_model_validate_full_payload(self):
+        """Test model_validate with all fields present."""
+        data = {
+            "name": "Python.org",
+            "url": "https://www.python.org",
+            "snippet": "Official Python website",
+            "timestamp": "2025-11-09",
+        }
+        result = WebResult.model_validate(data)
+        assert result.name == "Python.org"
+        assert result.url == "https://www.python.org"
+        assert result.snippet == "Official Python website"
+        assert result.timestamp == "2025-11-09"
+
+    def test_model_validate_missing_optional_fields(self):
+        """Test model_validate with only required fields."""
+        data = {"name": "Test", "url": "https://test.com"}
+        result = WebResult.model_validate(data)
+        assert result.name == "Test"
+        assert result.url == "https://test.com"
+        assert result.snippet is None
+        assert result.timestamp is None
+
+    def test_model_validate_missing_name_and_url_use_defaults(self):
+        """Test model_validate with empty dict uses defaults for name/url."""
+        result = WebResult.model_validate({})
+        assert result.name == ""
+        assert result.url == ""
+        assert result.snippet is None
+
+    def test_model_validate_extra_fields_ignored(self):
+        """Test model_validate ignores unknown fields from upstream."""
+        data = {
+            "name": "Test",
+            "url": "https://test.com",
+            "unknown_future_field": True,
+            "another_unknown": [1, 2, 3],
+        }
+        result = WebResult.model_validate(data)
+        assert result.name == "Test"
+        assert result.url == "https://test.com"
+        assert not hasattr(result, "unknown_future_field")
+
+    def test_model_validate_rejects_non_dict(self):
+        """Test model_validate raises UpstreamSchemaError for non-dict input."""
+        with pytest.raises(UpstreamSchemaError, match="Malformed web result"):
+            WebResult.model_validate("not-a-dict")
+
+    def test_model_validate_rejects_list(self):
+        """Test model_validate raises UpstreamSchemaError for list input."""
+        with pytest.raises(UpstreamSchemaError, match="Malformed web result"):
+            WebResult.model_validate([{"name": "x"}])
+
+    def test_model_dump_roundtrip(self):
+        """Test model_dump produces data that can be re-validated."""
+        original = WebResult(
+            name="Example",
+            url="https://example.com",
+            snippet="A snippet",
+            timestamp="2025-01-01",
+        )
+        dumped = original.model_dump()
+        restored = WebResult.model_validate(dumped)
+        assert restored.name == original.name
+        assert restored.url == original.url
+        assert restored.snippet == original.snippet
+        assert restored.timestamp == original.timestamp
+
+
+class TestBlockModelValidate:
+    """Test Block via model_validate (no from_dict)."""
+
+    def test_model_validate_flat_api_payload(self):
+        """Test model_validate transforms flat API dict into intended_usage + content."""
+        raw = {
+            "intended_usage": "web_results",
+            "web_result_block": {"web_results": []},
+        }
+        block = Block.model_validate(raw)
+        assert block.intended_usage == "web_results"
+        assert "web_result_block" in block.content
+        assert block.content["web_result_block"] == {"web_results": []}
+
+    def test_model_validate_structured_dict_passes_through(self):
+        """Test model_validate with already-structured data (content key present)."""
+        structured = {
+            "intended_usage": "ask_text",
+            "content": {"markdown_block": {"chunks": ["Hello"]}},
+        }
+        block = Block.model_validate(structured)
+        assert block.intended_usage == "ask_text"
+        assert block.content == {"markdown_block": {"chunks": ["Hello"]}}
+
+    def test_model_validate_missing_intended_usage_defaults(self):
+        """Test model_validate with no intended_usage defaults to empty string."""
+        raw = {"web_result_block": {"web_results": []}}
+        block = Block.model_validate(raw)
+        assert block.intended_usage == ""
+        assert "web_result_block" in block.content
+
+    def test_model_validate_flat_payload_excludes_intended_usage_from_content(self):
+        """Test that intended_usage is NOT duplicated inside content."""
+        raw = {
+            "intended_usage": "ask_text",
+            "markdown_block": {"chunks": ["text"]},
+            "extra_field": 42,
+        }
+        block = Block.model_validate(raw)
+        assert "intended_usage" not in block.content
+        assert block.content["markdown_block"] == {"chunks": ["text"]}
+        assert block.content["extra_field"] == 42
+
+    def test_model_validate_rejects_non_dict(self):
+        """Test model_validate raises UpstreamSchemaError for non-dict input."""
+        with pytest.raises(UpstreamSchemaError, match="Malformed block"):
+            Block.model_validate("not-a-dict")
+
+    def test_model_validate_rejects_list(self):
+        """Test model_validate raises UpstreamSchemaError for list input."""
+        with pytest.raises(UpstreamSchemaError, match="Malformed block"):
+            Block.model_validate([1, 2, 3])
+
+    def test_direct_construction_unchanged(self):
+        """Test direct construction with intended_usage and content still works."""
+        block = Block(
+            intended_usage="ask_text",
+            content={"markdown_block": {"chunks": ["text"]}},
+        )
+        assert block.intended_usage == "ask_text"
+        assert block.content == {"markdown_block": {"chunks": ["text"]}}
+
+    def test_model_dump_roundtrip(self):
+        """Test model_dump produces data that can be re-validated."""
+        original = Block(
+            intended_usage="plan",
+            content={"plan_block": {"progress": "Step 1"}},
+        )
+        dumped = original.model_dump()
+        restored = Block.model_validate(dumped)
+        assert restored.intended_usage == original.intended_usage
+        assert restored.content == original.content
+
+
+class TestSSEMessageModelValidate:
+    """Test SSEMessage via model_validate (no from_dict)."""
+
+    def test_model_validate_full_payload(self):
+        """Test model_validate with a full SSE message payload."""
+        data = {
+            "backend_uuid": "uuid1",
+            "context_uuid": "ctx1",
+            "uuid": "msg1",
+            "frontend_context_uuid": "fctx1",
+            "display_model": "gpt4",
+            "mode": "copilot",
+            "thread_url_slug": "test-slug",
+            "status": "COMPLETE",
+            "text_completed": True,
+            "blocks": [
+                {
+                    "intended_usage": "ask_text",
+                    "markdown_block": {"chunks": ["Hello"]},
+                }
+            ],
+            "final_sse_message": True,
+            "cursor": "cursor-123",
+        }
+        msg = SSEMessage.model_validate(data)
+        assert msg.backend_uuid == "uuid1"
+        assert msg.status == "COMPLETE"
+        assert msg.text_completed is True
+        assert msg.final_sse_message is True
+        assert len(msg.blocks) == 1
+        assert msg.blocks[0].intended_usage == "ask_text"
+        assert msg.cursor == "cursor-123"
+
+    def test_model_validate_missing_fields_use_defaults(self):
+        """Test model_validate with minimal payload uses defaults."""
+        data = {"blocks": []}
+        msg = SSEMessage.model_validate(data)
+        assert msg.backend_uuid == ""
+        assert msg.context_uuid == ""
+        assert msg.uuid == ""
+        assert msg.status == ""
+        assert msg.text_completed is False
+        assert msg.final_sse_message is False
+        assert msg.blocks == []
+        assert msg.web_results is None
+        assert msg.cursor is None
+
+    def test_model_validate_nested_block_transformation(self):
+        """Test model_validate transforms flat block dicts to Block instances."""
+        data = {
+            "blocks": [
+                {
+                    "intended_usage": "ask_text",
+                    "markdown_block": {"chunks": ["Answer"]},
+                },
+                {
+                    "intended_usage": "web_results",
+                    "web_result_block": {
+                        "web_results": [{"name": "Src", "url": "https://src.com"}]
+                    },
+                },
+            ],
+        }
+        msg = SSEMessage.model_validate(data)
+        assert len(msg.blocks) == 2
+        assert isinstance(msg.blocks[0], Block)
+        assert msg.blocks[0].intended_usage == "ask_text"
+        assert "markdown_block" in msg.blocks[0].content
+
+    def test_model_validate_derives_web_results_from_blocks(self):
+        """Test model_validate derives web_results from blocks automatically."""
+        data = {
+            "blocks": [
+                {
+                    "intended_usage": "web_results",
+                    "web_result_block": {
+                        "web_results": [
+                            {"name": "Wikipedia", "url": "https://wikipedia.org"},
+                            {"name": "Example", "url": "https://example.com"},
+                        ]
+                    },
+                }
+            ],
+        }
+        msg = SSEMessage.model_validate(data)
+        assert msg.web_results is not None
+        assert len(msg.web_results) == 2
+        assert msg.web_results[0].name == "Wikipedia"
+        assert msg.web_results[1].url == "https://example.com"
+
+    def test_model_validate_web_results_none_when_no_web_blocks(self):
+        """Test web_results remains None when no web_results blocks exist."""
+        data = {
+            "blocks": [
+                {"intended_usage": "ask_text", "markdown_block": {"chunks": ["text"]}},
+            ],
+        }
+        msg = SSEMessage.model_validate(data)
+        assert msg.web_results is None
+
+    def test_model_validate_rejects_non_dict(self):
+        """Test model_validate raises UpstreamSchemaError for non-dict input."""
+        with pytest.raises(UpstreamSchemaError, match="Malformed SSE message"):
+            SSEMessage.model_validate("not-a-dict")
+
+    def test_model_validate_rejects_non_list_blocks(self):
+        """Test model_validate raises UpstreamSchemaError when blocks is not a list."""
+        with pytest.raises(UpstreamSchemaError, match="Malformed SSE blocks"):
+            SSEMessage.model_validate({"blocks": {}})
+
+    def test_model_validate_extra_fields_ignored(self):
+        """Test model_validate ignores unknown fields from upstream."""
+        data = {
+            "blocks": [],
+            "some_new_upstream_field": True,
+            "another_unknown": {"nested": 1},
+        }
+        msg = SSEMessage.model_validate(data)
+        assert msg.blocks == []
+        assert not hasattr(msg, "some_new_upstream_field")
+
+    def test_model_validate_extract_answer_text(self):
+        """Test extract_answer_text works on model_validate-constructed messages."""
+        data = {
+            "blocks": [
+                {
+                    "intended_usage": "ask_text",
+                    "markdown_block": {"chunks": ["Model ", "answer"]},
+                },
+            ],
+        }
+        msg = SSEMessage.model_validate(data)
+        assert msg.extract_answer_text() == "Model answer"
+
+    def test_model_validate_malformed_web_result_raises_upstream_error(self):
+        """Test malformed web result elements raise UpstreamSchemaError."""
+        data = {
+            "blocks": [
+                {
+                    "intended_usage": "web_results",
+                    "web_result_block": {
+                        "web_results": ["not-a-dictionary"],
+                    },
+                }
+            ],
+        }
+        with pytest.raises(UpstreamSchemaError, match="Malformed web result"):
+            SSEMessage.model_validate(data)

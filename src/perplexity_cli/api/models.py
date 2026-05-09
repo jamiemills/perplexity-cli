@@ -5,7 +5,7 @@ import binascii
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from perplexity_cli.api.contracts import require_list, require_mapping
 from perplexity_cli.utils.version import get_api_version
@@ -191,39 +191,57 @@ class QueryRequest(BaseModel):
 
 
 class WebResult(BaseModel):
-    """Search result from Perplexity."""
+    """Search result from Perplexity.
 
-    name: str
-    url: str
+    Upstream API payloads are validated via ``model_validate()``.  The
+    pre-validator enforces that the input is a mapping (raising
+    ``UpstreamSchemaError`` otherwise) so that malformed upstream data
+    is caught early with a domain-specific exception.
+    """
+
+    name: str = Field(default="")
+    url: str = Field(default="")
     snippet: str | None = Field(default=None)
     timestamp: str | None = Field(default=None)
 
+    @model_validator(mode="before")
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "WebResult":
-        """Create from API response dictionary."""
-        data = require_mapping(data, "Malformed web result block in upstream response")
-        return cls(
-            name=data.get("name", ""),
-            url=data.get("url", ""),
-            snippet=data.get("snippet"),
-            timestamp=data.get("timestamp"),
-        )
+    def _validate_upstream_shape(cls, data: Any) -> Any:
+        """Ensure the raw input is a mapping before field validation."""
+        return require_mapping(data, "Malformed web result block in upstream response")
 
 
 class Block(BaseModel):
-    """Answer block from SSE response."""
+    """Answer block from SSE response.
 
-    intended_usage: str
-    content: dict[str, Any]
+    The upstream API sends blocks as flat dictionaries with
+    ``intended_usage`` alongside the payload keys.  The pre-validator
+    restructures this into ``{intended_usage, content}`` so that all
+    non-usage keys are stored under ``content``.
 
+    Direct construction with ``intended_usage`` and ``content``
+    keyword arguments is also supported (the pre-validator detects the
+    presence of the ``content`` key and passes through unchanged).
+    """
+
+    intended_usage: str = Field(default="")
+    content: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Block":
-        """Create from API response dictionary."""
+    def _split_flat_payload(cls, data: Any) -> Any:
+        """Transform a flat upstream block dict into {intended_usage, content}.
+
+        If the data already contains a ``content`` key (e.g. from direct
+        construction or a ``model_dump`` round-trip), it is passed through
+        unchanged.
+        """
         data = require_mapping(data, "Malformed block in upstream response")
-        intended_usage = data.get("intended_usage", "")
-        # Remove intended_usage from content
-        content = {k: v for k, v in data.items() if k != "intended_usage"}
-        return cls(intended_usage=intended_usage, content=content)
+        if "content" not in data:
+            intended_usage = data.get("intended_usage", "")
+            content = {k: v for k, v in data.items() if k != "intended_usage"}
+            return {"intended_usage": intended_usage, "content": content}
+        return data
 
     def extract_text(self) -> str | None:
         """Extract answer text from a private API block shape."""
@@ -292,62 +310,52 @@ class Block(BaseModel):
         if not isinstance(results, list):
             return None
 
-        return [WebResult.from_dict(result) for result in results]
+        return [WebResult.model_validate(result) for result in results]
 
 
 class SSEMessage(BaseModel):
-    """Single SSE message from streaming response."""
+    """Single SSE message from streaming response.
 
-    backend_uuid: str
-    context_uuid: str
-    uuid: str
-    frontend_context_uuid: str
-    display_model: str
-    mode: str
+    The pre-validator enforces the upstream contract (mapping with a
+    list-shaped ``blocks`` field).  After field validation, the
+    after-validator derives ``web_results`` from the validated blocks
+    when the caller has not supplied them explicitly.
+    """
+
+    backend_uuid: str = Field(default="")
+    context_uuid: str = Field(default="")
+    uuid: str = Field(default="")
+    frontend_context_uuid: str = Field(default="")
+    display_model: str = Field(default="")
+    mode: str = Field(default="")
     thread_url_slug: str | None = Field(default=None)
-    status: str
-    text_completed: bool
+    status: str = Field(default="")
+    text_completed: bool = Field(default=False)
     blocks: list[Block] = Field(default_factory=list)
-    final_sse_message: bool
+    final_sse_message: bool = Field(default=False)
     cursor: str | None = Field(default=None)
     read_write_token: str | None = Field(default=None)
     web_results: list[WebResult] | None = Field(default=None)
     attachments: list[str] = Field(default_factory=list, description="S3 URLs of attached files")
 
+    @model_validator(mode="before")
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SSEMessage":
-        """Create from SSE message data."""
+    def _validate_upstream_shape(cls, data: Any) -> Any:
+        """Enforce upstream contract: top-level mapping with list-shaped blocks."""
         data = require_mapping(data, "Malformed SSE message in upstream response")
-        raw_blocks = require_list(
-            data.get("blocks", []), "Malformed SSE blocks in upstream response"
-        )
+        require_list(data.get("blocks", []), "Malformed SSE blocks in upstream response")
+        return data
 
-        blocks = [Block.from_dict(b) for b in raw_blocks]
-
-        web_results = None
-        for block in blocks:
-            extracted_results = block.extract_web_results()
-            if extracted_results is not None:
-                web_results = extracted_results
-                break
-
-        return cls(
-            backend_uuid=data.get("backend_uuid", ""),
-            context_uuid=data.get("context_uuid", ""),
-            uuid=data.get("uuid", ""),
-            frontend_context_uuid=data.get("frontend_context_uuid", ""),
-            display_model=data.get("display_model", ""),
-            mode=data.get("mode", ""),
-            thread_url_slug=data.get("thread_url_slug"),
-            status=data.get("status", ""),
-            text_completed=data.get("text_completed", False),
-            blocks=blocks,
-            final_sse_message=data.get("final_sse_message", False),
-            cursor=data.get("cursor"),
-            read_write_token=data.get("read_write_token"),
-            web_results=web_results,
-            attachments=data.get("attachments", []),
-        )
+    @model_validator(mode="after")
+    def _derive_web_results(self) -> "SSEMessage":
+        """Derive web_results from blocks when not explicitly provided."""
+        if self.web_results is None:
+            for block in self.blocks:
+                extracted = block.extract_web_results()
+                if extracted is not None:
+                    self.web_results = extracted
+                    break
+        return self
 
     def extract_answer_text(self) -> str | None:
         """Extract the final answer text from message blocks."""
