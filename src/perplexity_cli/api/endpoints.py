@@ -55,7 +55,8 @@ class PerplexityAPI:
         """Submit a query to Perplexity and stream responses.
 
         Args:
-            query_input: The query text and optional attachment URLs.
+            query_input: The query text, optional attachment URLs, and
+                optional model preference.
             search_implementation_mode: Search mode ('standard' or
                 'multi_step' for deep research).
 
@@ -75,11 +76,13 @@ class PerplexityAPI:
         frontend_context_uuid = str(uuid.uuid4())
 
         # Build query parameters
+        effective_model = query_input.model_preference or "pplx_pro"
         params = QueryParams(
             frontend_uuid=frontend_uuid,
             frontend_context_uuid=frontend_context_uuid,
             search_implementation_mode=search_implementation_mode,
             attachments=query_input.attachment_urls or [],
+            model_preference=effective_model,
         )
 
         # Build request
@@ -90,18 +93,22 @@ class PerplexityAPI:
         for message_data in self.client.stream_post(query_endpoint, request.to_dict()):
             yield SSEMessage.model_validate(message_data)
 
-    def get_complete_answer(
+    def get_complete_answer(  # nosemgrep: too-many-parameters
         self,
         query: str,
         search_implementation_mode: str = "standard",
         attachments: list[str] | None = None,
+        *,
+        model_preference: str | None = None,
     ) -> Answer:
         """Submit a query and return the complete answer with references.
 
         Args:
             query: The user's query text.
-            search_implementation_mode: Search mode ('standard' or 'multi_step' for deep research).
+            search_implementation_mode: Search mode ('standard' or
+                'multi_step' for deep research).
             attachments: Optional list of S3 URLs for file attachments.
+            model_preference: Optional model ID override.
 
         Returns:
             Answer object containing text and references list.
@@ -111,8 +118,15 @@ class PerplexityAPI:
             PerplexityRequestError: For network errors.
             UpstreamSchemaError: For malformed responses or if no answer is found.
         """
-        query_input = QueryInput(query=query, attachment_urls=attachments or [])
-        final_message = self._collect_final_message(query_input, search_implementation_mode)
+        query_input = QueryInput(
+            query=query,
+            attachment_urls=attachments or [],
+            model_preference=model_preference,
+        )
+        final_message = self._collect_final_message(
+            query_input,
+            search_implementation_mode,
+        )
         return self._extract_answer_from_final(final_message)
 
     def _collect_final_message(

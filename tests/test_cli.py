@@ -228,7 +228,11 @@ class TestCLICommands:
 
         assert result.exit_code == 0
         assert "Test answer" in result.output
-        mock_api.get_complete_answer.assert_called_once_with("What is Python?", attachments=[])
+        mock_api.get_complete_answer.assert_called_once_with(
+            "What is Python?",
+            attachments=[],
+            model_preference=None,
+        )
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.auth.token_manager.TokenManager")

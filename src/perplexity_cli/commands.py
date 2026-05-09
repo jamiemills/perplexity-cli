@@ -1627,6 +1627,26 @@ doctor.add_command(doctor_security)
         "complex queries that may take longer to process.  Example: --timeout 120"
     ),
 )
+@click.option(
+    "--model",
+    "-m",
+    "model_preference",
+    type=str,
+    default=None,
+    help=(
+        "Model to use for this query.  Accepts a model identifier string "
+        "as returned by 'pxcli models list'.  When not specified, the "
+        "default model 'Best' (pplx_pro) is used, which auto-selects the "
+        "most appropriate model for the query.\n\n"
+        "Examples:\n\n"
+        "  --model gpt54           GPT-5.4\n\n"
+        "  --model claude46sonnet  Claude Sonnet 4.6\n\n"
+        "  --model gpt55           GPT-5.5 (Max tier only)\n\n"
+        "  -m experimental         Sonar 2\n\n"
+        "Run 'pxcli models list' to see all available models for your "
+        "subscription tier."
+    ),
+)
 @click.pass_context
 def query(
     ctx: click.Context,
@@ -1638,6 +1658,7 @@ def query(
     json_flag: bool,
     schema_flag: bool,
     timeout: int | None,
+    model_preference: str | None,
 ) -> None:
     """Submit a query to Perplexity.ai and get an answer.
 
@@ -1701,6 +1722,8 @@ def query(
         pxcli query --attach config.json,data.txt "Analyse these files"
         pxcli query --attach ./docs "Summarise all documentation"
         pxcli query --timeout 120 "Complex research question"
+        pxcli query --model gpt54 "What is Python?"
+        pxcli query -m claude46sonnet "Explain Docker"
 
     \b
     Example Output (rich, default):
@@ -1732,7 +1755,102 @@ def query(
         strip_references,
         stream,
         attachments_str,
+        model_preference=model_preference,
     )
+
+
+# ---------------------------------------------------------------------------
+# Models group
+# ---------------------------------------------------------------------------
+
+
+@click.group(
+    "models",
+    help=(
+        "Model listing and information.\n\n"
+        "Query the Perplexity model catalogue to discover which models are "
+        "available for use with the --model flag on the query command.\n\n"
+        "Subcommands:\n\n"
+        "  list  - List all available models with their identifiers and tiers\n\n"
+        "Quick start:\n\n"
+        "  pxcli models list                # Show available models\n\n"
+        "  pxcli models list --json         # JSON envelope output\n\n"
+        "  pxcli query -m gpt54 'question'  # Use a specific model"
+    ),
+)
+@click.pass_context
+def models_group(ctx: click.Context) -> None:
+    """Model listing and information."""
+    _ensure_ctx_obj(ctx)
+
+
+@click.command(name="list")
+@click.option(
+    "--json",
+    "json_flag",
+    is_flag=True,
+    help=(
+        "Emit output as a structured JSON envelope to stdout instead of "
+        "human-readable text.  The envelope contains {ok, command, result, meta, "
+        "next_actions} on success.  Intended for programmatic consumption."
+    ),
+)
+@click.option(
+    "--schema",
+    "schema_flag",
+    is_flag=True,
+    help=(
+        "Embed the full JSON Schema definition as a $schema key in the JSON "
+        "envelope output.  Only effective when --json is also specified."
+    ),
+)
+@click.pass_context
+def models_list(ctx: click.Context, json_flag: bool, schema_flag: bool) -> None:
+    """List available models.
+
+    Fetches the model catalogue from Perplexity and displays all models
+    accessible to your subscription tier.  Each model is shown with its
+    identifier (for use with --model), display name, subscription tier
+    requirement, and a short description.
+
+    Requires authentication.  Run 'pxcli auth login' first if you have
+    not already authenticated.
+
+    \b
+    Result fields (--json):
+      models  - Array of model objects, each containing:
+        model_id         - Identifier for use with --model
+        label            - Human-readable display name
+        tier             - Subscription tier: 'pro' or 'max'
+        description      - Short model description
+        reasoning_model  - Reasoning variant ID (or null)
+        is_default       - Whether this is the default model
+
+    \b
+    Examples:
+        pxcli models list
+        pxcli models list --json
+        pxcli models list --json | jq '.result.models[].model_id'
+        pxcli models list --json --schema
+
+    \b
+    Example Output (human):
+        MODEL ID        LABEL                  TIER  DESCRIPTION
+        --------------  ---------------------  ----  -------------------------
+        pplx_pro        Best (default)         Pro   Auto-select the best model
+        gpt54           GPT-5.4                Pro   OpenAI GPT-5.4
+        gpt55           GPT-5.5                Max   OpenAI GPT-5.5
+        claude46sonnet  Claude Sonnet 4.6      Pro   Anthropic Claude
+    """
+    ctx.ensure_object(dict)
+    ctx.obj["json"] = json_flag
+    ctx.obj["schema"] = schema_flag
+    from perplexity_cli.runners.models import run_models_list_command
+
+    run_models_list_command(ctx.obj)
+
+
+models_group.add_command(models_list)
 
 
 # ---------------------------------------------------------------------------
@@ -2073,6 +2191,7 @@ def register_commands(main_group: click.Group) -> None:
         style_group,
         threads_group,
         skill_group,
+        models_group,
         doctor,
         query,
         completion_group,

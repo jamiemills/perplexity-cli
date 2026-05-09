@@ -1,6 +1,6 @@
 """Runner sub-package: domain-specific command orchestration helpers.
 
-Each module owns one bounded context (auth, config, export, status, skill)
+Each module owns one bounded context (auth, config, export, models, status, skill)
 with a standardised error-handling envelope.
 """
 
@@ -13,6 +13,7 @@ from perplexity_cli.runners.config import (
     run_view_style_command,
 )
 from perplexity_cli.runners.export import run_export_threads_command
+from perplexity_cli.runners.models import run_models_list_command
 from perplexity_cli.runners.skill import run_show_skill_command
 from perplexity_cli.runners.status import run_doctor_security_command, run_status_command
 
@@ -23,6 +24,7 @@ __all__ = [
     "run_doctor_security_command",
     "run_export_threads_command",
     "run_logout_command",
+    "run_models_list_command",
     "run_set_config_command",
     "run_show_config_command",
     "run_show_skill_command",

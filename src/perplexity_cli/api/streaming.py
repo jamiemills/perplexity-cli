@@ -146,7 +146,7 @@ def _run_stream_loop(
 
     Args:
         api: PerplexityAPI instance.
-        query_input: Query text and optional attachment URLs.
+        query_input: Query text, optional attachment URLs, and model preference.
         ndjson_writer: Optional NDJSON writer for JSON mode.
 
     Returns:
@@ -256,7 +256,7 @@ def stream_query_response(
 
     Args:
         api: PerplexityAPI instance.
-        query_input: Query text and optional attachment URLs.
+        query_input: Query text, optional attachment URLs, and model preference.
         render: Formatter and output presentation options.
         trace: Trace and timing context.
     """
@@ -268,7 +268,11 @@ def stream_query_response(
         ndjson_writer.start(command="pxcli query --json --stream")
 
     try:
-        accumulated_text, references = _run_stream_loop(api, query_input, ndjson_writer)
+        accumulated_text, references = _run_stream_loop(
+            api,
+            query_input,
+            ndjson_writer,
+        )
         if ndjson_writer:
             _write_ndjson_result(ndjson_writer, accumulated_text, references, trace)
         else:

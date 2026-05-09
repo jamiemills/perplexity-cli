@@ -151,6 +151,8 @@ skill_group = commands.skill_group
 skill_show = commands.skill_show
 doctor = commands.doctor
 doctor_security = commands.doctor_security
+models_group = commands.models_group
+models_list = commands.models_list
 
 
 if __name__ == "__main__":
