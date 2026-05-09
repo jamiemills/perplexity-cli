@@ -4,13 +4,35 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class URLConfig(BaseModel):
-    """URL configuration for Perplexity API."""
+    """URL configuration for Perplexity API.
+
+    All endpoint fields are stored as **full URLs** so they can be used
+    directly without composition.  The ``base_url`` field is retained for
+    deriving HTTP Origin/Referer headers and for any future endpoints that
+    have not yet been added here.
+    """
 
     base_url: str = Field(default="https://www.perplexity.ai")
-    query_endpoint: str = Field(default="/api/pplx.generateStream")
-    thread_list_endpoint: str = Field(default="/rest/thread/list_ask_threads")
+    query_endpoint: str = Field(
+        default="https://www.perplexity.ai/rest/sse/perplexity_ask",
+    )
+    thread_list_endpoint: str = Field(
+        default="https://www.perplexity.ai/rest/thread/list_ask_threads",
+    )
+    upload_url_endpoint: str = Field(
+        default="https://www.perplexity.ai/rest/uploads/batch_create_upload_urls",
+    )
+    s3_bucket_url: str = Field(
+        default="https://ppl-ai-file-upload.s3.amazonaws.com/",
+    )
 
-    @field_validator("base_url", "query_endpoint", "thread_list_endpoint")
+    @field_validator(
+        "base_url",
+        "query_endpoint",
+        "thread_list_endpoint",
+        "upload_url_endpoint",
+        "s3_bucket_url",
+    )
     @classmethod
     def validate_urls(cls, v: str) -> str:
         """Validate that URLs are non-empty strings."""

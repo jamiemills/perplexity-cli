@@ -41,32 +41,34 @@ class AttachmentUploader:
     3. Return final S3 URLs for use in queries
     """
 
-    S3_BUCKET_URL = "https://ppl-ai-file-upload.s3.amazonaws.com/"
-    UPLOAD_URL_ENDPOINT = "/rest/uploads/batch_create_upload_urls"
-
     def __init__(
         self,
         token: str,
         cookies: dict[str, str] | None = None,
-        base_url: str = "https://www.perplexity.ai",
+        base_url: str | None = None,
     ):
         """Initialise the uploader with authentication token and cookies.
 
         Args:
             token: JWT authentication token for API requests.
             cookies: Optional browser cookies for Cloudflare bypass and session auth.
-            base_url: Base URL for Perplexity API (default: https://www.perplexity.ai).
+            base_url: Base URL for Perplexity API (default from configuration).
         """
+        if base_url is None:
+            from perplexity_cli.utils.config import get_perplexity_base_url
+
+            base_url = get_perplexity_base_url()
+
         self.token = token
         self.cookies = cookies
         self.base_url = base_url
 
     @staticmethod
-    def _create_async_session(timeout: int = 30) -> AsyncSession:
+    def _create_async_session(timeout: int | None = None) -> AsyncSession:
         """Create an AsyncSession with Chrome TLS impersonation.
 
         Args:
-            timeout: Request timeout in seconds.
+            timeout: Request timeout in seconds (default from config/defaults).
 
         Returns:
             An AsyncSession configured for Chrome impersonation.
@@ -104,7 +106,9 @@ class AttachmentUploader:
         # Step 1: Request presigned upload URLs from API
         # Returns both the API response and UUID->attachment mapping
         # Use a single session for both the presigned URL request and S3 uploads
-        async with self._create_async_session(timeout=300) as session:
+        from perplexity_cli.config.defaults import DEFAULT_UPLOAD_TIMEOUT
+
+        async with self._create_async_session(timeout=DEFAULT_UPLOAD_TIMEOUT) as session:
             upload_urls_response, uuid_to_attachment = await self._request_upload_urls(
                 attachments, session
             )
@@ -176,8 +180,10 @@ class AttachmentUploader:
 
         # Make API request for presigned URLs
         try:
+            from perplexity_cli.utils.config import get_upload_url_endpoint
+
             response = await session.post(
-                f"{self.base_url}{self.UPLOAD_URL_ENDPOINT}",
+                get_upload_url_endpoint(),
                 json=request_body,
                 headers=headers,
                 cookies=to_curl_cffi_cookies(self.cookies),
@@ -218,11 +224,13 @@ class AttachmentUploader:
             for _file_uuid, upload_data in results.items():
                 if not upload_data.get("fields") or not upload_data.get("s3_object_url"):
                     if upload_data.get("rate_limited"):
+                        from perplexity_cli.config.defaults import PERPLEXITY_SETTINGS_URL
+
                         error_msg = (
                             "File upload quota exhausted. "
                             "Your Perplexity plan's document analysis allowance "
-                            "has been reached. Check your account at "
-                            "https://www.perplexity.ai/settings/account"
+                            f"has been reached. Check your account at "
+                            f"{PERPLEXITY_SETTINGS_URL}"
                         )
                     elif upload_data.get("error"):
                         error_msg = f"API failed to generate upload URL: {upload_data.get('error')}"
@@ -295,9 +303,12 @@ class AttachmentUploader:
                 files_dict[key] = (None, value)
             files_dict["file"] = (attachment.filename, file_content, attachment.content_type)
 
-            async with httpx.AsyncClient(timeout=300) as client:
+            from perplexity_cli.config.defaults import DEFAULT_UPLOAD_TIMEOUT
+            from perplexity_cli.utils.config import get_s3_bucket_url
+
+            async with httpx.AsyncClient(timeout=DEFAULT_UPLOAD_TIMEOUT) as client:
                 response = await client.post(
-                    self.S3_BUCKET_URL,
+                    get_s3_bucket_url(),
                     files=files_dict,
                 )
         except RequestException as e:

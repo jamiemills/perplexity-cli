@@ -142,10 +142,17 @@ def _ensure_user_urls_config() -> None:
 def get_urls() -> URLConfig:
     """Load and cache the URLs configuration as a Pydantic URLConfig model.
 
-    Returns the user configuration if it exists, otherwise creates it from defaults.
+    Returns the user configuration if it exists, otherwise creates it from
+    defaults.  Missing fields fall through to the Pydantic model defaults
+    defined in :class:`~perplexity_cli.config.models.URLConfig`.
+
     Environment variables can override configuration values:
-    - PERPLEXITY_BASE_URL: Overrides base_url
-    - PERPLEXITY_QUERY_ENDPOINT: Overrides query_endpoint
+
+    - ``PERPLEXITY_BASE_URL``
+    - ``PERPLEXITY_QUERY_ENDPOINT``
+    - ``PERPLEXITY_THREAD_LIST_ENDPOINT``
+    - ``PERPLEXITY_UPLOAD_URL_ENDPOINT``
+    - ``PERPLEXITY_S3_BUCKET_URL``
 
     Returns:
         URLConfig: The validated URLs configuration model.
@@ -170,41 +177,24 @@ def get_urls() -> URLConfig:
     if not isinstance(perplexity_config, dict):
         raise ConfigurationError("'perplexity' section must be a dictionary")
 
-    # Create base URLConfig from file
+    # Apply environment variable overrides before validation
+    _ENV_OVERRIDES = {
+        "PERPLEXITY_BASE_URL": "base_url",
+        "PERPLEXITY_QUERY_ENDPOINT": "query_endpoint",
+        "PERPLEXITY_THREAD_LIST_ENDPOINT": "thread_list_endpoint",
+        "PERPLEXITY_UPLOAD_URL_ENDPOINT": "upload_url_endpoint",
+        "PERPLEXITY_S3_BUCKET_URL": "s3_bucket_url",
+    }
+    for env_var, field_name in _ENV_OVERRIDES.items():
+        if env_var in os.environ:
+            perplexity_config[field_name] = os.environ[env_var]
+
+    # Build and validate in a single step — Pydantic model defaults
+    # fill in any fields absent from the user config.
     try:
-        url_config = URLConfig(
-            base_url=perplexity_config.get("base_url", "https://www.perplexity.ai"),
-            query_endpoint=perplexity_config.get("query_endpoint", "/api/pplx.generateStream"),
-            thread_list_endpoint=perplexity_config.get(
-                "thread_list_endpoint", "/rest/thread/list_ask_threads"
-            ),
-        )
+        return URLConfig.model_validate(perplexity_config)
     except ValueError as e:
         raise ConfigurationError(f"Invalid URLs configuration: {e}") from e
-
-    # Apply environment variable overrides
-    if "PERPLEXITY_BASE_URL" in os.environ:
-        url_config.base_url = os.environ["PERPLEXITY_BASE_URL"]
-
-    if "PERPLEXITY_QUERY_ENDPOINT" in os.environ:
-        url_config.query_endpoint = os.environ["PERPLEXITY_QUERY_ENDPOINT"]
-
-    if "PERPLEXITY_THREAD_LIST_ENDPOINT" in os.environ:
-        url_config.thread_list_endpoint = os.environ["PERPLEXITY_THREAD_LIST_ENDPOINT"]
-
-    # Validate after environment overrides using Pydantic
-    try:
-        URLConfig(
-            base_url=url_config.base_url,
-            query_endpoint=url_config.query_endpoint,
-            thread_list_endpoint=url_config.thread_list_endpoint,
-        )
-    except ValueError as e:
-        raise ConfigurationError(
-            f"Invalid URLs configuration after environment overrides: {e}"
-        ) from e
-
-    return url_config
 
 
 def clear_urls_cache() -> None:
@@ -244,8 +234,6 @@ def get_query_endpoint() -> str:
 def get_thread_list_url() -> str:
     """Get the full URL for the Perplexity thread list API endpoint.
 
-    Composes the base URL and thread list endpoint from configuration.
-
     Returns:
         str: The full thread list URL (e.g.,
             https://www.perplexity.ai/rest/thread/list_ask_threads).
@@ -254,7 +242,35 @@ def get_thread_list_url() -> str:
         RuntimeError: If configuration is invalid or missing required fields.
     """
     url_config = get_urls()
-    return url_config.base_url + url_config.thread_list_endpoint
+    return url_config.thread_list_endpoint
+
+
+def get_upload_url_endpoint() -> str:
+    """Get the full URL for the Perplexity upload-URL endpoint.
+
+    Returns:
+        str: The upload URL endpoint (e.g.,
+            https://www.perplexity.ai/rest/uploads/batch_create_upload_urls).
+
+    Raises:
+        RuntimeError: If configuration is invalid or missing required fields.
+    """
+    url_config = get_urls()
+    return url_config.upload_url_endpoint
+
+
+def get_s3_bucket_url() -> str:
+    """Get the S3 bucket URL used for file uploads.
+
+    Returns:
+        str: The S3 bucket URL (e.g.,
+            https://ppl-ai-file-upload.s3.amazonaws.com/).
+
+    Raises:
+        RuntimeError: If configuration is invalid or missing required fields.
+    """
+    url_config = get_urls()
+    return url_config.s3_bucket_url
 
 
 def _get_default_rate_limiting() -> dict[str, Any]:

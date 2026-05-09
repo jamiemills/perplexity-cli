@@ -18,14 +18,14 @@ class PerplexityAPI:
     """High-level interface to Perplexity API."""
 
     def __init__(
-        self, token: str | None, cookies: dict[str, str] | None = None, timeout: int = 60
+        self, token: str | None, cookies: dict[str, str] | None = None, timeout: int | None = None
     ) -> None:
         """Initialise Perplexity API client.
 
         Args:
             token: Optional authentication JWT token.
             cookies: Optional browser cookies for Cloudflare bypass.
-            timeout: Request timeout in seconds.
+            timeout: Request timeout in seconds (default from config/defaults).
         """
         self.client = SSEClient(token=token, cookies=cookies, timeout=timeout)
 

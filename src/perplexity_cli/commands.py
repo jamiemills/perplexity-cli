@@ -8,11 +8,12 @@ import click
 @click.command()
 @click.option(
     "--port",
-    default=9222,
+    default=None,
+    type=int,
     help="Chrome remote debugging port (default: 9222)",
 )
 @click.pass_context
-def auth(ctx: click.Context, port: int) -> None:
+def auth(ctx: click.Context, port: int | None) -> None:
     """Authenticate with Perplexity.ai via Chrome DevTools Protocol.
 
     One-time setup to extract and store your authentication token securely.
@@ -40,9 +41,10 @@ def auth(ctx: click.Context, port: int) -> None:
         perplexity-cli auth
         perplexity-cli auth --port 9223
     """
+    from perplexity_cli.config.defaults import DEFAULT_CHROME_DEBUG_PORT
     from perplexity_cli.runners import run_auth_command
 
-    run_auth_command(ctx.obj, port)
+    run_auth_command(ctx.obj, port or DEFAULT_CHROME_DEBUG_PORT)
 
 
 @click.command()

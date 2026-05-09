@@ -110,9 +110,9 @@ class ChromeDevToolsClient:
 
 async def authenticate_with_browser(
     url: str | None = None,
-    port: int = 9222,
-    timeout: int = 120,
-    poll_interval: float = 2.0,
+    port: int | None = None,
+    timeout: int | None = None,
+    poll_interval: float | None = None,
 ) -> tuple[str, dict[str, str]]:
     """Authenticate with Perplexity via Google and extract the session token and cookies.
 
@@ -122,9 +122,9 @@ async def authenticate_with_browser(
 
     Args:
         url: The Perplexity URL to navigate to. If None, uses configured base URL.
-        port: The Chrome remote debugging port (default: 9222).
-        timeout: Maximum time to wait for authentication in seconds (default: 120).
-        poll_interval: Time between polling attempts in seconds (default: 2.0).
+        port: The Chrome remote debugging port (default from config/defaults).
+        timeout: Maximum time to wait for authentication in seconds (default from config/defaults).
+        poll_interval: Time between polling attempts in seconds (default from config/defaults).
 
     Returns:
         Tuple of (token, cookies_dict) where:
@@ -135,12 +135,23 @@ async def authenticate_with_browser(
         RuntimeError: If Chrome is not available or authentication fails.
         TimeoutError: If authentication timeout is exceeded.
     """
+    from perplexity_cli.config.defaults import (
+        DEFAULT_AUTH_POLL_INTERVAL,
+        DEFAULT_AUTH_TIMEOUT,
+        DEFAULT_CHROME_DEBUG_PORT,
+    )
     from perplexity_cli.utils.logging import get_logger
 
     logger = get_logger()
 
     if url is None:
         url = get_perplexity_base_url()
+    if port is None:
+        port = DEFAULT_CHROME_DEBUG_PORT
+    if timeout is None:
+        timeout = DEFAULT_AUTH_TIMEOUT
+    if poll_interval is None:
+        poll_interval = DEFAULT_AUTH_POLL_INTERVAL
 
     client = ChromeDevToolsClient(port)
 
@@ -220,16 +231,20 @@ async def authenticate_with_browser(
         await client.close()
 
 
-async def _wait_for_page_load(client: ChromeDevToolsClient, timeout: int = 30) -> None:
+async def _wait_for_page_load(client: ChromeDevToolsClient, timeout: int | None = None) -> None:
     """Wait for page to finish loading.
 
     Args:
         client: Chrome DevTools client instance.
-        timeout: Maximum time to wait in seconds.
+        timeout: Maximum time to wait in seconds (default from config/defaults).
 
     Raises:
         TimeoutError: If page doesn't load within timeout.
     """
+    if timeout is None:
+        from perplexity_cli.config.defaults import DEFAULT_PAGE_LOAD_TIMEOUT
+
+        timeout = DEFAULT_PAGE_LOAD_TIMEOUT
     from perplexity_cli.utils.logging import get_logger
 
     logger = get_logger()
@@ -293,17 +308,17 @@ def _extract_token(
 
 def authenticate_sync(
     url: str | None = None,
-    port: int = 9222,
-    timeout: int = 120,
-    poll_interval: float = 2.0,
+    port: int | None = None,
+    timeout: int | None = None,
+    poll_interval: float | None = None,
 ) -> tuple[str, dict[str, str]]:
     """Synchronous wrapper for authenticate_with_browser.
 
     Args:
         url: The Perplexity URL to navigate to. If None, uses configured base URL.
-        port: The Chrome remote debugging port.
-        timeout: Maximum time to wait for authentication in seconds (default: 120).
-        poll_interval: Time between polling attempts in seconds (default: 2.0).
+        port: The Chrome remote debugging port (default from config/defaults).
+        timeout: Maximum time to wait for authentication in seconds (default from config/defaults).
+        poll_interval: Time between polling attempts in seconds (default from config/defaults).
 
     Returns:
         Tuple of (token, cookies_dict) where:

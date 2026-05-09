@@ -446,7 +446,10 @@ API endpoints are configured in `~/.config/perplexity-cli/urls.json` (created au
 {
   "perplexity": {
     "base_url": "https://www.perplexity.ai",
-    "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask"
+    "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask",
+    "thread_list_endpoint": "https://www.perplexity.ai/rest/thread/list_ask_threads",
+    "upload_url_endpoint": "https://www.perplexity.ai/rest/uploads/batch_create_upload_urls",
+    "s3_bucket_url": "https://ppl-ai-file-upload.s3.amazonaws.com/"
   },
   "rate_limiting": {
     "enabled": true,
@@ -455,6 +458,8 @@ API endpoints are configured in `~/.config/perplexity-cli/urls.json` (created au
   }
 }
 ```
+
+All endpoint fields are full URLs. If Perplexity changes an endpoint, update the relevant field in `urls.json` without modifying any code.
 
 ### Rate limiting
 

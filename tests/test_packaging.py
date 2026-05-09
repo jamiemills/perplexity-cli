@@ -20,6 +20,6 @@ def test_default_urls_are_loaded_from_packaged_resource() -> None:
 
     assert url_config.base_url == perplexity_defaults["base_url"]
     assert url_config.query_endpoint == perplexity_defaults["query_endpoint"]
-    assert url_config.thread_list_endpoint == perplexity_defaults.get(
-        "thread_list_endpoint", "/rest/thread/list_ask_threads"
-    )
+    assert url_config.thread_list_endpoint == perplexity_defaults["thread_list_endpoint"]
+    assert url_config.upload_url_endpoint == perplexity_defaults["upload_url_endpoint"]
+    assert url_config.s3_bucket_url == perplexity_defaults["s3_bucket_url"]
