@@ -3,6 +3,10 @@
 .claude
 .claudecode
 
+# OpenCode
+.opencode/node_modules/
+.opencode/bun.lock
+
 # Python cache
 __pycache__/
 *.py[cod]
