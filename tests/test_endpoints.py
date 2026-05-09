@@ -6,6 +6,7 @@ import pytest
 
 from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.api.models import Answer, SSEMessage, WebResult
+from perplexity_cli.utils.exceptions import UpstreamSchemaError
 
 
 class TestPerplexityAPIGetCompleteAnswer:
@@ -23,6 +24,7 @@ class TestPerplexityAPIGetCompleteAnswer:
                 content={"markdown_block": {"chunks": ["This is ", "the answer"]}},
             )
         ]
+        mock_message.extract_answer_text.return_value = "This is the answer"
         mock_message.web_results = None
 
         mock_submit.return_value = [mock_message]
@@ -54,6 +56,7 @@ class TestPerplexityAPIGetCompleteAnswer:
                 content={"markdown_block": {"chunks": ["Complete answer"]}},
             )
         ]
+        mock_message.extract_answer_text.return_value = "Complete answer"
         mock_message.web_results = web_refs
 
         mock_submit.return_value = [mock_message]
@@ -73,6 +76,7 @@ class TestPerplexityAPIGetCompleteAnswer:
         # Create mock messages - intermediate and final
         intermediate_message = Mock(spec=SSEMessage)
         intermediate_message.final_sse_message = False
+        intermediate_message.extract_answer_text.return_value = None
 
         final_message = Mock(spec=SSEMessage)
         final_message.final_sse_message = True
@@ -82,6 +86,7 @@ class TestPerplexityAPIGetCompleteAnswer:
                 content={"markdown_block": {"chunks": ["Final answer"]}},
             )
         ]
+        final_message.extract_answer_text.return_value = "Final answer"
         final_message.web_results = None
 
         mock_submit.return_value = [intermediate_message, final_message]
@@ -93,16 +98,17 @@ class TestPerplexityAPIGetCompleteAnswer:
 
     @patch("perplexity_cli.api.endpoints.PerplexityAPI.submit_query")
     def test_get_complete_answer_no_answer_raises_error(self, mock_submit):
-        """Test that ValueError is raised when no answer is found."""
+        """Test that UpstreamSchemaError is raised when no answer is found."""
         mock_message = Mock(spec=SSEMessage)
         mock_message.final_sse_message = True
         mock_message.blocks = []  # No blocks
+        mock_message.extract_answer_text.return_value = None
         mock_message.web_results = None
 
         mock_submit.return_value = [mock_message]
 
         api = PerplexityAPI(token="test-token")
-        with pytest.raises(ValueError, match="No answer found"):
+        with pytest.raises(UpstreamSchemaError, match="No answer found"):
             api.get_complete_answer("test query")
 
     @patch("perplexity_cli.api.endpoints.PerplexityAPI.submit_query")
@@ -118,6 +124,7 @@ class TestPerplexityAPIGetCompleteAnswer:
                 },
             )
         ]
+        mock_message.extract_answer_text.return_value = "This is a multi-chunk answer"
         mock_message.web_results = None
 
         mock_submit.return_value = [mock_message]

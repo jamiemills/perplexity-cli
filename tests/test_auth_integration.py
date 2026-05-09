@@ -11,6 +11,7 @@ from perplexity_cli.auth.oauth_handler import (
     authenticate_with_browser,
 )
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.utils.exceptions import AuthenticationError
 
 
 @pytest.mark.integration
@@ -23,11 +24,10 @@ class TestAuthenticationFlow:
         with tempfile.TemporaryDirectory() as temp_dir:
             token_file = Path(temp_dir) / "token.json"
 
-            def mock_get_token_path():
-                return token_file
-
+            mock_paths = type("MockPaths", (), {"token_path": token_file})()
             monkeypatch.setattr(
-                "perplexity_cli.auth.token_manager.get_token_path", mock_get_token_path
+                "perplexity_cli.auth.token_manager.get_config_paths",
+                lambda: mock_paths,
             )
             yield TokenManager()
 
@@ -62,8 +62,22 @@ class TestAuthenticationFlow:
     @pytest.mark.asyncio
     async def test_authenticate_with_browser_error_handling(self):
         """Test error handling when Chrome is unavailable."""
-        with pytest.raises(RuntimeError, match="Failed to connect to Chrome"):
+        with pytest.raises(AuthenticationError, match="Failed to connect to Chrome"):
             await authenticate_with_browser(port=9999)
+
+    @pytest.mark.asyncio
+    async def test_authenticate_with_browser_invalid_targets_payload(self):
+        """Test invalid Chrome targets payload raises RuntimeError."""
+        from perplexity_cli.auth.oauth_handler import ChromeDevToolsClient
+
+        client = ChromeDevToolsClient(port=9222)
+
+        with patch("perplexity_cli.auth.oauth_handler.urllib.request.urlopen") as mock_urlopen:
+            mock_response = mock_urlopen.return_value.__enter__.return_value
+            mock_response.read.return_value = b'{"not": "a list"}'
+
+            with pytest.raises(AuthenticationError, match="invalid targets payload"):
+                await client.connect()
 
     def test_authenticate_sync_wrapper(self):
         """Test synchronous wrapper for async authentication."""
@@ -87,11 +101,10 @@ class TestTokenLifecycle:
         with tempfile.TemporaryDirectory() as temp_dir:
             token_file = Path(temp_dir) / "token.json"
 
-            def mock_get_token_path():
-                return token_file
-
+            mock_paths = type("MockPaths", (), {"token_path": token_file})()
             monkeypatch.setattr(
-                "perplexity_cli.auth.token_manager.get_token_path", mock_get_token_path
+                "perplexity_cli.auth.token_manager.get_config_paths",
+                lambda: mock_paths,
             )
             yield TokenManager()
 
@@ -154,11 +167,10 @@ class TestErrorRecovery:
         with tempfile.TemporaryDirectory() as temp_dir:
             token_file = Path(temp_dir) / "token.json"
 
-            def mock_get_token_path():
-                return token_file
-
+            mock_paths = type("MockPaths", (), {"token_path": token_file})()
             monkeypatch.setattr(
-                "perplexity_cli.auth.token_manager.get_token_path", mock_get_token_path
+                "perplexity_cli.auth.token_manager.get_config_paths",
+                lambda: mock_paths,
             )
             yield TokenManager()
 
@@ -193,7 +205,7 @@ class TestErrorRecovery:
         os.chmod(token_manager.token_path, 0o644)
 
         # Should detect insecure permissions
-        with pytest.raises(RuntimeError):
+        with pytest.raises(AuthenticationError):
             token_manager.load_token()
 
         # Can recover by fixing permissions

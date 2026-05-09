@@ -8,6 +8,7 @@ import pytest
 
 from perplexity_cli.config.models import FeatureConfig, URLConfig
 from perplexity_cli.utils.config import (
+    ConfigPaths,
     clear_feature_config_cache,
     clear_urls_cache,
     get_feature_config,
@@ -29,8 +30,8 @@ class TestCorruptedConfigJson:
         config_path.write_text("{invalid json content!!!", encoding="utf-8")
 
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_feature_config_path",
-            lambda: config_path,
+            "perplexity_cli.utils.config.get_config_paths",
+            lambda: ConfigPaths(config_dir),
         )
         # Prevent _ensure_user_feature_config from overwriting our corrupt file
         monkeypatch.setattr(
@@ -54,8 +55,8 @@ class TestCorruptedConfigJson:
         urls_path.write_text("not valid json!", encoding="utf-8")
 
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_urls_path",
-            lambda: urls_path,
+            "perplexity_cli.utils.config.get_config_paths",
+            lambda: ConfigPaths(tmp_path),
         )
         monkeypatch.setattr(
             "perplexity_cli.utils.config._ensure_user_urls_config",
@@ -80,8 +81,8 @@ class TestMissingUrlsJson:
         urls_path = config_dir / "urls.json"
 
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_urls_path",
-            lambda: urls_path,
+            "perplexity_cli.utils.config.get_config_paths",
+            lambda: ConfigPaths(config_dir),
         )
         monkeypatch.setattr(
             "perplexity_cli.utils.config.get_config_dir",
@@ -246,44 +247,46 @@ class TestRateLimitingValidation:
 
     def test_negative_requests_per_period_raises(self):
         """Test that negative requests_per_period in config raises RuntimeError."""
-        with patch("perplexity_cli.utils.config.get_urls_path") as mock_path:
+        with patch("perplexity_cli.utils.config.get_config_paths") as mock_paths:
             import tempfile
 
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-                json.dump(
-                    {
-                        "rate_limiting": {
-                            "enabled": True,
-                            "requests_per_period": -1,
-                            "period_seconds": 60,
-                        }
-                    },
-                    f,
-                )
-                f.flush()
-                mock_path.return_value = Path(f.name)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                urls_path = Path(tmpdir) / "urls.json"
+                with open(urls_path, "w", encoding="utf-8") as f:
+                    json.dump(
+                        {
+                            "rate_limiting": {
+                                "enabled": True,
+                                "requests_per_period": -1,
+                                "period_seconds": 60,
+                            }
+                        },
+                        f,
+                    )
+                mock_paths.return_value = ConfigPaths(Path(tmpdir))
 
                 with pytest.raises(RuntimeError, match="Invalid rate limiting configuration"):
                     get_rate_limiting_config()
 
     def test_zero_period_seconds_raises(self):
         """Test that zero period_seconds in config raises RuntimeError."""
-        with patch("perplexity_cli.utils.config.get_urls_path") as mock_path:
+        with patch("perplexity_cli.utils.config.get_config_paths") as mock_paths:
             import tempfile
 
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-                json.dump(
-                    {
-                        "rate_limiting": {
-                            "enabled": True,
-                            "requests_per_period": 10,
-                            "period_seconds": 0,
-                        }
-                    },
-                    f,
-                )
-                f.flush()
-                mock_path.return_value = Path(f.name)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                urls_path = Path(tmpdir) / "urls.json"
+                with open(urls_path, "w", encoding="utf-8") as f:
+                    json.dump(
+                        {
+                            "rate_limiting": {
+                                "enabled": True,
+                                "requests_per_period": 10,
+                                "period_seconds": 0,
+                            }
+                        },
+                        f,
+                    )
+                mock_paths.return_value = ConfigPaths(Path(tmpdir))
 
                 with pytest.raises(RuntimeError, match="Invalid rate limiting configuration"):
                     get_rate_limiting_config()
@@ -294,20 +297,33 @@ class TestRateLimitingValidation:
         The runtime code does not perform manual validation of the enabled field;
         Pydantic's bool coercion accepts string values like 'yes'.
         """
-        with patch("perplexity_cli.utils.config.get_urls_path") as mock_path:
+        with patch("perplexity_cli.utils.config.get_config_paths") as mock_paths:
             import tempfile
 
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-                json.dump(
-                    {"rate_limiting": {"enabled": "yes"}},
-                    f,
-                )
-                f.flush()
-                mock_path.return_value = Path(f.name)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                urls_path = Path(tmpdir) / "urls.json"
+                with open(urls_path, "w", encoding="utf-8") as f:
+                    json.dump(
+                        {"rate_limiting": {"enabled": "yes"}},
+                        f,
+                    )
+                mock_paths.return_value = ConfigPaths(Path(tmpdir))
 
                 # Pydantic coerces "yes" to a boolean; no RuntimeError raised
                 config = get_rate_limiting_config()
                 assert isinstance(config.enabled, bool)
+
+    def test_non_dict_rate_limiting_section_raises(self, tmp_path, monkeypatch):
+        """Test that non-dict rate_limiting section raises RuntimeError."""
+        urls_path = tmp_path / "urls.json"
+        urls_path.write_text(json.dumps({"rate_limiting": "bad"}), encoding="utf-8")
+
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.get_config_paths", lambda: ConfigPaths(tmp_path)
+        )
+
+        with pytest.raises(RuntimeError, match="rate_limiting section must be a dictionary"):
+            get_rate_limiting_config()
 
 
 class TestGetUrlsEdgeCases:
@@ -320,7 +336,9 @@ class TestGetUrlsEdgeCases:
         urls_path = tmp_path / "urls.json"
         urls_path.write_text(json.dumps({"other": "data"}), encoding="utf-8")
 
-        monkeypatch.setattr("perplexity_cli.utils.config.get_urls_path", lambda: urls_path)
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.get_config_paths", lambda: ConfigPaths(tmp_path)
+        )
         monkeypatch.setattr("perplexity_cli.utils.config._ensure_user_urls_config", lambda: None)
 
         with pytest.raises(RuntimeError, match="missing 'perplexity' section"):
@@ -335,7 +353,9 @@ class TestGetUrlsEdgeCases:
         urls_path = tmp_path / "urls.json"
         urls_path.write_text(json.dumps({"perplexity": "not a dict"}), encoding="utf-8")
 
-        monkeypatch.setattr("perplexity_cli.utils.config.get_urls_path", lambda: urls_path)
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.get_config_paths", lambda: ConfigPaths(tmp_path)
+        )
         monkeypatch.setattr("perplexity_cli.utils.config._ensure_user_urls_config", lambda: None)
 
         with pytest.raises(RuntimeError, match="must be a dictionary"):
@@ -379,5 +399,32 @@ class TestCacheClearFunctions:
 
         assert isinstance(config1, FeatureConfig)
         assert isinstance(config2, FeatureConfig)
+
+        clear_feature_config_cache()
+
+
+class TestFeatureConfigValidation:
+    """Test stricter feature config structure validation."""
+
+    def test_non_dict_features_section_raises(self, tmp_path, monkeypatch):
+        """Test that non-dict features section raises RuntimeError."""
+        clear_feature_config_cache()
+
+        config_dir = tmp_path / ".config" / "perplexity-cli"
+        config_dir.mkdir(parents=True)
+        config_path = config_dir / "config.json"
+        config_path.write_text(json.dumps({"features": "bad"}), encoding="utf-8")
+
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.get_config_paths",
+            lambda: ConfigPaths(config_dir),
+        )
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config._ensure_user_feature_config",
+            lambda: None,
+        )
+
+        with pytest.raises(RuntimeError, match="'features' section must be a dictionary"):
+            get_feature_config()
 
         clear_feature_config_cache()

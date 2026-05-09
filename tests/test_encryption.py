@@ -63,6 +63,14 @@ class TestKeyDerivation:
     def test_derive_encryption_key_is_cached(self) -> None:
         """Test that derive_encryption_key results are cached across calls."""
         derive_encryption_key.cache_clear()
+
+    def test_derive_key_failure_raises_runtime_error(self) -> None:
+        """Test socket failures are surfaced as RuntimeError."""
+        derive_encryption_key.cache_clear()
+        with mock.patch("socket.gethostname", side_effect=OSError("no hostname")):
+            with pytest.raises(RuntimeError, match="Failed to derive encryption key"):
+                derive_encryption_key()
+        derive_encryption_key.cache_clear()
         with mock.patch("perplexity_cli.utils.encryption.socket.gethostname") as mock_hostname:
             mock_hostname.return_value = "cached-host"
             key1 = derive_encryption_key()

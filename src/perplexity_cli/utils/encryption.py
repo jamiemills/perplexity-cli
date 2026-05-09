@@ -1,17 +1,21 @@
-"""Token encryption utilities using system-derived keys.
+"""Token encryption utilities using deterministic machine-derived keys.
 
 This module provides symmetric encryption for stored authentication tokens.
 The encryption key is derived from system identifiers (hostname, OS user),
-making it deterministic and machine-specific.
+making it deterministic and machine-specific. This is best treated as
+machine-bound obfuscation rather than strong OS-backed secret storage.
 """
 
 import base64
+import binascii
 import hashlib
 import os
 import socket
 from functools import lru_cache
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
+
+from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationError
 
 # Salt used for key derivation - consistent across installations
 _KEY_DERIVATION_SALT = b"perplexity-cli-token-encryption"
@@ -42,8 +46,8 @@ def _derive_encryption_key_legacy() -> bytes:
         fernet_key = base64.urlsafe_b64encode(key_hash)
         return fernet_key
 
-    except Exception as e:
-        raise RuntimeError(f"Failed to derive encryption key (legacy): {e}") from e
+    except OSError as e:
+        raise ConfigurationError(f"Failed to derive encryption key (legacy): {e}") from e
 
 
 @lru_cache(maxsize=1)
@@ -52,8 +56,9 @@ def derive_encryption_key() -> bytes:
 
     Uses machine hostname and OS user to create a deterministic encryption key.
     The same system will always generate the same key, but different systems
-    will generate different keys. This ensures tokens cannot be transferred
-    between machines.
+    will generate different keys. This reduces portability of copied files,
+    but it does not protect secrets from other local processes or users that
+    can already read the encrypted files on the same machine.
 
     Key derivation uses PBKDF2-HMAC with SHA256 for improved security.
 
@@ -78,8 +83,8 @@ def derive_encryption_key() -> bytes:
         fernet_key = base64.urlsafe_b64encode(key_hash)
         return fernet_key
 
-    except Exception as e:
-        raise RuntimeError(f"Failed to derive encryption key: {e}") from e
+    except OSError as e:
+        raise ConfigurationError(f"Failed to derive encryption key: {e}") from e
 
 
 def encrypt_token(token: str) -> str:
@@ -99,8 +104,8 @@ def encrypt_token(token: str) -> str:
         cipher = Fernet(key)
         encrypted = cipher.encrypt(token.encode())
         return base64.urlsafe_b64encode(encrypted).decode()
-    except Exception as e:
-        raise RuntimeError(f"Failed to encrypt token: {e}") from e
+    except (ConfigurationError, ValueError, TypeError) as e:
+        raise ConfigurationError(f"Failed to encrypt token: {e}") from e
 
 
 def decrypt_token(encrypted_token: str) -> str:
@@ -126,7 +131,7 @@ def decrypt_token(encrypted_token: str) -> str:
         encrypted_bytes = base64.urlsafe_b64decode(encrypted_token.encode())
         decrypted = cipher.decrypt(encrypted_bytes)
         return decrypted.decode()
-    except Exception:
+    except (ConfigurationError, ValueError, TypeError, InvalidToken, binascii.Error):
         # Fall back to SHA-256 for backward compatibility
         try:
             key = _derive_encryption_key_legacy()
@@ -134,8 +139,8 @@ def decrypt_token(encrypted_token: str) -> str:
             encrypted_bytes = base64.urlsafe_b64decode(encrypted_token.encode())
             decrypted = cipher.decrypt(encrypted_bytes)
             return decrypted.decode()
-        except Exception as e:
-            raise RuntimeError(
+        except (ConfigurationError, ValueError, TypeError, InvalidToken, binascii.Error) as e:
+            raise AuthenticationError(
                 "Failed to decrypt token. This usually means the token was "
                 "encrypted on a different machine or with a different user. "
                 "Please re-authenticate with: perplexity-cli auth"

@@ -23,6 +23,13 @@ from perplexity_cli.api.models import FileAttachment
 from perplexity_cli.attachments.upload_manager import AttachmentUploader
 from perplexity_cli.auth.token_manager import TokenManager
 
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.real_api,
+    pytest.mark.slow,
+    pytest.mark.real_user_config,
+]
+
 
 @pytest.fixture
 def auth_token():
@@ -114,9 +121,9 @@ class TestFileAttachmentRealE2E:
 
         # Verify API accessed both attachments
         assert answer.text is not None
-        assert (
-            "100" in answer.text and "200" in answer.text
-        ), f"Expected both '100' and '200' in response, got: {answer.text}"
+        assert "100" in answer.text and "200" in answer.text, (
+            f"Expected both '100' and '200' in response, got: {answer.text}"
+        )
 
     def test_directory_attachment_in_thread(self, auth_token, tmp_path, attachment_uploader):
         """Test that multiple files from a directory are accessible to the API.
@@ -149,9 +156,9 @@ class TestFileAttachmentRealE2E:
 
         # Verify API accessed all attachments
         assert answer.text is not None
-        assert (
-            "3" in answer.text or "three" in answer.text.lower()
-        ), f"Expected response about 3 files, got: {answer.text}"
+        assert "3" in answer.text or "three" in answer.text.lower(), (
+            f"Expected response about 3 files, got: {answer.text}"
+        )
 
     def test_attachment_content_accessible_in_response(
         self, auth_token, tmp_path, attachment_uploader
@@ -195,6 +202,6 @@ class TestFileAttachmentRealE2E:
 
         # Verify API extracted the correct information
         assert answer.text is not None
-        assert (
-            "99.99" in answer.text or "$99" in answer.text
-        ), f"Expected price in response, got: {answer.text}"
+        assert "99.99" in answer.text or "$99" in answer.text, (
+            f"Expected price in response, got: {answer.text}"
+        )

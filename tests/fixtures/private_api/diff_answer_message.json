@@ -1,0 +1,28 @@
+{
+  "backend_uuid": "backend-55555555",
+  "context_uuid": "context-66666666",
+  "uuid": "message-77777777",
+  "frontend_context_uuid": "frontend-88888888",
+  "display_model": "pplx_pro",
+  "mode": "COPILOT",
+  "thread_url_slug": "diff-thread",
+  "status": "COMPLETED",
+  "text_completed": true,
+  "blocks": [
+    {
+      "intended_usage": "ask_text",
+      "diff_block": {
+        "patches": [
+          {
+            "value": {
+              "text": "Updated summary from diff payload."
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "final_sse_message": true,
+  "cursor": "cursor-diff-01",
+  "attachments": []
+}

@@ -4,7 +4,15 @@ import logging
 import tempfile
 from pathlib import Path
 
-from perplexity_cli.utils.logging import get_logger, setup_logging
+from perplexity_cli.utils.logging import (
+    get_logger,
+    redact_mapping_keys,
+    redact_path,
+    redact_response_text,
+    redact_text,
+    redact_url,
+    setup_logging,
+)
 
 
 class TestLoggingSetup:
@@ -46,3 +54,27 @@ class TestLoggingSetup:
         """Test getting logger with custom name."""
         logger = get_logger("test_module")
         assert logger.name == "perplexity_cli.test_module"
+
+
+class TestLogRedaction:
+    """Test logging redaction helpers."""
+
+    def test_redact_path_keeps_only_filename(self):
+        assert redact_path("/Users/example/secrets/token.json") == "<redacted>/token.json"
+
+    def test_redact_text_hides_content(self):
+        redacted = redact_text("very sensitive query text")
+        assert "sensitive" not in redacted
+        assert redacted.startswith("<redacted:")
+
+    def test_redact_url_hides_path_and_query(self):
+        redacted = redact_url("https://example.com/secret/path?token=abc")
+        assert redacted == "https://example.com/<redacted>"
+
+    def test_redact_mapping_keys_hides_cookie_names(self):
+        redacted = redact_mapping_keys({"cf_clearance": "x", "csrftoken": "y"})
+        assert redacted == "<redacted:2 keys>"
+
+    def test_redact_response_text_hides_body(self):
+        redacted = redact_response_text('{"token":"secret"}')
+        assert "secret" not in redacted

@@ -1,0 +1,28 @@
+{
+  "backend_uuid": "backend-aaaa1111",
+  "context_uuid": "context-bbbb2222",
+  "uuid": "message-cccc3333",
+  "frontend_context_uuid": "frontend-dddd4444",
+  "display_model": "pplx_pro",
+  "mode": "COPILOT",
+  "thread_url_slug": "research-thread",
+  "status": "IN_PROGRESS",
+  "text_completed": false,
+  "blocks": [
+    {
+      "intended_usage": "pro_search_steps",
+      "plan_block": {
+        "progress": "Comparing source quality",
+        "eta_seconds_remaining": 87,
+        "goals": [
+          "Check encyclopaedia summary",
+          "Cross-check government site"
+        ],
+        "pct_complete": 35
+      }
+    }
+  ],
+  "final_sse_message": false,
+  "cursor": "cursor-plan-01",
+  "attachments": []
+}

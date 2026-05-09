@@ -5,8 +5,38 @@ import re
 from pathlib import Path
 
 from perplexity_cli.api.models import FileAttachment
+from perplexity_cli.utils.exceptions import AttachmentError
+from perplexity_cli.utils.logging import redact_path
 
 logger = logging.getLogger(__name__)
+
+MAX_ATTACHMENT_COUNT = 25
+MAX_ATTACHMENT_FILE_SIZE = 10 * 1024 * 1024
+MAX_TOTAL_ATTACHMENT_SIZE = 25 * 1024 * 1024
+SKIPPED_DIRECTORY_NAMES = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+}
+SKIPPED_FILENAME_PREFIXES = (".env",)
+SKIPPED_FILENAME_SUFFIXES = (
+    ".key",
+    ".pem",
+    ".p12",
+    ".pfx",
+    ".crt",
+    ".cer",
+    ".der",
+    ".jks",
+    ".p8",
+)
 
 
 def _extract_file_paths_from_text(text: str) -> list[Path]:
@@ -71,6 +101,7 @@ def resolve_file_arguments(
     Raises:
         FileNotFoundError: If a specified file/directory does not exist.
         ValueError: If an argument is not a file or directory.
+        AttachmentError: If attachment safety limits are exceeded.
     """
     files: set[Path] = set()
 
@@ -82,10 +113,10 @@ def resolve_file_arguments(
             if path.exists():
                 if path.is_file():
                     files.add(path.resolve())
-                    logger.debug(f"Extracted file path from query: {path}")
+                    logger.debug(f"Extracted file path from query: {redact_path(path)}")
                 elif path.is_dir():
                     _add_directory_files(path, files)
-                    logger.debug(f"Extracted directory path from query: {path}")
+                    logger.debug(f"Extracted directory path from query: {redact_path(path)}")
                 else:
                     raise ValueError(f"Not a file or directory: {path}")
             else:
@@ -110,7 +141,31 @@ def resolve_file_arguments(
                 else:
                     raise ValueError(f"Not a file or directory: {path}")
 
-    return sorted(files)
+    resolved_files = sorted(files)
+
+    if len(resolved_files) > MAX_ATTACHMENT_COUNT:
+        raise AttachmentError(
+            f"Too many attachments: {len(resolved_files)} files exceeds the limit of "
+            f"{MAX_ATTACHMENT_COUNT}"
+        )
+
+    return resolved_files
+
+
+def _should_skip_directory_entry(path: Path) -> bool:
+    """Return True when a directory entry should be skipped by default."""
+    name = path.name
+
+    if name in SKIPPED_DIRECTORY_NAMES:
+        return True
+    if name.startswith("."):
+        return True
+    if name.startswith(SKIPPED_FILENAME_PREFIXES):
+        return True
+    if path.suffix.lower() in SKIPPED_FILENAME_SUFFIXES:
+        return True
+
+    return False
 
 
 def _add_directory_files(directory: Path, files: set[Path]) -> None:
@@ -120,9 +175,27 @@ def _add_directory_files(directory: Path, files: set[Path]) -> None:
         directory: Directory path to search.
         files: Set to add discovered files to.
     """
-    for item in directory.rglob("*"):
-        if item.is_file():
-            files.add(item.resolve())
+    for item in directory.walk():
+        current_dir, dirnames, filenames = item
+
+        dirnames[:] = [
+            dirname
+            for dirname in dirnames
+            if not _should_skip_directory_entry(current_dir / dirname)
+            and not (current_dir / dirname).is_symlink()
+        ]
+
+        for filename in filenames:
+            file_path = current_dir / filename
+            if _should_skip_directory_entry(file_path):
+                continue
+            if file_path.is_symlink():
+                logger.debug(
+                    f"Skipping symlink during directory attachment: {redact_path(file_path)}"
+                )
+                continue
+            if file_path.is_file():
+                files.add(file_path.resolve())
 
 
 def load_attachments(file_paths: list[Path]) -> list[FileAttachment]:
@@ -137,15 +210,36 @@ def load_attachments(file_paths: list[Path]) -> list[FileAttachment]:
     Raises:
         FileNotFoundError: If a file does not exist.
         ValueError: If a path is not a file.
+        AttachmentError: If attachment safety limits are exceeded.
         OSError: If a file cannot be read.
     """
+    if len(file_paths) > MAX_ATTACHMENT_COUNT:
+        raise AttachmentError(
+            f"Too many attachments: {len(file_paths)} files exceeds the limit of "
+            f"{MAX_ATTACHMENT_COUNT}"
+        )
+
     attachments: list[FileAttachment] = []
+    total_size = 0
 
     for path in file_paths:
         try:
+            file_size = path.stat().st_size
+            if file_size > MAX_ATTACHMENT_FILE_SIZE:
+                raise AttachmentError(
+                    f"Attachment too large: {path.name} exceeds the per-file limit of "
+                    f"{MAX_ATTACHMENT_FILE_SIZE} bytes"
+                )
+
+            total_size += file_size
+            if total_size > MAX_TOTAL_ATTACHMENT_SIZE:
+                raise AttachmentError(
+                    f"Total attachment size exceeds the limit of {MAX_TOTAL_ATTACHMENT_SIZE} bytes"
+                )
+
             attachment = FileAttachment.from_file(path)
             attachments.append(attachment)
-            logger.debug(f"Loaded attachment: {path.name} ({attachment.content_type})")
+            logger.debug(f"Loaded attachment: {redact_path(path.name)} ({attachment.content_type})")
         except (FileNotFoundError, ValueError) as e:
             logger.error(f"Failed to load attachment: {path}: {e}")
             raise

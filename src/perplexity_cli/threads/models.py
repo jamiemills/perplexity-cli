@@ -17,7 +17,8 @@ class CacheMetadata(BaseModel):
     @classmethod
     def validate_sync_time(cls, v: datetime) -> datetime:
         """Validate sync time is not in the future."""
-        if v > datetime.now():
+        now = datetime.now(v.tzinfo) if v.tzinfo is not None else datetime.now()
+        if v > now:
             raise ValueError("last_sync_time cannot be in the future")
         return v
 
@@ -50,7 +51,8 @@ class CacheFormat(BaseModel):
     @classmethod
     def validate_created_at(cls, v: datetime) -> datetime:
         """Validate created_at is not in the future."""
-        if v > datetime.now():
+        now = datetime.now(v.tzinfo) if v.tzinfo is not None else datetime.now()
+        if v > now:
             raise ValueError("created_at cannot be in the future")
         return v
 

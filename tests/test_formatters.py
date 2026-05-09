@@ -359,7 +359,7 @@ class TestUnwrapParagraphLines:
     def test_preserves_indented_code_blocks(self):
         """Test that code blocks with language specifiers are preserved."""
         formatter = PlainTextFormatter()
-        text = "Example:\n\n" "```python\n" "def hello():\n" "    print('hello')\n" "```"
+        text = "Example:\n\n```python\ndef hello():\n    print('hello')\n```"
         result = formatter.unwrap_paragraph_lines(text)
         assert "def hello():" in result
         assert "    print('hello')" in result

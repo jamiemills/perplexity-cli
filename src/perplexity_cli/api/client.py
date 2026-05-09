@@ -24,9 +24,15 @@ from perplexity_cli.utils.exceptions import (
     PerplexityRequestError,
     SimpleRequest,
     SimpleResponse,
+    UpstreamSchemaError,
 )
-from perplexity_cli.utils.logging import get_logger
-from perplexity_cli.utils.retry import is_retryable_error
+from perplexity_cli.utils.logging import (
+    get_logger,
+    redact_mapping_keys,
+    redact_response_text,
+    redact_url,
+)
+from perplexity_cli.utils.retry import get_backoff_delay, get_retry_after_delay, is_retryable_error
 
 
 class SSEClient:
@@ -125,7 +131,7 @@ class SSEClient:
         effective_timeout = 360 if is_deep_research else self.timeout
 
         if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"API Request to: {url}")
+            self.logger.debug(f"API Request to: {redact_url(url)}")
             self.logger.debug(f"Request headers: Content-Type={headers.get('Content-Type')}")
             if is_deep_research:
                 self.logger.debug(
@@ -141,7 +147,7 @@ class SSEClient:
                 self.logger.debug(
                     f"Cookies: {len(cookies)} total, {len(cf_cookies)} Cloudflare-related"
                 )
-                self.logger.debug(f"Cloudflare cookies present: {cf_cookies}")
+                self.logger.debug(f"Cloudflare cookies present: {redact_mapping_keys(cookies)}")
             else:
                 self.logger.debug("Cookies: None (no Cloudflare bypass)")
 
@@ -149,7 +155,7 @@ class SSEClient:
             try:
                 if self.logger.isEnabledFor(logging.DEBUG):
                     self.logger.debug(
-                        f"Streaming POST to {url} (attempt {attempt + 1}/{self.max_retries})"
+                        f"Streaming POST to {redact_url(url)} (attempt {attempt + 1}/{self.max_retries})"
                     )
 
                 client = self._get_client()
@@ -200,8 +206,10 @@ class SSEClient:
 
                     try:
                         response_text = e.response.text[:500]
-                        self.logger.debug(f"Response body preview: {response_text}")
-                    except Exception:
+                        self.logger.debug(
+                            f"Response body preview: {redact_response_text(response_text)}"
+                        )
+                    except (AttributeError, TypeError):
                         pass
 
                 # Don't retry 401 (invalid token)
@@ -217,7 +225,7 @@ class SSEClient:
                 if status == 403:
                     if attempt < self.max_retries - 1:
                         attempt += 1
-                        wait_time = 2**attempt
+                        wait_time = get_backoff_delay(attempt)
                         self.logger.warning(
                             f"HTTP 403 error (may be Cloudflare blocking), retrying in {wait_time}s "
                             f"(attempt {attempt + 1}/{self.max_retries})"
@@ -237,9 +245,14 @@ class SSEClient:
                 # Retry 429 and 5xx errors
                 if is_retryable_error(e) and attempt < self.max_retries - 1:
                     attempt += 1
+                    wait_time = get_retry_after_delay(e)
+                    if wait_time is None:
+                        wait_time = get_backoff_delay(attempt)
                     self.logger.warning(
-                        f"HTTP {status} error, retrying (attempt {attempt + 1}/{self.max_retries})"
+                        f"HTTP {status} error, retrying in {wait_time}s "
+                        f"(attempt {attempt + 1}/{self.max_retries})"
                     )
+                    time.sleep(wait_time)
                     continue
 
                 # Re-raise if not retryable or out of retries
@@ -267,7 +280,7 @@ class SSEClient:
                 self.logger.error(f"Network error after {attempt + 1} attempts: {e}")
                 raise PerplexityRequestError(str(e)) from e
 
-            except Exception as e:
+            except (ValueError, TypeError, AttributeError) as e:
                 self.logger.error(f"Unexpected error during streaming: {e}", exc_info=True)
                 raise
 
@@ -291,7 +304,7 @@ class SSEClient:
         try:
             body = response.content
             text = body.decode("utf-8") if isinstance(body, bytes) else str(body)
-        except Exception:
+        except (AttributeError, UnicodeDecodeError, TypeError, ValueError):
             text = ""
 
         simple_response = SimpleResponse(
@@ -327,7 +340,7 @@ class SSEClient:
             Parsed JSON data from each SSE message.
 
         Raises:
-            ValueError: If SSE format is invalid or JSON cannot be parsed.
+            UpstreamSchemaError: If SSE format is invalid or JSON cannot be parsed.
         """
         event_type = None
         data_lines = []
@@ -343,7 +356,7 @@ class SSEClient:
                     try:
                         yield json.loads(data_str)
                     except json.JSONDecodeError as e:
-                        raise ValueError(
+                        raise UpstreamSchemaError(
                             f"Failed to parse SSE data as JSON: {data_str[:100]}"
                         ) from e
 
@@ -367,4 +380,6 @@ class SSEClient:
             try:
                 yield json.loads(data_str)
             except json.JSONDecodeError as e:
-                raise ValueError(f"Failed to parse SSE data as JSON: {data_str[:100]}") from e
+                raise UpstreamSchemaError(
+                    f"Failed to parse SSE data as JSON: {data_str[:100]}"
+                ) from e

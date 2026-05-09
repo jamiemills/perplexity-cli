@@ -1,0 +1,81 @@
+name: CI
+
+'on':
+  push:
+    branches:
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - '3.12'
+          - '3.13'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Sync dependencies
+        run: |
+          uv sync --all-extras --locked
+
+      - name: Check formatting
+        run: |
+          uv run ruff format --check src tests
+
+      - name: Check linting
+        run: |
+          uv run ruff check src tests
+
+      - name: Check typing
+        run: |
+          uv run ty check src
+
+      - name: Run tests
+        run: |
+          uv run pytest --cov=perplexity_cli --cov-report=term-missing --cov-fail-under=40
+
+      - name: Build distributions
+        run: |
+          rm -rf dist
+          uv build
+
+      - name: Verify wheel contents
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = sorted(Path("dist").glob("pxcli-*.whl"))
+          if not wheels:
+              raise SystemExit("No built wheel found in dist/.")
+
+          with ZipFile(wheels[-1]) as wheel:
+              names = set(wheel.namelist())
+
+          required = "perplexity_cli/config/urls.json"
+          if required not in names:
+              raise SystemExit(f"Missing required packaged resource: {required}")
+
+          print(f"Verified required packaged resource: {required}")
+          PY
+
+      - name: Run installed-package smoke test
+        run: |
+          sh .claude/scripts/installed_smoke_test.sh

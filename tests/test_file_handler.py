@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
+from perplexity_cli.utils.exceptions import AttachmentError
 from perplexity_cli.utils.file_handler import (
+    MAX_ATTACHMENT_COUNT,
+    MAX_ATTACHMENT_FILE_SIZE,
+    MAX_TOTAL_ATTACHMENT_SIZE,
     load_attachments,
     resolve_file_arguments,
 )
@@ -67,6 +71,38 @@ class TestResolveFileArguments:
         assert "file1.txt" in names
         assert "file2.txt" in names
         assert "file3.txt" in names
+
+    def test_resolve_directory_skips_hidden_and_sensitive_files(self, tmp_path):
+        """Test directory attachments skip risky files by default."""
+        (tmp_path / "visible.txt").write_text("content")
+        (tmp_path / ".env").write_text("SECRET=1")
+        (tmp_path / ".hidden.txt").write_text("hidden")
+        (tmp_path / "private.key").write_text("key")
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".git" / "config").write_text("git config")
+
+        result = resolve_file_arguments([], attach_args=[str(tmp_path)])
+
+        assert [path.name for path in result] == ["visible.txt"]
+
+    def test_resolve_directory_skips_symlinks(self, tmp_path):
+        """Test directory attachments skip symlinked files."""
+        target = tmp_path / "target.txt"
+        target.write_text("content")
+        linked = tmp_path / "linked.txt"
+        linked.symlink_to(target)
+
+        result = resolve_file_arguments([], attach_args=[str(tmp_path)])
+
+        assert [path.name for path in result] == ["target.txt"]
+
+    def test_resolve_too_many_files_raises(self, tmp_path):
+        """Test attachment count limit is enforced during resolution."""
+        for index in range(MAX_ATTACHMENT_COUNT + 1):
+            (tmp_path / f"file-{index}.txt").write_text("content")
+
+        with pytest.raises(AttachmentError, match="Too many attachments"):
+            resolve_file_arguments([], attach_args=[str(tmp_path)])
 
     def test_resolve_nonexistent_file_raises(self):
         """Test that nonexistent file raises FileNotFoundError."""
@@ -206,6 +242,26 @@ class TestLoadAttachments:
 
         assert len(attachments) == 1
         assert attachments[0].filename == "image.bin"
+
+    def test_load_attachment_too_large_raises(self, tmp_path):
+        """Test per-file size limit is enforced before loading."""
+        large_file = tmp_path / "large.txt"
+        large_file.write_bytes(b"a" * (MAX_ATTACHMENT_FILE_SIZE + 1))
+
+        with pytest.raises(AttachmentError, match="Attachment too large"):
+            load_attachments([large_file])
+
+    def test_load_attachments_total_size_limit_raises(self, tmp_path):
+        """Test total attachment size limit is enforced."""
+        file1 = tmp_path / "file1.bin"
+        file2 = tmp_path / "file2.bin"
+        file3 = tmp_path / "file3.bin"
+        file1.write_bytes(b"a" * MAX_ATTACHMENT_FILE_SIZE)
+        file2.write_bytes(b"b" * MAX_ATTACHMENT_FILE_SIZE)
+        file3.write_bytes(b"c" * (MAX_TOTAL_ATTACHMENT_SIZE - (2 * MAX_ATTACHMENT_FILE_SIZE) + 1))
+
+        with pytest.raises(AttachmentError, match="Total attachment size exceeds"):
+            load_attachments([file1, file2, file3])
 
 
 class TestIntegrationResolveAndLoad:

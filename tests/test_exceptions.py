@@ -3,10 +3,16 @@
 import pytest
 
 from perplexity_cli.utils.exceptions import (
+    AttachmentError,
+    AttachmentUploadError,
+    AuthenticationError,
+    ConfigurationError,
     PerplexityHTTPStatusError,
     PerplexityRequestError,
+    RateLimitError,
     SimpleRequest,
     SimpleResponse,
+    UpstreamSchemaError,
 )
 
 
@@ -138,3 +144,33 @@ class TestExceptionHierarchy:
 
         assert not issubclass(PerplexityHTTPStatusError, httpx.HTTPStatusError)
         assert not issubclass(PerplexityRequestError, httpx.RequestError)
+
+
+class TestAdditionalExceptionTypes:
+    """Tests for additional domain exception types."""
+
+    def test_configuration_error_is_runtime_error(self):
+        assert issubclass(ConfigurationError, RuntimeError)
+
+    def test_attachment_error_is_runtime_error(self):
+        assert issubclass(AttachmentError, RuntimeError)
+
+    def test_attachment_upload_error_is_runtime_error(self):
+        assert issubclass(AttachmentUploadError, RuntimeError)
+
+    def test_authentication_error_is_runtime_error(self):
+        assert issubclass(AuthenticationError, RuntimeError)
+
+    def test_rate_limit_error_is_runtime_error(self):
+        assert issubclass(RateLimitError, RuntimeError)
+
+    def test_upstream_schema_error_is_runtime_error(self):
+        assert issubclass(UpstreamSchemaError, RuntimeError)
+
+    def test_authentication_error_is_distinct_failure_family(self):
+        error = AuthenticationError("bad token")
+        assert str(error) == "bad token"
+
+    def test_configuration_error_is_distinct_failure_family(self):
+        error = ConfigurationError("bad config")
+        assert str(error) == "bad config"

@@ -1,3 +1,5 @@
 """Perplexity CLI - Command-line interface for Perplexity.ai."""
 
-__version__ = "0.6.2"
+from perplexity_cli.utils.version import get_version
+
+__version__ = get_version()

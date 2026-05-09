@@ -9,13 +9,17 @@ from typing import Any
 from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.exceptions import RequestException
 
+from perplexity_cli.api.contracts import parse_upload_url_response, require_mapping
 from perplexity_cli.api.models import FileAttachment
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
+    AttachmentUploadError,
     PerplexityHTTPStatusError,
     SimpleRequest,
     SimpleResponse,
+    UpstreamSchemaError,
 )
+from perplexity_cli.utils.logging import redact_path, redact_response_text
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +85,17 @@ class AttachmentUploader:
             tasks = []
             uuid_list = []
             for file_uuid, attachment in uuid_to_attachment.items():
-                upload_data = upload_urls_response["results"][file_uuid]
+                results = require_mapping(
+                    upload_urls_response.get("results"),
+                    "Malformed upload results payload from upstream API",
+                    detail="missing or invalid 'results' field",
+                )
+                upload_data = results.get(file_uuid)
+                upload_data = require_mapping(
+                    upload_data,
+                    "Malformed upload result entry from upstream API",
+                    detail=f"file_uuid={file_uuid}",
+                )
                 task = self._upload_to_s3(attachment, upload_data, session)
                 tasks.append(task)
                 uuid_list.append(file_uuid)
@@ -148,7 +162,7 @@ class AttachmentUploader:
                     cookies=to_curl_cffi_cookies(self.cookies),
                 )
             except RequestException as e:
-                raise RuntimeError(f"Failed to request upload URLs: {e}") from e
+                raise AttachmentUploadError(f"Failed to request upload URLs: {e}") from e
 
             if not response.ok:
                 # Log response details for debugging authentication issues
@@ -160,15 +174,27 @@ class AttachmentUploader:
                 self._raise_http_status_error(response)
 
         # Log the API response for debugging
-        response_json = response.json()
+        try:
+            response_json = parse_upload_url_response(response.json())
+        except ValueError as e:
+            raise UpstreamSchemaError("Malformed upload URL response from upstream API") from e
+
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"API response for upload URLs: {response_json}")
+            logger.debug(
+                f"API response for upload URLs: {redact_response_text(str(response_json))}"
+            )
 
         # Check if API returned valid presigned URLs
         # The API may return HTTP 200 but with null fields when the account's
         # file upload quota is exhausted or the request is rate limited.
-        if response_json.get("results"):
-            for _file_uuid, upload_data in response_json["results"].items():
+        results = require_mapping(
+            response_json.get("results"),
+            "Malformed upload results payload from upstream API",
+            detail="missing or invalid 'results' field",
+        )
+
+        if results:
+            for _file_uuid, upload_data in results.items():
                 if not upload_data.get("fields") or not upload_data.get("s3_object_url"):
                     if upload_data.get("rate_limited"):
                         error_msg = (
@@ -178,16 +204,14 @@ class AttachmentUploader:
                             "https://www.perplexity.ai/settings/account"
                         )
                     elif upload_data.get("error"):
-                        error_msg = (
-                            f"API failed to generate upload URL: " f"{upload_data.get('error')}"
-                        )
+                        error_msg = f"API failed to generate upload URL: {upload_data.get('error')}"
                     else:
                         error_msg = (
                             "API returned an empty presigned URL response. "
                             "This may indicate an authentication or account issue."
                         )
                     logger.error(error_msg)
-                    raise RuntimeError(error_msg)
+                    raise AttachmentUploadError(error_msg)
 
         logger.info(f"Received presigned URLs for {len(files_metadata)} file(s)")
         return response_json, uuid_to_attachment
@@ -211,7 +235,7 @@ class AttachmentUploader:
         Raises:
             RuntimeError: If S3 upload fails.
         """
-        logger.info(f"Uploading file: {attachment.filename}")
+        logger.info(f"Uploading file: {redact_path(attachment.filename)}")
 
         # S3 presigned form uploads require multipart/form-data
         # Build form data with all policy/signature fields, then file content
@@ -223,9 +247,13 @@ class AttachmentUploader:
         if not isinstance(fields, dict):
             logger.warning(
                 f"Unexpected fields type from API: {type(fields).__name__}. "
-                f"Full upload_data: {upload_data}"
+                f"Full upload_data: {redact_response_text(str(upload_data))}"
             )
             fields = {}
+
+        s3_object_url = upload_data.get("s3_object_url", "")
+        if s3_object_url and not isinstance(s3_object_url, str):
+            raise UpstreamSchemaError("Malformed S3 object URL in upload response")
 
         for key, value in fields.items():
             if key not in ["file"]:
@@ -258,18 +286,22 @@ class AttachmentUploader:
                 )
         except RequestException as e:
             logger.error(f"S3 request exception: {e}")
-            raise RuntimeError(f"Failed to upload {attachment.filename} to S3: {e}") from e
+            raise AttachmentUploadError(f"Failed to upload {attachment.filename} to S3: {e}") from e
         except ImportError:
-            raise RuntimeError(
+            raise AttachmentUploadError(
                 "httpx is required for S3 file uploads but is not installed"
             ) from None
         except Exception as e:
+            # Intentionally broad: multipart upload failures can come from several transport,
+            # encoding, or third-party client paths. Surface them as one upload failure.
             logger.error(f"S3 upload error: {e}")
-            raise RuntimeError(f"Failed to upload {attachment.filename} to S3: {e}") from e
+            raise AttachmentUploadError(f"Failed to upload {attachment.filename} to S3: {e}") from e
 
         # S3 returns 204 No Content on successful upload
         if response.status_code == 204:
             s3_url = upload_data.get("s3_object_url", "")
+            if not isinstance(s3_url, str):
+                raise UpstreamSchemaError("Malformed S3 object URL in upload response")
             logger.info(f"Successfully uploaded to: {s3_url}")
             return s3_url
         else:
@@ -279,14 +311,15 @@ class AttachmentUploader:
                 response_text = (
                     response.text[:500] if response.text else str(response.content)[:500]
                 )
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
 
             logger.error(
-                f"S3 upload failed: status {response.status_code}, response: {response_text}"
+                "S3 upload failed: status "
+                f"{response.status_code}, response: {redact_response_text(response_text)}"
             )
-            raise RuntimeError(
-                f"S3 upload failed for {attachment.filename}: " f"status {response.status_code}"
+            raise AttachmentUploadError(
+                f"S3 upload failed for {attachment.filename}: status {response.status_code}"
             )
 
     @staticmethod

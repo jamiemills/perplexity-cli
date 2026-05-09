@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.utils.exceptions import AuthenticationError
 
 
 class TestTokenManager:
@@ -25,10 +26,11 @@ class TestTokenManager:
     def token_manager(self, temp_token_file, monkeypatch):
         """Create a TokenManager instance with mocked config path."""
 
-        def mock_get_token_path():
-            return temp_token_file
-
-        monkeypatch.setattr("perplexity_cli.auth.token_manager.get_token_path", mock_get_token_path)
+        mock_paths = type("MockPaths", (), {"token_path": temp_token_file})()
+        monkeypatch.setattr(
+            "perplexity_cli.auth.token_manager.get_config_paths",
+            lambda: mock_paths,
+        )
         return TokenManager()
 
     def test_save_token_creates_file(self, token_manager, temp_token_file):
@@ -91,8 +93,7 @@ class TestTokenManager:
         # Change permissions to insecure
         os.chmod(temp_token_file, 0o644)
 
-        # Should raise RuntimeError
-        with pytest.raises(RuntimeError, match="insecure permissions"):
+        with pytest.raises(AuthenticationError, match="insecure permissions"):
             token_manager.load_token()
 
     def test_clear_token_deletes_file(self, token_manager, temp_token_file):
@@ -146,7 +147,7 @@ class TestTokenManager:
         # Change permissions to world-readable
         os.chmod(temp_token_file, 0o644)
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(AuthenticationError):
             token_manager._verify_permissions()
 
     def test_load_token_handles_corrupted_json(self, token_manager, temp_token_file):
@@ -157,6 +158,21 @@ class TestTokenManager:
         os.chmod(temp_token_file, 0o600)
 
         with pytest.raises(IOError, match="Failed to load token"):
+            token_manager.load_token()
+
+    def test_load_token_rejects_non_mapping_cookies(self, token_manager, temp_token_file):
+        """Test that malformed decrypted cookies payload is rejected."""
+        token_manager.save_token("test_session_token_12345")
+
+        with open(temp_token_file, encoding="utf-8") as f:
+            data = json.load(f)
+
+        data["cookies"] = data["token"]
+        with open(temp_token_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.chmod(temp_token_file, 0o600)
+
+        with pytest.raises(AuthenticationError, match="malformed cookies data"):
             token_manager.load_token()
 
 
@@ -200,6 +216,7 @@ class TestOAuthHandler:
         cookies = [{"name": "__Secure-next-auth.session-token", "value": "cookie_token"}]
 
         token, cookies = _extract_token(cookies, local_storage)
+        assert token is not None
         parsed = json.loads(token)
         assert parsed["user"]["email"] == "test@example.com"
 
@@ -208,6 +225,15 @@ class TestOAuthHandler:
         from perplexity_cli.auth.oauth_handler import _extract_token
 
         local_storage = {"pplx-next-auth-session": "{invalid json"}
+
+        token, cookies = _extract_token([], local_storage)
+        assert token is None
+
+    def test_extract_token_handles_non_string_local_storage_value(self):
+        """Test that non-string localStorage values are handled gracefully."""
+        from perplexity_cli.auth.oauth_handler import _extract_token
+
+        local_storage = {"pplx-next-auth-session": {"bad": "value"}}
 
         token, cookies = _extract_token([], local_storage)
         assert token is None
@@ -223,11 +249,10 @@ class TestTokenSecurityHandling:
         with tempfile.TemporaryDirectory() as temp_dir:
             token_file = Path(temp_dir) / "token.json"
 
-            def mock_get_token_path():
-                return token_file
-
+            mock_paths = type("MockPaths", (), {"token_path": token_file})()
             monkeypatch.setattr(
-                "perplexity_cli.auth.token_manager.get_token_path", mock_get_token_path
+                "perplexity_cli.auth.token_manager.get_config_paths",
+                lambda: mock_paths,
             )
             yield TokenManager()
 

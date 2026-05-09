@@ -16,7 +16,7 @@ pre-commit:
       run: uv run ty check src
 
     pytest-check:
-      run: uv run pytest tests/ -q --tb=line -x -m "not integration" --ignore=tests/test_manual_auth.py
+      run: uv run pytest tests/ -q --tb=line -x -m "not integration and not real_api and not manual and not real_user_config"
 
     trailing-whitespace:
       run: uvx --from pre-commit-hooks trailing-whitespace-fixer {staged_files}
