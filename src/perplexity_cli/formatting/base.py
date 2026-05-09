@@ -6,6 +6,150 @@ from abc import ABC, abstractmethod
 from perplexity_cli.api.models import Answer, WebResult
 
 
+def _is_structural_line(stripped: str) -> bool:
+    """Check whether a line is a structural markdown element.
+
+    Structural elements include headers, list items, blockquotes,
+    tables, and horizontal rules.
+
+    Args:
+        stripped: The line with leading whitespace removed.
+
+    Returns:
+        True if the line is a structural element.
+    """
+    return bool(
+        re.match(r"^#{1,6}\s", stripped)
+        or re.match(r"^[-*+]\s", stripped)
+        or re.match(r"^\d+\.\s", stripped)
+        or re.match(r"^[>\|]", stripped)
+        or re.match(r"^[\*\-]{3,}$", stripped)
+    )
+
+
+def _is_continuation_line(next_line: str, next_stripped: str) -> bool:
+    """Check whether a line is an indented continuation of a structural block.
+
+    Args:
+        next_line: The raw line including leading whitespace.
+        next_stripped: The line with leading whitespace removed.
+
+    Returns:
+        True if the line should be joined to the preceding structural line.
+    """
+    if next_line == next_stripped or not next_stripped:
+        return False
+    if next_stripped.startswith("```"):
+        return False
+    return not _is_structural_line(next_stripped)
+
+
+def _is_prose_boundary(next_line: str, next_stripped: str) -> bool:
+    """Check whether a line marks the end of a prose paragraph.
+
+    Args:
+        next_line: The raw line including whitespace.
+        next_stripped: The line with leading whitespace removed.
+
+    Returns:
+        True if the line should terminate prose collection.
+    """
+    if next_line.strip() == "" or next_stripped.startswith("```"):
+        return True
+    return _is_structural_line(next_stripped)
+
+
+def _collect_code_block(lines: list[str], i: int, result: list[str]) -> int:
+    """Collect a fenced code block verbatim into result.
+
+    Args:
+        lines: All source lines.
+        i: Index of the opening fence line.
+        result: Accumulator list for output lines.
+
+    Returns:
+        The index immediately after the closing fence.
+    """
+    result.append(lines[i])
+    i += 1
+    while i < len(lines):
+        result.append(lines[i])
+        if lines[i].lstrip().startswith("```"):
+            return i + 1
+        i += 1
+    return i
+
+
+def _collect_structural_block(lines: list[str], i: int, result: list[str]) -> int:
+    """Collect a structural line and its indented continuations.
+
+    Args:
+        lines: All source lines.
+        i: Index of the structural line.
+        result: Accumulator list for output lines.
+
+    Returns:
+        The index of the next unprocessed line.
+    """
+    paragraph = lines[i]
+    i += 1
+    while i < len(lines):
+        next_line = lines[i]
+        next_stripped = next_line.lstrip()
+        if not _is_continuation_line(next_line, next_stripped):
+            break
+        paragraph += " " + next_stripped
+        i += 1
+    result.append(paragraph)
+    return i
+
+
+def _collect_prose_paragraph(lines: list[str], i: int, result: list[str]) -> int:
+    """Collect regular prose lines into a single joined paragraph.
+
+    Args:
+        lines: All source lines.
+        i: Index of the first prose line.
+        result: Accumulator list for output lines.
+
+    Returns:
+        The index of the next unprocessed line.
+    """
+    paragraph = lines[i]
+    i += 1
+    while i < len(lines):
+        next_line = lines[i]
+        next_stripped = next_line.lstrip()
+        if _is_prose_boundary(next_line, next_stripped):
+            break
+        paragraph += " " + next_line.strip()
+        i += 1
+    result.append(paragraph)
+    return i
+
+
+def _dispatch_line(lines: list[str], i: int, result: list[str]) -> int:
+    """Route a single line to the appropriate collector.
+
+    Args:
+        lines: All source lines.
+        i: Index of the current line.
+        result: Accumulator list for output lines.
+
+    Returns:
+        The index of the next unprocessed line.
+    """
+    line = lines[i]
+    if line.lstrip().startswith("```"):
+        return _collect_code_block(lines, i, result)
+    if line.strip() == "":
+        result.append("")
+        return i + 1
+    if _is_structural_line(line.lstrip()):
+        return _collect_structural_block(lines, i, result)
+    return _collect_prose_paragraph(lines, i, result)
+
+
 class Formatter(ABC):
     """Abstract base class for output formatters."""
 
@@ -47,82 +191,7 @@ class Formatter(ABC):
         i = 0
 
         while i < len(lines):
-            line = lines[i]
-
-            # Fenced code block: pass through verbatim until closing fence
-            if line.lstrip().startswith("```"):
-                result.append(line)
-                i += 1
-                while i < len(lines):
-                    result.append(lines[i])
-                    if lines[i].lstrip().startswith("```") and i > 0:
-                        i += 1
-                        break
-                    i += 1
-                continue
-
-            # Blank line: preserve as paragraph separator
-            if line.strip() == "":
-                result.append("")
-                i += 1
-                continue
-
-            # Structural lines that must stay on their own line
-            stripped = line.lstrip()
-            is_structural = (
-                re.match(r"^#{1,6}\s", stripped)  # Header
-                or re.match(r"^[-*+]\s", stripped)  # Unordered list item
-                or re.match(r"^\d+\.\s", stripped)  # Ordered list item
-                or re.match(r"^[>\|]", stripped)  # Blockquote or table
-                or re.match(r"^[\*\-]{3,}$", stripped)  # Horizontal rule
-            )
-
-            if is_structural:
-                # Start collecting this structural line and any indented
-                # continuation lines beneath it
-                paragraph = line
-                i += 1
-                while i < len(lines):
-                    next_line = lines[i]
-                    next_stripped = next_line.lstrip()
-                    # A continuation of a list item: indented, non-empty,
-                    # and not itself a new structural element
-                    if (
-                        next_line != next_stripped  # has leading whitespace
-                        and next_stripped  # non-empty
-                        and not re.match(r"^[-*+]\s", next_stripped)
-                        and not re.match(r"^\d+\.\s", next_stripped)
-                        and not re.match(r"^#{1,6}\s", next_stripped)
-                        and not re.match(r"^[>\|]", next_stripped)
-                        and not next_stripped.startswith("```")
-                    ):
-                        paragraph += " " + next_stripped
-                        i += 1
-                    else:
-                        break
-                result.append(paragraph)
-                continue
-
-            # Regular prose line: collect and join continuation lines
-            paragraph = line
-            i += 1
-            while i < len(lines):
-                next_line = lines[i]
-                next_stripped = next_line.lstrip()
-                # Stop joining at blank lines, structural lines, or code fences
-                if (
-                    next_line.strip() == ""
-                    or re.match(r"^#{1,6}\s", next_stripped)
-                    or re.match(r"^[-*+]\s", next_stripped)
-                    or re.match(r"^\d+\.\s", next_stripped)
-                    or re.match(r"^[>\|]", next_stripped)
-                    or re.match(r"^[\*\-]{3,}$", next_stripped)
-                    or next_stripped.startswith("```")
-                ):
-                    break
-                paragraph += " " + next_line.strip()
-                i += 1
-            result.append(paragraph)
+            i = _dispatch_line(lines, i, result)
 
         return "\n".join(result)
 

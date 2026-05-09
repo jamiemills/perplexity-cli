@@ -349,8 +349,8 @@ class TestCLICommands:
         assert "test answer" in result.output
         # Verify API was called with None token
         mock_api_class.assert_called_once()
-        call_kwargs = mock_api_class.call_args[1]
-        assert call_kwargs["token"] is None
+        call_args = mock_api_class.call_args
+        assert call_args[0][0] is None  # token is first positional arg
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.auth.token_manager.TokenManager")

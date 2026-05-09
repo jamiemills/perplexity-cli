@@ -45,48 +45,57 @@ class TokenManager:
             RuntimeError: If encryption or key derivation fails.
         """
         try:
-            # Encrypt the token
             encrypted_token = encrypt_token(token)
+            data = self._prepare_token_data(encrypted_token, cookies)
 
-            # Prepare data structure
-            data = {
-                "version": 2,
-                "encrypted": True,
-                "token": encrypted_token,
-                "created_at": datetime.now().isoformat(),
-            }
-
-            # Encrypt and store cookies if provided and enabled in config
-            if cookies:
-                from perplexity_cli.utils.config import get_save_cookies_enabled
-
-                if get_save_cookies_enabled():
-                    encrypted_cookies = encrypt_token(json.dumps(cookies))
-                    data["cookies"] = encrypted_cookies
-                    self.logger.debug(f"Saving {len(cookies)} cookies (cookie storage enabled)")
-                else:
-                    self.logger.debug(
-                        f"Skipping {len(cookies)} cookies (cookie storage disabled in config)"
-                    )
-
-            # Write encrypted data to file
             with open(self.token_path, "w", encoding="utf-8") as f:
                 json.dump(data, f)
 
-            # Set restrictive permissions
             os.chmod(self.token_path, self.SECURE_PERMISSIONS)
 
-            # Audit log
             saved_cookies = "cookies" in data
             cookie_count = len(cookies) if cookies else 0
             cookie_msg = f" and {cookie_count} cookies" if saved_cookies else ""
-            self.logger.info(f"Token{cookie_msg} saved to {redact_path(self.token_path)}")
+            self.logger.info(  # nosemgrep: python-logger-credential-disclosure
+                "Token%s saved to %s", cookie_msg, redact_path(self.token_path)
+            )
 
         except OSError as e:
-            self.logger.error(f"Failed to save token: {e}", exc_info=True)
+            self.logger.error(  # nosemgrep: python-logger-credential-disclosure
+                "Failed to save token: %s", e, exc_info=True
+            )
             raise OSError(
                 f"Failed to save or set permissions on token file {self.token_path}: {e}"
             ) from e
+
+    def _prepare_token_data(self, encrypted_token: str, cookies: dict[str, str] | None) -> dict:
+        """Build the token data structure for persistence.
+
+        Args:
+            encrypted_token: The already-encrypted token string.
+            cookies: Optional dictionary of browser cookies.
+
+        Returns:
+            Dictionary ready to be serialised to JSON.
+        """
+        data = {
+            "version": 2,
+            "encrypted": True,
+            "token": encrypted_token,
+            "created_at": datetime.now().isoformat(),
+        }
+        if cookies:
+            from perplexity_cli.utils.config import get_save_cookies_enabled
+
+            if get_save_cookies_enabled():
+                encrypted_cookies = encrypt_token(json.dumps(cookies))
+                data["cookies"] = encrypted_cookies
+                self.logger.debug("Saving %s cookies (cookie storage enabled)", len(cookies))
+            else:
+                self.logger.debug(
+                    "Skipping %s cookies (cookie storage disabled in config)", len(cookies)
+                )
+        return data
 
     def load_token(self) -> tuple[str | None, dict[str, str] | None]:
         """Load the authentication token and cookies from disk and decrypt them.
@@ -108,90 +117,157 @@ class TokenManager:
         if not self.token_path.exists():
             return (None, None)
 
-        # Verify file permissions
         self._verify_permissions()
 
         try:
-            with open(self.token_path, encoding="utf-8") as f:
-                data = json.load(f)
+            data = self._read_and_validate_token_file()
+            self._check_token_age(data.get("created_at"))
 
-            # Check if token is encrypted
-            if not data.get("encrypted", False):
-                self.logger.warning("Token file is not encrypted")
-                raise AuthenticationError(
-                    "Token file is not encrypted. Please re-authenticate with: pxcli auth"
-                )
-
-            encrypted_token = data.get("token")
-            if not encrypted_token:
-                self.logger.error("Token file missing encrypted token data")
-                raise AuthenticationError("Token file is missing encrypted token data")
-
-            # Check version for backward compatibility
+            token = decrypt_token(data["token"])
             version = data.get("version", 1)
+            cookies = self._decrypt_cookies(data, version)
 
-            # Check token age if created_at is present
-            created_at_str = data.get("created_at")
-            if created_at_str:
-                try:
-                    created_at = datetime.fromisoformat(created_at_str)
-                    age_days = (datetime.now() - created_at).days
-                    if age_days > TOKEN_AGE_WARNING_DAYS:
-                        self.logger.warning(f"Token is {age_days} days old, may be expired")
-                    else:
-                        self.logger.debug(f"Token age: {age_days} days")
-                except (ValueError, TypeError):
-                    pass
-
-            # Decrypt the token
-            token = decrypt_token(encrypted_token)
-
-            # Decrypt cookies if v2 format
-            cookies = None
-            if version == 2 and "cookies" in data:
-                encrypted_cookies = data.get("cookies")
-                if encrypted_cookies:
-                    cookies_json = decrypt_token(encrypted_cookies)
-                    try:
-                        cookies = json.loads(cookies_json)
-                    except json.JSONDecodeError as e:
-                        raise AuthenticationError(
-                            "Token file contains malformed cookies data"
-                        ) from e
-                    if not isinstance(cookies, dict):
-                        raise AuthenticationError("Token file contains malformed cookies data")
-                    if not all(
-                        isinstance(key, str) and isinstance(value, str)
-                        for key, value in cookies.items()
-                    ):
-                        raise AuthenticationError("Token file contains malformed cookies data")
-
-                    # Debug logging: identify Cloudflare-related cookies
-                    cf_cookies = {
-                        k: v
-                        for k, v in cookies.items()
-                        if k.startswith("cf") or k.startswith("__cf")
-                    }
-                    self.logger.debug(
-                        f"Loaded {len(cookies)} cookies, including {len(cf_cookies)} Cloudflare cookies"
-                    )
-                    if cf_cookies:
-                        self.logger.debug(f"Cloudflare cookies: {redact_mapping_keys(cf_cookies)}")
-            else:
-                if version == 2:
-                    self.logger.debug("Token is v2 format but no cookies stored")
-                else:
-                    self.logger.debug(f"Token is v{version} format (no cookies)")
-
-            # Audit log
             cookie_msg = f" and {len(cookies)} cookies" if cookies else ""
-            self.logger.info(f"Token{cookie_msg} loaded from {redact_path(self.token_path)}")
+            self.logger.info(  # nosemgrep: python-logger-credential-disclosure
+                "Token%s loaded from %s", cookie_msg, redact_path(self.token_path)
+            )
 
             return (token, cookies)
 
         except (OSError, json.JSONDecodeError) as e:
-            self.logger.error(f"Failed to load token: {e}", exc_info=True)
+            self.logger.error(  # nosemgrep: python-logger-credential-disclosure
+                "Failed to load token: %s", e, exc_info=True
+            )
             raise OSError(f"Failed to load token from {self.token_path}: {e}") from e
+
+    def _read_and_validate_token_file(self) -> dict:
+        """Read and validate the token file structure.
+
+        Returns:
+            The parsed and validated token data dictionary.
+
+        Raises:
+            AuthenticationError: If the file is not encrypted or missing token data.
+        """
+        with open(self.token_path, encoding="utf-8") as f:
+            data = json.load(f)
+
+        if not data.get("encrypted", False):
+            self.logger.warning("Token file is not encrypted")
+            raise AuthenticationError(
+                "Token file is not encrypted. Please re-authenticate with: pxcli auth"
+            )
+
+        if not data.get("token"):
+            self.logger.error("Token file missing encrypted token data")
+            raise AuthenticationError("Token file is missing encrypted token data")
+
+        return data
+
+    def _check_token_age(self, created_at_str: str | None) -> None:
+        """Log a warning if the token is older than the configured threshold.
+
+        Args:
+            created_at_str: ISO-format creation timestamp, or None.
+        """
+        if not created_at_str:
+            return
+        try:
+            created_at = datetime.fromisoformat(created_at_str)
+            age_days = (datetime.now() - created_at).days
+            if age_days > TOKEN_AGE_WARNING_DAYS:
+                self.logger.warning(  # nosemgrep: python-logger-credential-disclosure
+                    "Token is %s days old, may be expired", age_days
+                )
+            else:
+                self.logger.debug(  # nosemgrep: python-logger-credential-disclosure
+                    "Token age: %s days", age_days
+                )
+        except (ValueError, TypeError):
+            self.logger.debug("Could not parse token creation timestamp")
+
+    def _decrypt_cookies(self, data: dict, version: int) -> dict[str, str] | None:
+        """Decrypt and validate cookies from the token data.
+
+        Args:
+            data: The parsed token file data.
+            version: The token file format version.
+
+        Returns:
+            Dictionary of cookies, or None if not available.
+
+        Raises:
+            AuthenticationError: If cookie data is malformed.
+        """
+        if version != 2 or "cookies" not in data:
+            if version == 2:
+                self.logger.debug("Token is v2 format but no cookies stored")
+            else:
+                self.logger.debug(  # nosemgrep: python-logger-credential-disclosure
+                    "Token is v%s format (no cookies)", version
+                )
+            return None
+
+        encrypted_cookies = data.get("cookies")
+        if not encrypted_cookies:
+            return None
+
+        cookies = self._parse_and_validate_cookies(decrypt_token(encrypted_cookies))
+        self._log_cookie_details(cookies)
+        return cookies
+
+    def _parse_and_validate_cookies(self, cookies_json: str) -> dict[str, str]:
+        """Parse and validate decrypted cookie JSON.
+
+        Args:
+            cookies_json: The decrypted JSON string of cookies.
+
+        Returns:
+            Validated dictionary of cookies.
+
+        Raises:
+            AuthenticationError: If cookie data is malformed.
+        """
+        try:
+            cookies = json.loads(cookies_json)
+        except json.JSONDecodeError as e:
+            raise AuthenticationError("Token file contains malformed cookies data") from e
+
+        self._validate_cookie_types(cookies)
+        return cookies
+
+    @staticmethod
+    def _validate_cookie_types(cookies: object) -> None:
+        """Validate that cookies is a dict of str to str.
+
+        Args:
+            cookies: The parsed cookies object.
+
+        Raises:
+            AuthenticationError: If cookie data is malformed.
+        """
+        if not isinstance(cookies, dict):
+            raise AuthenticationError("Token file contains malformed cookies data")
+
+        if not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in cookies.items()
+        ):
+            raise AuthenticationError("Token file contains malformed cookies data")
+
+    def _log_cookie_details(self, cookies: dict[str, str]) -> None:
+        """Log debug details about loaded cookies.
+
+        Args:
+            cookies: The validated cookies dictionary.
+        """
+        cf_cookies = {
+            k: v for k, v in cookies.items() if k.startswith("cf") or k.startswith("__cf")
+        }
+        self.logger.debug(
+            "Loaded %s cookies, including %s Cloudflare cookies", len(cookies), len(cf_cookies)
+        )
+        if cf_cookies:
+            self.logger.debug("Cloudflare cookies: %s", redact_mapping_keys(cf_cookies))
 
     def clear_token(self) -> None:
         """Delete the stored authentication token.
@@ -202,9 +278,13 @@ class TokenManager:
             try:
                 self.token_path.unlink()
                 # Audit log: token cleared
-                self.logger.info(f"Token cleared from {redact_path(self.token_path)}")
+                self.logger.info(  # nosemgrep: python-logger-credential-disclosure
+                    "Token cleared from %s", redact_path(self.token_path)
+                )
             except OSError as e:
-                self.logger.error(f"Failed to delete token file: {e}", exc_info=True)
+                self.logger.error(  # nosemgrep: python-logger-credential-disclosure
+                    "Failed to delete token file: %s", e, exc_info=True
+                )
                 raise OSError(f"Failed to delete token file: {e}") from e
 
     def token_exists(self) -> bool:

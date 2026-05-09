@@ -67,7 +67,7 @@ def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
     )
 
 
-def handle_unexpected_cli_error(
+def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters
     error: Exception,
     logger: logging.Logger,
     *,
@@ -86,7 +86,7 @@ def handle_unexpected_cli_error(
 
     Exits with status code 1.
     """
-    logger.exception(f"{log_message}: {error}")
+    logger.exception("%s: %s", log_message, error)
     click.echo(user_message, err=True)
 
     if debug_mode:
@@ -162,6 +162,17 @@ def classify_network_error(
     )
 
 
+_HTTP_ERROR_MESSAGES: dict[int, str] = {
+    401: "[ERROR] Authentication failed. Token may be expired.",
+    403: "[ERROR] Access forbidden. Check your permissions.",
+    429: "[ERROR] Rate limit exceeded. Please wait and try again.",
+}
+
+_HTTP_ERROR_EXTRAS: dict[int, str] = {
+    401: "\nRe-authenticate with: perplexity-cli auth",
+}
+
+
 def handle_http_error(
     error: PerplexityHTTPStatusError,
     logger: logging.Logger,
@@ -184,18 +195,12 @@ def handle_http_error(
     """
     status = error.response.status_code
     context_msg = f" {context}" if context else ""
+    logger.error("HTTP error %s%s: %s", status, context_msg, error)
 
-    logger.error(f"HTTP error {status}{context_msg}: {error}")
-
-    if status == 401:
-        click.echo("[ERROR] Authentication failed. Token may be expired.", err=True)
-        click.echo("\nRe-authenticate with: perplexity-cli auth", err=True)
-    elif status == 403:
-        click.echo("[ERROR] Access forbidden. Check your permissions.", err=True)
-    elif status == 429:
-        click.echo("[ERROR] Rate limit exceeded. Please wait and try again.", err=True)
-    else:
-        click.echo(f"[ERROR] HTTP error {status}.", err=True)
+    message = _HTTP_ERROR_MESSAGES.get(status, f"[ERROR] HTTP error {status}.")
+    click.echo(message, err=True)
+    if status in _HTTP_ERROR_EXTRAS:
+        click.echo(_HTTP_ERROR_EXTRAS[status], err=True)
 
     if debug_mode:
         click.echo(f"Details: {error}", err=True)
@@ -221,7 +226,7 @@ def handle_network_error(
     Exits with status code 1.
     """
     context_msg = f" {context}" if context else ""
-    logger.error(f"Network error{context_msg}: {error}")
+    logger.error("Network error%s: %s", context_msg, error)
     click.echo("[ERROR] Network error. Please check your internet connection.", err=True)
 
     if debug_mode:

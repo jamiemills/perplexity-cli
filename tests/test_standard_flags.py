@@ -64,7 +64,7 @@ class TestTimeoutFlag:
         assert api_cls.call_args.kwargs.get("timeout") == 10
 
     def test_no_timeout_uses_default(self):
-        """When ctx_obj has no timeout, PerplexityAPI is called without timeout kwarg."""
+        """When ctx_obj has no timeout, PerplexityAPI is called with timeout=None."""
         answer = Answer(text="Answer", references=[])
         mock_api = _make_api_mock(answer)
         api_cls = Mock(return_value=mock_api)
@@ -81,7 +81,7 @@ class TestTimeoutFlag:
             )
 
         api_cls.assert_called_once()
-        assert "timeout" not in api_cls.call_args.kwargs
+        assert api_cls.call_args.kwargs.get("timeout") is None
 
 
 class TestJsonFlag:

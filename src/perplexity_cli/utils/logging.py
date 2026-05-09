@@ -14,7 +14,8 @@ class DynamicStderrHandler(logging.StreamHandler):
     """Stream handler that always writes to the current stderr stream."""
 
     def emit(self, record: logging.LogRecord) -> None:
-        try:
+        """Write a formatted log record to the current stderr stream."""
+        try:  # nosemgrep: except-broad-exception
             message = self.format(record)
             stream = sys.stderr
             stream.write(message + self.terminator)
@@ -22,6 +23,7 @@ class DynamicStderrHandler(logging.StreamHandler):
         except RecursionError:
             raise
         except Exception:
+            # Standard logging.StreamHandler pattern — must catch all non-recursive errors.
             self.handleError(record)
 
     def flush(self) -> None:
@@ -41,8 +43,9 @@ class DynamicStderrHandler(logging.StreamHandler):
             try:
                 stream.flush()
             except ValueError:
-                # pytest capture can replace and close previous stderr objects
-                pass
+                # pytest capture can replace and close previous stderr objects;
+                # flushing a closed stream raises ValueError — safe to ignore
+                return
 
 
 class JSONLogFormatter(logging.Formatter):
@@ -57,6 +60,7 @@ class JSONLogFormatter(logging.Formatter):
         self.trace_id = trace_id
 
     def format(self, record: logging.LogRecord) -> str:
+        """Format a log record as a single-line JSON object."""
         import json
         from datetime import datetime
 

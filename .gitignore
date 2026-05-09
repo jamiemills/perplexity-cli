@@ -10,6 +10,7 @@ __pycache__/
 
 # Testing
 .coverage
+coverage.json
 .mypy_cache/
 htmlcov/
 .pytest_cache/

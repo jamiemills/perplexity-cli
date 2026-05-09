@@ -20,38 +20,48 @@ from perplexity_cli.utils.exceptions import (
     UpstreamSchemaError,
 )
 
+_HTTP_STATUS_TO_ERROR: list[tuple[object, ErrorCode]] = [
+    (401, ErrorCode.authentication_required),
+    (403, ErrorCode.permission_denied),
+    (429, ErrorCode.rate_limited),
+]
+
+
+def _classify_http_status_error(exc: PerplexityHTTPStatusError) -> tuple[ErrorCode, str | None]:
+    """Classify an HTTP status error into an error code and fix suggestion."""
+    status = exc.response.status_code
+    for code_val, error_code in _HTTP_STATUS_TO_ERROR:
+        if status == code_val:
+            return error_code, None
+    return ErrorCode.network_error, None
+
+
+_EXCEPTION_CLASSIFY_TABLE: list[tuple[type, ErrorCode, str | None]] = [
+    (
+        AuthenticationError,
+        ErrorCode.authentication_required,
+        "Run `pxcli auth login` to authenticate.",
+    ),
+    (RateLimitError, ErrorCode.rate_limited, "Wait a moment and try again."),
+    (PerplexityRequestError, ErrorCode.network_error, "Check your internet connection."),
+    (ConfigurationError, ErrorCode.configuration_error, None),
+    (UpstreamSchemaError, ErrorCode.upstream_schema_error, None),
+    (AttachmentError, ErrorCode.attachment_error, None),
+    (ValueError, ErrorCode.validation_error, None),
+]
+
 
 def _classify_exception(exc: BaseException) -> tuple[ErrorCode, str | None]:
     """Map an exception to an ErrorCode and optional fix suggestion."""
-    if isinstance(exc, AuthenticationError):
-        return ErrorCode.authentication_required, "Run `pxcli auth login` to authenticate."
-    if isinstance(exc, RateLimitError):
-        return ErrorCode.rate_limited, "Wait a moment and try again."
     if isinstance(exc, PerplexityHTTPStatusError):
-        status = exc.response.status_code
-        if status == 401:
-            return ErrorCode.authentication_required, None
-        if status == 403:
-            return ErrorCode.permission_denied, None
-        if status == 429:
-            return ErrorCode.rate_limited, None
-        if status >= 500:
-            return ErrorCode.network_error, None
-        return ErrorCode.network_error, None
-    if isinstance(exc, PerplexityRequestError):
-        return ErrorCode.network_error, "Check your internet connection."
-    if isinstance(exc, ConfigurationError):
-        return ErrorCode.configuration_error, None
-    if isinstance(exc, UpstreamSchemaError):
-        return ErrorCode.upstream_schema_error, None
-    if isinstance(exc, AttachmentError):
-        return ErrorCode.attachment_error, None
-    if isinstance(exc, ValueError):
-        return ErrorCode.validation_error, None
+        return _classify_http_status_error(exc)
+    for exc_type, error_code, fix in _EXCEPTION_CLASSIFY_TABLE:
+        if isinstance(exc, exc_type):
+            return error_code, fix
     return ErrorCode.internal_error, None
 
 
-def handle_error(
+def handle_error(  # nosemgrep: too-many-parameters
     exc: BaseException,
     *,
     command: str,

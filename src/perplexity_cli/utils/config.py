@@ -1,9 +1,10 @@
 """Configuration and path management utilities."""
 
 import json
+import logging
 import os
 from functools import lru_cache
-from importlib import resources
+from importlib import resources  # nosemgrep: python37-compatibility-importlib2
 from pathlib import Path
 from typing import Any
 
@@ -19,26 +20,32 @@ class ConfigPaths:
 
     @property
     def token_path(self) -> Path:
+        """Path to the encrypted authentication token file."""
         return self.config_dir / "token.json"
 
     @property
     def style_path(self) -> Path:
+        """Path to the user style preferences file."""
         return self.config_dir / "style.json"
 
     @property
     def urls_path(self) -> Path:
+        """Path to the API endpoint URL overrides file."""
         return self.config_dir / "urls.json"
 
     @property
     def feature_config_path(self) -> Path:
+        """Path to the feature toggle configuration file."""
         return self.config_dir / "config.json"
 
     @property
     def cache_path(self) -> Path:
+        """Path to the encrypted thread cache file."""
         return self.config_dir / "threads-cache.json"
 
     @property
     def log_file_path(self) -> Path:
+        """Path to the CLI log file."""
         return self.config_dir / "perplexity-cli.log"
 
 
@@ -86,33 +93,6 @@ def get_config_dir() -> Path:
     return config_dir
 
 
-def get_token_path() -> Path:
-    """Get the path to the token file.
-
-    Returns:
-        Path: Path to ~/.config/perplexity-cli/token.json (or platform equivalent).
-    """
-    return get_config_paths().token_path
-
-
-def get_style_path() -> Path:
-    """Get the path to the style configuration file.
-
-    Returns:
-        Path: Path to ~/.config/perplexity-cli/style.json (or platform equivalent).
-    """
-    return get_config_paths().style_path
-
-
-def get_urls_path() -> Path:
-    """Get the path to the URLs configuration file.
-
-    Returns:
-        Path: Path to ~/.config/perplexity-cli/urls.json (or platform equivalent).
-    """
-    return get_config_paths().urls_path
-
-
 def _get_default_urls() -> dict:
     """Load default URLs from the package configuration.
 
@@ -140,6 +120,24 @@ def _ensure_user_urls_config() -> None:
                 json.dump(default_urls, f, indent=2)
         except (OSError, json.JSONDecodeError) as e:
             raise ConfigurationError(f"Failed to create URLs configuration file: {e}") from e
+
+
+def _apply_url_env_overrides(perplexity_config: dict) -> None:
+    """Apply environment variable overrides to URL configuration in place.
+
+    Args:
+        perplexity_config: Mutable dictionary of URL configuration fields.
+    """
+    env_overrides = {
+        "PERPLEXITY_BASE_URL": "base_url",
+        "PERPLEXITY_QUERY_ENDPOINT": "query_endpoint",
+        "PERPLEXITY_THREAD_LIST_ENDPOINT": "thread_list_endpoint",
+        "PERPLEXITY_UPLOAD_URL_ENDPOINT": "upload_url_endpoint",
+        "PERPLEXITY_S3_BUCKET_URL": "s3_bucket_url",
+    }
+    for env_var, field_name in env_overrides.items():
+        if env_var in os.environ:
+            perplexity_config[field_name] = os.environ[env_var]
 
 
 @lru_cache(maxsize=1)
@@ -173,7 +171,6 @@ def get_urls() -> URLConfig:
     except (OSError, json.JSONDecodeError) as e:
         raise ConfigurationError(f"Failed to load URLs configuration: {e}") from e
 
-    # Extract perplexity config from dict
     if "perplexity" not in urls_dict:
         raise ConfigurationError("URLs configuration missing 'perplexity' section")
 
@@ -181,20 +178,8 @@ def get_urls() -> URLConfig:
     if not isinstance(perplexity_config, dict):
         raise ConfigurationError("'perplexity' section must be a dictionary")
 
-    # Apply environment variable overrides before validation
-    _ENV_OVERRIDES = {
-        "PERPLEXITY_BASE_URL": "base_url",
-        "PERPLEXITY_QUERY_ENDPOINT": "query_endpoint",
-        "PERPLEXITY_THREAD_LIST_ENDPOINT": "thread_list_endpoint",
-        "PERPLEXITY_UPLOAD_URL_ENDPOINT": "upload_url_endpoint",
-        "PERPLEXITY_S3_BUCKET_URL": "s3_bucket_url",
-    }
-    for env_var, field_name in _ENV_OVERRIDES.items():
-        if env_var in os.environ:
-            perplexity_config[field_name] = os.environ[env_var]
+    _apply_url_env_overrides(perplexity_config)
 
-    # Build and validate in a single step — Pydantic model defaults
-    # fill in any fields absent from the user config.
     try:
         return URLConfig.model_validate(perplexity_config)
     except ValueError as e:
@@ -290,6 +275,91 @@ def _get_default_rate_limiting() -> dict[str, Any]:
     }
 
 
+def _load_rate_limiting_from_file(config_dict: dict[str, Any]) -> None:
+    """Load rate limiting settings from urls.json into config_dict in place.
+
+    Args:
+        config_dict: Mutable dictionary to update with file-based settings.
+
+    Raises:
+        ConfigurationError: If the rate_limiting section is not a dictionary.
+    """
+    try:
+        urls_path = get_config_paths().urls_path
+        if not urls_path.exists():
+            return
+        with open(urls_path, encoding="utf-8") as f:
+            urls_data = json.load(f)
+        _merge_rate_limiting_section(urls_data, config_dict)
+    except ConfigurationError:
+        raise
+    except (OSError, json.JSONDecodeError):
+        logging.getLogger(__name__).debug("Could not load or parse urls configuration file")
+
+
+def _merge_rate_limiting_section(urls_data: dict, config_dict: dict[str, Any]) -> None:
+    """Merge the rate_limiting section from urls data into config_dict.
+
+    Args:
+        urls_data: Parsed urls.json data.
+        config_dict: Mutable dictionary to update.
+
+    Raises:
+        ConfigurationError: If the rate_limiting section is not a dictionary.
+    """
+    if "rate_limiting" not in urls_data:
+        return
+    user_config = urls_data["rate_limiting"]
+    if not isinstance(user_config, dict):
+        raise ConfigurationError("rate_limiting section must be a dictionary")
+    config_dict.update(user_config)
+
+
+def _apply_rate_limiting_env_overrides(config_dict: dict[str, Any]) -> None:
+    """Apply environment variable overrides to rate limiting configuration.
+
+    Args:
+        config_dict: Mutable dictionary to update with environment overrides.
+
+    Raises:
+        ConfigurationError: If environment variable values are invalid.
+    """
+    _apply_rate_limiting_enabled(config_dict)
+    _apply_rate_limiting_rps(config_dict)
+    _apply_rate_limiting_period(config_dict)
+
+
+def _apply_rate_limiting_enabled(config_dict: dict[str, Any]) -> None:
+    """Apply the PERPLEXITY_RATE_LIMITING_ENABLED override if set."""
+    if "PERPLEXITY_RATE_LIMITING_ENABLED" in os.environ:
+        enabled_str = os.environ["PERPLEXITY_RATE_LIMITING_ENABLED"].lower()
+        config_dict["enabled"] = enabled_str in ("true", "1", "yes")
+
+
+def _apply_rate_limiting_rps(config_dict: dict[str, Any]) -> None:
+    """Apply the PERPLEXITY_RATE_LIMITING_RPS override if set."""
+    if "PERPLEXITY_RATE_LIMITING_RPS" not in os.environ:
+        return
+    try:
+        config_dict["requests_per_period"] = int(os.environ["PERPLEXITY_RATE_LIMITING_RPS"])
+    except ValueError as e:
+        raise ConfigurationError(
+            f"Invalid PERPLEXITY_RATE_LIMITING_RPS: {os.environ['PERPLEXITY_RATE_LIMITING_RPS']}"
+        ) from e
+
+
+def _apply_rate_limiting_period(config_dict: dict[str, Any]) -> None:
+    """Apply the PERPLEXITY_RATE_LIMITING_PERIOD override if set."""
+    if "PERPLEXITY_RATE_LIMITING_PERIOD" not in os.environ:
+        return
+    try:
+        config_dict["period_seconds"] = float(os.environ["PERPLEXITY_RATE_LIMITING_PERIOD"])
+    except ValueError as e:
+        raise ConfigurationError(
+            f"Invalid PERPLEXITY_RATE_LIMITING_PERIOD: {os.environ['PERPLEXITY_RATE_LIMITING_PERIOD']}"
+        ) from e
+
+
 def get_rate_limiting_config() -> RateLimitConfig:
     """Load and return rate limiting configuration as a Pydantic RateLimitConfig model.
 
@@ -305,50 +375,10 @@ def get_rate_limiting_config() -> RateLimitConfig:
     Raises:
         RuntimeError: If configuration is invalid.
     """
-    # Start with defaults
     config_dict = _get_default_rate_limiting()
+    _load_rate_limiting_from_file(config_dict)
+    _apply_rate_limiting_env_overrides(config_dict)
 
-    # Try to load from urls.json
-    try:
-        urls_path = get_config_paths().urls_path
-        if urls_path.exists():
-            with open(urls_path, encoding="utf-8") as f:
-                urls_data = json.load(f)
-                if "rate_limiting" in urls_data:
-                    user_config = urls_data["rate_limiting"]
-                    if not isinstance(user_config, dict):
-                        raise ConfigurationError("rate_limiting section must be a dictionary")
-                    # Merge user config with defaults
-                    # Pydantic validates when RateLimitConfig is constructed
-                    config_dict.update(user_config)
-    except ConfigurationError:
-        raise
-    except (OSError, json.JSONDecodeError):
-        # If urls.json cannot be read, fall back to defaults for rate limiting only.
-        pass
-
-    # Apply environment variable overrides
-    if "PERPLEXITY_RATE_LIMITING_ENABLED" in os.environ:
-        enabled_str = os.environ["PERPLEXITY_RATE_LIMITING_ENABLED"].lower()
-        config_dict["enabled"] = enabled_str in ("true", "1", "yes")
-
-    if "PERPLEXITY_RATE_LIMITING_RPS" in os.environ:
-        try:
-            config_dict["requests_per_period"] = int(os.environ["PERPLEXITY_RATE_LIMITING_RPS"])
-        except ValueError as e:
-            raise ConfigurationError(
-                f"Invalid PERPLEXITY_RATE_LIMITING_RPS: {os.environ['PERPLEXITY_RATE_LIMITING_RPS']}"
-            ) from e
-
-    if "PERPLEXITY_RATE_LIMITING_PERIOD" in os.environ:
-        try:
-            config_dict["period_seconds"] = float(os.environ["PERPLEXITY_RATE_LIMITING_PERIOD"])
-        except ValueError as e:
-            raise ConfigurationError(
-                f"Invalid PERPLEXITY_RATE_LIMITING_PERIOD: {os.environ['PERPLEXITY_RATE_LIMITING_PERIOD']}"
-            ) from e
-
-    # Create and return Pydantic model (which validates)
     try:
         return RateLimitConfig(**config_dict)
     except ValueError as e:
@@ -394,6 +424,49 @@ def _ensure_user_feature_config() -> None:
             json.dump(defaults, f, indent=2)
 
 
+def _load_feature_config_from_file() -> dict[str, Any]:
+    """Load feature settings from user configuration file.
+
+    Returns:
+        Dictionary of feature settings, falling back to defaults on read errors.
+
+    Raises:
+        ConfigurationError: If the features section is not a dictionary.
+    """
+    feature_dict: dict[str, Any] = {"save_cookies": False, "debug_mode": False}
+    config_path = get_config_paths().feature_config_path
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            user_config = json.load(f)
+        if "features" in user_config:
+            features = user_config["features"]
+            if not isinstance(features, dict):
+                raise ConfigurationError(
+                    "Feature configuration 'features' section must be a dictionary"
+                )
+            feature_dict.update(features)
+    except (OSError, json.JSONDecodeError) as e:
+        from perplexity_cli.utils.logging import get_logger as _get_logger
+
+        _get_logger().warning("Failed to load feature config, using defaults: %s", e)
+    return feature_dict
+
+
+def _apply_feature_env_overrides(feature_dict: dict[str, Any]) -> None:
+    """Apply environment variable overrides to feature configuration in place.
+
+    Args:
+        feature_dict: Mutable dictionary to update with environment overrides.
+    """
+    if "PERPLEXITY_SAVE_COOKIES" in os.environ:
+        value = os.environ["PERPLEXITY_SAVE_COOKIES"].lower()
+        feature_dict["save_cookies"] = value in ("true", "1", "yes")
+
+    if "PERPLEXITY_DEBUG_MODE" in os.environ:
+        value = os.environ["PERPLEXITY_DEBUG_MODE"].lower()
+        feature_dict["debug_mode"] = value in ("true", "1", "yes")
+
+
 @lru_cache(maxsize=1)
 def get_feature_config() -> FeatureConfig:
     """Load feature configuration with defaults and environment overrides.
@@ -413,45 +486,10 @@ def get_feature_config() -> FeatureConfig:
     Raises:
         RuntimeError: If configuration is invalid.
     """
-    # Ensure config file exists
     _ensure_user_feature_config()
+    feature_dict = _load_feature_config_from_file()
+    _apply_feature_env_overrides(feature_dict)
 
-    # Start with defaults
-    feature_dict = {"save_cookies": False, "debug_mode": False}
-
-    # Try to load user configuration
-    config_path = get_config_paths().feature_config_path
-    try:
-        with open(config_path, encoding="utf-8") as f:
-            user_config = json.load(f)
-
-        if "features" in user_config:
-            features = user_config["features"]
-            if not isinstance(features, dict):
-                raise ConfigurationError(
-                    "Feature configuration 'features' section must be a dictionary"
-                )
-            feature_dict.update(features)
-
-    except (OSError, json.JSONDecodeError) as e:
-        # If user config is invalid, log warning and use defaults
-        from perplexity_cli.utils.logging import get_logger
-
-        logger = get_logger()
-        logger.warning(f"Failed to load feature config, using defaults: {e}")
-    except ConfigurationError:
-        raise
-
-    # Apply environment variable overrides
-    if "PERPLEXITY_SAVE_COOKIES" in os.environ:
-        value = os.environ["PERPLEXITY_SAVE_COOKIES"].lower()
-        feature_dict["save_cookies"] = value in ("true", "1", "yes")
-
-    if "PERPLEXITY_DEBUG_MODE" in os.environ:
-        value = os.environ["PERPLEXITY_DEBUG_MODE"].lower()
-        feature_dict["debug_mode"] = value in ("true", "1", "yes")
-
-    # Create and return Pydantic model (which validates)
     try:
         return FeatureConfig(**feature_dict)
     except ValueError as e:

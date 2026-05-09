@@ -1,68 +1,166 @@
+# =============================================================================
+# Pre-commit: 3-stage pipeline (piped = sequential stages, abort on failure)
+#
+#   Stage 1  Read-only linters & validators  (parallel, ~4s)
+#   Stage 2  Auto-fixers                     (piped,    ~0.7s)
+#   Stage 3  Unit tests (no coverage)        (single,   ~21s)
+#
+# Fail-fast: a pyright or bandit error aborts in ~2-4s instead of ~24s.
+# Coverage enforcement, supply-chain scanning, and fuzz testing run on
+# pre-push where per-commit granularity is not needed.
+# =============================================================================
+
 pre-commit:
+  piped: true
+  jobs:
+    # -----------------------------------------------------------------
+    # Stage 1: read-only linters and validators (parallel)
+    #
+    # None of these modify files. Running them first gives the fastest
+    # possible feedback on real errors that no fixer can address.
+    # Wall time: ~4s (semgrep is the bottleneck).
+    # -----------------------------------------------------------------
+    - name: lint-and-validate
+      group:
+        parallel: true
+        jobs:
+          - name: pyright-check
+            glob: "*.py"
+            run: uv run pyright src/
+
+          - name: ty-check
+            glob: "*.py"
+            run: uv run ty check src
+
+          - name: bandit
+            glob: "*.py"
+            run: uvx --from bandit bandit -c pyproject.toml -r src/ -ll -ii
+
+          - name: vulture
+            glob: "*.py"
+            run: uv run vulture src/ vulture_whitelist.py --min-confidence 80
+
+          - name: radon-cc
+            glob: "*.py"
+            run: >
+              output=$(uv run radon cc src/ -s -n B) &&
+              if [ -n "$output" ]; then
+                echo "Cyclomatic complexity violations (B or worse):" &&
+                echo "$output" &&
+                exit 1;
+              fi
+
+          - name: radon-mi
+            glob: "*.py"
+            run: >
+              output=$(uv run radon mi src/ -s -n B) &&
+              if [ -n "$output" ]; then
+                echo "Maintainability index violations (B or worse):" &&
+                echo "$output" &&
+                exit 1;
+              fi
+
+          - name: semgrep
+            glob: "*.py"
+            run: >
+              semgrep
+              --config .semgrep.yml
+              --config p/python
+              --config p/comment
+              --config p/r2c-best-practices
+              --severity ERROR --severity WARNING
+              --error --metrics=off .
+
+          - name: check-yaml
+            glob: "*.yml|*.yaml"
+            run: uvx --from pre-commit-hooks check-yaml {staged_files}
+
+          - name: check-json
+            glob: "*.json"
+            run: uvx --from pre-commit-hooks check-json {staged_files}
+
+          - name: check-toml
+            glob: "*.toml"
+            run: uvx --from pre-commit-hooks check-toml {staged_files}
+
+          - name: check-added-large-files
+            run: uvx --from pre-commit-hooks check-added-large-files --maxkb=1000 {staged_files}
+
+          - name: check-merge-conflict
+            run: uvx --from pre-commit-hooks check-merge-conflict {staged_files}
+
+          - name: check-case-conflict
+            run: uvx --from pre-commit-hooks check-case-conflict {staged_files}
+
+          - name: check-docstring-first
+            glob: "*.py"
+            run: uvx --from pre-commit-hooks check-docstring-first {staged_files}
+
+          - name: name-tests-test
+            glob: "tests/**/*.py"
+            run: uvx --from pre-commit-hooks name-tests-test --pytest-test-first {staged_files}
+
+    # -----------------------------------------------------------------
+    # Stage 2: auto-fixers (piped -- sequential to avoid file races)
+    #
+    # These modify staged files. Running them after linters ensures we
+    # only fix code that has already passed read-only validation.
+    # Wall time: ~0.7s sequential.
+    # -----------------------------------------------------------------
+    - name: fix-formatting
+      group:
+        piped: true
+        jobs:
+          - name: ruff-format
+            glob: "*.py"
+            run: uv run ruff format {staged_files}
+            stage_fixed: true
+
+          - name: ruff-check
+            glob: "*.py"
+            run: uv run ruff check --fix {staged_files}
+            stage_fixed: true
+
+          - name: trailing-whitespace
+            run: uvx --from pre-commit-hooks trailing-whitespace-fixer {staged_files}
+            stage_fixed: true
+
+          - name: end-of-file-fixer
+            run: uvx --from pre-commit-hooks end-of-file-fixer {staged_files}
+            stage_fixed: true
+
+    # -----------------------------------------------------------------
+    # Stage 3: unit tests without coverage (fail-fast)
+    #
+    # Runs only when stages 1 and 2 pass. Coverage enforcement is
+    # deferred to pre-push to keep commits fast.
+    # Wall time: ~21s.
+    # -----------------------------------------------------------------
+    - name: pytest-check
+      run: >
+        uv run pytest tests/ -q --tb=line -x
+        -m "not integration and not real_api and not manual and not real_user_config and not fuzz"
+
+# =============================================================================
+# Pre-push: expensive whole-project validations (parallel)
+#
+# Full test suite with coverage enforcement, supply-chain scanning, and
+# fuzz testing. These do not need per-commit granularity.
+# Wall time: ~24s (pytest+coverage is the bottleneck).
+# =============================================================================
+
+pre-push:
   parallel: true
-  commands:
-    ruff-format:
-      glob: "*.py"
-      run: uv run ruff format {staged_files}
-      stage_fixed: true
+  jobs:
+    - name: pytest-coverage
+      run: >
+        uv run pytest tests/ -q --tb=line -x
+        -m "not integration and not real_api and not manual and not real_user_config and not fuzz"
+        --cov --cov-report=json --cov-fail-under=85 &&
+        uv run python scripts/check_module_coverage.py --min-coverage 85
 
-    ruff-check:
-      glob: "*.py"
-      run: uv run ruff check --fix {staged_files}
-      stage_fixed: true
+    - name: safety-scan
+      run: uvx safety scan --target .
 
-    ty-check:
-      glob: "*.py"
-      run: uv run ty check src
-
-    pytest-check:
-      run: uv run pytest tests/ -q --tb=line -x -m "not integration and not real_api and not manual and not real_user_config"
-
-    trailing-whitespace:
-      run: uvx --from pre-commit-hooks trailing-whitespace-fixer {staged_files}
-      stage_fixed: true
-
-    end-of-file-fixer:
-      run: uvx --from pre-commit-hooks end-of-file-fixer {staged_files}
-      stage_fixed: true
-
-    check-yaml:
-      glob: "*.yml|*.yaml"
-      run: uvx --from pre-commit-hooks check-yaml {staged_files}
-
-    check-json:
-      glob: "*.json"
-      run: uvx --from pre-commit-hooks check-json {staged_files}
-
-    check-toml:
-      glob: "*.toml"
-      run: uvx --from pre-commit-hooks check-toml {staged_files}
-
-    check-added-large-files:
-      run: uvx --from pre-commit-hooks check-added-large-files --maxkb=1000 {staged_files}
-
-    check-merge-conflict:
-      run: uvx --from pre-commit-hooks check-merge-conflict {staged_files}
-
-    check-case-conflict:
-      run: uvx --from pre-commit-hooks check-case-conflict {staged_files}
-
-    check-ast:
-      glob: "*.py"
-      run: uvx --from pre-commit-hooks check-ast {staged_files}
-
-    check-docstring-first:
-      glob: "*.py"
-      run: uvx --from pre-commit-hooks check-docstring-first {staged_files}
-
-    debug-statements:
-      glob: "*.py"
-      run: uvx --from pre-commit-hooks debug-statement-hook {staged_files}
-
-    name-tests-test:
-      glob: "tests/**/*.py"
-      run: uvx --from pre-commit-hooks name-tests-test --pytest-test-first {staged_files}
-
-    bandit:
-      glob: "*.py"
-      run: uvx --from bandit bandit -c pyproject.toml {staged_files}
+    - name: fuzz-check
+      run: uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz

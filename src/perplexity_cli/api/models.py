@@ -1,14 +1,93 @@
 """Data models for Perplexity API requests and responses."""
 
+from __future__ import annotations
+
 import base64
 import binascii
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from perplexity_cli.api.contracts import require_list, require_mapping
 from perplexity_cli.utils.version import get_api_version
+
+if TYPE_CHECKING:
+    from perplexity_cli.formatting.base import Formatter
+
+
+# ---------------------------------------------------------------------------
+# Lightweight parameter objects (dataclasses, not Pydantic)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class TraceContext:
+    """Timing and correlation identifiers for a single request.
+
+    Carries the trace ID (for log correlation) and start timestamp (for
+    elapsed-time calculations) through the call chain without occupying
+    separate function parameters.
+    """
+
+    trace_id: str | None = None
+    start_time: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OutputOptions:
+    """Presentation and serialisation switches for command output.
+
+    Bundles the flags that control *how* a result is rendered (format,
+    reference stripping, JSON envelope, schema inclusion) so that they
+    can be threaded through the rendering pipeline as one argument.
+    """
+
+    output_format: str = "text"
+    strip_references: bool = False
+    json_mode: bool = False
+    include_schema: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class HttpRequestContext:
+    """Per-request HTTP metadata passed to transport helpers.
+
+    Groups the URL, headers, body, and timeout so that lower-level
+    methods (logging, execution) receive a single context object instead
+    of four positional parameters.
+    """
+
+    url: str
+    headers: dict[str, str]
+    json_data: dict[str, Any] | None = None
+    effective_timeout: int = 30
+
+
+@dataclass(frozen=True, slots=True)
+class QueryInput:
+    """User query text and any file attachment URLs.
+
+    Pairs the query string with its resolved attachment URLs so that
+    downstream functions receive one domain object rather than two
+    loosely-related parameters.
+    """
+
+    query: str
+    attachment_urls: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class RenderContext:
+    """Formatter and presentation options bundled for rendering.
+
+    Combines the ``Formatter`` instance with the ``OutputOptions``
+    flags so that rendering functions receive a single context object.
+    """
+
+    formatter: Formatter
+    options: OutputOptions
 
 
 class FileAttachment(BaseModel):
@@ -60,7 +139,7 @@ class FileAttachment(BaseModel):
         return v
 
     @classmethod
-    def from_file(cls, path: Path) -> "FileAttachment":
+    def from_file(cls, path: Path) -> FileAttachment:
         """Create attachment from file path.
 
         Args:
@@ -125,7 +204,7 @@ class QueryParams(BaseModel):
     frontend_uuid: str = Field(default="")
     frontend_context_uuid: str = Field(default="")
     version: str = Field(default_factory=get_api_version)
-    sources: list[str] = Field(default_factory=lambda: ["web"])
+    sources: list[str] = Field(default_factory=lambda: ["web"])  # nosemgrep: return-not-in-function
     attachments: list[str] = Field(
         default_factory=list,
         description="S3 URLs of attached files",
@@ -245,40 +324,64 @@ class Block(BaseModel):
 
     def extract_text(self) -> str | None:
         """Extract answer text from a private API block shape."""
-        # 1. Markdown block with chunks (most common for answers)
-        if "markdown_block" in self.content:
-            markdown_block = self.content["markdown_block"]
-            if isinstance(markdown_block, dict) and "chunks" in markdown_block:
-                chunks = markdown_block["chunks"]
-                if isinstance(chunks, list):
-                    return "".join(str(chunk) for chunk in chunks)
-
-        # 2. Direct text field
-        if "text" in self.content:
-            return self.content["text"]
-
-        # 3. Web results block (skip - these are sources, not answers)
         if "web_result_block" in self.content:
             return None
+        extractors = [
+            self._extract_from_markdown_block,
+            self._extract_from_text_field,
+            self._extract_from_diff_block,
+            self._extract_from_answer_block,
+        ]
+        for extractor in extractors:
+            result = extractor()
+            if result is not None:
+                return result
+        return None
 
-        # 4. Diff block with patches
-        if "diff_block" in self.content:
-            diff_block = self.content["diff_block"]
-            if isinstance(diff_block, dict) and "patches" in diff_block:
-                for patch in diff_block["patches"]:
-                    if isinstance(patch, dict) and "value" in patch:
-                        value = patch["value"]
-                        if isinstance(value, str):
-                            return value
-                        if isinstance(value, dict) and "text" in value:
-                            return value["text"]
+    def _extract_from_markdown_block(self) -> str | None:
+        """Extract text from a markdown block with chunks."""
+        markdown_block = self.content.get("markdown_block")
+        if not isinstance(markdown_block, dict):
+            return None
+        chunks = markdown_block.get("chunks")
+        if not isinstance(chunks, list):
+            return None
+        return "".join(str(chunk) for chunk in chunks)
 
-        # 5. Answer block
-        if "answer_block" in self.content:
-            answer_block = self.content["answer_block"]
-            if isinstance(answer_block, dict) and "text" in answer_block:
-                return answer_block["text"]
+    def _extract_from_text_field(self) -> str | None:
+        """Extract text from a direct text field."""
+        if "text" in self.content:
+            return self.content["text"]
+        return None
 
+    def _extract_from_diff_block(self) -> str | None:
+        """Extract text from a diff block with patches."""
+        diff_block = self.content.get("diff_block")
+        if not isinstance(diff_block, dict):
+            return None
+        for patch in diff_block.get("patches", []):
+            result = self._extract_patch_value(patch)
+            if result is not None:
+                return result
+        return None
+
+    @staticmethod
+    def _extract_patch_value(patch: Any) -> str | None:
+        """Extract text value from a single diff patch entry."""
+        if not isinstance(patch, dict):
+            return None
+        value = patch.get("value")
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return value.get("text")
+        return None
+
+    def _extract_from_answer_block(self) -> str | None:
+        """Extract text from an answer block."""
+        answer_block = self.content.get("answer_block")
+        if isinstance(answer_block, dict) and "text" in answer_block:
+            return answer_block["text"]
         return None
 
     def extract_plan_info(self) -> dict[str, Any] | None:
@@ -297,16 +400,16 @@ class Block(BaseModel):
             "pct_complete": plan_block.get("pct_complete"),
         }
 
-    def extract_web_results(self) -> list["WebResult"] | None:
+    def extract_web_results(self) -> list[WebResult] | None:
         """Extract web references from a private API block shape."""
         if self.intended_usage != "web_results":
             return None
 
         web_result_block = self.content.get("web_result_block")
-        if not isinstance(web_result_block, dict) or "web_results" not in web_result_block:
+        if not isinstance(web_result_block, dict):
             return None
 
-        results = web_result_block["web_results"]
+        results = web_result_block.get("web_results")
         if not isinstance(results, list):
             return None
 
@@ -347,7 +450,7 @@ class SSEMessage(BaseModel):
         return data
 
     @model_validator(mode="after")
-    def _derive_web_results(self) -> "SSEMessage":
+    def _derive_web_results(self) -> SSEMessage:
         """Derive web_results from blocks when not explicitly provided."""
         if self.web_results is None:
             for block in self.blocks:
@@ -370,7 +473,6 @@ class SSEMessage(BaseModel):
 
     def describe_block_usages(self) -> str:
         """Summarise block usages for schema-drift diagnostics."""
-
         if not self.blocks:
             return "none"
         return ",".join(block.intended_usage or "<missing>" for block in self.blocks)

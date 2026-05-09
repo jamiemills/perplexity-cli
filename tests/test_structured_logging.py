@@ -122,27 +122,27 @@ class TestClassifyHttpError:
     def test_403_returns_permission_denied(self):
         """403 maps to permission_denied."""
         error = _make_http_error(403)
-        code, message, fix = classify_http_error(error)
+        code, _, fix = classify_http_error(error)
         assert code == ErrorCode.permission_denied
         assert fix is None
 
     def test_429_returns_rate_limited(self):
         """429 maps to rate_limited."""
         error = _make_http_error(429)
-        code, message, fix = classify_http_error(error)
+        code, _message, _fix = classify_http_error(error)
         assert code == ErrorCode.rate_limited
 
     def test_500_returns_network_error(self):
         """5xx maps to network_error."""
         error = _make_http_error(500)
-        code, message, fix = classify_http_error(error)
+        code, message, _fix = classify_http_error(error)
         assert code == ErrorCode.network_error
         assert "Server error" in message
 
     def test_unknown_status_returns_network_error(self):
         """Unknown status codes map to network_error."""
         error = _make_http_error(418)
-        code, message, fix = classify_http_error(error)
+        code, message, _fix = classify_http_error(error)
         assert code == ErrorCode.network_error
         assert "418" in message
 
@@ -155,6 +155,6 @@ class TestClassifyNetworkError:
         from perplexity_cli.utils.exceptions import PerplexityRequestError
 
         error = PerplexityRequestError("connection failed")
-        code, message, fix = classify_network_error(error)
+        code, _, fix = classify_network_error(error)
         assert code == ErrorCode.network_error
         assert fix is not None

@@ -6,6 +6,95 @@ from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting.base import Formatter
 
 
+def _strip_markdown_emphasis(text: str) -> str:
+    """Remove markdown bold and italic markers from text.
+
+    Args:
+        text: Text possibly containing markdown emphasis markers.
+
+    Returns:
+        Text with bold/italic markers removed.
+    """
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    return re.sub(r"\*(.+?)\*", r"\1", text)
+
+
+def _process_header(line: str, result: list[str]) -> tuple[bool, int]:
+    """Process a markdown header line, appending an underlined version to result.
+
+    Args:
+        line: The source line to check for a header pattern.
+        result: Accumulator list for output lines.
+
+    Returns:
+        A tuple of (was_header, blank_count). If the line was a header,
+        was_header is True and blank_count is reset to 0.
+    """
+    header_match = re.match(r"^(#{1,6})\s+(.+)$", line)
+    if not header_match:
+        return False, 0
+    content = _strip_markdown_emphasis(header_match.group(2))
+    if result:
+        result.append("")
+    result.append(content)
+    result.append("=" * len(content))
+    return True, 0
+
+
+def _process_blank_line(
+    result: list[str],
+    skip_next_blank: bool,
+    blank_count: int,
+) -> tuple[bool, int]:
+    """Handle a blank line in plain-text formatting.
+
+    Args:
+        result: Accumulator list for output lines.
+        skip_next_blank: Whether this blank line should be suppressed.
+        blank_count: Running count of consecutive blank lines.
+
+    Returns:
+        Updated (skip_next_blank, blank_count) state.
+    """
+    if skip_next_blank:
+        return False, blank_count
+    blank_count += 1
+    if blank_count <= 2:
+        result.append("")
+    return False, blank_count
+
+
+def _process_plain_line(
+    line: str,
+    result: list[str],
+    skip_next_blank: bool,
+    blank_count: int,
+) -> tuple[bool, int]:
+    """Process a single line for plain-text formatting.
+
+    Args:
+        line: The current source line.
+        result: Accumulator list for output lines.
+        skip_next_blank: Whether to skip the next blank line.
+        blank_count: Running count of consecutive blank lines.
+
+    Returns:
+        Updated (skip_next_blank, blank_count) state.
+    """
+    if re.match(r"^[\*\-]{3,}$", line.strip()):
+        return skip_next_blank, blank_count
+
+    was_header, blank_count_new = _process_header(line, result)
+    if was_header:
+        return True, blank_count_new
+
+    if line.strip() == "":
+        return _process_blank_line(result, skip_next_blank, blank_count)
+
+    result.append(_strip_markdown_emphasis(line))
+    return False, 0
+
+
 class PlainTextFormatter(Formatter):
     """Formatter that outputs plain text without any formatting."""
 
@@ -28,54 +117,13 @@ class PlainTextFormatter(Formatter):
 
         lines = text.split("\n")
         result = []
-        i = 0
         skip_next_blank = False
         blank_count = 0
 
-        while i < len(lines):
-            line = lines[i]
-
-            # Skip markdown horizontal rules (*** or ---)
-            if re.match(r"^[\*\-]{3,}$", line.strip()):
-                i += 1
-                continue
-
-            # Check for headers (###, ##, #)
-            header_match = re.match(r"^(#{1,6})\s+(.+)$", line)
-            if header_match:
-                content = header_match.group(2)
-                # Remove any markdown bold/italic from header
-                content = re.sub(r"\*\*(.+?)\*\*", r"\1", content)
-                content = re.sub(r"\*(.+?)\*", r"\1", content)
-
-                # Add single blank line before header if result has content
-                if result:  # Has preceding content
-                    result.append("")
-
-                # Add header with underline
-                result.append(content)
-                result.append("=" * len(content))
-                # Skip the next blank line after header
-                skip_next_blank = True
-                blank_count = 0
-            elif line.strip() == "":
-                # Skip blank line immediately after header underline
-                if skip_next_blank:
-                    skip_next_blank = False
-                else:
-                    # Only add blank line if we haven't just added multiple
-                    blank_count += 1
-                    if blank_count <= 2:  # Allow max 2 consecutive blanks
-                        result.append("")
-            else:
-                skip_next_blank = False
-                blank_count = 0
-                # Remove markdown bold and italic from regular text
-                line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
-                line = re.sub(r"\*(.+?)\*", r"\1", line)
-                result.append(line)
-
-            i += 1
+        for line in lines:
+            skip_next_blank, blank_count = _process_plain_line(
+                line, result, skip_next_blank, blank_count
+            )
 
         return "\n".join(result).rstrip()
 

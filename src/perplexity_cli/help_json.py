@@ -27,23 +27,54 @@ def build_help_json(group: click.Group, version: str | None = None) -> dict[str,
     return result
 
 
+def _extract_group_info(cmd: click.Group) -> dict[str, Any]:
+    """Extract help info from a Click group command.
+
+    Args:
+        cmd: The Click group to extract info from.
+
+    Returns:
+        Dictionary with help text and nested subcommands.
+    """
+    return {
+        "help": cmd.help or "",
+        "commands": {
+            name: _extract_command_info(sub) for name, sub in sorted(cmd.commands.items())
+        },
+    }
+
+
+def _extract_options(cmd: click.Command) -> list[dict[str, Any]]:
+    """Extract option info from a Click command's parameters."""
+    return [_extract_option_info(p) for p in cmd.params if isinstance(p, click.Option)]
+
+
+def _extract_arguments(cmd: click.Command) -> list[dict[str, Any]]:
+    """Extract argument info from a Click command's parameters."""
+    return [_extract_argument_info(p) for p in cmd.params if isinstance(p, click.Argument)]
+
+
+def _extract_leaf_command_info(cmd: click.Command) -> dict[str, Any]:
+    """Extract help info from a leaf (non-group) Click command.
+
+    Args:
+        cmd: The Click command to extract info from.
+
+    Returns:
+        Dictionary with help text, options, and arguments.
+    """
+    return {
+        "help": cmd.help or "",
+        "options": _extract_options(cmd),
+        "arguments": _extract_arguments(cmd),
+    }
+
+
 def _extract_command_info(cmd: click.Command) -> dict[str, Any]:
     """Extract help info from a single Click command."""
-    info: dict[str, Any] = {"help": cmd.help or ""}
-
     if isinstance(cmd, click.Group):
-        info["commands"] = {
-            name: _extract_command_info(sub) for name, sub in sorted(cmd.commands.items())
-        }
-    else:
-        info["options"] = [
-            _extract_option_info(p) for p in cmd.params if isinstance(p, click.Option)
-        ]
-        info["arguments"] = [
-            _extract_argument_info(p) for p in cmd.params if isinstance(p, click.Argument)
-        ]
-
-    return info
+        return _extract_group_info(cmd)
+    return _extract_leaf_command_info(cmd)
 
 
 def _extract_option_info(param: click.Option) -> dict[str, Any]:

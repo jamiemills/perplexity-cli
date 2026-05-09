@@ -3,7 +3,7 @@
 This module handles parsing and formatting of thread creation timestamps.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 
 from dateutil import parser as dateutil_parser
 
@@ -68,7 +68,6 @@ def to_iso8601(dt: datetime) -> str:
         >>> to_iso8601(dt)
         '2025-12-23T13:51:50Z'
     """
-
     # If naive datetime, assume UTC
     if dt.tzinfo is None:
         utc_dt = dt.replace(tzinfo=UTC)
@@ -82,6 +81,58 @@ def to_iso8601(dt: datetime) -> str:
         iso_str = iso_str[:-6] + "Z"
 
     return iso_str
+
+
+def _parse_range_bound(date_str: str, dt_tzinfo: tzinfo | None, is_end_of_day: bool) -> datetime:
+    """Parse a date string to a datetime at start or end of day.
+
+    Args:
+        date_str: Date string in YYYY-MM-DD format.
+        dt_tzinfo: Timezone info to apply to the parsed datetime.
+        is_end_of_day: If True, set time to 23:59:59.999999; otherwise 00:00:00.
+
+    Returns:
+        Datetime at the specified boundary of the day.
+
+    Raises:
+        ValueError: If date string cannot be parsed.
+    """
+    time_parts = (
+        {"hour": 23, "minute": 59, "second": 59, "microsecond": 999999}
+        if is_end_of_day
+        else {"hour": 0, "minute": 0, "second": 0, "microsecond": 0}
+    )
+    return dateutil_parser.parse(date_str).replace(**time_parts, tzinfo=dt_tzinfo)
+
+
+def _check_after_start(dt: datetime, from_date: str | None) -> bool:
+    """Return False if dt is before from_date, True otherwise.
+
+    Args:
+        dt: Datetime to check.
+        from_date: Lower bound date string, or None for no bound.
+
+    Returns:
+        True if dt is on or after from_date (or from_date is None).
+    """
+    if from_date is None:
+        return True
+    return dt >= _parse_range_bound(from_date, dt.tzinfo, False)
+
+
+def _check_before_end(dt: datetime, to_date: str | None) -> bool:
+    """Return False if dt is after to_date, True otherwise.
+
+    Args:
+        dt: Datetime to check.
+        to_date: Upper bound date string, or None for no bound.
+
+    Returns:
+        True if dt is on or before to_date (or to_date is None).
+    """
+    if to_date is None:
+        return True
+    return dt <= _parse_range_bound(to_date, dt.tzinfo, True)
 
 
 def is_in_date_range(dt: datetime, from_date: str | None, to_date: str | None) -> bool:
@@ -109,29 +160,8 @@ def is_in_date_range(dt: datetime, from_date: str | None, to_date: str | None) -
         >>> is_in_date_range(dt, "2026-01-01", None)
         False
     """
-    # No filtering if both dates are None
-    if from_date is None and to_date is None:
-        return True
-
-    # Parse date strings to datetime objects at start/end of day
     try:
-        if from_date is not None:
-            # Start of day (00:00:00)
-            from_dt = dateutil_parser.parse(from_date).replace(
-                hour=0, minute=0, second=0, microsecond=0, tzinfo=dt.tzinfo
-            )
-            if dt < from_dt:
-                return False
-
-        if to_date is not None:
-            # End of day (23:59:59)
-            to_dt = dateutil_parser.parse(to_date).replace(
-                hour=23, minute=59, second=59, microsecond=999999, tzinfo=dt.tzinfo
-            )
-            if dt > to_dt:
-                return False
-
-        return True
+        return _check_after_start(dt, from_date) and _check_before_end(dt, to_date)
     except (ValueError, TypeError) as e:
         raise ValueError(
             f"Invalid date format. Expected YYYY-MM-DD, got from_date='{from_date}', "

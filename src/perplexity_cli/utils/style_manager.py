@@ -35,6 +35,25 @@ class StyleManager:
         except (json.JSONDecodeError, KeyError) as e:
             raise OSError(f"Failed to load style from {self.style_path}: {e}") from e
 
+    def _validate_style_input(self, style: str) -> None:
+        """Validate that a style string meets requirements.
+
+        Args:
+            style: The style string to validate.
+
+        Raises:
+            ValueError: If style is empty, blank, or exceeds maximum length.
+        """
+        if not style or not isinstance(style, str):
+            raise ValueError("Style must be a non-empty string")
+        if len(style.strip()) == 0:
+            raise ValueError("Style cannot be blank or whitespace only")
+        if len(style) > MAX_STYLE_LENGTH:
+            raise ValueError(
+                f"Style exceeds maximum length of {MAX_STYLE_LENGTH} characters "
+                f"(current length: {len(style)} characters)"
+            )
+
     def save_style(self, style: str) -> None:
         """Save style configuration to file.
 
@@ -45,19 +64,8 @@ class StyleManager:
             ValueError: If style is empty, invalid, or exceeds maximum length.
             OSError: If file cannot be written.
         """
-        if not style or not isinstance(style, str):
-            raise ValueError("Style must be a non-empty string")
+        self._validate_style_input(style)
 
-        if len(style.strip()) == 0:
-            raise ValueError("Style cannot be blank or whitespace only")
-
-        if len(style) > MAX_STYLE_LENGTH:
-            raise ValueError(
-                f"Style exceeds maximum length of {MAX_STYLE_LENGTH} characters "
-                f"(current length: {len(style)} characters)"
-            )
-
-        # Create config directory if it doesn't exist
         self.style_path.parent.mkdir(parents=True, exist_ok=True)
 
         data = {
@@ -68,7 +76,6 @@ class StyleManager:
         try:
             with open(self.style_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
-            # Set file permissions to 0600 (owner read/write only)
             os.chmod(self.style_path, 0o600)
         except OSError as e:
             raise OSError(f"Failed to save style to {self.style_path}: {e}") from e

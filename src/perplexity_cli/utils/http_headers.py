@@ -9,7 +9,23 @@ only need to be made in one place.
 from __future__ import annotations
 
 
-def build_perplexity_headers(
+def _resolve_base_url(base_url: str | None) -> str:
+    """Resolve the base URL, loading from configuration if not provided.
+
+    Args:
+        base_url: Explicit base URL, or None to load from configuration.
+
+    Returns:
+        The resolved base URL string.
+    """
+    if base_url is not None:
+        return base_url
+    from perplexity_cli.utils.config import get_perplexity_base_url
+
+    return get_perplexity_base_url()
+
+
+def build_perplexity_headers(  # nosemgrep: too-many-parameters
     token: str | None,
     cookies: dict[str, str] | None = None,
     *,
@@ -34,15 +50,12 @@ def build_perplexity_headers(
     Returns:
         Dictionary of HTTP headers.
     """
-    if base_url is None:
-        from perplexity_cli.utils.config import get_perplexity_base_url
-
-        base_url = get_perplexity_base_url()
+    resolved_url = _resolve_base_url(base_url)
 
     headers: dict[str, str] = {
         "Content-Type": content_type,
-        "Origin": base_url,
-        "Referer": base_url.rstrip("/") + "/",
+        "Origin": resolved_url,
+        "Referer": resolved_url.rstrip("/") + "/",
     }
 
     if accept:
@@ -51,7 +64,6 @@ def build_perplexity_headers(
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    # Add CSRF token from cookies if available
     if cookies and "csrftoken" in cookies:
         headers["X-CSRFToken"] = cookies["csrftoken"]
 

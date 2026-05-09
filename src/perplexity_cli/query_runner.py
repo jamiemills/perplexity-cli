@@ -17,9 +17,12 @@ from typing import TYPE_CHECKING
 import click
 
 if TYPE_CHECKING:
+    from perplexity_cli.api.endpoints import PerplexityAPI
     from perplexity_cli.api.models import Answer
     from perplexity_cli.formatting.base import Formatter
 
+from perplexity_cli.api.models import OutputOptions, QueryInput, RenderContext, TraceContext
+from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
@@ -30,6 +33,26 @@ from perplexity_cli.utils.exceptions import (
     UpstreamSchemaError,
 )
 from perplexity_cli.utils.logging import get_logger, redact_path, redact_text, redact_url
+
+
+def _is_uvx_environment() -> bool:
+    """Check whether the current environment is a uvx environment."""
+    return "UV_ACTIVE" in os.environ or "UVXENV" in os.environ
+
+
+def _detect_execution_environment() -> str:
+    """Detect the current Python execution environment.
+
+    Returns:
+        A string identifying the environment type.
+    """
+    if _is_uvx_environment():
+        return "uvx"
+    if "VIRTUAL_ENV" in os.environ:
+        return "venv"
+    if hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix:
+        return "virtualenv"
+    return "unknown"
 
 
 def log_query_debug_context(
@@ -48,94 +71,184 @@ def log_query_debug_context(
 
     try:
         hostname = socket.gethostname()
-        logger.debug(f"Hostname: {hostname}")
+        logger.debug("Hostname: %s", hostname)
     except OSError:
-        pass
+        logger.debug("Could not resolve hostname")
 
-    logger.debug(f"Platform: {sys.platform}")
-    logger.debug(f"Python version: {sys.version.split()[0]}")
-    logger.debug(f"Python executable: {sys.executable}")
-
-    exec_env = "unknown"
-    if hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix:
-        exec_env = "virtualenv"
-    if "VIRTUAL_ENV" in os.environ:
-        exec_env = "venv"
-    if "UV_ACTIVE" in os.environ or "UVXENV" in os.environ:
-        exec_env = "uvx"
-
-    logger.debug(f"Execution environment: {exec_env}")
+    logger.debug("Platform: %s", sys.platform)
+    logger.debug("Python version: %s", sys.version.split()[0])
+    logger.debug("Python executable: %s", sys.executable)
+    logger.debug("Execution environment: %s", _detect_execution_environment())
 
     token_path = get_config_paths().token_path
-    logger.debug(f"Token path: {redact_path(token_path)}")
-    logger.debug(f"Token exists: {token_path.exists()}")
-    logger.debug(f"Cookie storage enabled: {get_save_cookies_enabled()}")
-    logger.debug(
-        f"Query command invoked: query={redact_text(query_text)}, "
-        f"format={output_format}, stream={stream}"
+    logger.debug(  # nosemgrep: python-logger-credential-disclosure
+        "Token path: %s", redact_path(token_path)
     )
+    logger.debug(  # nosemgrep: python-logger-credential-disclosure
+        "Token exists: %s", token_path.exists()
+    )
+    logger.debug("Cookie storage enabled: %s", get_save_cookies_enabled())
+    logger.debug(
+        "Query command invoked: query=%s, format=%s, stream=%s",
+        redact_text(query_text),
+        output_format,
+        stream,
+    )
+
+
+def _has_potential_file_references(query_text: str, attachment_list: list[str]) -> bool:
+    """Check whether the query or attachments may reference files.
+
+    Args:
+        query_text: The query text.
+        attachment_list: List of attachment arguments.
+
+    Returns:
+        True if file references are likely present.
+    """
+    if attachment_list:
+        return True
+    return "/" in query_text or "\\" in query_text
 
 
 def resolve_attachment_urls(
     query_text: str,
     attachments_str: tuple[str, ...],
-    token: str | None,
-    cookies: dict[str, str] | None,
+    auth: AuthContext,
 ) -> list[str]:
     """Load local attachments and upload them when needed."""
-    from perplexity_cli.attachments import AttachmentUploader
-    from perplexity_cli.utils.file_handler import load_attachments, resolve_file_arguments
-
     logger = get_logger()
     attachment_list = list(attachments_str)
-    if not attachment_list and "/" not in query_text and "\\" not in query_text:
+    if not _has_potential_file_references(query_text, attachment_list):
         return []
 
     try:
-        file_paths = resolve_file_arguments(
-            [query_text],
-            attach_args=attachment_list if attachment_list else None,
-        )
-        if not file_paths:
-            return []
-
-        logger.debug(f"Resolving attachments: found {len(file_paths)} file(s)")
-
-        if not token:
-            click.echo("[ERROR] File attachments require authentication.", err=True)
-            click.echo("\nPlease authenticate first with: pxcli auth", err=True)
-            logger.error("Attachment upload attempted without authentication")
-            sys.exit(1)
-
-        file_attachments = load_attachments(file_paths)
-        logger.debug(f"Attachment loading complete: {len(file_attachments)} file(s) loaded")
-        for attachment in file_attachments:
-            logger.debug(
-                f"  - {redact_path(attachment.filename)} ({attachment.content_type}, "
-                f"{len(attachment.data)} bytes base64)"
-            )
-
-        if not file_attachments:
-            return []
-
-        logger.debug("Starting S3 upload for attachments")
-        uploader = AttachmentUploader(token=token, cookies=cookies)
-        try:
-            attachment_urls = run_async(uploader.upload_files(file_attachments))
-        except AttachmentUploadError as e:
-            click.echo(f"[ERROR] Failed to upload attachments: {e}", err=True)
-            logger.error(f"Attachment upload failed: {e}")
-            sys.exit(1)
-
-        logger.debug(f"S3 upload complete: {len(attachment_urls)} file(s) uploaded")
-        for i, url in enumerate(attachment_urls, 1):
-            logger.debug(f"  [{i}] {redact_url(url)}")
-        return attachment_urls
-
+        return _resolve_and_upload(query_text, attachment_list, auth, logger)
     except (FileNotFoundError, AttachmentError, ValueError) as e:
         click.echo(f"[ERROR] Failed to load attachments: {e}", err=True)
-        logger.error(f"Attachment loading failed: {e}")
+        logger.error("Attachment loading failed: %s", e)
         sys.exit(1)
+
+
+def _resolve_and_upload(
+    query_text: str,
+    attachment_list: list[str],
+    auth: AuthContext,
+    logger: logging.Logger,
+) -> list[str]:
+    """Resolve file arguments and upload attachments.
+
+    Args:
+        query_text: The query text.
+        attachment_list: List of attachment arguments.
+        auth: Authentication credentials.
+        logger: Logger instance.
+
+    Returns:
+        List of uploaded attachment URLs.
+    """
+    from perplexity_cli.utils.file_handler import resolve_file_arguments
+
+    file_paths = resolve_file_arguments(
+        [query_text],
+        attach_args=attachment_list if attachment_list else None,
+    )
+    if not file_paths:
+        return []
+
+    logger.debug("Resolving attachments: found %s file(s)", len(file_paths))
+    validated_token = _require_auth_for_attachments(auth.token, logger)
+    return _load_and_upload_attachments(file_paths, validated_token, auth.cookies, logger)
+
+
+def _require_auth_for_attachments(token: str | None, logger: logging.Logger) -> str:
+    """Validate authentication is present for attachments.
+
+    Args:
+        token: The authentication token, or None.
+        logger: Logger instance.
+
+    Returns:
+        The validated non-None token.
+
+    Raises:
+        SystemExit: If authentication is missing.
+    """
+    if token:
+        return token
+    click.echo("[ERROR] File attachments require authentication.", err=True)
+    click.echo("\nPlease authenticate first with: pxcli auth", err=True)
+    logger.error("Attachment upload attempted without authentication")
+    sys.exit(1)
+
+
+def _load_and_upload_attachments(
+    file_paths: list,
+    token: str,
+    cookies: dict[str, str] | None,
+    logger: logging.Logger,
+) -> list[str]:
+    """Load and upload file attachments to S3.
+
+    Args:
+        file_paths: Resolved file paths to upload.
+        token: Validated authentication token.
+        cookies: Browser cookies.
+        logger: Logger instance.
+
+    Returns:
+        List of uploaded attachment URLs.
+    """
+    from perplexity_cli.utils.file_handler import load_attachments
+
+    file_attachments = load_attachments(file_paths)
+    logger.debug("Attachment loading complete: %s file(s) loaded", len(file_attachments))
+    for attachment in file_attachments:
+        logger.debug(
+            "  - %s (%s, %s bytes base64)",
+            redact_path(attachment.filename),
+            attachment.content_type,
+            len(attachment.data),
+        )
+
+    if not file_attachments:
+        return []
+
+    return _do_s3_upload(file_attachments, token, cookies, logger)
+
+
+def _do_s3_upload(
+    file_attachments: list,
+    token: str,
+    cookies: dict[str, str] | None,
+    logger: logging.Logger,
+) -> list[str]:
+    """Upload file attachments to S3.
+
+    Args:
+        file_attachments: List of loaded file attachment objects.
+        token: Validated authentication token.
+        cookies: Browser cookies.
+        logger: Logger instance.
+
+    Returns:
+        List of uploaded attachment URLs.
+    """
+    from perplexity_cli.attachments import AttachmentUploader
+
+    logger.debug("Starting S3 upload for attachments")
+    uploader = AttachmentUploader(token=token, cookies=cookies)
+    try:
+        attachment_urls = run_async(uploader.upload_files(file_attachments))
+    except AttachmentUploadError as e:
+        click.echo(f"[ERROR] Failed to upload attachments: {e}", err=True)
+        logger.error("Attachment upload failed: %s", e)
+        sys.exit(1)
+
+    logger.debug("S3 upload complete: %s file(s) uploaded", len(attachment_urls))
+    for i, url in enumerate(attachment_urls, 1):
+        logger.debug("  [%s] %s", i, redact_url(url))
+    return attachment_urls
 
 
 def get_query_formatter(output_format: str | None) -> tuple[str, Formatter]:
@@ -150,7 +263,7 @@ def get_query_formatter(output_format: str | None) -> tuple[str, Formatter]:
         click.echo(f"[ERROR] {e}", err=True)
         available = ", ".join(list_formatters())
         click.echo(f"Available formats: {available}", err=True)
-        logger.error(f"Invalid formatter: {resolved_output_format}")
+        logger.error("Invalid formatter: %s", resolved_output_format)
         sys.exit(1)
 
     return resolved_output_format, formatter
@@ -165,23 +278,203 @@ def build_final_query(query_text: str) -> str:
     if not style:
         return query_text
 
-    logger.debug(f"Applied style: {redact_text(style)}")
+    logger.debug("Applied style: %s", redact_text(style))
     return f"{query_text}\n\n{style}"
 
 
-def render_complete_answer(
-    answer_obj: Answer, formatter: Formatter, output_format: str, strip_references: bool
-) -> None:
+def render_complete_answer(answer_obj: Answer, render: RenderContext) -> None:
     """Render the non-streaming query result."""
-    if output_format == "rich":
-        formatter.render_complete(answer_obj, strip_references=strip_references)
+    if render.options.output_format == "rich":
+        render.formatter.render_complete(
+            answer_obj,
+            strip_references=render.options.strip_references,
+        )
         return
 
-    formatted_output = formatter.format_complete(answer_obj, strip_references=strip_references)
+    formatted_output = render.formatter.format_complete(
+        answer_obj,
+        strip_references=render.options.strip_references,
+    )
     click.echo(formatted_output)
 
 
-def run_query_command(
+def _read_query_from_stdin(query_text: str) -> str:
+    """Read query text from stdin if the sentinel value is provided.
+
+    Args:
+        query_text: The query string, or "-" to read from stdin.
+
+    Returns:
+        The resolved query text.
+    """
+    if query_text != "-":
+        return query_text
+    if sys.stdin.isatty():
+        click.echo("Error: stdin is a terminal; pipe input or provide a query.", err=True)
+        sys.exit(2)
+    text = sys.stdin.read().strip()
+    if not text:
+        click.echo("Error: empty input from stdin.", err=True)
+        sys.exit(2)
+    return text
+
+
+def _build_json_envelope(answer_obj: Answer, trace: TraceContext, include_schema: bool) -> str:
+    """Build the JSON envelope output for --json mode.
+
+    Args:
+        answer_obj: The answer object from the API.
+        trace: Trace and timing context.
+        include_schema: Whether to include JSON schema in output.
+
+    Returns:
+        JSON string ready for output.
+    """
+    from perplexity_cli.envelope import Meta, envelope_to_dict, success_envelope
+    from perplexity_cli.utils.version import get_version
+
+    result = {
+        "answer": answer_obj.text,
+        "references": [
+            {"name": r.name, "url": r.url, "snippet": r.snippet} for r in answer_obj.references
+        ],
+    }
+    effective_start = trace.start_time if trace.start_time is not None else time.monotonic()
+    meta = Meta(
+        duration_ms=int((time.monotonic() - effective_start) * 1000),
+        version=get_version(),
+        trace_id=trace.trace_id or "",
+    )
+    envelope = success_envelope(command="pxcli query --json", result=result, meta=meta)
+    data = envelope_to_dict(envelope, include_schema=include_schema)
+    return json.dumps(data, default=str) + "\n"
+
+
+def _handle_query_exception(exc: Exception, ctx_obj: dict | None, json_mode: bool) -> None:
+    """Dispatch query exceptions to the appropriate error handler.
+
+    Args:
+        exc: The exception to handle.
+        ctx_obj: The Click context object dictionary.
+        json_mode: Whether JSON output mode is active.
+    """
+    from perplexity_cli.error_handler import handle_error
+
+    logger = get_logger()
+    debug_mode = (ctx_obj or {}).get("debug", False)
+
+    if json_mode:
+        handle_error(
+            exc,
+            command="pxcli query --json",
+            json_mode=True,
+            debug_mode=debug_mode,
+        )
+
+    if _try_dispatch_known_error(exc, logger, debug_mode):
+        return
+
+    _handle_fallback_error(exc, logger, debug_mode)
+
+
+def _try_dispatch_known_error(exc: Exception, logger: logging.Logger, debug_mode: bool) -> bool:
+    """Attempt to handle a known error type.
+
+    Args:
+        exc: The exception to check.
+        logger: Logger instance.
+        debug_mode: Whether debug mode is active.
+
+    Returns:
+        True if the error was handled, False otherwise.
+    """
+    from perplexity_cli.utils.http_errors import handle_http_error, handle_network_error
+
+    if isinstance(exc, PerplexityHTTPStatusError):
+        handle_http_error(exc, logger, debug_mode=debug_mode)
+        return True
+    if isinstance(exc, PerplexityRequestError):
+        handle_network_error(exc, logger, debug_mode=debug_mode)
+        return True
+    if isinstance(exc, UpstreamSchemaError):
+        logger.error("Upstream schema error: %s", exc)
+        click.echo(f"[ERROR] Upstream response format changed: {exc}", err=True)
+        sys.exit(1)
+    if isinstance(exc, (ConfigurationError, AttachmentError, AttachmentUploadError, ValueError)):
+        logger.error("Value error: %s", exc)
+        click.echo(f"[ERROR] Error: {exc}", err=True)
+        sys.exit(1)
+    return False
+
+
+def _handle_fallback_error(exc: Exception, logger: logging.Logger, debug_mode: bool) -> None:
+    """Handle an unexpected error type.
+
+    Args:
+        exc: The exception.
+        logger: Logger instance.
+        debug_mode: Whether debug mode is active.
+    """
+    from perplexity_cli.utils.http_errors import handle_unexpected_cli_error
+
+    handle_unexpected_cli_error(
+        exc,
+        logger,
+        debug_mode=debug_mode,
+        user_message="[ERROR] An unexpected error occurred.",
+        log_message="Unexpected error",
+        include_debug_hint=True,
+    )
+
+
+def _fetch_and_render(
+    api: PerplexityAPI,
+    query_input: QueryInput,
+    render: RenderContext,
+    trace: TraceContext,
+) -> None:
+    """Fetch a complete answer and render it.
+
+    Args:
+        api: The PerplexityAPI instance.
+        query_input: Query text and attachment URLs.
+        render: Formatter and output options.
+        trace: Trace and timing context.
+    """
+    logger = get_logger()
+    logger.info("Fetching complete answer")
+    answer_obj = api.get_complete_answer(
+        query_input.query,
+        attachments=query_input.attachment_urls,
+    )
+    logger.debug(
+        "Received answer: %s characters, %s references",
+        len(answer_obj.text),
+        len(answer_obj.references),
+    )
+
+    if render.options.json_mode:
+        sys.stdout.write(
+            _build_json_envelope(answer_obj, trace, render.options.include_schema),
+        )
+    else:
+        render_complete_answer(answer_obj, render)
+
+
+def _read_ctx_options(ctx_obj: dict | None) -> tuple[bool, int | None, bool]:
+    """Extract query options from the Click context object.
+
+    Args:
+        ctx_obj: The Click context object dictionary, or None.
+
+    Returns:
+        Tuple of (json_mode, timeout, include_schema).
+    """
+    opts = ctx_obj or {}
+    return opts.get("json", False), opts.get("timeout"), opts.get("schema", False)
+
+
+def run_query_command(  # nosemgrep: too-many-parameters
     ctx_obj: dict | None,
     query_text: str,
     output_format: str | None,
@@ -194,147 +487,66 @@ def run_query_command(
     from perplexity_cli.api.streaming import stream_query_response
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.auth.utils import load_token_optional
-    from perplexity_cli.error_handler import handle_error
-    from perplexity_cli.utils.http_errors import (
-        handle_http_error,
-        handle_network_error,
-        handle_unexpected_cli_error,
-    )
 
     logger = get_logger()
+    query_text = _read_query_from_stdin(query_text)
+    json_mode, timeout, include_schema = _read_ctx_options(ctx_obj)
 
-    # Stdin support: if query_text is "-", read from stdin.
-    if query_text == "-":
-        if sys.stdin.isatty():
-            click.echo("Error: stdin is a terminal; pipe input or provide a query.", err=True)
-            sys.exit(2)
-        query_text = sys.stdin.read().strip()
-        if not query_text:
-            click.echo("Error: empty input from stdin.", err=True)
-            sys.exit(2)
-
-    # Read json_mode, timeout, and include_schema from ctx_obj.
-    json_mode = (ctx_obj or {}).get("json", False)
-    timeout = (ctx_obj or {}).get("timeout")
-    include_schema = (ctx_obj or {}).get("schema", False)
-
-    # Generate trace_id and timing.
-    trace_id = str(uuid.uuid4())
-    start_time = time.monotonic()
+    trace = TraceContext(trace_id=str(uuid.uuid4()), start_time=time.monotonic())
 
     log_query_debug_context(query_text, output_format, stream)
 
     tm = TokenManager()
     token, cookies = load_token_optional(tm, logger)
-    attachment_urls = resolve_attachment_urls(query_text, attachments_str, token, cookies)
+    auth = AuthContext(token=token, cookies=cookies)
+    attachment_urls = resolve_attachment_urls(query_text, attachments_str, auth)
 
     try:
         resolved_output_format, formatter = get_query_formatter(output_format)
         final_query = build_final_query(query_text)
 
-        # Build API kwargs, including timeout if set.
-        api_kwargs: dict = {"token": token, "cookies": cookies}
-        if timeout is not None:
-            api_kwargs["timeout"] = timeout
+        query_input = QueryInput(query=final_query, attachment_urls=attachment_urls)
+        output_opts = OutputOptions(
+            output_format=resolved_output_format,
+            strip_references=strip_references,
+            json_mode=json_mode,
+            include_schema=include_schema,
+        )
+        render = RenderContext(formatter=formatter, options=output_opts)
 
-        with PerplexityAPI(**api_kwargs) as api:
+        with PerplexityAPI(token, cookies, timeout=timeout) as api:
             if stream:
                 logger.info("Streaming query response")
-                stream_query_response(
-                    api,
-                    final_query,
-                    formatter,
-                    resolved_output_format,
-                    strip_references,
-                    attachments=attachment_urls,
-                    json_mode=json_mode,
-                    trace_id=trace_id,
-                    start_time=start_time,
-                )
-                return
-
-            logger.info("Fetching complete answer")
-            answer_obj = api.get_complete_answer(final_query, attachments=attachment_urls)
-            logger.debug(
-                f"Received answer: {len(answer_obj.text)} characters, "
-                f"{len(answer_obj.references)} references"
-            )
-
-            if json_mode:
-                # Envelope output for --json mode (non-streaming).
-                from perplexity_cli.envelope import Meta, envelope_to_dict, success_envelope
-                from perplexity_cli.utils.version import get_version
-
-                result = {
-                    "answer": answer_obj.text,
-                    "references": [
-                        {"name": r.name, "url": r.url, "snippet": r.snippet}
-                        for r in answer_obj.references
-                    ],
-                }
-                meta = Meta(
-                    duration_ms=int((time.monotonic() - start_time) * 1000),
-                    version=get_version(),
-                    trace_id=trace_id,
-                )
-                envelope = success_envelope(
-                    command="pxcli query --json",
-                    result=result,
-                    meta=meta,
-                )
-                data = envelope_to_dict(envelope, include_schema=include_schema)
-                sys.stdout.write(json.dumps(data, default=str) + "\n")
+                stream_query_response(api, query_input, render, trace)
             else:
-                render_complete_answer(
-                    answer_obj,
-                    formatter,
-                    resolved_output_format,
-                    strip_references,
-                )
+                _fetch_and_render(api, query_input, render, trace)
 
     except KeyboardInterrupt:
-        if json_mode:
-            handle_error(
-                KeyboardInterrupt(),
-                command="pxcli query --json",
-                json_mode=True,
-                debug_mode=(ctx_obj or {}).get("debug", False),
-            )
-        logger.info("Query interrupted by user")
-        click.echo("\n[ERROR] Query interrupted.", err=True)
-        sys.exit(130)
+        _handle_keyboard_interrupt(ctx_obj, json_mode, logger)
 
     except Exception as exc:
-        debug_mode = (ctx_obj or {}).get("debug", False)
-        if json_mode:
-            handle_error(
-                exc,
-                command="pxcli query --json",
-                json_mode=True,
-                debug_mode=debug_mode,
-            )
+        _handle_query_exception(exc, ctx_obj, json_mode)
 
-        # Non-json error handling (existing behaviour).
-        if isinstance(exc, PerplexityHTTPStatusError):
-            handle_http_error(exc, logger, debug_mode=debug_mode)
-        elif isinstance(exc, PerplexityRequestError):
-            handle_network_error(exc, logger, debug_mode=debug_mode)
-        elif isinstance(exc, UpstreamSchemaError):
-            logger.error(f"Upstream schema error: {exc}")
-            click.echo(f"[ERROR] Upstream response format changed: {exc}", err=True)
-            sys.exit(1)
-        elif isinstance(
-            exc, (ConfigurationError, AttachmentError, AttachmentUploadError, ValueError)
-        ):
-            logger.error(f"Value error: {exc}")
-            click.echo(f"[ERROR] Error: {exc}", err=True)
-            sys.exit(1)
-        else:
-            handle_unexpected_cli_error(
-                exc,
-                logger,
-                debug_mode=debug_mode,
-                user_message="[ERROR] An unexpected error occurred.",
-                log_message="Unexpected error",
-                include_debug_hint=True,
-            )
+
+def _handle_keyboard_interrupt(
+    ctx_obj: dict | None, json_mode: bool, logger: logging.Logger
+) -> None:
+    """Handle a keyboard interrupt during query execution.
+
+    Args:
+        ctx_obj: The Click context object dictionary.
+        json_mode: Whether JSON output mode is active.
+        logger: Logger instance.
+    """
+    if json_mode:
+        from perplexity_cli.error_handler import handle_error
+
+        handle_error(
+            KeyboardInterrupt(),
+            command="pxcli query --json",
+            json_mode=True,
+            debug_mode=(ctx_obj or {}).get("debug", False),
+        )
+    logger.info("Query interrupted by user")
+    click.echo("\n[ERROR] Query interrupted.", err=True)
+    sys.exit(130)

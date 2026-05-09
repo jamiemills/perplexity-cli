@@ -102,8 +102,8 @@ class TestQueryWithoutAuthentication:
         assert "Test answer without auth" in result.output
         # Verify API was called with None token
         mock_api_class.assert_called_once()
-        call_kwargs = mock_api_class.call_args[1]
-        assert call_kwargs["token"] is None
+        call_args = mock_api_class.call_args
+        assert call_args[0][0] is None  # token is first positional arg
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.auth.token_manager.TokenManager")
@@ -139,9 +139,9 @@ class TestQueryWithoutAuthentication:
         assert "Test answer with auth" in result.output
         # Verify API was called with token
         mock_api_class.assert_called_once()
-        call_kwargs = mock_api_class.call_args[1]
-        assert call_kwargs["token"] == test_token
-        assert call_kwargs["cookies"] == test_cookies
+        call_args = mock_api_class.call_args
+        assert call_args[0][0] == test_token  # token is first positional arg
+        assert call_args[0][1] == test_cookies  # cookies is second positional arg
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.auth.token_manager.TokenManager")

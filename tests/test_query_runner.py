@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from perplexity_cli.api.models import Answer
+from perplexity_cli.api.models import Answer, QueryInput, RenderContext, TraceContext
 from perplexity_cli.query_runner import build_final_query, get_query_formatter, run_query_command
 from perplexity_cli.utils.exceptions import UpstreamSchemaError
 
@@ -98,10 +98,18 @@ def test_run_query_command_streaming_delegates_to_stream_handler():
 
     mock_stream.assert_called_once()
     assert mock_stream.call_args.args[0] is mock_api
-    assert mock_stream.call_args.args[1] == "final query"
-    assert mock_stream.call_args.args[3] == "plain"
-    assert mock_stream.call_args.args[4] is True
-    assert mock_stream.call_args.kwargs["attachments"] == ["https://s3/file"]
+    # Second arg is now a QueryInput object
+    query_input_arg = mock_stream.call_args.args[1]
+    assert isinstance(query_input_arg, QueryInput)
+    assert query_input_arg.query == "final query"
+    assert query_input_arg.attachment_urls == ["https://s3/file"]
+    # Third arg is RenderContext, fourth is TraceContext
+    render_arg = mock_stream.call_args.args[2]
+    assert isinstance(render_arg, RenderContext)
+    assert render_arg.options.output_format == "plain"
+    assert render_arg.options.strip_references is True
+    trace_arg = mock_stream.call_args.args[3]
+    assert isinstance(trace_arg, TraceContext)
 
 
 def test_run_query_command_reports_upstream_schema_error(capsys):

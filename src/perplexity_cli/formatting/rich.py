@@ -181,6 +181,28 @@ class RichFormatter(Formatter):
                 # Simple approach: just print as-is (Rich will still render markdown markup)
                 self.console.print(line)
 
+    def _render_code_block(self, language: str, code_content: str) -> str:
+        """Render a single code block with syntax highlighting.
+
+        Args:
+            language: The language identifier for highlighting.
+            code_content: The raw code to highlight.
+
+        Returns:
+            Highlighted code string, or the original fenced block on failure.
+        """
+        try:  # nosemgrep: except-broad-exception
+            syntax = Syntax(code_content, language, theme="monokai", line_numbers=False)
+            from io import StringIO
+
+            code_buffer = StringIO()
+            code_console = Console(file=code_buffer, legacy_windows=False)
+            code_console.print(syntax)
+            return code_buffer.getvalue().rstrip()
+        except Exception:
+            # Intentionally broad: Rich and lexer failures should not block answer rendering.
+            return f"```{language}\n{code_content}\n```"
+
     def _process_answer_text(self, text: str) -> str:
         """Process answer text to add syntax highlighting and formatting.
 
@@ -190,36 +212,19 @@ class RichFormatter(Formatter):
         Returns:
             Processed text with syntax highlighting applied.
         """
-        # Find code blocks and highlight them
         result_parts = []
         pattern = r"```(\w*)\n(.*?)\n```"
         last_end = 0
 
         for match in re.finditer(pattern, text, re.DOTALL):
-            # Add text before code block
             before_text = text[last_end : match.start()]
             if before_text:
                 result_parts.append(before_text)
 
-            # Add highlighted code block
             language = match.group(1) or "text"
-            code_content = match.group(2)
-            try:
-                syntax = Syntax(code_content, language, theme="monokai", line_numbers=False)
-                from io import StringIO
-
-                code_buffer = StringIO()
-                code_console = Console(file=code_buffer, legacy_windows=False)
-                code_console.print(syntax)
-                result_parts.append(code_buffer.getvalue().rstrip())
-            except Exception:
-                # Intentionally broad: Rich and lexer failures should not block answer rendering.
-                # Fall back to the original fenced code block if highlighting breaks.
-                result_parts.append(f"```{language}\n{code_content}\n```")
-
+            result_parts.append(self._render_code_block(language, match.group(2)))
             last_end = match.end()
 
-        # Add remaining text
         if last_end < len(text):
             result_parts.append(text[last_end:])
 

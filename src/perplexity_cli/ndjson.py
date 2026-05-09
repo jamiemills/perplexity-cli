@@ -84,7 +84,7 @@ class NDJSONWriter:
         """Write a chunk event."""
         self.write_event(ChunkEvent(text=text))
 
-    def result(
+    def result(  # nosemgrep: too-many-parameters
         self,
         ok: bool,
         command: str,

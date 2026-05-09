@@ -38,9 +38,28 @@ class ChromeDevToolsClient:
         Raises:
             RuntimeError: If Chrome is not running or endpoint is unavailable.
         """
+        targets = self._fetch_targets()
+        page_target = self._find_page_target(targets)
+
+        ws_url = page_target.get("webSocketDebuggerUrl")
+        if not ws_url:
+            raise AuthenticationError("Could not get WebSocket debugger URL")
+
+        self.ws = await websockets.connect(ws_url)
+
+    def _fetch_targets(self) -> list:
+        """Fetch the list of debugging targets from Chrome.
+
+        Returns:
+            List of target dictionaries.
+
+        Raises:
+            AuthenticationError: If Chrome is unreachable or returns invalid data.
+        """
         url = f"http://localhost:{self.port}/json"
         try:
-            with urllib.request.urlopen(url, timeout=5) as response:
+            # Scheme and host are hardcoded literals; only port varies.
+            with urllib.request.urlopen(url, timeout=5) as response:  # nosec B310
                 targets = json.loads(response.read())
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
             raise AuthenticationError(
@@ -52,17 +71,25 @@ class ChromeDevToolsClient:
         if not isinstance(targets, list):
             raise AuthenticationError("Chrome returned an invalid targets payload")
 
-        # Find a page target
-        page_target = next((t for t in targets if t.get("type") == "page"), None)
+        return targets
 
+    @staticmethod
+    def _find_page_target(targets: list) -> dict:
+        """Find a page-type target from the targets list.
+
+        Args:
+            targets: List of Chrome debugging targets.
+
+        Returns:
+            The first page target dictionary.
+
+        Raises:
+            AuthenticationError: If no page target is found.
+        """
+        page_target = next((t for t in targets if t.get("type") == "page"), None)
         if not page_target:
             raise AuthenticationError("No page target found in Chrome")
-
-        ws_url = page_target.get("webSocketDebuggerUrl")
-        if not ws_url:
-            raise AuthenticationError("Could not get WebSocket debugger URL")
-
-        self.ws = await websockets.connect(ws_url)
+        return page_target
 
     async def send_command(
         self, method: str, params: dict[str, Any] | None = None
@@ -83,20 +110,39 @@ class ChromeDevToolsClient:
             raise AuthenticationError("Not connected to Chrome")
 
         self.message_id += 1
-        command: dict[str, Any] = {
-            "id": self.message_id,
-            "method": method,
-        }
+        command = self._build_command(method, params)
+        await self.ws.send(json.dumps(command))
+        return await self._await_response()
+
+    def _build_command(self, method: str, params: dict[str, Any] | None) -> dict[str, Any]:
+        """Build a Chrome DevTools Protocol command message.
+
+        Args:
+            method: The protocol method name.
+            params: Optional parameters for the method.
+
+        Returns:
+            The command dictionary ready for serialisation.
+        """
+        command: dict[str, Any] = {"id": self.message_id, "method": method}
         if params:
             command["params"] = params
+        return command
 
-        await self.ws.send(json.dumps(command))
+    async def _await_response(self) -> dict[str, Any]:
+        """Wait for a response matching the current message ID.
 
-        # Wait for the response
+        Returns:
+            The result from the matched response.
+
+        Raises:
+            AuthenticationError: If Chrome returns an error or not connected.
+        """
+        if self.ws is None:
+            raise AuthenticationError("Not connected to Chrome")
         while True:
             response = await self.ws.recv()
             data = json.loads(response)
-
             if data.get("id") == self.message_id:
                 if "error" in data:
                     raise AuthenticationError(f"Chrome error: {data['error']}")
@@ -106,6 +152,137 @@ class ChromeDevToolsClient:
         """Close the WebSocket connection."""
         if self.ws:
             await self.ws.close()
+
+
+def _resolve_auth_defaults(
+    url: str | None,
+    port: int | None,
+    timeout: int | None,
+    poll_interval: float | None,
+) -> tuple[str, int, int, float]:
+    """Resolve default values for authentication parameters.
+
+    Args:
+        url: Perplexity URL or None for default.
+        port: Chrome debugging port or None for default.
+        timeout: Authentication timeout or None for default.
+        poll_interval: Polling interval or None for default.
+
+    Returns:
+        Tuple of (url, port, timeout, poll_interval) with defaults applied.
+    """
+    from perplexity_cli.config.defaults import (
+        DEFAULT_AUTH_POLL_INTERVAL,
+        DEFAULT_AUTH_TIMEOUT,
+        DEFAULT_CHROME_DEBUG_PORT,
+    )
+
+    return (
+        url if url is not None else get_perplexity_base_url(),
+        port if port is not None else DEFAULT_CHROME_DEBUG_PORT,
+        timeout if timeout is not None else DEFAULT_AUTH_TIMEOUT,
+        poll_interval if poll_interval is not None else DEFAULT_AUTH_POLL_INTERVAL,
+    )
+
+
+async def _navigate_and_wait(client: ChromeDevToolsClient, url: str, logger: Any) -> None:
+    """Navigate to the URL and wait for the page to load.
+
+    Args:
+        client: Chrome DevTools client instance.
+        url: The URL to navigate to.
+        logger: Logger instance.
+    """
+    await client.send_command("Page.enable")
+    await client.send_command("Network.enable")
+
+    logger.info("Navigating to %s...", url)
+    navigate_result = await client.send_command("Page.navigate", {"url": url})
+    logger.debug("Navigation result: %s", navigate_result)
+
+    logger.debug("Waiting for page to load...")
+    await _wait_for_page_load(client, timeout=30)
+
+
+async def _fetch_local_storage(client: ChromeDevToolsClient) -> dict[str, Any]:
+    """Fetch localStorage data from the browser.
+
+    Args:
+        client: Chrome DevTools client instance.
+
+    Returns:
+        Dictionary of localStorage key-value pairs.
+    """
+    local_storage_result = await client.send_command(
+        "Runtime.evaluate",
+        {
+            "expression": """
+                (() => {
+                    const storage = {};
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        storage[key] = localStorage.getItem(key);
+                    }
+                    return storage;
+                })()
+            """
+        },
+    )
+
+    if "result" in local_storage_result and "value" in local_storage_result["result"]:
+        return local_storage_result["result"]["value"]
+    return {}
+
+
+async def _poll_for_auth_data(
+    client: ChromeDevToolsClient,
+    timeout: int,
+    poll_interval: float,
+    logger: Any,
+) -> tuple[str, dict[str, str]]:
+    """Poll Chrome for authentication token and cookies.
+
+    Args:
+        client: Chrome DevTools client instance.
+        timeout: Maximum time to wait in seconds.
+        poll_interval: Time between polls in seconds.
+        logger: Logger instance.
+
+    Returns:
+        Tuple of (token, cookies_dict).
+
+    Raises:
+        TimeoutError: If authentication timeout is exceeded.
+    """
+    start_time = asyncio.get_event_loop().time()
+
+    while True:
+        elapsed = asyncio.get_event_loop().time() - start_time
+        if elapsed > timeout:
+            raise TimeoutError(
+                f"Authentication timeout after {timeout} seconds. "
+                "Please ensure you have logged in to Perplexity.ai in Chrome."
+            )
+
+        cookies_result = await client.send_command("Network.getAllCookies")
+        cookies = cookies_result.get("cookies", [])
+        local_storage_data = await _fetch_local_storage(client)
+
+        session_token, cookie_dict = _extract_token(cookies, local_storage_data)
+
+        if session_token:
+            logger.info(  # nosemgrep: python-logger-credential-disclosure
+                "Successfully extracted authentication token and %s cookies",
+                len(cookie_dict),
+            )
+            return (session_token, cookie_dict)
+
+        logger.debug(  # nosemgrep: python-logger-credential-disclosure
+            "No token found yet, waiting %ss... (elapsed: %ss)",
+            poll_interval,
+            f"{elapsed:.1f}",
+        )
+        await asyncio.sleep(poll_interval)
 
 
 async def authenticate_with_browser(
@@ -135,97 +312,22 @@ async def authenticate_with_browser(
         RuntimeError: If Chrome is not available or authentication fails.
         TimeoutError: If authentication timeout is exceeded.
     """
-    from perplexity_cli.config.defaults import (
-        DEFAULT_AUTH_POLL_INTERVAL,
-        DEFAULT_AUTH_TIMEOUT,
-        DEFAULT_CHROME_DEBUG_PORT,
-    )
     from perplexity_cli.utils.logging import get_logger
 
     logger = get_logger()
-
-    if url is None:
-        url = get_perplexity_base_url()
-    if port is None:
-        port = DEFAULT_CHROME_DEBUG_PORT
-    if timeout is None:
-        timeout = DEFAULT_AUTH_TIMEOUT
-    if poll_interval is None:
-        poll_interval = DEFAULT_AUTH_POLL_INTERVAL
+    url, port, timeout, poll_interval = _resolve_auth_defaults(url, port, timeout, poll_interval)
 
     client = ChromeDevToolsClient(port)
 
     try:
-        logger.info(f"Connecting to Chrome on port {port}...")
+        logger.info("Connecting to Chrome on port %s...", port)
         await client.connect()
         logger.info("Connected to Chrome")
 
-        # Enable the Page domain
-        await client.send_command("Page.enable")
+        await _navigate_and_wait(client, url, logger)
 
-        # Enable the Network domain to capture cookies
-        await client.send_command("Network.enable")
-
-        # Navigate to the URL
-        logger.info(f"Navigating to {url}...")
-        navigate_result = await client.send_command("Page.navigate", {"url": url})
-        logger.debug(f"Navigation result: {navigate_result}")
-
-        # Wait for page load using polling
-        logger.debug("Waiting for page to load...")
-        await _wait_for_page_load(client, timeout=30)
-
-        # Poll for authentication token with timeout
         logger.info("Waiting for authentication...")
-        start_time = asyncio.get_event_loop().time()
-
-        while True:
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed > timeout:
-                raise TimeoutError(
-                    f"Authentication timeout after {timeout} seconds. "
-                    "Please ensure you have logged in to Perplexity.ai in Chrome."
-                )
-
-            # Get all cookies
-            cookies_result = await client.send_command("Network.getAllCookies")
-            cookies = cookies_result.get("cookies", [])
-
-            # Get localStorage data
-            local_storage_result = await client.send_command(
-                "Runtime.evaluate",
-                {
-                    "expression": """
-                        (() => {
-                            const storage = {};
-                            for (let i = 0; i < localStorage.length; i++) {
-                                const key = localStorage.key(i);
-                                storage[key] = localStorage.getItem(key);
-                            }
-                            return storage;
-                        })()
-                    """
-                },
-            )
-
-            local_storage_data: dict[str, Any] = {}
-            if "result" in local_storage_result and "value" in local_storage_result["result"]:
-                local_storage_data = local_storage_result["result"]["value"]
-
-            # Extract session token and cookies
-            session_token, cookie_dict = _extract_token(cookies, local_storage_data)
-
-            if session_token:
-                logger.info(
-                    f"Successfully extracted authentication token and {len(cookie_dict)} cookies"
-                )
-                return (session_token, cookie_dict)
-
-            # Wait before next poll
-            logger.debug(
-                f"No token found yet, waiting {poll_interval}s... (elapsed: {elapsed:.1f}s)"
-            )
-            await asyncio.sleep(poll_interval)
+        return await _poll_for_auth_data(client, timeout, poll_interval, logger)
 
     finally:
         await client.close()
@@ -256,16 +358,30 @@ async def _wait_for_page_load(client: ChromeDevToolsClient, timeout: int | None 
         if elapsed > timeout:
             raise TimeoutError(f"Page load timeout after {timeout} seconds")
 
-        try:
-            # Check if page is loaded
-            result = await client.send_command("Page.getNavigationHistory")
-            if result:
-                logger.debug("Page loaded successfully")
-                return
-        except AuthenticationError as e:
-            logger.debug(f"Page not ready yet: {e}")
+        if await _check_page_loaded(client, logger):
+            return
 
         await asyncio.sleep(poll_interval)
+
+
+async def _check_page_loaded(client: ChromeDevToolsClient, logger: Any) -> bool:
+    """Check whether the page has finished loading.
+
+    Args:
+        client: Chrome DevTools client instance.
+        logger: Logger instance.
+
+    Returns:
+        True if the page is loaded, False otherwise.
+    """
+    try:
+        result = await client.send_command("Page.getNavigationHistory")
+        if result:
+            logger.debug("Page loaded successfully")
+            return True
+    except AuthenticationError as e:
+        logger.debug("Page not ready yet: %s", e)
+    return False
 
 
 def _extract_token(
@@ -282,28 +398,44 @@ def _extract_token(
             - token: The authentication token string, or None if not found
             - cookies_dict: Dictionary of all cookies {name: value}
     """
-    # Build complete cookie dictionary from all browser cookies
     cookie_dict = {c["name"]: c["value"] for c in cookies}
-
-    # Try to extract token from localStorage session data
-    token = None
-    if "pplx-next-auth-session" in local_storage:
-        try:
-            session_data = json.loads(local_storage["pplx-next-auth-session"])
-            # Perplexity stores session as NextAuth.js session
-            # Return the entire session data as token
-            token = json.dumps(session_data)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    # Try to extract token from cookies (fallback)
+    token = _extract_token_from_local_storage(local_storage)
     if not token:
-        for cookie_name in ["__Secure-next-auth.session-token", "next-auth.session-token"]:
-            if cookie_name in cookie_dict:
-                token = cookie_dict[cookie_name]
-                break
-
+        token = _extract_token_from_cookies(cookie_dict)
     return (token, cookie_dict)
+
+
+def _extract_token_from_local_storage(local_storage: dict[str, Any]) -> str | None:
+    """Attempt to extract an authentication token from localStorage.
+
+    Args:
+        local_storage: Dictionary of localStorage key-value pairs.
+
+    Returns:
+        The token string, or None if not found.
+    """
+    if "pplx-next-auth-session" not in local_storage:
+        return None
+    try:
+        session_data = json.loads(local_storage["pplx-next-auth-session"])
+        return json.dumps(session_data)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _extract_token_from_cookies(cookie_dict: dict[str, str]) -> str | None:
+    """Attempt to extract an authentication token from cookies as a fallback.
+
+    Args:
+        cookie_dict: Dictionary of browser cookies.
+
+    Returns:
+        The token string, or None if not found.
+    """
+    for cookie_name in ["__Secure-next-auth.session-token", "next-auth.session-token"]:
+        if cookie_name in cookie_dict:
+            return cookie_dict[cookie_name]
+    return None
 
 
 def authenticate_sync(

@@ -15,7 +15,7 @@ from perplexity_cli.config.models import (
 )
 
 __all__ = [
-    "URLConfig",
-    "RateLimitConfig",
     "FeatureConfig",
+    "RateLimitConfig",
+    "URLConfig",
 ]

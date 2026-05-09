@@ -1,8 +1,22 @@
 """Pydantic models for thread cache management."""
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
+
+
+@dataclass(frozen=True, slots=True)
+class DateRange:
+    """Optional date boundaries for filtering thread exports.
+
+    Groups the from/to date strings into a single value object,
+    eliminating the pair of parameters that recurs across scraper,
+    cache, and export functions.
+    """
+
+    from_date: str | None = None
+    to_date: str | None = None
 
 
 class CacheMetadata(BaseModel):
@@ -57,6 +71,23 @@ class CacheFormat(BaseModel):
         return v
 
 
+def _validate_thread_dict(thread: object) -> None:
+    """Validate that a single thread entry has the required structure.
+
+    Args:
+        thread: Item from the threads list to validate.
+
+    Raises:
+        ValueError: If the thread is not a dict or lacks required fields.
+    """
+    if not isinstance(thread, dict):
+        raise ValueError("Each thread must be a dictionary")
+    if "url" not in thread:
+        raise ValueError("Each thread must have a 'url' field")
+    if "title" not in thread:
+        raise ValueError("Each thread must have a 'title' field")
+
+
 class CacheContent(BaseModel):
     """Inner cache content (decrypted)."""
 
@@ -69,10 +100,5 @@ class CacheContent(BaseModel):
     def validate_threads(cls, v: list) -> list:
         """Validate threads list items have required structure."""
         for thread in v:
-            if not isinstance(thread, dict):
-                raise ValueError("Each thread must be a dictionary")
-            if "url" not in thread:
-                raise ValueError("Each thread must have a 'url' field")
-            if "title" not in thread:
-                raise ValueError("Each thread must have a 'title' field")
+            _validate_thread_dict(thread)
         return v

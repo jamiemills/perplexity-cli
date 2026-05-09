@@ -8,7 +8,7 @@ import pytest
 
 from perplexity_cli.api.contracts import describe_payload_shape
 from perplexity_cli.api.endpoints import PerplexityAPI
-from perplexity_cli.api.models import FileAttachment, SSEMessage
+from perplexity_cli.api.models import FileAttachment, QueryInput, SSEMessage
 from perplexity_cli.attachments.upload_manager import AttachmentUploader
 from perplexity_cli.threads.scraper import ThreadScraper
 from perplexity_cli.utils.exceptions import AttachmentUploadError, UpstreamSchemaError
@@ -36,7 +36,7 @@ class TestPrivateAPIContracts:
             ]
         )
 
-        messages = list(api.submit_query("Where is Paris?"))
+        messages = list(api.submit_query(QueryInput(query="Where is Paris?")))
 
         assert len(messages) == 2
 
@@ -90,7 +90,7 @@ class TestPrivateAPIContracts:
         )
 
         with pytest.raises(UpstreamSchemaError, match="Malformed web result block"):
-            list(api.submit_query("broken payload"))
+            list(api.submit_query(QueryInput(query="broken payload")))
 
     def test_get_complete_answer_reports_block_usages_when_answer_missing(self):
         """Test no-answer failures include actionable schema-drift diagnostics."""

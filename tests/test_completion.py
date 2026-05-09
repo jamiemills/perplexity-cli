@@ -1,4 +1,4 @@
-"""Tests for shell completion command group (spec 5.1.7–5.1.9)."""
+"""Tests for shell completion command group (spec 5.1.7-5.1.9)."""
 
 from click.testing import CliRunner
 

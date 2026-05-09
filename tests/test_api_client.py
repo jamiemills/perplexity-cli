@@ -1,5 +1,7 @@
 """Tests for API client module."""
 
+from __future__ import annotations
+
 import json
 import logging
 from unittest.mock import Mock
@@ -7,9 +9,14 @@ from unittest.mock import Mock
 import pytest
 from curl_cffi.requests import Session
 
-from perplexity_cli.api.client import SSEClient
+from perplexity_cli.api.client import SSEClient, SSEParser
 from perplexity_cli.api.models import Block, QueryParams, QueryRequest, SSEMessage, WebResult
-from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, UpstreamSchemaError
+from perplexity_cli.auth.models import AuthContext
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+    PerplexityRequestError,
+    UpstreamSchemaError,
+)
 from perplexity_cli.utils.logging import setup_logging
 
 
@@ -203,7 +210,7 @@ class TestSSEClient:
 
     def test_get_headers_without_cookies(self):
         """Test headers include Bearer authentication but no User-Agent or Cookie."""
-        client = SSEClient(token="test-token-123")
+        client = SSEClient(auth=AuthContext(token="test-token-123"))
 
         headers = client.get_headers()
 
@@ -217,7 +224,7 @@ class TestSSEClient:
 
     def test_get_headers_with_csrf_cookie(self):
         """Test that X-CSRFToken header is set from csrftoken cookie."""
-        client = SSEClient(token="test-token", cookies={"csrftoken": "abc123"})
+        client = SSEClient(auth=AuthContext(token="test-token", cookies={"csrftoken": "abc123"}))
 
         headers = client.get_headers()
 
@@ -225,7 +232,7 @@ class TestSSEClient:
 
     def test_get_headers_with_cookies_no_csrf(self):
         """Test that cookies without csrftoken do not produce X-CSRFToken."""
-        client = SSEClient(token="test-token", cookies={"cf_clearance": "xyz"})
+        client = SSEClient(auth=AuthContext(token="test-token", cookies={"cf_clearance": "xyz"}))
 
         headers = client.get_headers()
 
@@ -233,7 +240,7 @@ class TestSSEClient:
 
     def test_parse_sse_stream_single_message(self):
         """Test parsing single SSE message with bytes input."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
 
         mock_response = Mock()
         mock_response.iter_lines.return_value = [
@@ -242,14 +249,14 @@ class TestSSEClient:
             b"",
         ]
 
-        messages = list(client._parse_sse_stream(mock_response))
+        messages = list(SSEParser.parse(mock_response, client.logger))
 
         assert len(messages) == 1
         assert messages[0]["test"] == "value"
 
     def test_parse_sse_stream_string_input(self):
         """Test parsing SSE message with string input (backward compatibility)."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
 
         mock_response = Mock()
         mock_response.iter_lines.return_value = [
@@ -258,14 +265,14 @@ class TestSSEClient:
             "",
         ]
 
-        messages = list(client._parse_sse_stream(mock_response))
+        messages = list(SSEParser.parse(mock_response, client.logger))
 
         assert len(messages) == 1
         assert messages[0]["test"] == "value"
 
     def test_parse_sse_stream_multiple_messages(self):
         """Test parsing multiple SSE messages."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
 
         mock_response = Mock()
         mock_response.iter_lines.return_value = [
@@ -277,7 +284,7 @@ class TestSSEClient:
             b"",
         ]
 
-        messages = list(client._parse_sse_stream(mock_response))
+        messages = list(SSEParser.parse(mock_response, client.logger))
 
         assert len(messages) == 2
         assert messages[0]["msg"] == 1
@@ -285,7 +292,7 @@ class TestSSEClient:
 
     def test_parse_sse_stream_multiline_data(self):
         """Test parsing SSE message with multi-line data."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
 
         mock_response = Mock()
         mock_response.iter_lines.return_value = [
@@ -295,7 +302,7 @@ class TestSSEClient:
             b"",
         ]
 
-        messages = list(client._parse_sse_stream(mock_response))
+        messages = list(SSEParser.parse(mock_response, client.logger))
 
         assert len(messages) == 1
         expected_json = '{"line1":\n"value"}'
@@ -303,7 +310,7 @@ class TestSSEClient:
 
     def test_parse_sse_stream_invalid_json(self):
         """Test parsing invalid JSON raises UpstreamSchemaError."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
 
         mock_response = Mock()
         mock_response.iter_lines.return_value = [
@@ -313,7 +320,7 @@ class TestSSEClient:
         ]
 
         with pytest.raises(UpstreamSchemaError, match="Failed to parse SSE data"):
-            list(client._parse_sse_stream(mock_response))
+            list(SSEParser.parse(mock_response, client.logger))
 
     def test_sse_message_from_dict_rejects_non_dict(self):
         """Test malformed SSE payloads raise UpstreamSchemaError."""
@@ -322,7 +329,7 @@ class TestSSEClient:
 
     def test_stream_post_success(self):
         """Test successful POST request with SSE streaming."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
 
         # Mock curl_cffi response
         mock_response = Mock()
@@ -359,7 +366,7 @@ class TestSSEClient:
 
     def test_stream_post_401_error(self):
         """Test 401 error raises PerplexityHTTPStatusError."""
-        client = SSEClient(token="invalid-token")
+        client = SSEClient(auth=AuthContext(token="invalid-token"))
 
         # Mock a 401 response from curl_cffi
         mock_response = Mock()
@@ -384,7 +391,7 @@ class TestSSEClient:
 
     def test_stream_post_403_error_retries(self):
         """Test 403 error triggers retries with backoff."""
-        client = SSEClient(token="test-token", max_retries=2)
+        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=2)
 
         # Mock a 403 response from curl_cffi
         mock_response = Mock()
@@ -413,8 +420,10 @@ class TestSSEClient:
     def test_stream_post_debug_logging_redacts_sensitive_values(self, caplog):
         """Test debug logs do not expose cookie names or response bodies."""
         client = SSEClient(
-            token="test-token",
-            cookies={"cf_clearance": "secret-cookie", "csrftoken": "secret-csrf"},
+            auth=AuthContext(
+                token="test-token",
+                cookies={"cf_clearance": "secret-cookie", "csrftoken": "secret-csrf"},
+            ),
             max_retries=1,
         )
 
@@ -467,7 +476,7 @@ class TestSSEClient:
 
     def test_sse_client_creates_client_lazily(self):
         """Test that _client is None after init and created on first _get_client() call."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
         assert client._client is None
 
         session = client._get_client()
@@ -478,7 +487,7 @@ class TestSSEClient:
 
     def test_sse_client_reuses_client(self):
         """Test that two _get_client() calls return the same object."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
 
         session_1 = client._get_client()
         session_2 = client._get_client()
@@ -488,7 +497,7 @@ class TestSSEClient:
 
     def test_sse_client_close(self):
         """Test that close() calls client.close() and resets _client to None."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
 
         mock_session = Mock()
         client._client = mock_session
@@ -500,7 +509,7 @@ class TestSSEClient:
 
     def test_sse_client_close_when_no_client(self):
         """Test that close() is safe when no client exists."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
         assert client._client is None
 
         # Should not raise
@@ -530,3 +539,124 @@ class TestPerplexityAPIContextManager:
         api.__exit__(None, None, None)
 
         api.client.close.assert_called_once()
+
+
+class TestResolveEffectiveTimeout:
+    """Tests for _resolve_effective_timeout."""
+
+    def test_deep_research_timeout(self):
+        """Deep research queries use the extended timeout."""
+        client = SSEClient(auth=AuthContext(token="test-token"))
+        is_deep, timeout = client._resolve_effective_timeout(
+            {"params": {"search_implementation_mode": "multi_step"}}
+        )
+        assert is_deep is True
+        assert timeout == 360
+
+    def test_standard_timeout(self):
+        """Non-deep-research queries use the standard timeout."""
+        client = SSEClient(auth=AuthContext(token="test-token"), timeout=45)
+        is_deep, timeout = client._resolve_effective_timeout({"params": {}})
+        assert is_deep is False
+        assert timeout == 45
+
+
+class TestLogRequestContext:
+    """Tests for _log_request_context."""
+
+    def test_deep_research_debug_log(self, caplog):
+        """Deep research mode emits a specific debug log line."""
+        setup_logging(debug=True)
+        client = SSEClient(auth=AuthContext(token="test-token"))
+
+        from perplexity_cli.api.models import HttpRequestContext
+
+        ctx = HttpRequestContext(
+            url="https://example.com/api",
+            headers={"Content-Type": "application/json"},
+            effective_timeout=360,
+        )
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            client._log_request_context(ctx, is_deep_research=True)
+
+        assert any("Deep research mode" in r.getMessage() for r in caplog.records)
+
+
+class TestHandleRetryableError:
+    """Tests for _handle_retryable_error via RetryHandler."""
+
+    def _make_http_error(self, status: int) -> PerplexityHTTPStatusError:
+        """Create a mock HTTP status error."""
+        mock_response = Mock()
+        mock_response.status_code = status
+        mock_response.headers = {}
+        return PerplexityHTTPStatusError(f"HTTP {status}", request=Mock(), response=mock_response)
+
+    def test_retryable_500_returns_wait_time(self):
+        """A 500 error with remaining retries returns a wait time."""
+        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
+        error = self._make_http_error(500)
+        wait = client._retry._handle_retryable_error(error, attempt=0)
+        assert isinstance(wait, float) or isinstance(wait, int)
+        assert wait > 0
+
+    def test_retryable_429_exhausted_raises(self):
+        """A 429 error with exhausted retries raises rate limit message."""
+        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=1)
+        error = self._make_http_error(429)
+        with pytest.raises(PerplexityHTTPStatusError, match="Rate limit"):
+            client._retry._handle_retryable_error(error, attempt=0)
+
+    def test_non_retryable_reraises(self):
+        """A non-retryable status re-raises the original error."""
+        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
+        error = self._make_http_error(400)
+        with pytest.raises(PerplexityHTTPStatusError):
+            client._retry._handle_retryable_error(error, attempt=0)
+
+
+class TestHandleNetworkError:
+    """Tests for _handle_network_error via RetryHandler."""
+
+    def test_request_exception_converts_to_perplexity_error(self):
+        """curl_cffi RequestException is converted to PerplexityRequestError."""
+        from curl_cffi.requests.exceptions import RequestException
+
+        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
+        error = RequestException("connection failed")
+
+        with pytest.raises(PerplexityRequestError, match="connection failed"):
+            client._retry.handle_network_error(error, attempt=0)
+
+    def test_retryable_perplexity_error_increments_attempt(self):
+        """A retryable PerplexityRequestError returns incremented attempt."""
+        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
+        error = PerplexityRequestError("timeout")
+
+        result = client._retry.handle_network_error(error, attempt=0)
+        assert result == 1
+
+    def test_non_retryable_after_exhaustion_raises(self):
+        """When retries are exhausted, the error is re-raised."""
+        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=1)
+        error = PerplexityRequestError("timeout")
+
+        with pytest.raises(PerplexityRequestError):
+            client._retry.handle_network_error(error, attempt=0)
+
+
+class TestParseSSEStreamFinalEvent:
+    """Tests for SSEParser.parse final event without trailing empty line."""
+
+    def test_final_event_without_trailing_empty_line(self):
+        """Stream ending without an empty line still yields the final event."""
+        client = SSEClient(auth=AuthContext(token="test-token"))
+        mock_response = Mock()
+        mock_response.iter_lines.return_value = [
+            b"event: message",
+            b'data: {"final": true}',
+        ]
+
+        messages = list(SSEParser.parse(mock_response, client.logger))
+        assert len(messages) == 1
+        assert messages[0]["final"] is True

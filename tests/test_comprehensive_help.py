@@ -24,7 +24,7 @@ from perplexity_cli.cli import main
 
 def _help(runner: CliRunner, args: list[str]) -> str:
     """Invoke --help and return output, asserting exit 0."""
-    result = runner.invoke(main, args + ["--help"])
+    result = runner.invoke(main, [*args, "--help"])
     assert result.exit_code == 0, f"--help failed for {args}: {result.output}"
     return result.output
 

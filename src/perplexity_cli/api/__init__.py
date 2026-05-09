@@ -6,12 +6,12 @@ from .models import Block, QueryParams, QueryRequest, SSEMessage, WebResult
 from .streaming import stream_query_response
 
 __all__ = [
-    "SSEClient",
+    "Block",
     "PerplexityAPI",
     "QueryParams",
     "QueryRequest",
+    "SSEClient",
     "SSEMessage",
-    "Block",
     "WebResult",
     "stream_query_response",
 ]

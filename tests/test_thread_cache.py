@@ -186,7 +186,7 @@ class TestCacheInvalidation:
 
     def test_requires_fresh_data_no_cache(self, cache_manager):
         """Test that missing cache requires fresh data."""
-        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data("2025-12-22", "2025-12-23")
+        needs_fresh, _from_d, _to_d = cache_manager.requires_fresh_data("2025-12-22", "2025-12-23")
         assert needs_fresh is True
 
     def test_requires_fresh_data_range_within_cache(self, cache_manager, cached_threads):
@@ -234,7 +234,7 @@ class TestCacheInvalidation:
         """Test that missing to_date uses today's date."""
         cache_manager.save_cache(cached_threads)
 
-        needs_fresh, from_d, to_d = cache_manager.requires_fresh_data("2025-12-22", None)
+        needs_fresh, from_d, _to_d = cache_manager.requires_fresh_data("2025-12-22", None)
         # Since to_date is None, it should default to today
         # Today is definitely after cache_newest_date
         assert needs_fresh is True

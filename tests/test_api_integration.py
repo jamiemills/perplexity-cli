@@ -5,7 +5,7 @@ import os
 import pytest
 
 from perplexity_cli.api.endpoints import PerplexityAPI
-from perplexity_cli.api.models import Answer
+from perplexity_cli.api.models import Answer, QueryInput
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError
 
@@ -32,7 +32,7 @@ class TestPerplexityAPIIntegration:
 
     def test_submit_query_returns_messages(self, api):
         """Test that submit_query returns SSE messages."""
-        messages = list(api.submit_query("What is 2+2?"))
+        messages = list(api.submit_query(QueryInput(query="What is 2+2?")))
 
         assert len(messages) > 0, "Should receive at least one SSE message"
 
@@ -44,7 +44,7 @@ class TestPerplexityAPIIntegration:
 
     def test_submit_query_completes(self, api):
         """Test that query stream completes with final message."""
-        messages = list(api.submit_query("What is the capital of France?"))
+        messages = list(api.submit_query(QueryInput(query="What is the capital of France?")))
 
         # Should receive multiple messages
         assert len(messages) > 0, "Should receive at least one message"
@@ -75,7 +75,7 @@ class TestPerplexityAPIIntegration:
         """Test that streaming messages contain blocks."""
         has_blocks = False
 
-        for message in api.submit_query("What is machine learning?"):
+        for message in api.submit_query(QueryInput(query="What is machine learning?")):
             if message.blocks and len(message.blocks) > 0:
                 has_blocks = True
                 break

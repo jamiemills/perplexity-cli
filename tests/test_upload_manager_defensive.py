@@ -290,7 +290,7 @@ class TestUploadManagerQuotaHandling:
         mock_response.json = MagicMock(return_value=api_response)
         mock_session.post = AsyncMock(return_value=mock_response)
 
-        with pytest.raises(RuntimeError, match="perplexity.ai/settings/account"):
+        with pytest.raises(RuntimeError, match=r"perplexity\.ai/settings/account"):
             await uploader._request_upload_urls(attachments, mock_session)
 
     @pytest.mark.asyncio
@@ -392,7 +392,7 @@ class TestUploadManagerQuotaHandling:
         # Patch uuid4 to return a known UUID matching our response
         with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
             mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "uuid-1"})()
-            response_json, uuid_map = await uploader._request_upload_urls(attachments, mock_session)
+            response_json, _ = await uploader._request_upload_urls(attachments, mock_session)
 
         assert "uuid-1" in response_json["results"]
         assert response_json["results"]["uuid-1"]["fields"] is not None

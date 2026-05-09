@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from perplexity_cli.threads.exporter import ThreadRecord
-from perplexity_cli.threads.scraper import ThreadScraper
+from perplexity_cli.threads.scraper import ThreadScraper, _validate_date_params
 
 
 def _make_thread(title: str, date: str, slug: str) -> ThreadRecord:
@@ -230,7 +230,7 @@ class TestThreadScraperMalformedPayloads:
         mock_context.__aexit__.return_value = False
 
         with patch("perplexity_cli.utils.session_factory.AsyncSession", return_value=mock_context):
-            with pytest.raises(RuntimeError, match="Malformed thread timestamp"):
+            with pytest.raises(RuntimeError, match="Malformed thread last_query_datetime"):
                 await scraper._fetch_all_threads_from_api("test-token")
 
     @pytest.mark.asyncio
@@ -246,28 +246,28 @@ class TestDateValidation:
 
     def test_validate_date_params_accepts_valid_dates(self):
         """Valid YYYY-MM-DD strings should not raise."""
-        ThreadScraper._validate_date_params("2026-01-15", "2026-02-28")
+        _validate_date_params("2026-01-15", "2026-02-28")
 
     def test_validate_date_params_accepts_none(self):
         """None values should be accepted without error."""
-        ThreadScraper._validate_date_params(None, None)
-        ThreadScraper._validate_date_params("2026-01-01", None)
-        ThreadScraper._validate_date_params(None, "2026-12-31")
+        _validate_date_params(None, None)
+        _validate_date_params("2026-01-01", None)
+        _validate_date_params(None, "2026-12-31")
 
     def test_validate_date_params_rejects_garbage_from_date(self):
         """Unparseable from_date should raise ValueError."""
         with pytest.raises(ValueError, match="Invalid from_date"):
-            ThreadScraper._validate_date_params("not-a-date", None)
+            _validate_date_params("not-a-date", None)
 
     def test_validate_date_params_rejects_garbage_to_date(self):
         """Unparseable to_date should raise ValueError."""
         with pytest.raises(ValueError, match="Invalid to_date"):
-            ThreadScraper._validate_date_params(None, "xyz")
+            _validate_date_params(None, "xyz")
 
     def test_validate_date_params_message_includes_value(self):
         """Error message should include the offending value."""
         with pytest.raises(ValueError, match="bad-value"):
-            ThreadScraper._validate_date_params("bad-value", None)
+            _validate_date_params("bad-value", None)
 
     @pytest.mark.asyncio
     async def test_scrape_all_threads_rejects_invalid_from_date(self):

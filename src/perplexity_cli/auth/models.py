@@ -1,8 +1,22 @@
 """Pydantic models for authentication and token storage."""
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+
+
+@dataclass(frozen=True, slots=True)
+class AuthContext:
+    """Credentials required to authenticate with the Perplexity API.
+
+    Groups the session token and optional browser cookies into a single
+    immutable value object, reducing parameter proliferation across the
+    call chain.
+    """
+
+    token: str | None
+    cookies: dict[str, str] | None = None
 
 
 class TokenFormat(BaseModel):

@@ -1,0 +1,366 @@
+# =============================================================================
+# .semgrep.yml — Clean Code ruleset for Python
+# Maps to Robert C. Martin, "Clean Code" (2008) chapters.
+#
+# Run with:
+#   semgrep --config .semgrep.yml \
+#           --config p/python \
+#           --config p/comment \
+#           --config p/r2c-best-practices \
+#           --error --metrics=off .
+#
+# Notes:
+#   - Designed to run alongside Ruff. Rules already covered by Ruff have been
+#     removed (E722 bare-except, B006 mutable-default-arg, E721 type-check,
+#     S101 asserts, RUF012 mutable-class-attr).
+#   - Length / complexity / class-size limits belong in Ruff (C901, PLR091*,
+#     PLR0904, PLR2004) or radon — Semgrep cannot count reliably.
+#   - p/comment overlaps with todo-fixme-without-ticket and commented-out-code;
+#     drop the local rules OR drop p/comment depending on which message you
+#     prefer.
+# =============================================================================
+
+rules:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Ch.2 — Meaningful Names
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: no-single-letter-vars
+    # Only fires on assignments — function parameters generated too much noise
+    # (one finding per param). Idiomatic single letters allowed: e, f, i, j,
+    # k, n, v, x, y. Char class avoids PCRE lookahead, which is unreliable
+    # under Semgrep's re2 engine.
+    patterns:
+      - pattern: $X = $VAL
+      - metavariable-regex:
+          metavariable: $X
+          regex: '^[a-dghl-mo-uwz]$'
+    paths:
+      exclude:
+        - '**/test_*.py'
+        - '**/*_test.py'
+        - '**/tests/**'
+        - '**/conftest.py'
+    message: "Single-letter name '$X' — use a descriptive name (Clean Code Ch.2)."
+    languages: [python]
+    severity: WARNING
+
+  - id: no-hungarian-prefix
+    patterns:
+      - pattern: $VAR = $VAL
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '^(str|int|lst|dct|arr|b)[A-Z].*'
+    message: "Drop type-prefix from '$VAR' — Python is dynamically typed (Ch.2)."
+    languages: [python]
+    severity: WARNING
+
+  - id: meaningless-name
+    patterns:
+      - pattern-either:
+          - pattern: $VAR = $VAL
+          - pattern: |
+              def $F(..., $VAR, ...):
+                  ...
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '^(data|info|manager|helper|handler|util|utils|tmp|temp|foo|bar|baz|stuff|thing|obj|item)$'
+    paths:
+      exclude:
+        - '**/test_*.py'
+        - '**/*_test.py'
+        - '**/tests/**'
+    message: "Vague name '$VAR' — convey intent, not category (Ch.2)."
+    languages: [python]
+    severity: INFO
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Ch.3 — Functions: small, do one thing
+  # NOTE: Ruff PLR0913 is the cleaner enforcement for parameter counts. The
+  # rule below exists to add an __init__ exemption (constructor params ARE
+  # the class's state) which Ruff doesn't apply by default.
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: too-many-parameters
+    # Single positive pattern catches anything with 5+ positional params.
+    # The pattern-not exclusions remove (a) __init__, (b) self/cls methods
+    # with EXACTLY self/cls + 4 real params (5 total — within the budget
+    # once self/cls is discounted). Disjoint metavar names ($X1..) prevent
+    # Semgrep from enforcing cross-pattern binding consistency, which was
+    # silently breaking the exclusion when the same names were reused.
+    patterns:
+      - pattern: |
+          def $F($A, $B, $C, $D, $E, ...):
+              ...
+      - pattern-not: |
+          def __init__(...):
+              ...
+      - pattern-not: |
+          def $F(self, $X1, $X2, $X3, $X4):
+              ...
+      - pattern-not: |
+          def $F(cls, $X1, $X2, $X3, $X4):
+              ...
+    paths:
+      exclude:
+        - '**/test_*.py'
+        - '**/*_test.py'
+        - '**/tests/**'
+        - '**/conftest.py'
+        - '**/cli.py'
+        - '**/commands.py'
+    message: "Function '$F' has >4 parameters — group into a dataclass (Ch.3)."
+    languages: [python]
+    severity: WARNING
+
+  - id: boolean-flag-argument
+    pattern-either:
+      - pattern: |
+          def $F(..., $FLAG: bool = ..., ...):
+              ...
+      - pattern: |
+          def $F(..., $FLAG: bool, ...):
+              ...
+      - pattern: |
+          def $F(..., $FLAG = True, ...):
+              ...
+      - pattern: |
+          def $F(..., $FLAG = False, ...):
+              ...
+    message: "Boolean flag in '$F' signals two responsibilities — split it (Ch.3)."
+    languages: [python]
+    severity: INFO
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Ch.4 — Comments: code should be self-explanatory
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: todo-fixme-without-ticket
+    # Allow # TODO(JIRA-123): ... or # TODO(name): ...
+    # Flag bare # TODO / # FIXME / # HACK / # XXX with no parenthesised tag.
+    # Named capture group $TAG interpolates into the message.
+    pattern-regex: '#\s*(?P<TAG>TODO|FIXME|HACK|XXX)(?!\s*\()'
+    message: "Tag bare '$TAG' with a ticket reference — '# TODO(JIRA-123): …' (Ch.4)."
+    languages: [python]
+    severity: INFO
+
+  - id: commented-out-code
+    # Tightened: requires syntactic markers (colon, parentheses, import keyword)
+    # to avoid matching English prose like '# if you want to ...'.
+    pattern-regex: '(?m)^\s*#\s*(if .+:|elif .+:|for .+ in .+:|while .+:|def \w+\(|class \w+[\(:]|return\b|import \w|from \w+ import)'
+    message: "Commented-out code — delete it; git remembers (Ch.4)."
+    languages: [python]
+    severity: WARNING
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Ch.7 — Error Handling
+  # ────────────────────────────────────────────────────────────────────────────
+  # bare-except removed — Ruff E722 covers this.
+
+  - id: except-pass
+    pattern: |
+      try:
+          ...
+      except ...:
+          pass
+    message: "Silently swallowing exceptions hides bugs (Ch.7)."
+    languages: [python]
+    severity: ERROR
+
+  - id: except-broad-exception
+    patterns:
+      - pattern: |
+          try:
+              ...
+          except Exception:
+              ...
+      - pattern-not: |
+          try:
+              ...
+          except Exception:
+              raise
+      - pattern-not: |
+          try:
+              ...
+          except Exception:
+              raise ...
+    message: "Catching bare Exception hides bugs — narrow the except clause (Ch.7)."
+    languages: [python]
+    severity: WARNING
+
+  - id: raise-without-from-in-except
+    patterns:
+      - pattern: |
+          try:
+              ...
+          except $E as $X:
+              ...
+              raise $NEW(...)
+      - pattern-not: |
+          try:
+              ...
+          except $E as $X:
+              ...
+              raise $NEW(...) from $Y
+      - pattern-not: |
+          try:
+              ...
+          except $E as $X:
+              ...
+              raise $NEW(...) from None
+    message: "Re-raising without 'from' loses original traceback (Ch.7)."
+    languages: [python]
+    severity: WARNING
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Ch.8/10 — Boundaries & SRP
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: print-as-logging
+    pattern: print(...)
+    paths:
+      exclude:
+        - '**/scripts/**'
+        - '**/cli/**'
+        - '**/cli.py'
+        - '**/__main__.py'
+        - '**/manage.py'
+        - '**/bin/**'
+        - '**/migrations/**'
+        - '**/alembic/**'
+        - '**/notebooks/**'
+        - '**/test_*.py'
+        - '**/*_test.py'
+        - '**/tests/**'
+        - '**/conftest.py'
+    message: "Use logging, not print(), in library code (Ch.8)."
+    languages: [python]
+    severity: WARNING
+
+  - id: fstring-in-logging
+    # Defeats lazy formatting and structured logging.
+    pattern-either:
+      - pattern: $LOG.debug(f"...")
+      - pattern: $LOG.info(f"...")
+      - pattern: $LOG.warning(f"...")
+      - pattern: $LOG.error(f"...")
+      - pattern: $LOG.critical(f"...")
+      - pattern: $LOG.exception(f"...")
+    message: "Use lazy logging args ('%s', val) — f-strings evaluate even when disabled (Ch.8)."
+    languages: [python]
+    severity: WARNING
+
+  - id: wildcard-import
+    pattern: from $M import *
+    message: "Wildcard import pollutes namespace and hides dependencies (Ch.10)."
+    languages: [python]
+    severity: WARNING
+
+  - id: hardcoded-magic-number
+    # Narrow by design: arithmetic-magic-numbers handled by Ruff PLR2004.
+    patterns:
+      - pattern-either:
+          - pattern: |
+              if $X > $N:
+                  ...
+          - pattern: |
+              if $X < $N:
+                  ...
+          - pattern: |
+              if $X >= $N:
+                  ...
+          - pattern: |
+              if $X <= $N:
+                  ...
+      - metavariable-regex:
+          metavariable: $N
+          regex: '^([2-9]|[1-9][0-9]+)$'
+    message: "Magic number '$N' — extract to a named constant."
+    languages: [python]
+    severity: INFO
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Ch.17 — Smells & Heuristics
+  # NOTE: The following rules were removed in favour of Ruff equivalents:
+  #   - mutable-default-arg     → Ruff B006
+  #   - mutable-class-attribute → Ruff RUF012 (handles typing.ClassVar)
+  #   - assert-in-production    → Ruff S101
+  #   - type-check-with-equals  → Ruff E721
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: equality-with-none
+    pattern-either:
+      - pattern: $X == None
+      - pattern: $X != None
+    message: "Use 'is None' / 'is not None' — None is a singleton (Ch.3)."
+    languages: [python]
+    severity: WARNING
+
+  - id: equality-with-bool-literal
+    pattern-either:
+      - pattern: $X == True
+      - pattern: $X == False
+      - pattern: $X != True
+      - pattern: $X != False
+    message: "Compare truthiness directly: 'if x:' / 'if not x:' (Ch.3)."
+    languages: [python]
+    severity: WARNING
+
+  - id: equality-with-empty-container
+    # Prefer truthiness checks for emptiness — Pythonic and faster.
+    # INFO severity since `x == ""` may be intentional when distinguishing
+    # empty string from None.
+    pattern-either:
+      - pattern: $X == []
+      - pattern: $X == {}
+      - pattern: $X == ()
+      - pattern: $X == ""
+      - pattern: $X != []
+      - pattern: $X != {}
+      - pattern: $X != ()
+      - pattern: $X != ""
+    message: "Compare emptiness via truthiness: 'if not x:' / 'if x:' (Ch.3)."
+    languages: [python]
+    severity: INFO
+
+  - id: len-comparison-instead-of-truthiness
+    pattern-either:
+      - pattern: len($X) == 0
+      - pattern: len($X) != 0
+      - pattern: len($X) > 0
+      - pattern: len($X) < 1
+      - pattern: len($X) >= 1
+    message: "Use truthiness — 'if x:' / 'if not x:' is more Pythonic than len() comparisons."
+    languages: [python]
+    severity: INFO
+
+  - id: range-len-instead-of-enumerate
+    # for i in range(len(items)): items[i] ...  →  for i, item in enumerate(items): ...
+    pattern-either:
+      - pattern: |
+          for $I in range(len($X)):
+              ...
+      - pattern: |
+          for $I in range(0, len($X)):
+              ...
+    message: "Iterate with enumerate(): 'for i, item in enumerate(x):' is clearer than range(len(x))."
+    languages: [python]
+    severity: INFO
+
+  - id: eval-or-exec
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+    message: "eval/exec are dangerous and almost never needed (Ch.17 + security)."
+    languages: [python]
+    severity: ERROR
+
+  - id: getattr-with-string-literal
+    # Often hides what should be polymorphism or a dict lookup.
+    pattern-either:
+      - pattern: getattr($O, "...")
+      - pattern: getattr($O, "...", ...)
+      - pattern: hasattr($O, "...")
+      - pattern: setattr($O, "...", ...)
+    message: "String-based attribute access — prefer explicit access or polymorphism (Ch.17)."
+    languages: [python]
+    severity: INFO
+
+  # NOTE: God-class detection removed — the previous regex was unreliable
+  # against decorators, nested classes and varied indentation.
+  # Use Ruff PLR0904 (too-many-public-methods) or `radon cc` instead.

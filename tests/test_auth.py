@@ -186,7 +186,7 @@ class TestOAuthHandler:
         session_data = {"user": {"email": "test@example.com"}, "token": "abc123"}
         local_storage = {"pplx-next-auth-session": json.dumps(session_data)}
 
-        token, cookies = _extract_token([], local_storage)
+        token, _ = _extract_token([], local_storage)
         assert token is not None
         parsed = json.loads(token)
         assert parsed["user"]["email"] == "test@example.com"
@@ -204,7 +204,7 @@ class TestOAuthHandler:
         """Test token extraction returns None if not found."""
         from perplexity_cli.auth.oauth_handler import _extract_token
 
-        token, cookies = _extract_token([], {})
+        token, _ = _extract_token([], {})
         assert token is None
 
     def test_extract_token_prioritises_local_storage(self):
@@ -226,7 +226,7 @@ class TestOAuthHandler:
 
         local_storage = {"pplx-next-auth-session": "{invalid json"}
 
-        token, cookies = _extract_token([], local_storage)
+        token, _ = _extract_token([], local_storage)
         assert token is None
 
     def test_extract_token_handles_non_string_local_storage_value(self):
@@ -235,7 +235,7 @@ class TestOAuthHandler:
 
         local_storage = {"pplx-next-auth-session": {"bad": "value"}}
 
-        token, cookies = _extract_token([], local_storage)
+        token, _ = _extract_token([], local_storage)
         assert token is None
 
 

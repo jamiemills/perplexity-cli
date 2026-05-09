@@ -6,13 +6,13 @@ CLI commands, covering both success and error responses.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """Standardised error codes for structured error responses."""
 
     authentication_required = "authentication_required"
@@ -73,7 +73,7 @@ class ErrorEnvelope(BaseModel):
     next_actions: list[NextAction] = []
 
 
-def success_envelope(
+def success_envelope(  # nosemgrep: too-many-parameters
     command: str,
     result: dict[str, Any],
     *,
@@ -89,7 +89,7 @@ def success_envelope(
     )
 
 
-def error_envelope(
+def error_envelope(  # nosemgrep: too-many-parameters
     command: str,
     code: ErrorCode,
     message: str,
