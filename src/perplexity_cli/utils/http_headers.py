@@ -6,6 +6,8 @@ This module provides a single function so changes to the header contract
 only need to be made in one place.
 """
 
+from __future__ import annotations
+
 
 def build_perplexity_headers(
     token: str | None,
@@ -13,6 +15,7 @@ def build_perplexity_headers(
     *,
     content_type: str = "application/json",
     accept: str | None = None,
+    base_url: str | None = None,
 ) -> dict[str, str]:
     """Build standard HTTP headers for Perplexity API requests.
 
@@ -25,14 +28,21 @@ def build_perplexity_headers(
         cookies: Optional browser cookies; used to extract the CSRF token.
         content_type: Value for the ``Content-Type`` header.
         accept: Optional value for the ``Accept`` header.
+        base_url: Perplexity base URL used for Origin/Referer headers.
+            When ``None`` the value is loaded from configuration.
 
     Returns:
         Dictionary of HTTP headers.
     """
+    if base_url is None:
+        from perplexity_cli.utils.config import get_perplexity_base_url
+
+        base_url = get_perplexity_base_url()
+
     headers: dict[str, str] = {
         "Content-Type": content_type,
-        "Origin": "https://www.perplexity.ai",
-        "Referer": "https://www.perplexity.ai/",
+        "Origin": base_url,
+        "Referer": base_url.rstrip("/") + "/",
     }
 
     if accept:

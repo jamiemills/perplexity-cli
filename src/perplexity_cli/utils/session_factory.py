@@ -45,11 +45,11 @@ def _guard_curl_cffi() -> None:
         raise RuntimeError(_CURL_CFFI_IMPORT_ERROR)
 
 
-def create_sync_session(timeout: int = 60) -> SessionType:
+def create_sync_session(timeout: int | None = None) -> SessionType:
     """Create a synchronous curl_cffi Session with Chrome TLS impersonation.
 
     Args:
-        timeout: Request timeout in seconds (default 60).
+        timeout: Request timeout in seconds (default from config/defaults).
 
     Returns:
         A ``Session`` configured for Chrome impersonation.
@@ -57,15 +57,20 @@ def create_sync_session(timeout: int = 60) -> SessionType:
     Raises:
         RuntimeError: If curl_cffi is not installed.
     """
+    if timeout is None:
+        from perplexity_cli.config.defaults import DEFAULT_REQUEST_TIMEOUT
+
+        timeout = DEFAULT_REQUEST_TIMEOUT
+
     _guard_curl_cffi()
     return Session(impersonate=IMPERSONATE_PROFILE, timeout=timeout)  # type: ignore[misc]
 
 
-def create_async_session(timeout: int = 30) -> AsyncSessionType:
+def create_async_session(timeout: int | None = None) -> AsyncSessionType:
     """Create an asynchronous curl_cffi AsyncSession with Chrome TLS impersonation.
 
     Args:
-        timeout: Request timeout in seconds (default 30).
+        timeout: Request timeout in seconds (default from config/defaults).
 
     Returns:
         An ``AsyncSession`` configured for Chrome impersonation.
@@ -73,5 +78,10 @@ def create_async_session(timeout: int = 30) -> AsyncSessionType:
     Raises:
         RuntimeError: If curl_cffi is not installed.
     """
+    if timeout is None:
+        from perplexity_cli.config.defaults import DEFAULT_REQUEST_TIMEOUT
+
+        timeout = DEFAULT_REQUEST_TIMEOUT
+
     _guard_curl_cffi()
     return AsyncSession(impersonate=IMPERSONATE_PROFILE, timeout=timeout)  # type: ignore[misc]

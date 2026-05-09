@@ -100,8 +100,12 @@ def run_status_command(verify: bool) -> None:
             return
 
         try:
+            from perplexity_cli.config.defaults import DEFAULT_STATUS_CHECK_TIMEOUT
+
             logger.debug("Verifying token validity")
-            with PerplexityAPI(token=token, cookies=cookies, timeout=10) as api:
+            with PerplexityAPI(
+                token=token, cookies=cookies, timeout=DEFAULT_STATUS_CHECK_TIMEOUT
+            ) as api:
                 test_answer = api.get_complete_answer("test")
             if test_answer and len(test_answer.text) > 0:
                 click.echo("\n[OK] Token is valid and working")

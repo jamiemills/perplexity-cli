@@ -53,21 +53,24 @@ class SSEClient:
         self,
         token: str | None,
         cookies: dict[str, str] | None = None,
-        timeout: int = 60,
-        max_retries: int = 3,
+        timeout: int | None = None,
+        max_retries: int | None = None,
     ) -> None:
         """Initialise SSE client.
 
         Args:
             token: Optional authentication JWT token.
             cookies: Optional browser cookies for Cloudflare bypass.
-            timeout: Request timeout in seconds.
-            max_retries: Maximum number of retry attempts for initial connection.
+            timeout: Request timeout in seconds (default from config/defaults).
+            max_retries: Maximum number of retry attempts for initial connection
+                (default from config/defaults).
         """
+        from perplexity_cli.config.defaults import DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT
+
         self.token = token
         self.cookies = cookies
-        self.timeout = timeout
-        self.max_retries = max_retries
+        self.timeout = timeout if timeout is not None else DEFAULT_REQUEST_TIMEOUT
+        self.max_retries = max_retries if max_retries is not None else DEFAULT_MAX_RETRIES
         self.logger = get_logger()
         self._client: Session | None = None
 
@@ -123,7 +126,12 @@ class SSEClient:
         is_deep_research = (
             json_data.get("params", {}).get("search_implementation_mode") == "multi_step"
         )
-        effective_timeout = 360 if is_deep_research else self.timeout
+        if is_deep_research:
+            from perplexity_cli.config.defaults import DEFAULT_DEEP_RESEARCH_TIMEOUT
+
+            effective_timeout = DEFAULT_DEEP_RESEARCH_TIMEOUT
+        else:
+            effective_timeout = self.timeout
         return is_deep_research, effective_timeout
 
     def _log_request_context(
