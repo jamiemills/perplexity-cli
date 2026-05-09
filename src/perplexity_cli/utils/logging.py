@@ -1,10 +1,47 @@
 """Logging configuration and utilities for Perplexity CLI."""
 
 import logging
+import re
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
-from perplexity_cli.utils.config import get_config_dir
+from perplexity_cli.utils.config import get_config_paths
+
+
+class DynamicStderrHandler(logging.StreamHandler):
+    """Stream handler that always writes to the current stderr stream."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = self.format(record)
+            stream = sys.stderr
+            stream.write(message + self.terminator)
+            self.flush()
+        except RecursionError:
+            raise
+        except Exception:
+            self.handleError(record)
+
+    def flush(self) -> None:
+        """Flush the current stderr stream without touching stale captures."""
+        if self.lock is None:
+            self._flush_current_stderr()
+            return
+
+        with self.lock:
+            self._flush_current_stderr()
+
+    @staticmethod
+    def _flush_current_stderr() -> None:
+        """Flush the active stderr stream if it is still valid."""
+        stream = sys.stderr
+        if stream and hasattr(stream, "flush"):
+            try:
+                stream.flush()
+            except ValueError:
+                # pytest capture can replace and close previous stderr objects
+                pass
 
 
 def setup_logging(
@@ -46,10 +83,11 @@ def setup_logging(
     )
 
     # Console handler
-    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler = DynamicStderrHandler()
     console_handler.setLevel(log_level)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
+    logger.propagate = True
 
     # File handler (if specified)
     if log_file:
@@ -82,4 +120,48 @@ def get_default_log_file() -> Path:
     Returns:
         Path to default log file in config directory.
     """
-    return get_config_dir() / "perplexity-cli.log"
+    return get_config_paths().log_file_path
+
+
+def redact_path(value: str | Path | None) -> str:
+    """Redact a local path for logging."""
+    if value is None:
+        return "<none>"
+
+    path = Path(value)
+    parts = path.parts
+    if not parts:
+        return "<path>"
+    if path.name:
+        return str(Path("<redacted>") / path.name)
+    return "<redacted-path>"
+
+
+def redact_text(value: str | None, max_length: int = 32) -> str:
+    """Redact free-form text while preserving a short preview length."""
+    if not value:
+        return "<empty>"
+    return f"<redacted:{min(len(value), max_length)} chars>"
+
+
+def redact_url(value: str | None) -> str:
+    """Redact a URL for logging."""
+    if not value:
+        return "<empty-url>"
+
+    match = re.match(r"^(https?://[^/]+)", value)
+    if match:
+        return f"{match.group(1)}/<redacted>"
+    return "<redacted-url>"
+
+
+def redact_mapping_keys(mapping: Mapping[str, object] | None) -> str:
+    """Redact mapping contents but keep the key count."""
+    if not mapping:
+        return "<none>"
+    return f"<redacted:{len(mapping)} keys>"
+
+
+def redact_response_text(value: str | None) -> str:
+    """Redact HTTP response text for logs."""
+    return redact_text(value, max_length=0)

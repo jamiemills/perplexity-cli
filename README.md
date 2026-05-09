@@ -200,6 +200,27 @@ for ref in data["references"]:
 EOF
 ```
 
+### Exit codes and failure behaviour
+
+- `0` means the command completed successfully.
+- `1` means the command failed with a user-facing error.
+- `130` means the command was interrupted by the user.
+
+Current failure families are reported consistently where possible:
+
+- **Authentication failures**: expired or missing credentials, or commands that require auth
+- **Network failures**: connectivity and request transport problems
+- **HTTP failures**: upstream non-success status codes such as `401`, `403`, or `429`
+- **Configuration failures**: unreadable or invalid local config state
+- **Attachment failures**: local attachment resolution or upload problems
+- **Upstream schema failures**: unexpected API payload shapes after upstream changes
+
+For scripting:
+
+- prefer checking the process exit code first
+- treat stderr as human-readable diagnostics, not a stable machine interface
+- use `--format json` only for successful `query` output, not for error payloads
+
 ## Response styles
 
 Set a persistent style prompt that is appended to every query. This lets you control the tone and format of responses without repeating instructions.
@@ -383,7 +404,9 @@ Tokens are encrypted and stored at:
 - **Linux/macOS**: `~/.config/perplexity-cli/token.json`
 - **Windows**: `%APPDATA%\perplexity-cli\token.json`
 
-Encryption uses Fernet (AES-128-CBC) with a key derived via PBKDF2-HMAC (100,000 iterations) from the system hostname and OS user. Tokens are not portable between machines. File permissions are restricted to owner only (0600).
+Encryption uses Fernet with a key derived via PBKDF2-HMAC (100,000 iterations) from the system hostname and OS user. This is best treated as machine-bound obfuscation rather than strong secret storage: it helps prevent casual copying between machines, but it does not protect against other local processes or users that can already read the token file. File permissions are restricted to owner only (0600).
+
+If cookie storage is enabled, browser cookies are stored in the same encrypted file and should be treated as sensitive session material.
 
 To re-authenticate:
 
@@ -479,9 +502,9 @@ Submit a query and display the answer.
 
 Exit codes: `0` success, `1` error, `130` interrupted.
 
-### `pxcli status`
+### `pxcli status [--verify]`
 
-Display authentication status and verify token validity.
+Display local authentication status. Use `--verify` to perform a live API verification check.
 
 ### `pxcli logout`
 
@@ -507,6 +530,10 @@ Set a configuration option. Keys: `save_cookies`, `debug_mode`. Values: `true`, 
 
 Display current configuration and any environment variable overrides.
 
+### `pxcli doctor security`
+
+Display local storage backend details, token/cache permission state, and cookie-storage risk information.
+
 ### `pxcli show-skill`
 
 Display the Agent Skill definition for integrating pxcli with AI agents.
@@ -514,6 +541,8 @@ Display the Agent Skill definition for integrating pxcli with AI agents.
 ### `pxcli export-threads [OPTIONS]`
 
 Export thread library to CSV.
+
+Uses the stored token and any saved browser cookies for the export request path.
 
 | Option | Description |
 |---|---|
@@ -548,6 +577,35 @@ pxcli auth
 
 ## Development
 
+### Releasing
+
+Releases are triggered by pushing a `vX.Y.Z` tag on `master`. Before tagging, run:
+
+```bash
+sh .claude/scripts/release-check.sh
+```
+
+The detailed release workflow is documented in `.claude/PUBLISHING.md`.
+
+To prepare a release commit and local tag in one step:
+
+```bash
+sh .claude/scripts/prepare-release.sh X.Y.Z
+```
+
+## Project Governance
+
+- Contributing guide: `CONTRIBUTING.md`
+- Security policy: `SECURITY.md`
+- Licence: `LICENSE`
+- Changelog source: GitHub Releases
+
+## Compatibility Policy
+
+- Supported Python versions are `3.12` and `3.13`.
+- Python `3.14` is not declared supported until CI coverage and release verification are added for it.
+- Dependency updates should continue to be validated through `uv sync --locked`, the safe default test suite, build checks, and the installed-package smoke test before release.
+
 ### Setup
 
 ```bash
@@ -562,10 +620,10 @@ uv run lefthook install
 ### Testing
 
 ```bash
-pytest                          # run all tests
-pytest --cov=perplexity_cli     # with coverage
-pytest -m integration           # integration tests only
-pytest -m security              # security tests only
+uv run pytest                   # safe default test suite
+uv run pytest -m security       # security tests only
+uv run pytest -m "integration and real_api and real_user_config"
+uv run pytest -m manual -s      # manual auth tests
 ```
 
 Install Git hooks with `uv run lefthook install` and run them on demand with
@@ -581,9 +639,10 @@ ty check src/                   # type check
 
 ## Security
 
-- Tokens encrypted at rest using Fernet (AES-128-CBC)
+- Tokens encrypted at rest using Fernet
 - Key derivation via PBKDF2-HMAC with 100,000 iterations (with backward-compatible SHA-256 fallback for legacy tokens)
 - File permissions restricted to owner (0600)
+- Encryption is machine-bound and deterministic; it is not equivalent to OS keychain-backed secret storage
 - Token validity checked on each request
 - Token age warnings (>30 days)
 - No credentials written to logs

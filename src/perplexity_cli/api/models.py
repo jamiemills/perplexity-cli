@@ -1,11 +1,13 @@
 """Data models for Perplexity API requests and responses."""
 
 import base64
+import binascii
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from perplexity_cli.api.contracts import require_list, require_mapping
 from perplexity_cli.utils.version import get_api_version
 
 
@@ -53,7 +55,7 @@ class FileAttachment(BaseModel):
         """Validate data is valid base64."""
         try:
             base64.b64decode(v, validate=True)
-        except Exception as e:
+        except binascii.Error as e:
             raise ValueError(f"Invalid base64 data: {e}") from e
         return v
 
@@ -199,6 +201,7 @@ class WebResult(BaseModel):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WebResult":
         """Create from API response dictionary."""
+        data = require_mapping(data, "Malformed web result block in upstream response")
         return cls(
             name=data.get("name", ""),
             url=data.get("url", ""),
@@ -216,10 +219,80 @@ class Block(BaseModel):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Block":
         """Create from API response dictionary."""
+        data = require_mapping(data, "Malformed block in upstream response")
         intended_usage = data.get("intended_usage", "")
         # Remove intended_usage from content
         content = {k: v for k, v in data.items() if k != "intended_usage"}
         return cls(intended_usage=intended_usage, content=content)
+
+    def extract_text(self) -> str | None:
+        """Extract answer text from a private API block shape."""
+        # 1. Markdown block with chunks (most common for answers)
+        if "markdown_block" in self.content:
+            markdown_block = self.content["markdown_block"]
+            if isinstance(markdown_block, dict) and "chunks" in markdown_block:
+                chunks = markdown_block["chunks"]
+                if isinstance(chunks, list):
+                    return "".join(str(chunk) for chunk in chunks)
+
+        # 2. Direct text field
+        if "text" in self.content:
+            return self.content["text"]
+
+        # 3. Web results block (skip - these are sources, not answers)
+        if "web_result_block" in self.content:
+            return None
+
+        # 4. Diff block with patches
+        if "diff_block" in self.content:
+            diff_block = self.content["diff_block"]
+            if isinstance(diff_block, dict) and "patches" in diff_block:
+                for patch in diff_block["patches"]:
+                    if isinstance(patch, dict) and "value" in patch:
+                        value = patch["value"]
+                        if isinstance(value, str):
+                            return value
+                        if isinstance(value, dict) and "text" in value:
+                            return value["text"]
+
+        # 5. Answer block
+        if "answer_block" in self.content:
+            answer_block = self.content["answer_block"]
+            if isinstance(answer_block, dict) and "text" in answer_block:
+                return answer_block["text"]
+
+        return None
+
+    def extract_plan_info(self) -> dict[str, Any] | None:
+        """Extract progress details from a plan-oriented block."""
+        if self.intended_usage not in ["pro_search_steps", "plan"]:
+            return None
+
+        plan_block = self.content.get("plan_block", {})
+        if not plan_block:
+            return None
+
+        return {
+            "progress": plan_block.get("progress"),
+            "eta_seconds": plan_block.get("eta_seconds_remaining"),
+            "goals": plan_block.get("goals", []),
+            "pct_complete": plan_block.get("pct_complete"),
+        }
+
+    def extract_web_results(self) -> list["WebResult"] | None:
+        """Extract web references from a private API block shape."""
+        if self.intended_usage != "web_results":
+            return None
+
+        web_result_block = self.content.get("web_result_block")
+        if not isinstance(web_result_block, dict) or "web_results" not in web_result_block:
+            return None
+
+        results = web_result_block["web_results"]
+        if not isinstance(results, list):
+            return None
+
+        return [WebResult.from_dict(result) for result in results]
 
 
 class SSEMessage(BaseModel):
@@ -244,19 +317,19 @@ class SSEMessage(BaseModel):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SSEMessage":
         """Create from SSE message data."""
-        blocks = [Block.from_dict(b) for b in data.get("blocks", [])]
+        data = require_mapping(data, "Malformed SSE message in upstream response")
+        raw_blocks = require_list(
+            data.get("blocks", []), "Malformed SSE blocks in upstream response"
+        )
 
-        # Extract web results from web_result_block if present
+        blocks = [Block.from_dict(b) for b in raw_blocks]
+
         web_results = None
         for block in blocks:
-            if block.intended_usage == "web_results":
-                if "web_result_block" in block.content:
-                    web_result_block = block.content["web_result_block"]
-                    if isinstance(web_result_block, dict) and "web_results" in web_result_block:
-                        results = web_result_block["web_results"]
-                        if isinstance(results, list):
-                            web_results = [WebResult.from_dict(r) for r in results]
-                            break
+            extracted_results = block.extract_web_results()
+            if extracted_results is not None:
+                web_results = extracted_results
+                break
 
         return cls(
             backend_uuid=data.get("backend_uuid", ""),
@@ -275,6 +348,24 @@ class SSEMessage(BaseModel):
             web_results=web_results,
             attachments=data.get("attachments", []),
         )
+
+    def extract_answer_text(self) -> str | None:
+        """Extract the final answer text from message blocks."""
+        for block in self.blocks:
+            if block.intended_usage != "ask_text":
+                continue
+            text = block.extract_text()
+            if text is not None:
+                return text
+
+        return None
+
+    def describe_block_usages(self) -> str:
+        """Summarise block usages for schema-drift diagnostics."""
+
+        if not self.blocks:
+            return "none"
+        return ",".join(block.intended_usage or "<missing>" for block in self.blocks)
 
 
 class Answer(BaseModel):

@@ -6,6 +6,7 @@ import pytest
 from click.testing import CliRunner
 
 from perplexity_cli.api.models import Answer, Block, SSEMessage, WebResult
+from perplexity_cli.api.streaming import stream_query_response
 from perplexity_cli.cli import query
 
 
@@ -33,6 +34,7 @@ def _make_streaming_mock(text="Streamed answer", web_results=None):
     mock_message.status = "COMPLETE"
     mock_message.final_sse_message = True
     mock_message.web_results = web_results or []
+    mock_message.extract_answer_text.return_value = text
 
     mock_block = Mock(spec=Block)
     mock_block.intended_usage = "ask_text"
@@ -41,7 +43,6 @@ def _make_streaming_mock(text="Streamed answer", web_results=None):
 
     mock_api = _make_api_mock()
     mock_api.submit_query.return_value = iter([mock_message])
-    mock_api._extract_text_from_block.return_value = text
     mock_api._extract_plan_block_info.return_value = None
     return mock_api
 
@@ -219,3 +220,29 @@ class TestMultipleFlagCombinations:
 
         assert result.exit_code == 0
         assert "Streamed plain stripped" in result.output
+
+
+class TestStreamingOutputFailures:
+    """Test local streaming output/render failures are surfaced clearly."""
+
+    def test_streaming_output_failure_exits_cleanly(self):
+        mock_api = _make_streaming_mock(
+            text="Streamed answer",
+            web_results=[WebResult(name="Ref", url="https://example.com", snippet="Example")],
+        )
+        formatter = Mock()
+        formatter.format_references.side_effect = OSError("stdout closed")
+
+        with patch("perplexity_cli.api.streaming.click.echo") as mock_echo:
+            mock_echo.side_effect = [None, None, None, None, None]
+
+            with pytest.raises(SystemExit) as exc_info:
+                stream_query_response(
+                    mock_api,
+                    "test query",
+                    formatter,
+                    output_format="plain",
+                    strip_references=False,
+                )
+
+        assert exc_info.value.code == 1

@@ -1,0 +1,10 @@
+{
+  "results": {
+    "fixture-uuid-1": {
+      "s3_object_url": null,
+      "fields": null,
+      "rate_limited": true,
+      "error": null
+    }
+  }
+}

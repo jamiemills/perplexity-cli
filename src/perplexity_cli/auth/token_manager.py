@@ -4,10 +4,11 @@ import json
 import os
 from datetime import datetime
 
-from perplexity_cli.utils.config import get_token_path
+from perplexity_cli.utils.config import get_config_paths
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
+from perplexity_cli.utils.exceptions import AuthenticationError
 from perplexity_cli.utils.file_permissions import verify_secure_permissions
-from perplexity_cli.utils.logging import get_logger
+from perplexity_cli.utils.logging import get_logger, redact_mapping_keys, redact_path
 
 TOKEN_AGE_WARNING_DAYS = 30
 
@@ -15,10 +16,10 @@ TOKEN_AGE_WARNING_DAYS = 30
 class TokenManager:
     """Manages persistent token storage with encryption and secure file permissions.
 
-    Tokens are encrypted using a system-derived key and stored in
+    Tokens are encrypted using a deterministic system-derived key and stored in
     ~/.config/perplexity-cli/token.json with restrictive file permissions (0600).
     The encryption key is derived from the machine hostname and OS user,
-    making it deterministic and machine-specific.
+    making it machine-specific but not equivalent to OS-backed secret storage.
     """
 
     # File permissions: owner read/write only (0600)
@@ -26,7 +27,7 @@ class TokenManager:
 
     def __init__(self) -> None:
         """Initialise the token manager."""
-        self.token_path = get_token_path()
+        self.token_path = get_config_paths().token_path
         self.logger = get_logger()
 
     def save_token(self, token: str, cookies: dict[str, str] | None = None) -> None:
@@ -79,7 +80,7 @@ class TokenManager:
             saved_cookies = "cookies" in data
             cookie_count = len(cookies) if cookies else 0
             cookie_msg = f" and {cookie_count} cookies" if saved_cookies else ""
-            self.logger.info(f"Token{cookie_msg} saved to {self.token_path}")
+            self.logger.info(f"Token{cookie_msg} saved to {redact_path(self.token_path)}")
 
         except OSError as e:
             self.logger.error(f"Failed to save token: {e}", exc_info=True)
@@ -117,14 +118,14 @@ class TokenManager:
             # Check if token is encrypted
             if not data.get("encrypted", False):
                 self.logger.warning("Token file is not encrypted")
-                raise RuntimeError(
+                raise AuthenticationError(
                     "Token file is not encrypted. Please re-authenticate with: pxcli auth"
                 )
 
             encrypted_token = data.get("token")
             if not encrypted_token:
                 self.logger.error("Token file missing encrypted token data")
-                raise RuntimeError("Token file is missing encrypted token data")
+                raise AuthenticationError("Token file is missing encrypted token data")
 
             # Check version for backward compatibility
             version = data.get("version", 1)
@@ -151,7 +152,19 @@ class TokenManager:
                 encrypted_cookies = data.get("cookies")
                 if encrypted_cookies:
                     cookies_json = decrypt_token(encrypted_cookies)
-                    cookies = json.loads(cookies_json)
+                    try:
+                        cookies = json.loads(cookies_json)
+                    except json.JSONDecodeError as e:
+                        raise AuthenticationError(
+                            "Token file contains malformed cookies data"
+                        ) from e
+                    if not isinstance(cookies, dict):
+                        raise AuthenticationError("Token file contains malformed cookies data")
+                    if not all(
+                        isinstance(key, str) and isinstance(value, str)
+                        for key, value in cookies.items()
+                    ):
+                        raise AuthenticationError("Token file contains malformed cookies data")
 
                     # Debug logging: identify Cloudflare-related cookies
                     cf_cookies = {
@@ -163,7 +176,7 @@ class TokenManager:
                         f"Loaded {len(cookies)} cookies, including {len(cf_cookies)} Cloudflare cookies"
                     )
                     if cf_cookies:
-                        self.logger.debug(f"Cloudflare cookies: {', '.join(cf_cookies.keys())}")
+                        self.logger.debug(f"Cloudflare cookies: {redact_mapping_keys(cf_cookies)}")
             else:
                 if version == 2:
                     self.logger.debug("Token is v2 format but no cookies stored")
@@ -172,7 +185,7 @@ class TokenManager:
 
             # Audit log
             cookie_msg = f" and {len(cookies)} cookies" if cookies else ""
-            self.logger.info(f"Token{cookie_msg} loaded from {self.token_path}")
+            self.logger.info(f"Token{cookie_msg} loaded from {redact_path(self.token_path)}")
 
             return (token, cookies)
 
@@ -189,7 +202,7 @@ class TokenManager:
             try:
                 self.token_path.unlink()
                 # Audit log: token cleared
-                self.logger.info(f"Token cleared from {self.token_path}")
+                self.logger.info(f"Token cleared from {redact_path(self.token_path)}")
             except OSError as e:
                 self.logger.error(f"Failed to delete token file: {e}", exc_info=True)
                 raise OSError(f"Failed to delete token file: {e}") from e

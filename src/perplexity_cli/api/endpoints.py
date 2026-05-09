@@ -9,8 +9,9 @@ from collections.abc import Iterator
 from types import TracebackType
 
 from ..utils.config import get_query_endpoint
+from ..utils.exceptions import UpstreamSchemaError
 from .client import SSEClient
-from .models import Answer, QueryParams, QueryRequest, SSEMessage, WebResult
+from .models import Answer, Block, QueryParams, QueryRequest, SSEMessage, WebResult
 
 
 class PerplexityAPI:
@@ -68,8 +69,11 @@ class PerplexityAPI:
         Raises:
             PerplexityHTTPStatusError: For HTTP errors (401, 403, 429, etc.).
             PerplexityRequestError: For network/connection errors.
-            ValueError: For malformed responses.
+            UpstreamSchemaError: For malformed responses.
         """
+        if not query.strip():
+            raise ValueError("Query must not be empty")
+
         # Generate UUIDs for request tracking
         frontend_uuid = str(uuid.uuid4())
         frontend_context_uuid = str(uuid.uuid4())
@@ -114,10 +118,11 @@ class PerplexityAPI:
         Raises:
             PerplexityHTTPStatusError: For HTTP errors.
             PerplexityRequestError: For network errors.
-            ValueError: For malformed responses or if no answer is found.
+            UpstreamSchemaError: For malformed responses or if no answer is found.
         """
         final_answer = None
         references: list[WebResult] = []
+        final_message: SSEMessage | None = None
 
         for message in self.submit_query(
             query,
@@ -126,14 +131,8 @@ class PerplexityAPI:
         ):
             # Only extract from final message to avoid duplicates
             if message.final_sse_message:
-                # Extract text from blocks in final message
-                for block in message.blocks:
-                    # Only get text from answer blocks (intended_usage: "ask_text")
-                    if block.intended_usage == "ask_text":
-                        text = self._extract_text_from_block(block.content)
-                        if text:
-                            final_answer = text
-                            break
+                final_message = message
+                final_answer = message.extract_answer_text()
 
                 # Extract web references from final message
                 if message.web_results:
@@ -142,7 +141,22 @@ class PerplexityAPI:
                 break
 
         if final_answer is None:
-            raise ValueError("No answer found in response")
+            if final_message is None:
+                raise UpstreamSchemaError("No final SSE message found in upstream response")
+            status = getattr(final_message, "status", "<missing>")
+            if hasattr(final_message, "describe_block_usages"):
+                block_usages = final_message.describe_block_usages()
+            else:
+                blocks = getattr(final_message, "blocks", [])
+                block_usages = (
+                    ",".join(getattr(block, "intended_usage", "<missing>") for block in blocks)
+                    or "none"
+                )
+            raise UpstreamSchemaError(
+                "No answer found in final upstream response: "
+                f"status={status}, "
+                f"block_usages={block_usages}"
+            )
 
         return Answer(text=final_answer, references=references)
 
@@ -155,19 +169,10 @@ class PerplexityAPI:
         Returns:
             Dictionary with progress info if this is a plan block, None otherwise.
         """
-        if block.intended_usage not in ["pro_search_steps", "plan"]:
-            return None
-
-        plan_block = block.content.get("plan_block", {})
-        if not plan_block:
-            return None
-
-        return {
-            "progress": plan_block.get("progress"),
-            "eta_seconds": plan_block.get("eta_seconds_remaining"),
-            "goals": plan_block.get("goals", []),
-            "pct_complete": plan_block.get("pct_complete"),
-        }
+        return Block(
+            intended_usage=getattr(block, "intended_usage", ""),
+            content=getattr(block, "content", {}),
+        ).extract_plan_info()
 
     def _extract_text_from_block(self, block_content: dict) -> str | None:
         """Extract text from a block's content.
@@ -178,45 +183,7 @@ class PerplexityAPI:
         Returns:
             Extracted text, or None if no text found.
         """
-        # Try different block structures based on actual API response
-
-        # 1. Markdown block with chunks (most common for answers)
-        if "markdown_block" in block_content:
-            markdown_block = block_content["markdown_block"]
-            if isinstance(markdown_block, dict) and "chunks" in markdown_block:
-                chunks = markdown_block["chunks"]
-                if isinstance(chunks, list):
-                    # Join all chunks into complete text
-                    return "".join(str(chunk) for chunk in chunks)
-
-        # 2. Direct text field
-        if "text" in block_content:
-            return block_content["text"]
-
-        # 3. Web results block (skip - these are sources, not answers)
-        if "web_result_block" in block_content:
-            # Don't extract snippets as answer text
-            pass
-
-        # 4. Diff block with patches
-        if "diff_block" in block_content:
-            diff_block = block_content["diff_block"]
-            if isinstance(diff_block, dict) and "patches" in diff_block:
-                for patch in diff_block["patches"]:
-                    if isinstance(patch, dict) and "value" in patch:
-                        value = patch["value"]
-                        if isinstance(value, str):
-                            return value
-                        elif isinstance(value, dict) and "text" in value:
-                            return value["text"]
-
-        # 5. Answer block
-        if "answer_block" in block_content:
-            answer_block = block_content["answer_block"]
-            if isinstance(answer_block, dict) and "text" in answer_block:
-                return answer_block["text"]
-
-        return None
+        return Block(intended_usage="", content=block_content).extract_text()
 
     def _format_references(self, references: list[WebResult]) -> str:
         """Format references for display.

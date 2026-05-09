@@ -1,0 +1,47 @@
+{
+  "backend_uuid": "backend-11111111",
+  "context_uuid": "context-22222222",
+  "uuid": "message-33333333",
+  "frontend_context_uuid": "frontend-44444444",
+  "display_model": "pplx_pro",
+  "mode": "COPILOT",
+  "thread_url_slug": "example-thread",
+  "status": "COMPLETED",
+  "text_completed": true,
+  "blocks": [
+    {
+      "intended_usage": "ask_text",
+      "markdown_block": {
+        "chunks": [
+          "Paris is the capital of France.",
+          "\n\nIt is the country's largest city."
+        ]
+      }
+    },
+    {
+      "intended_usage": "web_results",
+      "web_result_block": {
+        "web_results": [
+          {
+            "name": "Encyclopaedia Example",
+            "url": "https://example.invalid/encyclopaedia/paris",
+            "snippet": "Paris is the capital and most populous city of France.",
+            "timestamp": "2026-05-01T10:00:00Z"
+          },
+          {
+            "name": "Government Example",
+            "url": "https://gov.example.invalid/france/paris",
+            "snippet": "Official overview of Paris as the capital city.",
+            "timestamp": "2026-05-02T12:30:00Z"
+          }
+        ]
+      }
+    }
+  ],
+  "final_sse_message": true,
+  "cursor": "cursor-final-01",
+  "read_write_token": "rw-token-redacted",
+  "attachments": [
+    "https://files.example.invalid/upload/report.txt"
+  ]
+}

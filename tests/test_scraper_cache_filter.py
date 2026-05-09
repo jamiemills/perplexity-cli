@@ -4,7 +4,7 @@ Verifies that the scraper only persists threads within the requested date
 range to the cache, rather than caching every thread ever fetched.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -150,3 +150,92 @@ class TestCacheDateRangeFiltering:
         assert len(cached_threads) == 2
         dates = [t.created_at for t in cached_threads]
         assert all(d.startswith("2026-02") for d in dates)
+
+
+class TestThreadScraperRateLimiting:
+    """Verify thread scraping rate limiting happens before requests."""
+
+    @pytest.mark.asyncio
+    async def test_rate_limiter_acquired_before_request(self, mock_cache_manager):
+        """Test the scraper waits on the limiter before issuing a request."""
+        rate_limiter = AsyncMock()
+        rate_limiter.acquire.return_value = 0.0
+
+        scraper = ThreadScraper(
+            token='{"user": {"accessToken": "test-token"}}',
+            cookies={"cf_clearance": "cookie"},
+            rate_limiter=rate_limiter,
+            cache_manager=mock_cache_manager,
+        )
+
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session.post.return_value = mock_response
+
+        mock_context = AsyncMock()
+        mock_context.__aenter__.return_value = mock_session
+        mock_context.__aexit__.return_value = False
+
+        with patch("perplexity_cli.threads.scraper.AsyncSession", return_value=mock_context):
+            await scraper._fetch_all_threads_from_api("test-token")
+
+        rate_limiter.acquire.assert_awaited_once()
+        mock_session.post.assert_awaited_once()
+
+
+class TestThreadScraperMalformedPayloads:
+    """Verify malformed upstream thread payloads fail explicitly."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_threads_rejects_non_dict_entry(self, mock_cache_manager):
+        scraper = ThreadScraper(
+            token='{"user": {"accessToken": "test-token"}}', cache_manager=mock_cache_manager
+        )
+
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = ["bad-entry"]
+
+        mock_session = AsyncMock()
+        mock_session.post.return_value = mock_response
+
+        mock_context = AsyncMock()
+        mock_context.__aenter__.return_value = mock_session
+        mock_context.__aexit__.return_value = False
+
+        with patch("perplexity_cli.threads.scraper.AsyncSession", return_value=mock_context):
+            with pytest.raises(RuntimeError, match="Malformed thread entry"):
+                await scraper._fetch_all_threads_from_api("test-token")
+
+    @pytest.mark.asyncio
+    async def test_fetch_threads_rejects_missing_timestamp(self, mock_cache_manager):
+        scraper = ThreadScraper(
+            token='{"user": {"accessToken": "test-token"}}', cache_manager=mock_cache_manager
+        )
+
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = [
+            {"title": "No timestamp", "slug": "no-ts", "total_threads": 1}
+        ]
+
+        mock_session = AsyncMock()
+        mock_session.post.return_value = mock_response
+
+        mock_context = AsyncMock()
+        mock_context.__aenter__.return_value = mock_session
+        mock_context.__aexit__.return_value = False
+
+        with patch("perplexity_cli.threads.scraper.AsyncSession", return_value=mock_context):
+            with pytest.raises(RuntimeError, match="Malformed thread timestamp"):
+                await scraper._fetch_all_threads_from_api("test-token")
+
+    @pytest.mark.asyncio
+    async def test_scrape_all_threads_rejects_invalid_session_user_shape(self, mock_cache_manager):
+        scraper = ThreadScraper(token='{"user": "bad"}', cache_manager=mock_cache_manager)
+
+        with pytest.raises(RuntimeError, match="invalid session user data"):
+            await scraper.scrape_all_threads()

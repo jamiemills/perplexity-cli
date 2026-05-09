@@ -1,0 +1,24 @@
+{
+  "backend_uuid": "backend-99999999",
+  "context_uuid": "context-aaaa0000",
+  "uuid": "message-bbbb1111",
+  "frontend_context_uuid": "frontend-cccc2222",
+  "display_model": "pplx_pro",
+  "mode": "COPILOT",
+  "thread_url_slug": "broken-thread",
+  "status": "COMPLETED",
+  "text_completed": true,
+  "blocks": [
+    {
+      "intended_usage": "web_results",
+      "web_result_block": {
+        "web_results": [
+          "not-a-dictionary"
+        ]
+      }
+    }
+  ],
+  "final_sse_message": true,
+  "cursor": "cursor-bad-01",
+  "attachments": []
+}

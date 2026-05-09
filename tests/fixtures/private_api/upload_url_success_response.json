@@ -1,0 +1,14 @@
+{
+  "results": {
+    "fixture-uuid-1": {
+      "s3_object_url": "https://ppl-ai-file-upload.s3.amazonaws.com/fixture-1.txt",
+      "fields": {
+        "key": "uploads/fixture-1.txt",
+        "policy": "policy-data",
+        "x-amz-signature": "signature-data"
+      },
+      "rate_limited": false,
+      "error": null
+    }
+  }
+}

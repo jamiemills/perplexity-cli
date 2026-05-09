@@ -4,6 +4,8 @@ import logging
 import stat
 from pathlib import Path
 
+from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationError
+
 
 def verify_secure_permissions(
     file_path: Path,
@@ -38,4 +40,6 @@ def verify_secure_permissions(
                 f"{oct(actual_permissions)} (expected {oct(expected_permissions)})"
             )
 
-        raise RuntimeError(error_msg)
+        if file_type == "token":
+            raise AuthenticationError(error_msg)
+        raise ConfigurationError(error_msg)

@@ -7,6 +7,9 @@ import pytest
 from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.api.models import Answer
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError
+
+pytestmark = [pytest.mark.real_user_config]
 
 
 @pytest.mark.integration
@@ -108,18 +111,19 @@ class TestAPIErrorHandling:
     def test_empty_query_handling(self):
         """Test handling of empty query."""
         tm = TokenManager()
-        token = tm.load_token()
+        token, cookies = tm.load_token()
 
         if not token:
             pytest.skip("No token found")
 
-        api = PerplexityAPI(token=token)
+        api = PerplexityAPI(token=token, cookies=cookies)
 
         # Empty query should either return empty answer or raise error
         try:
             answer = api.get_complete_answer("")
             # If it succeeds, answer should be an Answer object
             assert isinstance(answer, Answer)
-        except (ValueError, Exception):
-            # Or it might raise an error, which is also acceptable
+        except ValueError:
             pass
+        except PerplexityHTTPStatusError as exc:
+            assert exc.response.status_code >= 400

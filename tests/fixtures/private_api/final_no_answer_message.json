@@ -1,0 +1,22 @@
+{
+  "backend_uuid": "backend-no-answer",
+  "context_uuid": "context-no-answer",
+  "uuid": "message-no-answer",
+  "frontend_context_uuid": "frontend-no-answer",
+  "display_model": "pplx_pro",
+  "mode": "COPILOT",
+  "thread_url_slug": "no-answer-thread",
+  "status": "COMPLETED",
+  "text_completed": true,
+  "blocks": [
+    {
+      "intended_usage": "web_results",
+      "web_result_block": {
+        "web_results": []
+      }
+    }
+  ],
+  "final_sse_message": true,
+  "cursor": "cursor-no-answer-01",
+  "attachments": []
+}

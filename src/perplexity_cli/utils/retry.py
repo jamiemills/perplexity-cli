@@ -1,5 +1,6 @@
 """Retry utilities with exponential backoff for network requests."""
 
+import random
 import time
 from collections.abc import Callable
 from typing import TypeVar
@@ -110,5 +111,40 @@ def sleep_with_backoff(attempt: int, base_delay: float = 1.0, max_delay: float =
         base_delay: Base delay in seconds.
         max_delay: Maximum delay in seconds.
     """
-    delay = min(base_delay * (2**attempt), max_delay)
+    delay = get_backoff_delay(attempt, base_delay=base_delay, max_delay=max_delay)
     time.sleep(delay)
+
+
+def get_backoff_delay(
+    attempt: int,
+    base_delay: float = 1.0,
+    max_delay: float = 60.0,
+    jitter_factor: float = 0.1,
+) -> float:
+    """Calculate exponential backoff delay with bounded jitter."""
+    delay = min(base_delay * (2**attempt), max_delay)
+    if jitter_factor <= 0:
+        return delay
+
+    jitter_window = delay * jitter_factor
+    jitter = random.uniform(-jitter_window, jitter_window)  # nosec B311
+    return max(0.0, min(delay + jitter, max_delay))
+
+
+def get_retry_after_delay(exception: Exception) -> float | None:
+    """Extract a Retry-After delay from an HTTP exception, if present."""
+    if not isinstance(exception, PerplexityHTTPStatusError):
+        return None
+
+    retry_after = exception.response.headers.get("Retry-After") or exception.response.headers.get(
+        "retry-after"
+    )
+    if retry_after is None:
+        return None
+
+    try:
+        delay = float(retry_after)
+    except ValueError:
+        return None
+
+    return max(0.0, delay)

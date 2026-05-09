@@ -8,7 +8,7 @@ import pytest
 
 from perplexity_cli.api.models import FileAttachment
 from perplexity_cli.attachments.upload_manager import AttachmentUploader
-from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError
+from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, UpstreamSchemaError
 
 
 class TestUploadManagerDefensive:
@@ -422,6 +422,56 @@ class TestUploadManagerQuotaHandling:
 
             assert "uuid-1" in response_json["results"]
             assert response_json["results"]["uuid-1"]["fields"] is not None
+
+    @pytest.mark.asyncio
+    async def test_request_upload_urls_rejects_non_dict_response(self, uploader):
+        """Test malformed upload URL responses raise UpstreamSchemaError."""
+        attachments = [
+            FileAttachment(
+                filename="test.txt",
+                content_type="text/plain",
+                data=base64.b64encode(b"content").decode(),
+            )
+        ]
+
+        mock_session = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.ok = True
+        mock_response.status_code = 200
+        mock_response.json = MagicMock(return_value=[])
+        mock_session.post = AsyncMock(return_value=mock_response)
+
+        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
+            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            with pytest.raises(UpstreamSchemaError, match="Malformed upload URL response"):
+                await uploader._request_upload_urls(attachments)
+
+    @pytest.mark.asyncio
+    async def test_request_upload_urls_rejects_non_dict_results(self, uploader):
+        """Test malformed upload results payload raises UpstreamSchemaError."""
+        attachments = [
+            FileAttachment(
+                filename="test.txt",
+                content_type="text/plain",
+                data=base64.b64encode(b"content").decode(),
+            )
+        ]
+
+        mock_session = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.ok = True
+        mock_response.status_code = 200
+        mock_response.json = MagicMock(return_value={"results": []})
+        mock_session.post = AsyncMock(return_value=mock_response)
+
+        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
+            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            with pytest.raises(UpstreamSchemaError, match="Malformed upload results payload"):
+                await uploader._request_upload_urls(attachments)
 
 
 class TestUploadManagerCookies:

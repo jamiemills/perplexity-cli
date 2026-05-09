@@ -6,6 +6,7 @@ import sys
 import click
 
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.utils.exceptions import AuthenticationError
 
 
 def load_or_prompt_token(
@@ -30,7 +31,13 @@ def load_or_prompt_token(
 
     Exits with status 1 if token cannot be loaded.
     """
-    token, cookies = tm.load_token()
+    try:
+        token, cookies = tm.load_token()
+    except AuthenticationError as e:
+        click.echo(f"[ERROR] Authentication error: {e}", err=True)
+        click.echo("\nPlease authenticate again with: pxcli auth", err=True)
+        logger.warning(f"Authentication state invalid during {command_context}: {e}")
+        sys.exit(1)
 
     if not token:
         click.echo("[ERROR] Not authenticated.", err=True)
@@ -65,7 +72,11 @@ def load_token_optional(
 
     Does not exit or prompt if token is unavailable.
     """
-    token, cookies = tm.load_token()
+    try:
+        token, cookies = tm.load_token()
+    except AuthenticationError as e:
+        logger.warning(f"Stored authentication is unusable; proceeding without token: {e}")
+        return None, None
 
     if token:
         logger.debug("Authentication token loaded")

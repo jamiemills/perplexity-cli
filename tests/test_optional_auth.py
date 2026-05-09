@@ -1,6 +1,6 @@
 """Tests for optional authentication in query command."""
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from perplexity_cli.api.models import Answer
 from perplexity_cli.auth.utils import load_token_optional
@@ -408,7 +408,7 @@ class TestAttachmentAuthentication:
 
         # Mock attachment uploader
         mock_uploader = Mock()
-        mock_uploader.upload_files = Mock(return_value=[{"url": "https://s3.example.com/file.txt"}])
+        mock_uploader.upload_files = AsyncMock(return_value=["https://s3.example.com/file.txt"])
         mock_uploader_class.return_value = mock_uploader
 
         # Mock API response
@@ -417,9 +417,7 @@ class TestAttachmentAuthentication:
         mock_api.get_complete_answer.return_value = mock_answer
         mock_api_class.return_value = mock_api
 
-        # Need to mock asyncio.run
-        with patch("asyncio.run", return_value=["https://s3.example.com/file.txt"]):
-            result = runner.invoke(query, ["--attach", "file.txt", "test question"])
+        result = runner.invoke(query, ["--attach", "file.txt", "test question"])
 
         # Should succeed
         assert result.exit_code == 0

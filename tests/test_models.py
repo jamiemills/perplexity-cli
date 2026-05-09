@@ -202,3 +202,32 @@ class TestSSEMessageWithWebResults:
         assert msg.web_results is not None
         assert len(msg.web_results) == 1
         assert msg.web_results[0].url == "https://source.com"
+
+    def test_sse_message_extract_answer_text(self):
+        """Test SSEMessage answer extraction stays within model helpers."""
+        data = {
+            "backend_uuid": "uuid1",
+            "context_uuid": "ctx1",
+            "uuid": "msg1",
+            "frontend_context_uuid": "fctx1",
+            "display_model": "gpt4",
+            "mode": "copilot",
+            "thread_url_slug": None,
+            "status": "COMPLETE",
+            "text_completed": True,
+            "blocks": [
+                {
+                    "intended_usage": "ask_text",
+                    "markdown_block": {"chunks": ["Model ", "answer"]},
+                },
+                {
+                    "intended_usage": "web_results",
+                    "web_result_block": {"web_results": []},
+                },
+            ],
+            "final_sse_message": True,
+        }
+
+        msg = SSEMessage.from_dict(data)
+
+        assert msg.extract_answer_text() == "Model answer"

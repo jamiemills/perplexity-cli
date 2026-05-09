@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime
 
-from perplexity_cli.utils.config import get_style_path
+from perplexity_cli.utils.config import get_config_paths
 
 MAX_STYLE_LENGTH = 10_000
 
@@ -14,7 +14,7 @@ class StyleManager:
 
     def __init__(self) -> None:
         """Initialise style manager."""
-        self.style_path = get_style_path()
+        self.style_path = get_config_paths().style_path
 
     def load_style(self) -> str | None:
         """Load configured style from file.

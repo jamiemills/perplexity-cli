@@ -1,4 +1,11 @@
-"""HTTP error handling utilities for CLI commands."""
+"""HTTP error handling utilities for CLI commands.
+
+Shared policy:
+- user-facing command failures exit with status code ``1``
+- explicit user interruption exits with status code ``130``
+- top-level unexpected failures should be logged once and routed through
+  ``handle_unexpected_cli_error()``
+"""
 
 import logging
 import sys
@@ -6,6 +13,42 @@ import sys
 import click
 
 from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, PerplexityRequestError
+
+
+def handle_unexpected_cli_error(
+    error: Exception,
+    logger: logging.Logger,
+    *,
+    debug_mode: bool = False,
+    user_message: str = "[ERROR] An unexpected error occurred.",
+    log_message: str = "Unexpected error",
+    include_debug_hint: bool = False,
+) -> None:
+    """Handle unexpected top-level CLI errors consistently.
+
+    Policy:
+    - always log the original exception once at exception level
+    - always print the provided user-facing error message to stderr
+    - if ``debug_mode`` is enabled, print the traceback
+    - otherwise, optionally print the standard debug hint
+
+    Exits with status code 1.
+    """
+    logger.exception(f"{log_message}: {error}")
+    click.echo(user_message, err=True)
+
+    if debug_mode:
+        import traceback
+
+        debug_output = traceback.format_exc()
+        if include_debug_hint:
+            click.echo(f"Debug info:\n{debug_output}", err=True)
+        else:
+            click.echo(debug_output, err=True)
+    elif include_debug_hint:
+        click.echo("Run with --debug for more information.", err=True)
+
+    sys.exit(1)
 
 
 def handle_http_error(

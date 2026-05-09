@@ -7,10 +7,13 @@ authentication token via Chrome's DevTools Protocol.
 
 import asyncio
 import json
+import urllib.error
 import urllib.request
 from typing import Any
 
 import websockets
+
+from perplexity_cli.utils.exceptions import AuthenticationError
 
 from ..utils.config import get_perplexity_base_url
 
@@ -38,22 +41,25 @@ class ChromeDevToolsClient:
         try:
             with urllib.request.urlopen(url, timeout=5) as response:
                 targets = json.loads(response.read())
-        except Exception as e:
-            raise RuntimeError(
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
+            raise AuthenticationError(
                 f"Failed to connect to Chrome on port {self.port}. "
                 f"Ensure Chrome is running with --remote-debugging-port={self.port}. "
                 f"Error: {e}"
             ) from e
 
+        if not isinstance(targets, list):
+            raise AuthenticationError("Chrome returned an invalid targets payload")
+
         # Find a page target
         page_target = next((t for t in targets if t.get("type") == "page"), None)
 
         if not page_target:
-            raise RuntimeError("No page target found in Chrome")
+            raise AuthenticationError("No page target found in Chrome")
 
         ws_url = page_target.get("webSocketDebuggerUrl")
         if not ws_url:
-            raise RuntimeError("Could not get WebSocket debugger URL")
+            raise AuthenticationError("Could not get WebSocket debugger URL")
 
         self.ws = await websockets.connect(ws_url)
 
@@ -73,7 +79,7 @@ class ChromeDevToolsClient:
             RuntimeError: If not connected or Chrome returns an error.
         """
         if not self.ws:
-            raise RuntimeError("Not connected to Chrome")
+            raise AuthenticationError("Not connected to Chrome")
 
         self.message_id += 1
         command: dict[str, Any] = {
@@ -92,7 +98,7 @@ class ChromeDevToolsClient:
 
             if data.get("id") == self.message_id:
                 if "error" in data:
-                    raise RuntimeError(f"Chrome error: {data['error']}")
+                    raise AuthenticationError(f"Chrome error: {data['error']}")
                 return data.get("result", {})
 
     async def close(self) -> None:
@@ -240,14 +246,14 @@ async def _wait_for_page_load(client: ChromeDevToolsClient, timeout: int = 30) -
             if result:
                 logger.debug("Page loaded successfully")
                 return
-        except Exception as e:
+        except AuthenticationError as e:
             logger.debug(f"Page not ready yet: {e}")
 
         await asyncio.sleep(poll_interval)
 
 
 def _extract_token(
-    cookies: list[dict[str, Any]], local_storage: dict[str, str]
+    cookies: list[dict[str, Any]], local_storage: dict[str, Any]
 ) -> tuple[str | None, dict[str, str]]:
     """Extract authentication token and cookies from browser.
 

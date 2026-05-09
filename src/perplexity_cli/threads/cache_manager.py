@@ -11,11 +11,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from perplexity_cli.threads.exporter import ThreadRecord
-from perplexity_cli.utils.config import get_config_dir
+from perplexity_cli.threads.models import CacheContent, CacheFormat
+from perplexity_cli.utils.config import get_config_paths
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
+from perplexity_cli.utils.exceptions import ConfigurationError
 from perplexity_cli.utils.file_permissions import verify_secure_permissions
-from perplexity_cli.utils.logging import get_logger
+from perplexity_cli.utils.logging import get_logger, redact_path
 
 
 class ThreadCacheManager:
@@ -29,8 +33,9 @@ class ThreadCacheManager:
         ~/.config/perplexity-cli/threads-cache.json (encrypted)
 
     Encryption:
-        Uses same system-derived key as auth token (hostname + OS user).
+        Uses same deterministic system-derived key as auth token (hostname + OS user).
         Machine-specific: cannot decrypt on different machine.
+        This is machine-bound obfuscation, not OS-backed secret storage.
         File permissions: 0600 (owner read/write only)
     """
 
@@ -48,7 +53,7 @@ class ThreadCacheManager:
                 ~/.config/perplexity-cli/threads-cache.json
         """
         if cache_path is None:
-            cache_path = get_config_dir() / "threads-cache.json"
+            cache_path = get_config_paths().cache_path
 
         self.cache_path = cache_path
         self.logger = get_logger()
@@ -76,29 +81,41 @@ class ThreadCacheManager:
 
         try:
             with open(self.cache_path, encoding="utf-8") as f:
-                data = json.load(f)
+                raw_data = json.load(f)
+
+            try:
+                data = CacheFormat.model_validate(raw_data)
+            except ValidationError as e:
+                self.logger.error(f"Cache file has invalid outer format: {e}")
+                raise ConfigurationError("Cache file has invalid format") from e
 
             # Check if cache is encrypted
-            if not data.get("encrypted", False):
+            if not data.encrypted:
                 self.logger.warning("Cache file is not encrypted")
-                raise RuntimeError(
+                raise ConfigurationError(
                     "Cache file is not encrypted. Cache may be corrupted. "
                     "Consider deleting and rebuilding."
                 )
 
-            encrypted_cache = data.get("cache")
+            encrypted_cache = data.cache
             if not encrypted_cache:
                 self.logger.error("Cache file missing encrypted cache data")
-                raise RuntimeError("Cache file is missing encrypted cache data")
+                raise ConfigurationError("Cache file is missing encrypted cache data")
 
             # Decrypt the cache
             decrypted_json = decrypt_token(encrypted_cache)
-            cache_data = json.loads(decrypted_json)
+            decrypted_data = json.loads(decrypted_json)
+
+            try:
+                cache_data = CacheContent.model_validate(decrypted_data)
+            except ValidationError as e:
+                self.logger.error(f"Cache content has invalid format: {e}")
+                raise ConfigurationError("Cache content has invalid format") from e
 
             # Audit log: cache loaded
-            self.logger.info(f"Cache loaded from {self.cache_path}")
+            self.logger.info(f"Cache loaded from {redact_path(self.cache_path)}")
 
-            return cache_data
+            return cache_data.model_dump(mode="json")
 
         except (OSError, json.JSONDecodeError) as e:
             self.logger.error(f"Failed to load cache: {e}", exc_info=True)
@@ -161,7 +178,9 @@ class ThreadCacheManager:
             os.chmod(self.cache_path, self.SECURE_PERMISSIONS)
 
             # Audit log: cache saved
-            self.logger.info(f"Cache saved to {self.cache_path} ({len(threads)} threads)")
+            self.logger.info(
+                f"Cache saved to {redact_path(self.cache_path)} ({len(threads)} threads)"
+            )
 
         except OSError as e:
             self.logger.error(f"Failed to save cache: {e}", exc_info=True)
@@ -186,7 +205,7 @@ class ThreadCacheManager:
             newest = metadata.get("newest_thread_date")
 
             return oldest, newest
-        except (RuntimeError, OSError):
+        except (ConfigurationError, OSError):
             # Cache load failed, consider no coverage
             return None, None
 

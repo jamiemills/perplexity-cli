@@ -79,3 +79,27 @@ class PerplexityRequestError(Exception):
     Replaces ``httpx.RequestError`` in the query path. Carries only a
     message string describing the network failure.
     """
+
+
+class ConfigurationError(RuntimeError):
+    """Configuration or local state error."""
+
+
+class AttachmentError(RuntimeError):
+    """Attachment resolution or loading error."""
+
+
+class AttachmentUploadError(RuntimeError):
+    """Attachment upload error."""
+
+
+class AuthenticationError(RuntimeError):
+    """Authentication or credential validity error."""
+
+
+class RateLimitError(RuntimeError):
+    """Rate limit or quota exhaustion error."""
+
+
+class UpstreamSchemaError(RuntimeError):
+    """Unexpected or malformed upstream API payload."""

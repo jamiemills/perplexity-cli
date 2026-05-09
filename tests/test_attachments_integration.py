@@ -300,3 +300,75 @@ class TestAttachmentsIntegration:
                             isinstance(url, str) and url.startswith("https://")
                             for url in attachments
                         )
+
+    def test_query_with_directory_attachment_skips_hidden_and_sensitive_files(
+        self, runner, tmp_path
+    ):
+        """Test directory attachments skip hidden and sensitive files by default."""
+        (tmp_path / "file1.txt").write_text("Content 1", encoding="utf-8")
+        (tmp_path / ".env").write_text("SECRET=1", encoding="utf-8")
+        (tmp_path / ".hidden.txt").write_text("hidden", encoding="utf-8")
+        (tmp_path / "private.key").write_text("key", encoding="utf-8")
+
+        with patch("perplexity_cli.utils.style_manager.StyleManager") as mock_sm_class:
+            with patch("perplexity_cli.auth.token_manager.TokenManager") as mock_tm_class:
+                with patch("perplexity_cli.attachments.AttachmentUploader") as mock_uploader_class:
+                    with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
+                        mock_sm = Mock()
+                        mock_sm.load_style.return_value = None
+                        mock_sm_class.return_value = mock_sm
+
+                        mock_tm = Mock()
+                        mock_tm.load_token.return_value = ("test-token", None)
+                        mock_tm_class.return_value = mock_tm
+
+                        uploaded_urls = [
+                            "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file1.txt"
+                        ]
+
+                        async def mock_upload(*args, **kwargs):
+                            return uploaded_urls
+
+                        mock_uploader = Mock()
+                        mock_uploader.upload_files = mock_upload
+                        mock_uploader_class.return_value = mock_uploader
+
+                        mock_api = _make_api_mock()
+                        mock_api.get_complete_answer.return_value = Answer(
+                            text="Analysis complete", references=[]
+                        )
+                        mock_api_class.return_value = mock_api
+
+                        result = runner.invoke(
+                            query,
+                            ["--no-stream", "--attach", str(tmp_path), "Analyse all files"],
+                        )
+
+                        assert result.exit_code == 0
+                        attachments = mock_api.get_complete_answer.call_args[1]["attachments"]
+                        assert attachments == uploaded_urls
+
+    def test_query_with_too_many_directory_files_fails(self, runner, tmp_path):
+        """Test directory attachments fail cleanly when too many files are selected."""
+        from perplexity_cli.utils.file_handler import MAX_ATTACHMENT_COUNT
+
+        for index in range(MAX_ATTACHMENT_COUNT + 1):
+            (tmp_path / f"file-{index}.txt").write_text("content", encoding="utf-8")
+
+        with patch("perplexity_cli.utils.style_manager.StyleManager") as mock_sm_class:
+            with patch("perplexity_cli.auth.token_manager.TokenManager") as mock_tm_class:
+                mock_sm = Mock()
+                mock_sm.load_style.return_value = None
+                mock_sm_class.return_value = mock_sm
+
+                mock_tm = Mock()
+                mock_tm.load_token.return_value = ("test-token", None)
+                mock_tm_class.return_value = mock_tm
+
+                result = runner.invoke(
+                    query,
+                    ["--no-stream", "--attach", str(tmp_path), "Analyse all files"],
+                )
+
+                assert result.exit_code == 1
+                assert "Too many attachments" in result.output

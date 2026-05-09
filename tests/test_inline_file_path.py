@@ -72,9 +72,9 @@ Status: Complete""",
                             query, ["--no-stream", "--attach", str(test_file), query_text]
                         )
 
-                        assert (
-                            result.exit_code == 0
-                        ), f"Exit code: {result.exit_code}, Output: {result.output}"
+                        assert result.exit_code == 0, (
+                            f"Exit code: {result.exit_code}, Output: {result.output}"
+                        )
 
                         # Verify file was attached as S3 URL
                         call_args = mock_api.get_complete_answer.call_args

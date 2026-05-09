@@ -12,6 +12,7 @@ from datetime import datetime
 from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.exceptions import RequestException
 
+from perplexity_cli.api.contracts import parse_thread_list_payload
 from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
@@ -19,9 +20,13 @@ from perplexity_cli.threads.utils import convert_cache_dicts_to_thread_records
 from perplexity_cli.utils.config import get_thread_list_url
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
+    AuthenticationError,
     PerplexityHTTPStatusError,
+    PerplexityRequestError,
+    RateLimitError,
     SimpleRequest,
     SimpleResponse,
+    UpstreamSchemaError,
 )
 from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.rate_limiter import RateLimiter
@@ -37,6 +42,7 @@ class ThreadScraper:
     def __init__(
         self,
         token: str,
+        cookies: dict[str, str] | None = None,
         rate_limiter: RateLimiter | None = None,
         cache_manager: ThreadCacheManager | None = None,
         force_refresh: bool = False,
@@ -45,11 +51,13 @@ class ThreadScraper:
 
         Args:
             token: Authentication token (from TokenManager)
+            cookies: Optional browser cookies for Cloudflare/session reuse
             rate_limiter: Optional RateLimiter instance for request throttling
             cache_manager: Optional ThreadCacheManager for caching threads
             force_refresh: If True, ignore cache and fetch fresh data from API
         """
         self.token = token
+        self.cookies = cookies
         self.rate_limiter = rate_limiter
         self.cache_manager = cache_manager
         self.force_refresh = force_refresh
@@ -127,12 +135,20 @@ class ThreadScraper:
         # Parse token to get session cookie
         try:
             token_data = json.loads(self.token)
-            # Token is stored as NextAuth.js session data
-            # We need to extract the session token
-            session_token = token_data.get("user", {}).get("accessToken")
-            if not session_token:
-                # Try alternative structure
+            if not isinstance(token_data, dict):
+                raise AuthenticationError("Stored token has invalid session data format")
+
+            user_data = token_data.get("user")
+            if user_data is None:
                 session_token = self.token
+            else:
+                if not isinstance(user_data, dict):
+                    raise AuthenticationError("Stored token has invalid session user data")
+                session_token = user_data.get("accessToken")
+                if session_token is None:
+                    session_token = self.token
+                elif not isinstance(session_token, str) or not session_token:
+                    raise AuthenticationError("Stored token has invalid access token data")
         except json.JSONDecodeError:
             # Token might be a raw string
             session_token = self.token
@@ -201,9 +217,8 @@ class ThreadScraper:
         }
 
         # Build cookies dict for curl_cffi (passed via cookies parameter, not header)
-        cookies = {
-            "__Secure-next-auth.session-token": session_token,
-        }
+        cookies = dict(self.cookies or {})
+        cookies.setdefault("__Secure-next-auth.session-token", session_token)
 
         async with AsyncSession(impersonate="chrome", timeout=30) as client:
             while True:
@@ -218,6 +233,11 @@ class ThreadScraper:
                 self.logger.debug(f"Fetching threads: offset={offset}, limit={limit}")
 
                 try:
+                    if self.rate_limiter:
+                        wait_time = await self.rate_limiter.acquire()
+                        if wait_time > 0:
+                            self.logger.debug(f"Rate limited: waited {wait_time:.2f}s")
+
                     # Make API request
                     response = await client.post(
                         f"{self.api_url}?version={self.api_version}&source=default",
@@ -231,13 +251,12 @@ class ThreadScraper:
                         self._raise_http_status_error(response)
 
                     # Parse response
-                    thread_data = response.json()
-
-                    # Apply rate limiting after successful request
-                    if self.rate_limiter:
-                        wait_time = await self.rate_limiter.acquire()
-                        if wait_time > 0:
-                            self.logger.debug(f"Rate limited: waited {wait_time:.2f}s")
+                    try:
+                        thread_data = parse_thread_list_payload(response.json())
+                    except ValueError as e:
+                        raise UpstreamSchemaError(
+                            "Malformed thread list response from upstream API"
+                        ) from e
 
                     if not thread_data or len(thread_data) == 0:
                         # No more threads
@@ -249,15 +268,21 @@ class ThreadScraper:
                         try:
                             # Get total count from first response
                             if total_threads is None:
-                                total_threads = thread_dict.get("total_threads", len(thread_data))
+                                raw_total_threads = thread_dict.get(
+                                    "total_threads", len(thread_data)
+                                )
+                                if not isinstance(raw_total_threads, int):
+                                    raise UpstreamSchemaError(
+                                        "Malformed total_threads value in upstream API response"
+                                    )
+                                total_threads = raw_total_threads
 
                             # Extract timestamp
                             timestamp_str = thread_dict.get("last_query_datetime")
-                            if not timestamp_str:
-                                self.logger.warning(
-                                    f"No timestamp for thread: {thread_dict.get('title', 'unknown')}"
+                            if not isinstance(timestamp_str, str) or not timestamp_str:
+                                raise UpstreamSchemaError(
+                                    "Malformed thread timestamp in upstream API response"
                                 )
-                                continue
 
                             # Parse ISO 8601 timestamp
                             # API returns format like "2025-10-14T00:05:15.472548"
@@ -275,16 +300,25 @@ class ThreadScraper:
 
                             # Build thread URL from slug
                             slug = thread_dict.get("slug", "")
+                            if not isinstance(slug, str):
+                                raise UpstreamSchemaError(
+                                    "Malformed thread slug in upstream API response"
+                                )
                             url = f"https://www.perplexity.ai/search/{slug}"
 
                             # Get title
                             title = thread_dict.get("title", "Untitled")
+                            if not isinstance(title, str):
+                                raise UpstreamSchemaError(
+                                    "Malformed thread title in upstream API response"
+                                )
 
                             threads.append(ThreadRecord(title=title, url=url, created_at=iso_date))
 
-                        except (ValueError, KeyError) as e:
-                            self.logger.warning(f"Failed to parse thread data: {e}")
-                            continue
+                        except ValueError as e:
+                            raise UpstreamSchemaError(
+                                "Malformed thread timestamp in upstream API response"
+                            ) from e
 
                     # Progress callback
                     if progress_callback and total_threads:
@@ -310,14 +344,20 @@ class ThreadScraper:
 
                 except PerplexityHTTPStatusError as e:
                     if e.response.status_code == 401:
-                        raise RuntimeError(
+                        raise AuthenticationError(
                             "Authentication failed. Token may be expired. "
                             "Please re-authenticate with: perplexity-cli auth"
+                        ) from e
+                    if e.response.status_code == 429:
+                        raise RateLimitError(
+                            "Rate limit exceeded while fetching threads. Please try again later."
                         ) from e
                     raise
 
                 except RequestException as e:
-                    raise RuntimeError(f"Network error while fetching threads: {e}") from e
+                    raise PerplexityRequestError(
+                        f"Network error while fetching threads: {e}"
+                    ) from e
 
         return threads
 
@@ -340,7 +380,7 @@ class ThreadScraper:
         try:
             body = response.content
             text = body.decode("utf-8") if isinstance(body, bytes) else str(body)
-        except Exception:
+        except (AttributeError, TypeError, UnicodeDecodeError):
             text = ""
 
         simple_response = SimpleResponse(

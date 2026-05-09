@@ -4,11 +4,14 @@ Tests the ThreadCacheManager class, cache invalidation logic, and encryption.
 """
 
 import json
+import os
 import stat
 
 import pytest
 
 from perplexity_cli.threads.exporter import ThreadRecord
+from perplexity_cli.threads.utils import convert_cache_dicts_to_thread_records
+from perplexity_cli.utils.exceptions import ConfigurationError, UpstreamSchemaError
 
 
 class TestThreadCacheManager:
@@ -114,6 +117,47 @@ class TestThreadCacheManager:
         # Should not raise
         cache_manager.clear_cache()
         assert not cache_manager.cache_exists()
+
+    def test_load_cache_rejects_invalid_outer_format(self, cache_manager):
+        """Test invalid outer cache format fails predictably."""
+        cache_manager.cache_path.write_text(
+            json.dumps({"version": 1, "encrypted": True, "cache": "   "}),
+            encoding="utf-8",
+        )
+        os.chmod(cache_manager.cache_path, cache_manager.SECURE_PERMISSIONS)
+
+        with pytest.raises(ConfigurationError, match="Cache file has invalid format"):
+            cache_manager.load_cache()
+
+    def test_load_cache_rejects_invalid_inner_format(self, cache_manager):
+        """Test invalid decrypted cache payload fails predictably."""
+        from perplexity_cli.utils.encryption import encrypt_token
+
+        invalid_inner_cache = {
+            "version": 1,
+            "metadata": {
+                "last_sync_time": "2025-12-23T13:51:50Z",
+                "oldest_thread_date": None,
+                "newest_thread_date": None,
+                "total_threads": 1,
+            },
+            "threads": ["not-a-dict"],
+        }
+        cache_manager.cache_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "encrypted": True,
+                    "cache": encrypt_token(json.dumps(invalid_inner_cache)),
+                    "created_at": "2025-12-23T13:51:50Z",
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.chmod(cache_manager.cache_path, cache_manager.SECURE_PERMISSIONS)
+
+        with pytest.raises(ConfigurationError, match="Cache content has invalid format"):
+            cache_manager.load_cache()
 
 
 class TestCacheInvalidation:
@@ -369,3 +413,17 @@ class TestCacheEncryption:
         assert len(loaded["threads"]) == 2
         assert loaded["threads"][0]["title"] == "Thread A"
         assert loaded["threads"][1]["title"] == "Thread B"
+
+
+class TestThreadCacheConversion:
+    """Test defensive cached-thread conversion."""
+
+    def test_convert_cache_dicts_rejects_non_dict_entry(self):
+        with pytest.raises(UpstreamSchemaError, match="Malformed cached thread record"):
+            convert_cache_dicts_to_thread_records([{}])
+
+    def test_convert_cache_dicts_rejects_missing_key(self):
+        with pytest.raises(UpstreamSchemaError, match="missing url"):
+            convert_cache_dicts_to_thread_records(
+                [{"title": "Thread 1", "created_at": "2025-12-23T13:51:50Z"}]
+            )

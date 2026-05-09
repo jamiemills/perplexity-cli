@@ -1,6 +1,7 @@
 """Tests for API client module."""
 
 import json
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -8,9 +9,8 @@ from curl_cffi.requests import Session
 
 from perplexity_cli.api.client import SSEClient
 from perplexity_cli.api.models import Block, QueryParams, QueryRequest, SSEMessage, WebResult
-from perplexity_cli.utils.exceptions import (
-    PerplexityHTTPStatusError,
-)
+from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, UpstreamSchemaError
+from perplexity_cli.utils.logging import setup_logging
 
 
 class TestQueryParams:
@@ -99,6 +99,55 @@ class TestBlock:
         assert block.intended_usage == "web_results"
         assert "web_result_block" in block.content
 
+    def test_extract_text_from_markdown_block(self):
+        """Test block text extraction from markdown chunks."""
+        block = Block(
+            intended_usage="ask_text",
+            content={"markdown_block": {"chunks": ["Hello ", "world"]}},
+        )
+
+        assert block.extract_text() == "Hello world"
+
+    def test_extract_plan_info(self):
+        """Test plan metadata extraction from plan block."""
+        block = Block(
+            intended_usage="plan",
+            content={
+                "plan_block": {
+                    "progress": "Researching",
+                    "eta_seconds_remaining": 42,
+                    "goals": ["Goal A"],
+                    "pct_complete": 50,
+                }
+            },
+        )
+
+        assert block.extract_plan_info() == {
+            "progress": "Researching",
+            "eta_seconds": 42,
+            "goals": ["Goal A"],
+            "pct_complete": 50,
+        }
+
+    def test_extract_web_results(self):
+        """Test block web result extraction."""
+        block = Block(
+            intended_usage="web_results",
+            content={
+                "web_result_block": {
+                    "web_results": [
+                        {"name": "Example", "url": "https://example.com", "snippet": "Snippet"}
+                    ]
+                }
+            },
+        )
+
+        results = block.extract_web_results()
+
+        assert results is not None
+        assert len(results) == 1
+        assert results[0].url == "https://example.com"
+
 
 class TestSSEMessage:
     """Tests for SSEMessage model."""
@@ -126,6 +175,27 @@ class TestSSEMessage:
         assert message.text_completed is True
         assert message.final_sse_message is True
         assert len(message.blocks) == 1
+
+    def test_extract_answer_text(self):
+        """Test answer text extraction from ask_text blocks."""
+        message = SSEMessage.from_dict(
+            {
+                "backend_uuid": "backend-123",
+                "context_uuid": "context-456",
+                "uuid": "request-789",
+                "frontend_context_uuid": "frontend-abc",
+                "display_model": "pplx_pro",
+                "mode": "COPILOT",
+                "status": "COMPLETE",
+                "text_completed": True,
+                "blocks": [
+                    {"intended_usage": "ask_text", "markdown_block": {"chunks": ["Answer"]}}
+                ],
+                "final_sse_message": True,
+            }
+        )
+
+        assert message.extract_answer_text() == "Answer"
 
 
 class TestSSEClient:
@@ -232,7 +302,7 @@ class TestSSEClient:
         assert messages[0] == json.loads(expected_json)
 
     def test_parse_sse_stream_invalid_json(self):
-        """Test parsing invalid JSON raises ValueError."""
+        """Test parsing invalid JSON raises UpstreamSchemaError."""
         client = SSEClient(token="test-token")
 
         mock_response = Mock()
@@ -242,8 +312,13 @@ class TestSSEClient:
             b"",
         ]
 
-        with pytest.raises(ValueError, match="Failed to parse SSE data"):
+        with pytest.raises(UpstreamSchemaError, match="Failed to parse SSE data"):
             list(client._parse_sse_stream(mock_response))
+
+    def test_sse_message_from_dict_rejects_non_dict(self):
+        """Test malformed SSE payloads raise UpstreamSchemaError."""
+        with pytest.raises(UpstreamSchemaError, match="Malformed SSE blocks"):
+            SSEMessage.from_dict({"blocks": {}})
 
     def test_stream_post_success(self):
         """Test successful POST request with SSE streaming."""
@@ -334,6 +409,43 @@ class TestSSEClient:
 
         # Should have retried (2 calls total for max_retries=2)
         assert mock_session.stream.call_count == 2
+
+    def test_stream_post_debug_logging_redacts_sensitive_values(self, caplog):
+        """Test debug logs do not expose cookie names or response bodies."""
+        client = SSEClient(
+            token="test-token",
+            cookies={"cf_clearance": "secret-cookie", "csrftoken": "secret-csrf"},
+            max_retries=1,
+        )
+
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 403
+        mock_response.reason = "Forbidden"
+        mock_response.url = "https://example.com/api"
+        mock_response.headers = {"cf-ray": "ray-id"}
+        mock_response.content = b'{"secret":"value"}'
+        mock_response.text = '{"secret":"value"}'
+
+        mock_stream_context = Mock()
+        mock_stream_context.__enter__ = Mock(return_value=mock_response)
+        mock_stream_context.__exit__ = Mock(return_value=False)
+
+        mock_session = Mock()
+        mock_session.stream.return_value = mock_stream_context
+        client._client = mock_session
+
+        setup_logging(debug=True)
+
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            with pytest.raises(PerplexityHTTPStatusError, match="Access forbidden"):
+                list(client.stream_post("https://example.com/api", {}))
+
+        combined = "\n".join(record.getMessage() for record in caplog.records)
+        assert "cf_clearance" not in combined
+        assert "secret-cookie" not in combined
+        assert '{"secret":"value"}' not in combined
+        assert "<redacted:2 keys>" in combined
 
     def test_raise_http_status_error(self):
         """Test _raise_http_status_error constructs valid custom exceptions."""

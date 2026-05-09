@@ -1,0 +1,16 @@
+[
+  {
+    "title": "Example thread one",
+    "slug": "example-thread-one",
+    "last_query_datetime": "2026-05-06T12:00:00",
+    "total_threads": 2,
+    "has_next_page": true
+  },
+  {
+    "title": "Example thread two",
+    "slug": "example-thread-two",
+    "last_query_datetime": "2026-05-05T08:30:00",
+    "total_threads": 2,
+    "has_next_page": false
+  }
+]

@@ -213,7 +213,8 @@ class RichFormatter(Formatter):
                 code_console.print(syntax)
                 result_parts.append(code_buffer.getvalue().rstrip())
             except Exception:
-                # Fallback to plain code if syntax highlighting fails
+                # Intentionally broad: Rich and lexer failures should not block answer rendering.
+                # Fall back to the original fenced code block if highlighting breaks.
                 result_parts.append(f"```{language}\n{code_content}\n```")
 
             last_end = match.end()

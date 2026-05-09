@@ -1,6 +1,6 @@
 """Tests for CLI commands."""
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -9,6 +9,7 @@ from perplexity_cli.cli import (
     auth,
     clear_style,
     configure,
+    doctor_security,
     export_threads,
     logout,
     main,
@@ -17,6 +18,8 @@ from perplexity_cli.cli import (
     status,
     view_style,
 )
+from perplexity_cli.config.models import FeatureConfig
+from perplexity_cli.utils.exceptions import AuthenticationError
 
 
 def _make_api_mock(**kwargs):
@@ -69,24 +72,56 @@ class TestCLICommands:
         assert "Not authenticated" in result.output
         assert "pxcli auth" in result.output
 
+    @patch("perplexity_cli.utils.config.set_feature")
+    def test_set_config_handles_configuration_error(self, mock_set_feature, runner):
+        """Test set-config surfaces configuration errors consistently."""
+        from perplexity_cli.utils.exceptions import ConfigurationError
+
+        mock_set_feature.side_effect = ConfigurationError("bad config")
+
+        result = runner.invoke(main, ["set-config", "save_cookies", "true"])
+
+        assert result.exit_code == 1
+        assert "Failed to update configuration: bad config" in result.output
+
+    @patch("perplexity_cli.utils.config.get_feature_config")
+    @patch("perplexity_cli.threads.cache_manager.ThreadCacheManager")
+    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    def test_doctor_security_reports_storage_risk(
+        self, mock_tm_class, mock_cache_manager_class, mock_get_feature_config, runner
+    ):
+        """Test doctor security reports the current file-storage threat model."""
+        from pathlib import Path
+
+        mock_tm = Mock()
+        mock_tm.token_path = Path("/tmp/token.json")
+        mock_tm.SECURE_PERMISSIONS = 0o600
+        mock_tm_class.return_value = mock_tm
+
+        mock_cache_manager = Mock()
+        mock_cache_manager.cache_path = Path("/tmp/threads-cache.json")
+        mock_cache_manager.SECURE_PERMISSIONS = 0o600
+        mock_cache_manager_class.return_value = mock_cache_manager
+
+        mock_get_feature_config.return_value = FeatureConfig(save_cookies=True, debug_mode=False)
+
+        result = runner.invoke(doctor_security)
+
+        assert result.exit_code == 0
+        assert "machine-bound encrypted file storage" in result.output
+        assert "not against other local processes or users" in result.output
+        assert "Cookie storage warning" in result.output
+
     @patch("perplexity_cli.auth.token_manager.TokenManager")
     @patch("perplexity_cli.api.endpoints.PerplexityAPI")
     def test_status_authenticated(self, mock_api_class, mock_tm_class, runner):
-        """Test status when authenticated."""
-        from datetime import datetime
+        """Test status shows local authentication details by default."""
         from pathlib import Path
 
         mock_tm = Mock()
         mock_tm.token_exists.return_value = True
         mock_tm.load_token.return_value = ("test-token-123", None)
-        mock_token_path = MagicMock(spec=Path)
-        mock_token_path.__str__ = lambda x: "/path/to/token.json"
-        mock_token_path.exists.return_value = True
-        # Mock stat() method
-        mock_stat = Mock()
-        mock_stat.st_mtime = datetime.now().timestamp()
-        mock_token_path.stat.return_value = mock_stat
-        mock_tm.token_path = mock_token_path
+        mock_tm.token_path = Path("/path/to/token.json")
         mock_tm_class.return_value = mock_tm
 
         # Mock the API verification with context manager support
@@ -101,7 +136,35 @@ class TestCLICommands:
 
         assert result.exit_code == 0
         assert "Authenticated" in result.output
+        assert "Live verification not run" in result.output
+        mock_api_class.assert_not_called()
+
+    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    def test_status_authenticated_with_verify(self, mock_api_class, mock_tm_class, runner):
+        """Test status --verify performs a live verification call."""
+        from pathlib import Path
+
+        mock_tm = Mock()
+        mock_tm.token_exists.return_value = True
+        mock_tm.load_token.return_value = ("test-token-123", {"csrftoken": "abc"})
+        mock_tm.token_path = Path("/path/to/token.json")
+        mock_tm_class.return_value = mock_tm
+
+        mock_answer = Mock()
+        mock_answer.text = "test answer"
+        mock_answer.references = []
+        mock_api = _make_api_mock()
+        mock_api.get_complete_answer.return_value = mock_answer
+        mock_api_class.return_value = mock_api
+
+        result = runner.invoke(status, ["--verify"])
+
+        assert result.exit_code == 0
         assert "Token is valid and working" in result.output
+        mock_api_class.assert_called_once_with(
+            token="test-token-123", cookies={"csrftoken": "abc"}, timeout=10
+        )
 
     @patch("perplexity_cli.auth.token_manager.TokenManager")
     def test_logout_no_token(self, mock_tm_class, runner):
@@ -129,6 +192,19 @@ class TestCLICommands:
         assert "Logged out successfully" in result.output
         mock_tm.clear_token.assert_called_once()
 
+    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    def test_logout_failure(self, mock_tm_class, runner):
+        """Test logout surfaces unexpected token deletion failures."""
+        mock_tm = Mock()
+        mock_tm.token_exists.return_value = True
+        mock_tm.clear_token.side_effect = OSError("permission denied")
+        mock_tm_class.return_value = mock_tm
+
+        result = runner.invoke(logout)
+
+        assert result.exit_code == 1
+        assert "Error during logout: permission denied" in result.output
+
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.auth.token_manager.TokenManager")
     @patch("perplexity_cli.api.endpoints.PerplexityAPI")
@@ -155,6 +231,49 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert "Test answer" in result.output
         mock_api.get_complete_answer.assert_called_once_with("What is Python?", attachments=[])
+
+    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    def test_query_debug_logging_redacts_sensitive_values(
+        self,
+        mock_api_class,
+        mock_tm_class,
+        mock_sm_class,
+        runner,
+        caplog,
+    ):
+        """Test query debug logs do not include raw query, style, or token path."""
+        import logging
+        from pathlib import Path
+
+        from perplexity_cli.utils.logging import setup_logging
+
+        mock_sm = Mock()
+        mock_sm.load_style.return_value = "private style instructions"
+        mock_sm_class.return_value = mock_sm
+
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        mock_tm_class.return_value = mock_tm
+
+        mock_api = _make_api_mock()
+        mock_api.get_complete_answer.return_value = Answer(text="Test answer", references=[])
+        mock_api_class.return_value = mock_api
+
+        setup_logging(debug=True)
+
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            result = runner.invoke(
+                main, ["--debug", "query", "--no-stream", "my bank password is 123"]
+            )
+
+        assert result.exit_code == 0
+        combined = "\n".join(record.getMessage() for record in caplog.records)
+        assert "my bank password is 123" not in combined
+        assert "private style instructions" not in combined
+        assert str(Path.home() / ".config" / "perplexity-cli" / "token.json") not in combined
+        assert "<redacted:" in combined
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.auth.token_manager.TokenManager")
@@ -286,7 +405,7 @@ class TestCLICommands:
     def test_auth_failure(self, mock_auth, mock_tm_class, runner):
         """Test authentication failure."""
         # Mock authentication failure
-        mock_auth.side_effect = RuntimeError("Chrome not found")
+        mock_auth.side_effect = AuthenticationError("Chrome not found")
 
         result = runner.invoke(auth)
 
@@ -497,6 +616,49 @@ class TestExportThreadsRateLimitConfig:
         # Should exit with auth error, no TypeError on rate limit config
         assert "Not authenticated" in result.output
 
+    @patch("perplexity_cli.threads.scraper.ThreadScraper")
+    @patch("perplexity_cli.threads.cache_manager.ThreadCacheManager")
+    @patch("perplexity_cli.utils.config.get_rate_limiting_config")
+    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    def test_export_threads_passes_cookies_to_scraper(
+        self,
+        mock_tm_class,
+        mock_get_rl_config,
+        mock_cache_manager_class,
+        mock_scraper_class,
+        runner,
+    ):
+        """Test export_threads forwards stored cookies into ThreadScraper."""
+        from perplexity_cli.config.models import RateLimitConfig
+
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("token-123", {"cf_clearance": "cookie-1"})
+        mock_tm_class.return_value = mock_tm
+
+        mock_get_rl_config.return_value = RateLimitConfig(
+            enabled=False, requests_per_period=20, period_seconds=60.0
+        )
+
+        mock_cache_manager = Mock()
+        mock_cache_manager.cache_exists.return_value = False
+        mock_cache_manager_class.return_value = mock_cache_manager
+
+        mock_scraper = Mock()
+        mock_scraper.scrape_all_threads = AsyncMock(return_value=[])
+        mock_scraper_class.return_value = mock_scraper
+
+        result = runner.invoke(export_threads)
+
+        assert result.exit_code == 1
+        assert "No threads found matching criteria" in result.output
+        mock_scraper_class.assert_called_once_with(
+            token="token-123",
+            cookies={"cf_clearance": "cookie-1"},
+            rate_limiter=None,
+            cache_manager=mock_cache_manager,
+            force_refresh=False,
+        )
+
 
 class TestStreamingDefault:
     """Tests for batch mode as the default query mode."""
@@ -548,6 +710,7 @@ class TestStreamingDefault:
         mock_message.status = "COMPLETE"
         mock_message.final_sse_message = True
         mock_message.web_results = []
+        mock_message.extract_answer_text.return_value = "Streamed answer"
 
         mock_block = Mock(spec=Block)
         mock_block.intended_usage = "ask_text"
@@ -556,7 +719,6 @@ class TestStreamingDefault:
 
         mock_api = _make_api_mock()
         mock_api.submit_query.return_value = iter([mock_message])
-        mock_api._extract_text_from_block.return_value = "Streamed answer"
         mock_api_class.return_value = mock_api
 
         result = runner.invoke(query, ["--stream", "What is 2+2?"])

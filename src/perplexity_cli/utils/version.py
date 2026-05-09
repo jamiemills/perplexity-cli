@@ -1,29 +1,59 @@
 """Version management utilities."""
 
-import re
+import tomllib
 from functools import lru_cache
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+
+
+def _get_pyproject_path() -> Path:
+    """Return the repository pyproject path for source checkouts."""
+
+    return Path(__file__).resolve().parents[3] / "pyproject.toml"
+
+
+def _read_pyproject_version() -> str | None:
+    """Read the project version directly from pyproject.toml if available."""
+
+    pyproject_path = _get_pyproject_path()
+    if not pyproject_path.exists():
+        return None
+
+    try:
+        with pyproject_path.open("rb") as f:
+            data = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+
+    project = data.get("project")
+    if not isinstance(project, dict):
+        return None
+
+    package_version = project.get("version")
+    if isinstance(package_version, str) and package_version:
+        return package_version
+
+    return None
 
 
 @lru_cache(maxsize=1)
 def get_version() -> str:
-    """Get package version from installed metadata, with fallback.
+    """Get the runtime package version.
 
-    Returns installed package version if available, otherwise falls back to
-    __version__ in development mode.
+    Source checkouts prefer `pyproject.toml` so development version changes are
+    visible immediately. Installed packages fall back to distribution metadata.
 
     Returns:
         Version string.
     """
+    pyproject_version = _read_pyproject_version()
+    if pyproject_version is not None:
+        return pyproject_version
+
     try:
-        from importlib.metadata import version
-
         return version("pxcli")
-    except Exception:
-        # Fallback for development mode (before package installation)
-        from perplexity_cli import __version__
-
-        return __version__
+    except PackageNotFoundError:
+        raise RuntimeError("Unable to determine pxcli version") from None
 
 
 def get_version_from_pyproject() -> str:
@@ -35,33 +65,11 @@ def get_version_from_pyproject() -> str:
     Raises:
         RuntimeError: If pyproject.toml cannot be read or parsed.
     """
-    from perplexity_cli import __version__
+    package_version = _read_pyproject_version()
+    if package_version is None:
+        raise RuntimeError("pyproject.toml version could not be read")
 
-    # Try to find pyproject.toml relative to this file
-    current_file = Path(__file__)
-    # Go up from utils/ -> perplexity_cli/ -> src/ -> project root
-    project_root = current_file.parent.parent.parent.parent
-
-    pyproject_path = project_root / "pyproject.toml"
-
-    if not pyproject_path.exists():
-        # Fallback to __version__ if pyproject.toml not found
-        return __version__
-
-    try:
-        # Read pyproject.toml as text and extract version
-        # This avoids needing tomllib which may not be available in all Python versions
-        with open(pyproject_path, encoding="utf-8") as f:
-            content = f.read()
-            # Look for version = "x.y.z" pattern
-            match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
-            if match:
-                return match.group(1)
-    except Exception:
-        pass
-
-    # Fallback to __version__ if parsing fails
-    return __version__
+    return package_version
 
 
 def get_api_version() -> str:
