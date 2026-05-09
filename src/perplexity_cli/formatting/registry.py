@@ -81,3 +81,28 @@ def list_formatters() -> list[str]:
         List of formatter names.
     """
     return _registry.list()
+
+
+def resolve_format(explicit_format: str | None, *, no_color: bool = False) -> str:
+    """Resolve the effective output format.
+
+    Args:
+        explicit_format: Format explicitly specified by user (e.g. --format rich).
+        no_color: Whether --no-color flag was passed.
+
+    Returns:
+        Resolved format name.
+    """
+    if explicit_format:
+        return explicit_format
+
+    import os
+    import sys
+
+    if not sys.stdout.isatty():
+        return "plain"
+    if os.environ.get("NO_COLOR") is not None:
+        return "plain"
+    if no_color:
+        return "plain"
+    return "rich"

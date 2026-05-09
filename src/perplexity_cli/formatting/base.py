@@ -187,12 +187,31 @@ class Formatter(ABC):
         raise NotImplementedError("This formatter does not support direct rendering")
 
     def should_use_colors(self) -> bool:
-        """Check if colours should be used based on TTY.
+        """Check if colours should be used based on TTY and NO_COLOR.
 
         Returns:
             True if colours should be used, False otherwise.
         """
+        import os
         import sys
 
-        # Check if stdout is a TTY
+        # NO_COLOR convention: any value (even empty string) disables colour
+        if os.environ.get("NO_COLOR") is not None:
+            return False
         return sys.stdout.isatty()
+
+
+def should_use_plain_default() -> bool:
+    """Check if output should default to plain format (no ANSI) based on TTY and env.
+
+    Returns:
+        True if plain format should be the default, False otherwise.
+    """
+    import os
+    import sys
+
+    if not sys.stdout.isatty():
+        return True
+    if os.environ.get("NO_COLOR") is not None:
+        return True
+    return False

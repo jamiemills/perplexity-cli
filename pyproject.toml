@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pxcli"
-version = "0.6.6"
+version = "0.7.0"
 description = "CLI for Perplexity.ai with persistent authentication, encrypted tokens, streaming responses, multiple output formats, source references, thread export with date filtering, configurable URLs, logging, and automatic retry logic"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -110,7 +110,7 @@ source = ["perplexity_cli"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 75
+fail_under = 85
 
 [tool.bandit]
 exclude_dirs = ["tests"]

@@ -45,3 +45,53 @@ class TestRunShowSkillCommand:
         captured = capsys.readouterr()
         assert "Agent Skill definition not available" in captured.out
         assert "perplexity-cli --help" in captured.out
+
+
+class TestSkillMdContent:
+    """Tests that verify skill.md content reflects v0.7.0 changes."""
+
+    @staticmethod
+    def _read_skill_md() -> str:
+        """Read the actual skill.md resource file."""
+        from importlib.resources import files
+
+        return files("perplexity_cli").joinpath("resources", "skill.md").read_text(encoding="utf-8")
+
+    def test_references_new_command_names(self):
+        """skill.md must reference the v0.7.0 command names."""
+        content = self._read_skill_md()
+        for cmd in [
+            "pxcli auth login",
+            "pxcli auth logout",
+            "pxcli auth status",
+            "pxcli config set",
+            "pxcli config show",
+            "pxcli style set",
+            "pxcli style show",
+            "pxcli style clear",
+            "pxcli threads export",
+            "pxcli skill show",
+        ]:
+            assert cmd in content, f"Expected command '{cmd}' not found in skill.md"
+
+    def test_references_envelope_format(self):
+        """skill.md must reference the new JSON envelope fields."""
+        content = self._read_skill_md()
+        for field in [".ok", ".result", ".meta"]:
+            assert field in content, f"Expected field '{field}' not found in skill.md"
+        # Must not contain old format_version
+        assert "format_version" not in content, (
+            "skill.md still references removed format_version field"
+        )
+
+    def test_references_exit_codes(self):
+        """skill.md must document exit codes."""
+        content = self._read_skill_md()
+        for code_desc in [
+            "Authentication required",
+            "Transient error",
+            "Validation error",
+        ]:
+            assert code_desc in content, (
+                f"Expected exit code description '{code_desc}' not found in skill.md"
+            )

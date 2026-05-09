@@ -5,6 +5,8 @@ from pathlib import Path
 
 import click
 
+from perplexity_cli.envelope import success_envelope, write_envelope
+from perplexity_cli.error_handler import handle_error
 from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.exceptions import (
     AuthenticationError,
@@ -36,12 +38,22 @@ def run_export_threads_command(
     from perplexity_cli.utils.rate_limiter import RateLimiter
 
     logger = get_logger()
+    json_mode = ctx_obj.get("json", False) if ctx_obj else False
+    include_schema = ctx_obj.get("schema", False) if ctx_obj else False
     logger.info("Starting thread export")
-    click.echo("Exporting threads from Perplexity.ai library...")
+
+    if not json_mode:
+        click.echo("Exporting threads from Perplexity.ai library...")
 
     tm = TokenManager()
     token, cookies = tm.load_token()
     if not token:
+        if json_mode:
+            handle_error(
+                AuthenticationError("Not authenticated"),
+                command="pxcli threads export",
+                json_mode=True,
+            )
         click.echo("[ERROR] Not authenticated.", err=True)
         click.echo("\nPlease authenticate first with: pxcli auth", err=True)
         logger.warning("Export attempted without authentication")
@@ -63,9 +75,10 @@ def run_export_threads_command(
     if clear_cache:
         if cache_manager.cache_exists():
             cache_manager.clear_cache()
-            click.echo("[OK] Cache cleared")
+            if not json_mode:
+                click.echo("[OK] Cache cleared")
             logger.info("Cache cleared by user")
-        else:
+        elif not json_mode:
             click.echo("[INFO] No cache file to clear")
 
     if from_date or to_date:
@@ -75,6 +88,8 @@ def run_export_threads_command(
             if to_date:
                 dateutil_parser.parse(to_date)
         except ValueError as e:
+            if json_mode:
+                handle_error(e, command="pxcli threads export", json_mode=True)
             click.echo(f"[ERROR] Invalid date format: {e}", err=True)
             click.echo("Please use YYYY-MM-DD format (e.g., 2025-12-23)", err=True)
             sys.exit(1)
@@ -89,7 +104,8 @@ def run_export_threads_command(
         )
 
         def update_progress(current: int, total: int) -> None:
-            click.echo(f"\rExtracting {current} threads...", nl=False)
+            if not json_mode:
+                click.echo(f"\rExtracting {current} threads...", nl=False)
 
         async def run_scrape() -> list:
             return await scraper.scrape_all_threads(
@@ -99,9 +115,17 @@ def run_export_threads_command(
             )
 
         threads = run_async(run_scrape())
-        click.echo()
+
+        if not json_mode:
+            click.echo()
 
         if not threads:
+            if json_mode:
+                handle_error(
+                    ValueError("No threads found matching criteria"),
+                    command="pxcli threads export",
+                    json_mode=True,
+                )
             click.echo("\n[ERROR] No threads found matching criteria.", err=True)
             if from_date or to_date:
                 click.echo(
@@ -113,6 +137,30 @@ def run_export_threads_command(
         output_path = write_threads_csv(threads, output)
         logger.info(f"Exported {len(threads)} threads to {output_path}")
 
+        if json_mode:
+            thread_items = [
+                {
+                    "title": t.get("title", ""),
+                    "created_at": t.get("created_at", ""),
+                    "url": t.get("url", ""),
+                }
+                for t in threads
+            ]
+            env = success_envelope(
+                "pxcli threads export",
+                {
+                    "threads": thread_items,
+                    "total": len(threads),
+                    "output_path": str(output_path.resolve()),
+                    "date_range": {
+                        "from": from_date,
+                        "to": to_date,
+                    },
+                },
+            )
+            write_envelope(env, include_schema=include_schema)
+            return
+
         click.echo("\n[OK] Export complete")
         click.echo(f"[OK] Exported {len(threads)} threads")
         if from_date or to_date:
@@ -122,6 +170,8 @@ def run_export_threads_command(
         click.echo(f"[OK] Saved to: {output_path.resolve()}")
 
     except (AuthenticationError, PerplexityRequestError, UpstreamSchemaError, ValueError) as e:
+        if json_mode:
+            handle_error(e, command="pxcli threads export", json_mode=True)
         logger.error(f"Export failed: {e}", exc_info=True)
         click.echo(f"\n[ERROR] Export failed: {e}", err=True)
         if "Authentication failed" in str(e):
@@ -130,11 +180,15 @@ def run_export_threads_command(
         sys.exit(1)
 
     except RateLimitError as e:
+        if json_mode:
+            handle_error(e, command="pxcli threads export", json_mode=True)
         logger.error(f"Export rate limited: {e}", exc_info=True)
         click.echo(f"\n[ERROR] Export failed: {e}", err=True)
         sys.exit(1)
 
     except PerplexityHTTPStatusError as e:
+        if json_mode:
+            handle_error(e, command="pxcli threads export", json_mode=True)
         debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
         handle_http_error(e, logger, debug_mode=debug_mode, context="during thread export")
 
@@ -144,6 +198,8 @@ def run_export_threads_command(
         sys.exit(130)
 
     except Exception as e:
+        if json_mode:
+            handle_error(e, command="pxcli threads export", json_mode=True)
         debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
         handle_unexpected_cli_error(
             e,

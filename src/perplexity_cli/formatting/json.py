@@ -51,15 +51,11 @@ class JSONFormatter(Formatter):
         Returns:
             Complete JSON formatted output.
         """
-        # Build the output dictionary
-        output: dict[str, Any] = {
-            "format_version": "1.0",
-            "answer": self.format_answer(answer.text, strip_references=strip_references),
-        }
+        answer_text = self.format_answer(answer.text, strip_references=strip_references)
 
-        # Add references if present and not stripped
+        references: list[dict[str, Any]] = []
         if answer.references and not strip_references:
-            output["references"] = [
+            references = [
                 {
                     "index": i,
                     "title": ref.name,
@@ -68,8 +64,15 @@ class JSONFormatter(Formatter):
                 }
                 for i, ref in enumerate(answer.references, 1)
             ]
-        else:
-            output["references"] = []
 
-        # Convert to JSON and return
+        output: dict[str, Any] = {
+            "ok": True,
+            "command": "pxcli query",
+            "result": {
+                "answer": answer_text,
+                "references": references,
+            },
+            "meta": None,
+            "next_actions": [],
+        }
         return json.dumps(output, indent=2, ensure_ascii=False)

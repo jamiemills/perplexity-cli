@@ -54,9 +54,19 @@ uv run ty check src
 
 ## CLI Failure Policy
 
-- Exit code `0`: success.
-- Exit code `1`: user-facing command failure.
-- Exit code `130`: explicit user interruption.
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | General failure |
+| `2` | Usage error (bad arguments, missing input) |
+| `3` | Not found |
+| `4` | Authentication required |
+| `5` | Conflict |
+| `6` | Transient error (retry may help) |
+| `7` | Validation error |
+| `130` | Interrupted (Ctrl+C) |
 
 Prefer the existing failure families when adding or changing command behaviour:
 
@@ -72,8 +82,8 @@ Prefer the existing failure families when adding or changing command behaviour:
 Guidance:
 
 - Keep user-facing stderr messages helpful, but treat them as presentation, not a machine contract.
-- For unexpected top-level failures, route through `handle_unexpected_cli_error()`.
-- Use broad catch-all handlers only as intentional top-level or rendering safety nets, and document them when they remain broad by design.
+- In `--json` mode, errors are output as JSON envelopes on stdout with `"ok": false`.
+- For unexpected top-level failures, route through `handle_error()` (for `--json` mode) or `handle_unexpected_cli_error()` (for human mode).
 
 ## Release Process
 
