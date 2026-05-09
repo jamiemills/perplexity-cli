@@ -14,14 +14,14 @@ from perplexity_cli.formatting.rich import RichFormatter
 
 __all__ = [
     "Formatter",
-    "PlainTextFormatter",
-    "MarkdownFormatter",
-    "RichFormatter",
-    "JSONFormatter",
     "FormatterRegistry",
-    "register_formatter",
+    "JSONFormatter",
+    "MarkdownFormatter",
+    "PlainTextFormatter",
+    "RichFormatter",
     "get_formatter",
     "list_formatters",
+    "register_formatter",
 ]
 
 # Auto-register built-in formatters

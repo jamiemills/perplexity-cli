@@ -51,7 +51,7 @@ def main():
     print("Testing get_complete_answer()...\n")
 
     answer = api.get_complete_answer("What is 2+2?")
-    print(f"Answer: {repr(answer)}")
+    print(f"Answer: {answer!r}")
     print(f"Answer length: {len(answer)}")
 
     if answer:

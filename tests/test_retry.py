@@ -1,6 +1,10 @@
 """Tests for retry utilities."""
 
+from __future__ import annotations
+
 from unittest import mock
+
+import pytest
 
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
@@ -12,6 +16,8 @@ from perplexity_cli.utils.retry import (
     get_backoff_delay,
     get_retry_after_delay,
     is_retryable_error,
+    retry_http_request,
+    retry_with_backoff,
     sleep_with_backoff,
 )
 
@@ -105,3 +111,76 @@ class TestRetryUtilities:
         error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
 
         assert get_retry_after_delay(error) is None
+
+    def test_get_retry_after_delay_not_http_status_error(self):
+        """Return None for non-PerplexityHTTPStatusError exceptions."""
+        assert get_retry_after_delay(ValueError("nope")) is None
+
+    def test_get_retry_after_delay_no_header(self):
+        """Return None when Retry-After header is absent."""
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=429, request=req)
+        error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
+        assert get_retry_after_delay(error) is None
+
+
+class TestRetryWithBackoff:
+    """Test retry_with_backoff decorator construction."""
+
+    def test_decorator_retries_on_request_error(self):
+        """Decorated function retries and eventually succeeds."""
+        call_count = 0
+
+        @retry_with_backoff(max_attempts=3, initial_wait=0.01, max_wait=0.02)
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise PerplexityRequestError("transient")
+            return "ok"
+
+        assert flaky() == "ok"
+        assert call_count == 2
+
+    def test_decorator_reraises_after_max_attempts(self):
+        """Decorated function reraises after exhausting attempts."""
+
+        @retry_with_backoff(max_attempts=2, initial_wait=0.01, max_wait=0.02)
+        def always_fails():
+            raise PerplexityRequestError("permanent")
+
+        with pytest.raises(PerplexityRequestError):
+            always_fails()
+
+
+class TestRetryHttpRequest:
+    """Test retry_http_request wrapper function."""
+
+    def test_successful_call(self):
+        """Return result from a successful function."""
+        assert retry_http_request(lambda: 42, max_attempts=1) == 42
+
+    def test_retries_and_succeeds(self):
+        """Retry on transient error then return result."""
+        call_count = 0
+
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise PerplexityRequestError("transient")
+            return "done"
+
+        result = retry_http_request(flaky, max_attempts=3, initial_wait=0.01, max_wait=0.02)
+        assert result == "done"
+        assert call_count == 2
+
+    def test_reraises_after_exhaustion(self):
+        """Reraise after all attempts are exhausted."""
+        with pytest.raises(PerplexityRequestError):
+            retry_http_request(
+                lambda: (_ for _ in ()).throw(PerplexityRequestError("fail")),
+                max_attempts=2,
+                initial_wait=0.01,
+                max_wait=0.02,
+            )

@@ -8,13 +8,11 @@ from pathlib import Path
 
 def _get_pyproject_path() -> Path:
     """Return the repository pyproject path for source checkouts."""
-
     return Path(__file__).resolve().parents[3] / "pyproject.toml"
 
 
 def _read_pyproject_version() -> str | None:
     """Read the project version directly from pyproject.toml if available."""
-
     pyproject_path = _get_pyproject_path()
     if not pyproject_path.exists():
         return None
@@ -25,14 +23,24 @@ def _read_pyproject_version() -> str | None:
     except (OSError, tomllib.TOMLDecodeError):
         return None
 
+    return _extract_version_from_data(data)
+
+
+def _extract_version_from_data(data: dict) -> str | None:
+    """Extract the version string from parsed pyproject data.
+
+    Args:
+        data: Parsed TOML data dictionary.
+
+    Returns:
+        Version string if found and valid, None otherwise.
+    """
     project = data.get("project")
     if not isinstance(project, dict):
         return None
-
     package_version = project.get("version")
     if isinstance(package_version, str) and package_version:
         return package_version
-
     return None
 
 

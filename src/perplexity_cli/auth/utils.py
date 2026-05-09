@@ -30,12 +30,27 @@ def extract_session_token(raw_token: str) -> str:
     try:
         token_data = json.loads(raw_token)
     except json.JSONDecodeError:
-        # Not JSON — treat as a raw token string
         return raw_token
 
     if not isinstance(token_data, dict):
         raise AuthenticationError("Stored token has invalid session data format")
 
+    return _extract_access_token_from_json(token_data, raw_token)
+
+
+def _extract_access_token_from_json(token_data: dict, raw_token: str) -> str:
+    """Extract the access token from parsed JSON token data.
+
+    Args:
+        token_data: The parsed token dictionary.
+        raw_token: The original raw token string, returned as fallback.
+
+    Returns:
+        The access token string, or the raw token if no access token is present.
+
+    Raises:
+        AuthenticationError: If the token structure is malformed.
+    """
     user_data = token_data.get("user")
     if user_data is None:
         return raw_token
@@ -43,6 +58,22 @@ def extract_session_token(raw_token: str) -> str:
     if not isinstance(user_data, dict):
         raise AuthenticationError("Stored token has invalid session user data")
 
+    return _validate_access_token(user_data, raw_token)
+
+
+def _validate_access_token(user_data: dict, raw_token: str) -> str:
+    """Validate and return the access token from user data.
+
+    Args:
+        user_data: The user dictionary from the token.
+        raw_token: Fallback raw token string.
+
+    Returns:
+        The validated access token, or the raw token as fallback.
+
+    Raises:
+        AuthenticationError: If the access token is malformed.
+    """
     access_token = user_data.get("accessToken")
     if access_token is None:
         return raw_token
@@ -80,7 +111,7 @@ def load_or_prompt_token(
     except AuthenticationError as e:
         click.echo(f"[ERROR] Authentication error: {e}", err=True)
         click.echo("\nPlease authenticate again with: pxcli auth", err=True)
-        logger.warning(f"Authentication state invalid during {command_context}: {e}")
+        logger.warning("Authentication state invalid during %s: %s", command_context, e)
         sys.exit(1)
 
     if not token:
@@ -89,7 +120,7 @@ def load_or_prompt_token(
             "\nPlease authenticate first with: pxcli auth",
             err=True,
         )
-        logger.warning(f"Attempted {command_context} without authentication")
+        logger.warning("Attempted %s without authentication", command_context)
         sys.exit(1)
 
     return token, cookies
@@ -119,7 +150,9 @@ def load_token_optional(
     try:
         token, cookies = tm.load_token()
     except AuthenticationError as e:
-        logger.warning(f"Stored authentication is unusable; proceeding without token: {e}")
+        logger.warning(  # nosemgrep: python-logger-credential-disclosure
+            "Stored authentication is unusable; proceeding without token: %s", e
+        )
         return None, None
 
     if token:

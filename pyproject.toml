@@ -29,14 +29,14 @@ classifiers = [
 
 dependencies = [
     "click>=8.0",
-    "cryptography>=46.0.5",
-    "curl-cffi>=0.14.0",
+    "cryptography>=46.0.7",
+    "curl-cffi>=0.15.0",
     "httpx>=0.25",
     "websockets>=12.0",
     "rich>=13.0",
     "tenacity>=8.0",
     "python-dateutil>=2.8.0",
-    "pydantic>=2.0",
+    "pydantic>=2.4.0",
 ]
 
 [project.optional-dependencies]
@@ -48,7 +48,8 @@ dev = [
     "ruff>=0.1",
     "ty>=0.0.24",
     "lefthook>=2.1.6",
-    "bandit>=1.7",
+    "bandit>=1.7.7",
+    "vulture>=2.14",
 ]
 
 [project.urls]
@@ -76,22 +77,38 @@ line-length = 100
 
 [tool.ruff.lint]
 select = [
-    "E",    # pycodestyle errors
-    "W",    # pycodestyle warnings
-    "F",    # Pyflakes
-    "I",    # isort
-    "C4",   # flake8-comprehensions
-    "B",    # flake8-bugbear
-    "UP",   # pyupgrade
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # Pyflakes
+    "I",     # isort
+    "C4",    # flake8-comprehensions
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+    "D",     # pydocstyle
+    "S101",  # flake8-bandit: assert in production code
+    "T10",   # flake8-debugger: breakpoint(), pdb.set_trace(), etc.
+    "RUF",   # ruff-specific rules (incl. RUF012 mutable class attributes)
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
+    "D105",  # missing docstring in magic method (self-documenting)
+    "D107",  # missing docstring in __init__ (covered by class docstring per Google convention)
+    "D301",  # raw docstrings -- Click uses \b (backspace) as a formatting directive;
+             # r-strings would break all CLI help output
 ]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D", "S101"]  # tests: no docstrings required, asserts permitted
+"vulture_whitelist.py" = ["B018", "D", "F821"]  # whitelist: useless expressions are intentional
+"scripts/**/*.py" = ["D"]  # scripts: no docstrings required
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = '--strict-markers -v -m "not integration and not real_api and not manual and not real_user_config"'
+addopts = '--strict-markers -v -m "not integration and not real_api and not manual and not real_user_config and not fuzz"'
 markers = [
     "integration: marks tests as integration tests",
     "security: marks tests as security tests",
@@ -100,6 +117,7 @@ markers = [
     "real_api: marks tests that call the real Perplexity API (skipped in CI)",
     "manual: marks tests that require interactive input (run with pytest -m manual -s)",
     "real_user_config: marks tests that intentionally use the real user config directory",
+    "fuzz: marks tests as atheris fuzz tests (cpu-intensive, ~2-3s each)",
 ]
 filterwarnings = [
     "ignore::RuntimeWarning:.*coroutine.*authenticate_with_browser.*was never awaited",
@@ -114,8 +132,23 @@ fail_under = 85
 
 [tool.bandit]
 exclude_dirs = ["tests"]
-skips = [
-    "B101",  # assert_used (required for pytest)
-    "B110",  # try_except_pass (acceptable error handling pattern)
-    "B310",  # urllib_urlopen (false positive on requests library)
+# No global skips -- all checks enabled at maximum strictness.
+# Genuine false positives are suppressed inline with targeted
+# '# nosec BXXX' comments that document the justification.
+
+[tool.vulture]
+paths = ["src/"]
+exclude = []
+min_confidence = 80
+
+[tool.pyright]
+include = ["src/"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1",
+    "radon>=6.0.1",
+    "vulture>=2.16",
 ]

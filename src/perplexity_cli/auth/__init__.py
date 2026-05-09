@@ -12,4 +12,4 @@ warnings.filterwarnings(
     message=".*coroutine.*authenticate_with_browser.*was never awaited",
 )
 
-__all__ = ["authenticate_with_browser", "TokenManager"]
+__all__ = ["TokenManager", "authenticate_with_browser"]

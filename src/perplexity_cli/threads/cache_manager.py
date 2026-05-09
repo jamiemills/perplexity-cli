@@ -7,7 +7,7 @@ invalidation - only fetching fresh data when necessary.
 
 import json
 import os
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -83,43 +83,68 @@ class ThreadCacheManager:
             with open(self.cache_path, encoding="utf-8") as f:
                 raw_data = json.load(f)
 
-            try:
-                data = CacheFormat.model_validate(raw_data)
-            except ValidationError as e:
-                self.logger.error(f"Cache file has invalid outer format: {e}")
-                raise ConfigurationError("Cache file has invalid format") from e
-
-            # Check if cache is encrypted
-            if not data.encrypted:
-                self.logger.warning("Cache file is not encrypted")
-                raise ConfigurationError(
-                    "Cache file is not encrypted. Cache may be corrupted. "
-                    "Consider deleting and rebuilding."
-                )
-
-            encrypted_cache = data.cache
-            if not encrypted_cache:
-                self.logger.error("Cache file missing encrypted cache data")
-                raise ConfigurationError("Cache file is missing encrypted cache data")
-
-            # Decrypt the cache
-            decrypted_json = decrypt_token(encrypted_cache)
-            decrypted_data = json.loads(decrypted_json)
-
-            try:
-                cache_data = CacheContent.model_validate(decrypted_data)
-            except ValidationError as e:
-                self.logger.error(f"Cache content has invalid format: {e}")
-                raise ConfigurationError("Cache content has invalid format") from e
+            data = self._validate_outer_format(raw_data)
+            cache_data = self._decrypt_and_validate_cache(data)
 
             # Audit log: cache loaded
-            self.logger.info(f"Cache loaded from {redact_path(self.cache_path)}")
-
+            self.logger.info("Cache loaded from %s", redact_path(self.cache_path))
             return cache_data.model_dump(mode="json")
 
         except (OSError, json.JSONDecodeError) as e:
-            self.logger.error(f"Failed to load cache: {e}", exc_info=True)
+            self.logger.error("Failed to load cache: %s", e, exc_info=True)
             raise OSError(f"Failed to load cache from {self.cache_path}: {e}") from e
+
+    def _validate_outer_format(self, raw_data: dict) -> CacheFormat:
+        """Validate and parse the outer cache file format.
+
+        Args:
+            raw_data: Raw JSON data from cache file.
+
+        Returns:
+            Validated CacheFormat instance.
+
+        Raises:
+            ConfigurationError: If format is invalid or cache is not encrypted.
+        """
+        try:
+            data = CacheFormat.model_validate(raw_data)
+        except ValidationError as e:
+            self.logger.error("Cache file has invalid outer format: %s", e)
+            raise ConfigurationError("Cache file has invalid format") from e
+
+        if not data.encrypted:
+            self.logger.warning("Cache file is not encrypted")
+            raise ConfigurationError(
+                "Cache file is not encrypted. Cache may be corrupted. "
+                "Consider deleting and rebuilding."
+            )
+
+        if not data.cache:
+            self.logger.error("Cache file missing encrypted cache data")
+            raise ConfigurationError("Cache file is missing encrypted cache data")
+
+        return data
+
+    def _decrypt_and_validate_cache(self, data: CacheFormat) -> CacheContent:
+        """Decrypt and validate the inner cache content.
+
+        Args:
+            data: Validated outer cache format containing encrypted payload.
+
+        Returns:
+            Validated CacheContent instance.
+
+        Raises:
+            ConfigurationError: If decrypted content has invalid format.
+        """
+        decrypted_json = decrypt_token(data.cache)
+        decrypted_data = json.loads(decrypted_json)
+
+        try:
+            return CacheContent.model_validate(decrypted_data)
+        except ValidationError as e:
+            self.logger.error("Cache content has invalid format: %s", e)
+            raise ConfigurationError("Cache content has invalid format") from e
 
     def save_cache(
         self,
@@ -179,11 +204,11 @@ class ThreadCacheManager:
 
             # Audit log: cache saved
             self.logger.info(
-                f"Cache saved to {redact_path(self.cache_path)} ({len(threads)} threads)"
+                "Cache saved to %s (%s threads)", redact_path(self.cache_path), len(threads)
             )
 
         except OSError as e:
-            self.logger.error(f"Failed to save cache: {e}", exc_info=True)
+            self.logger.error("Failed to save cache: %s", e, exc_info=True)
             raise OSError(
                 f"Failed to save or set permissions on cache file {self.cache_path}: {e}"
             ) from e
@@ -208,6 +233,55 @@ class ThreadCacheManager:
         except (ConfigurationError, OSError):
             # Cache load failed, consider no coverage
             return None, None
+
+    def _parse_cache_coverage(self) -> tuple[date, date] | None:
+        """Parse the date coverage from the current cache.
+
+        Returns:
+            Tuple of (oldest_date, newest_date) as date objects, or None
+            if cache does not exist or metadata is incomplete.
+        """
+        from dateutil import parser as dateutil_parser
+
+        cache = self.load_cache()
+        if not cache:
+            return None
+
+        metadata = cache.get("metadata", {})
+        cache_oldest_str = metadata.get("oldest_thread_date")
+        cache_newest_str = metadata.get("newest_thread_date")
+
+        if not cache_oldest_str or not cache_newest_str:
+            return None
+
+        return (
+            dateutil_parser.parse(cache_oldest_str).date(),
+            dateutil_parser.parse(cache_newest_str).date(),
+        )
+
+    @staticmethod
+    def _calculate_fetch_range(
+        request_from: date, request_to: date, cache_oldest: date, cache_newest: date
+    ) -> tuple[bool, str | None, str | None]:
+        """Calculate the date range that needs fetching from the API.
+
+        Args:
+            request_from: Requested start date.
+            request_to: Requested end date.
+            cache_oldest: Oldest date in cache.
+            cache_newest: Newest date in cache.
+
+        Returns:
+            Tuple of (needs_fetch, fetch_from_iso, fetch_to_iso).
+        """
+        needs_older = request_from < cache_oldest
+        needs_newer = request_to >= cache_newest
+
+        if not (needs_older or needs_newer):
+            return False, None, None
+
+        fetch_from = request_from if needs_older else cache_newest
+        return True, fetch_from.isoformat(), request_to.isoformat()
 
     def requires_fresh_data(
         self,
@@ -235,45 +309,15 @@ class ThreadCacheManager:
         """
         from dateutil import parser as dateutil_parser
 
-        cache = self.load_cache()
-
-        # No cache exists - need to fetch everything
-        if not cache:
+        coverage = self._parse_cache_coverage()
+        if coverage is None:
             return True, from_date, to_date
 
-        metadata = cache.get("metadata", {})
-        cache_oldest_str = metadata.get("oldest_thread_date")
-        cache_newest_str = metadata.get("newest_thread_date")
-
-        if not cache_oldest_str or not cache_newest_str:
-            # Cache metadata incomplete
-            return True, from_date, to_date
-
-        # Parse cache coverage dates
-        cache_oldest = dateutil_parser.parse(cache_oldest_str).date()
-        cache_newest = dateutil_parser.parse(cache_newest_str).date()
-
-        # Parse request dates (use today if to_date not specified)
+        cache_oldest, cache_newest = coverage
         request_from = dateutil_parser.parse(from_date).date() if from_date else cache_oldest
         request_to = dateutil_parser.parse(to_date).date() if to_date else datetime.now(UTC).date()
 
-        # Determine if gaps exist in cache coverage
-        needs_older = request_from < cache_oldest
-        needs_newer = request_to >= cache_newest  # Include cache_newest_date
-
-        if not (needs_older or needs_newer):
-            # Cache covers entire requested range
-            return False, None, None
-
-        # Calculate fetch dates (cover the gaps)
-        fetch_from = request_from if needs_older else cache_newest
-        fetch_to = request_to
-
-        # Convert back to ISO date strings
-        fetch_from_str = fetch_from.isoformat()
-        fetch_to_str = fetch_to.isoformat()
-
-        return True, fetch_from_str, fetch_to_str
+        return self._calculate_fetch_range(request_from, request_to, cache_oldest, cache_newest)
 
     def merge_threads(
         self,
@@ -311,7 +355,7 @@ class ThreadCacheManager:
 
         deduped_count = len(new_threads) - (len(merged) - len(cached_threads))
         if deduped_count > 0:
-            self.logger.debug(f"Deduplicated {deduped_count} duplicate threads")
+            self.logger.debug("Deduplicated %s duplicate threads", deduped_count)
 
         return merged
 
@@ -324,9 +368,9 @@ class ThreadCacheManager:
             try:
                 self.cache_path.unlink()
                 # Audit log: cache cleared
-                self.logger.info(f"Cache cleared from {self.cache_path}")
+                self.logger.info("Cache cleared from %s", self.cache_path)
             except OSError as e:
-                self.logger.error(f"Failed to delete cache file: {e}", exc_info=True)
+                self.logger.error("Failed to delete cache file: %s", e, exc_info=True)
                 raise OSError(f"Failed to delete cache file: {e}") from e
 
     def cache_exists(self) -> bool:

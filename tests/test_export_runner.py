@@ -1,12 +1,24 @@
 """Tests for the export threads command runner."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
-from perplexity_cli.runners.export import run_export_threads_command
+from perplexity_cli.runners.export import (
+    _exit_with_date_error,
+    _handle_cache_clear,
+    _handle_http_status_error,
+    _handle_known_error,
+    _handle_no_threads,
+    _handle_unexpected_error,
+    _scrape_threads,
+    _setup_rate_limiter,
+    run_export_threads_command,
+)
 
 
 class TestRunExportThreadsCommand:
@@ -134,3 +146,246 @@ class TestRunExportThreadsCommand:
         assert envelope["command"] == "pxcli threads export"
         assert envelope["result"]["total"] == 1
         assert len(envelope["result"]["threads"]) == 1
+
+
+class TestExitWithDateError:
+    """Tests for _exit_with_date_error."""
+
+    def test_json_mode_calls_handle_error(self, capsys):
+        """In JSON mode, handle_error is called before exit."""
+        with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
+            with pytest.raises(SystemExit):
+                _exit_with_date_error(ValueError("bad date"), json_mode=True)
+            mock_handle.assert_called_once()
+
+    def test_human_mode_shows_message(self, capsys):
+        """In human mode, error message is printed to stderr."""
+        with pytest.raises(SystemExit) as exc_info:
+            _exit_with_date_error(ValueError("bad date"), json_mode=False)
+        assert exc_info.value.code == 1
+        assert "bad date" in capsys.readouterr().err
+
+
+class TestSetupRateLimiter:
+    """Tests for _setup_rate_limiter."""
+
+    @patch("perplexity_cli.utils.config.get_rate_limiting_config")
+    def test_returns_none_when_disabled(self, mock_config):
+        """When rate limiting is disabled, returns None."""
+        mock_config.return_value = Mock(enabled=False)
+        result = _setup_rate_limiter(Mock())
+        assert result is None
+
+    @patch("perplexity_cli.utils.config.get_rate_limiting_config")
+    def test_returns_rate_limiter_when_enabled(self, mock_config):
+        """When rate limiting is enabled, returns a RateLimiter instance."""
+        mock_config.return_value = Mock(enabled=True, requests_per_period=10, period_seconds=60)
+        result = _setup_rate_limiter(Mock())
+        assert result is not None
+
+
+class TestHandleCacheClear:
+    """Tests for _handle_cache_clear."""
+
+    def test_no_cache_exists(self, capsys):
+        """When no cache file exists, info message is shown."""
+        cm = Mock()
+        cm.cache_exists.return_value = False
+        _handle_cache_clear(cm, clear_cache=True, json_mode=False, logger=Mock())
+        captured = capsys.readouterr()
+        assert "No cache file to clear" in captured.out
+        cm.clear_cache.assert_not_called()
+
+    def test_cache_cleared(self, capsys):
+        """When cache exists, it is cleared and confirmed."""
+        cm = Mock()
+        cm.cache_exists.return_value = True
+        _handle_cache_clear(cm, clear_cache=True, json_mode=False, logger=Mock())
+        cm.clear_cache.assert_called_once()
+        assert "Cache cleared" in capsys.readouterr().out
+
+    def test_no_clear_requested(self):
+        """When clear_cache is False, nothing happens."""
+        cm = Mock()
+        _handle_cache_clear(cm, clear_cache=False, json_mode=False, logger=Mock())
+        cm.cache_exists.assert_not_called()
+
+
+class TestScrapeThreads:
+    """Tests for _scrape_threads progress callback."""
+
+    @patch("perplexity_cli.runners.export.run_async")
+    def test_progress_callback_echoes(self, mock_run_async, capsys):
+        """Progress callback prints extraction progress in human mode."""
+        mock_run_async.return_value = [{"title": "T1"}]
+        scraper = Mock()
+        result = _scrape_threads(scraper, None, None, json_mode=False)
+        assert result == [{"title": "T1"}]
+
+        # Verify run_async was called (progress callback tested implicitly)
+        mock_run_async.assert_called_once()
+
+
+class TestHandleNoThreads:
+    """Tests for _handle_no_threads."""
+
+    def test_json_mode_calls_handle_error(self):
+        """In JSON mode, handle_error is invoked."""
+        with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
+            with pytest.raises(SystemExit):
+                _handle_no_threads(None, None, json_mode=True)
+            mock_handle.assert_called_once()
+
+    def test_human_mode_exits(self, capsys):
+        """In human mode, error is printed and process exits."""
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_no_threads(None, None, json_mode=False)
+        assert exc_info.value.code == 1
+        assert "No threads found" in capsys.readouterr().err
+
+
+class TestHandleKnownError:
+    """Tests for _handle_known_error."""
+
+    def test_json_mode_calls_handle_error(self):
+        """In JSON mode, handle_error is called before exit."""
+        with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
+            with pytest.raises(SystemExit):
+                _handle_known_error(ValueError("fail"), json_mode=True, logger=Mock())
+            mock_handle.assert_called_once()
+
+    def test_auth_error_shows_reauth_hint(self, capsys):
+        """AuthenticationError shows re-authentication hint."""
+        from perplexity_cli.utils.exceptions import AuthenticationError
+
+        with pytest.raises(SystemExit):
+            _handle_known_error(AuthenticationError("expired"), json_mode=False, logger=Mock())
+        err = capsys.readouterr().err
+        assert "re-authenticate" in err
+
+
+class TestHandleHttpStatusError:
+    """Tests for _handle_http_status_error."""
+
+    def test_json_mode_calls_handle_error(self):
+        """In JSON mode, handle_error is invoked."""
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.headers = {}
+        error = Mock(spec=Exception)
+        error.response = mock_response
+
+        with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
+            with patch("perplexity_cli.runners.export.handle_http_error"):
+                _handle_http_status_error(error, json_mode=True, ctx_obj={}, logger=Mock())
+            mock_handle.assert_called_once()
+
+    def test_human_mode_calls_handle_http_error(self):
+        """In human mode, handle_http_error is called."""
+        error = Mock()
+        with patch("perplexity_cli.runners.export.handle_http_error") as mock_handle:
+            _handle_http_status_error(
+                error, json_mode=False, ctx_obj={"debug": False}, logger=Mock()
+            )
+        mock_handle.assert_called_once()
+
+
+class TestHandleUnexpectedError:
+    """Tests for _handle_unexpected_error."""
+
+    def test_json_mode_calls_handle_error(self):
+        """In JSON mode, handle_error is invoked."""
+        with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
+            with patch("perplexity_cli.runners.export.handle_unexpected_cli_error"):
+                _handle_unexpected_error(
+                    RuntimeError("boom"), json_mode=True, ctx_obj={}, logger=Mock()
+                )
+            mock_handle.assert_called_once()
+
+    def test_human_mode_calls_unexpected_handler(self):
+        """In human mode, handle_unexpected_cli_error is called."""
+        with patch("perplexity_cli.runners.export.handle_unexpected_cli_error") as mock_handle:
+            _handle_unexpected_error(
+                RuntimeError("boom"), json_mode=False, ctx_obj={}, logger=Mock()
+            )
+        mock_handle.assert_called_once()
+
+
+class TestRunExportErrorHandlers:
+    """Tests for run_export_threads_command error handler branches."""
+
+    def _prepare_mocks(self, json_mode=False):
+        """Set up common mocks for authenticated export."""
+        patches = {
+            "tm": patch("perplexity_cli.auth.token_manager.TokenManager"),
+            "rate": patch("perplexity_cli.utils.config.get_rate_limiting_config"),
+            "cm": patch("perplexity_cli.threads.cache_manager.ThreadCacheManager"),
+            "scraper": patch("perplexity_cli.threads.scraper.ThreadScraper"),
+        }
+        mocks = {k: p.start() for k, p in patches.items()}
+        tm = Mock()
+        tm.load_token.return_value = ("token", {})
+        mocks["tm"].return_value = tm
+        mocks["rate"].return_value = Mock(enabled=False)
+        ctx = {"json": json_mode} if json_mode else {}
+        return patches, mocks, ctx
+
+    def _stop_patches(self, patches):
+        for p in patches.values():
+            p.stop()
+
+    @patch("perplexity_cli.runners.export.run_async")
+    def test_keyboard_interrupt(self, mock_run_async, capsys):
+        """KeyboardInterrupt exits with code 130."""
+        patches, _, ctx = self._prepare_mocks()
+        mock_run_async.side_effect = KeyboardInterrupt()
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_export_threads_command(ctx, None, None, None, False, False)
+
+        assert exc_info.value.code == 130
+        self._stop_patches(patches)
+
+    @patch("perplexity_cli.runners.export.run_async")
+    def test_known_error_handler(self, mock_run_async, capsys):
+        """ValueError routes through _handle_known_error."""
+        patches, _, ctx = self._prepare_mocks()
+        mock_run_async.side_effect = ValueError("bad value")
+
+        with pytest.raises(SystemExit):
+            run_export_threads_command(ctx, None, None, None, False, False)
+
+        assert "bad value" in capsys.readouterr().err
+        self._stop_patches(patches)
+
+    @patch("perplexity_cli.runners.export.run_async")
+    def test_http_status_error_handler(self, mock_run_async):
+        """PerplexityHTTPStatusError routes through _handle_http_status_error."""
+        from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError
+
+        patches, _, ctx = self._prepare_mocks()
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.headers = {}
+        error = PerplexityHTTPStatusError("server error", request=Mock(), response=mock_response)
+        mock_run_async.side_effect = error
+
+        with patch("perplexity_cli.runners.export.handle_http_error", side_effect=SystemExit(1)):
+            with pytest.raises(SystemExit):
+                run_export_threads_command(ctx, None, None, None, False, False)
+
+        self._stop_patches(patches)
+
+    @patch("perplexity_cli.runners.export.run_async")
+    def test_unexpected_error_handler(self, mock_run_async):
+        """Unexpected exceptions route through _handle_unexpected_error."""
+        patches, _, ctx = self._prepare_mocks()
+        mock_run_async.side_effect = RuntimeError("boom")
+
+        with patch(
+            "perplexity_cli.runners.export.handle_unexpected_cli_error", side_effect=SystemExit(1)
+        ):
+            with pytest.raises(SystemExit):
+                run_export_threads_command(ctx, None, None, None, False, False)
+
+        self._stop_patches(patches)

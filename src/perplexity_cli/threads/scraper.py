@@ -5,20 +5,24 @@ API endpoint using stored authentication token. Supports local encrypted caching
 for efficient repeated exports.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from dateutil import parser as dateutil_parser
 
 try:
-    from curl_cffi.requests import AsyncSession
     from curl_cffi.requests.exceptions import RequestException
 
     _CURL_CFFI_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    AsyncSession = None  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
     RequestException = Exception  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
     _CURL_CFFI_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from curl_cffi.requests import AsyncSession
 
 from perplexity_cli.api.contracts import parse_thread_list_payload
 from perplexity_cli.auth.utils import extract_session_token
@@ -39,6 +43,169 @@ from perplexity_cli.utils.http_errors import raise_http_status_error
 from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.rate_limiter import RateLimiter
 from perplexity_cli.utils.version import get_api_version
+
+# ---------------------------------------------------------------------------
+# Module-level utility functions (extracted from ThreadScraper)
+# ---------------------------------------------------------------------------
+
+
+def _create_async_session(timeout: int = 30) -> AsyncSession:
+    """Create an AsyncSession with Chrome TLS impersonation.
+
+    Args:
+        timeout: Request timeout in seconds.
+
+    Returns:
+        An AsyncSession configured for Chrome impersonation.
+
+    Raises:
+        RuntimeError: If curl_cffi is not installed.
+    """
+    from perplexity_cli.utils.session_factory import create_async_session
+
+    return create_async_session(timeout=timeout)
+
+
+def _validate_date_params(from_date: str | None, to_date: str | None) -> None:
+    """Validate that from_date and to_date are parseable date strings.
+
+    Args:
+        from_date: Start date string to validate (or None).
+        to_date: End date string to validate (or None).
+
+    Raises:
+        ValueError: If either date string cannot be parsed.
+    """
+    for label, value in [("from_date", from_date), ("to_date", to_date)]:
+        if value is not None:
+            try:
+                dateutil_parser.parse(value)
+            except (ValueError, OverflowError) as exc:
+                raise ValueError(f"Invalid {label} '{value}': expected YYYY-MM-DD format") from exc
+
+
+def _extract_total_threads(thread_dict: dict, total_threads: int | None) -> int:
+    """Extract the total_threads count from an API response entry.
+
+    Args:
+        thread_dict: A single thread dictionary from the API response.
+        total_threads: Previously known total, or None if not yet determined.
+
+    Returns:
+        The total_threads value (unchanged if already known).
+
+    Raises:
+        UpstreamSchemaError: If total_threads value is not an integer.
+    """
+    if total_threads is not None:
+        return total_threads
+    raw = thread_dict.get("total_threads", 0)
+    if not isinstance(raw, int):
+        raise UpstreamSchemaError("Malformed total_threads value in upstream API response")
+    return raw
+
+
+def _get_str_field(thread_dict: dict, field: str, default: str | None = None) -> str:
+    """Extract a string field from a thread dict, raising on invalid type.
+
+    Args:
+        thread_dict: Thread data dictionary.
+        field: Key to extract.
+        default: Default value if key is absent. If None, field is required.
+
+    Returns:
+        The string value.
+
+    Raises:
+        UpstreamSchemaError: If value is not a string (or absent with no default).
+    """
+    value = thread_dict.get(field, default)
+    if not isinstance(value, str):
+        raise UpstreamSchemaError(f"Malformed thread {field} in upstream API response")
+    return value
+
+
+def _parse_single_thread(
+    thread_dict: dict, from_date: str | None
+) -> tuple[ThreadRecord | None, bool]:
+    """Parse a single thread dictionary into a ThreadRecord.
+
+    Args:
+        thread_dict: Thread data from the API response.
+        from_date: Optional lower date bound; if thread is older, signals stop.
+
+    Returns:
+        Tuple of (ThreadRecord or None, should_stop). Returns (None, True)
+        when thread is older than from_date cutoff.
+
+    Raises:
+        UpstreamSchemaError: If required fields are malformed.
+    """
+    timestamp_str = _get_str_field(thread_dict, "last_query_datetime")
+    if not timestamp_str:
+        raise UpstreamSchemaError("Malformed thread timestamp in upstream API response")
+
+    dt = datetime.fromisoformat(timestamp_str)
+    if from_date and not is_in_date_range(dt, from_date, None):
+        return None, True
+
+    slug = _get_str_field(thread_dict, "slug", "")
+    title = _get_str_field(thread_dict, "title", "Untitled")
+    url = f"{get_perplexity_base_url()}/search/{slug}"
+    return ThreadRecord(title=title, url=url, created_at=to_iso8601(dt)), False
+
+
+def _handle_http_error(e: PerplexityHTTPStatusError) -> None:
+    """Re-raise HTTP status errors as domain-specific exceptions.
+
+    Args:
+        e: The HTTP status error to handle.
+
+    Raises:
+        AuthenticationError: If status is 401.
+        RateLimitError: If status is 429.
+        PerplexityHTTPStatusError: For all other statuses.
+    """
+    if e.response.status_code == 401:
+        raise AuthenticationError(
+            "Authentication failed. Token may be expired. "
+            "Please re-authenticate with: perplexity-cli auth"
+        ) from e
+    if e.response.status_code == 429:
+        raise RateLimitError(
+            "Rate limit exceeded while fetching threads. Please try again later."
+        ) from e
+    raise
+
+
+def _has_more_pages(thread_data: list[dict]) -> bool:
+    """Check whether the API response indicates more pages are available.
+
+    Args:
+        thread_data: Thread dictionaries from the current page.
+
+    Returns:
+        True if a next page exists.
+    """
+    if not thread_data:
+        return False
+    return bool(thread_data[0].get("has_next_page", False))
+
+
+def _report_progress(
+    callback: Callable[[int, int], None] | None,
+    current: int,
+    total: int | None,
+) -> None:
+    """Invoke progress callback if available.
+
+    Args:
+        callback: Optional progress callback.
+        current: Current number of threads processed.
+        total: Total expected threads, or None if unknown.
+    """
+    if callback and total:
+        callback(current, total)
 
 
 class ThreadScraper:
@@ -74,23 +241,6 @@ class ThreadScraper:
         self.api_url = get_thread_list_url()
         self.api_version = get_api_version()
 
-    @staticmethod
-    def _create_async_session(timeout: int = 30) -> AsyncSession:
-        """Create an AsyncSession with Chrome TLS impersonation.
-
-        Args:
-            timeout: Request timeout in seconds.
-
-        Returns:
-            An AsyncSession configured for Chrome impersonation.
-
-        Raises:
-            RuntimeError: If curl_cffi is not installed.
-        """
-        from perplexity_cli.utils.session_factory import create_async_session
-
-        return create_async_session(timeout=timeout)
-
     async def scrape_all_threads(
         self,
         from_date: str | None = None,
@@ -121,95 +271,217 @@ class ThreadScraper:
             ValueError: If from_date or to_date is not a valid date string
         """
         # Validate date format before proceeding
-        self._validate_date_params(from_date, to_date)
+        _validate_date_params(from_date, to_date)
 
-        # Check if we should use cache
-        threads = []
-        fetch_from = from_date
-        fetch_to = to_date
+        # Try cache-only fast path
+        cached_result = self._try_cache_only(from_date, to_date)
+        if cached_result is not None:
+            return cached_result
 
-        if self.cache_manager and not self.force_refresh:
-            # Check if cache needs refresh
-            needs_fresh, fetch_from, fetch_to = self.cache_manager.requires_fresh_data(
-                from_date, to_date
-            )
+        # Load existing cached threads and determine fetch range
+        threads, fetch_from, fetch_to = self._prepare_fetch(from_date, to_date)
 
-            if not needs_fresh:
-                # Cache covers entire range - use cache only
-                self.logger.info("Using cached threads (no fresh data needed)")
-                cache_data = self.cache_manager.load_cache()
-                if cache_data:
-                    # Convert dicts back to ThreadRecord objects
-                    threads = convert_cache_dicts_to_thread_records(cache_data.get("threads", []))
-
-                    # Filter by date range if specified
-                    if from_date or to_date:
-                        filtered = self._filter_by_date_range(threads, from_date, to_date)
-                        self.logger.info(
-                            f"Filtered cache to {len(filtered)} threads "
-                            f"(from_date={from_date}, to_date={to_date})"
-                        )
-                        return filtered
-
-                    return threads
-            else:
-                # Cache needs refresh - load existing cache
-                self.logger.info(f"Cache gap detected, fetching {fetch_from} to {fetch_to}")
-                cache_data = self.cache_manager.load_cache()
-                if cache_data:
-                    threads = convert_cache_dicts_to_thread_records(cache_data.get("threads", []))
-        else:
-            if self.force_refresh:
-                self.logger.info("Force refresh enabled, ignoring cache")
-
-        # Parse token to get session cookie
-        session_token = extract_session_token(self.token)
-
-        # Fetch threads (either all or just the gap)
-        fetched_threads = await self._fetch_all_threads_from_api(
-            session_token, progress_callback, from_date=fetch_from, to_date=fetch_to
+        # Fetch from API and merge
+        return await self._fetch_and_merge(
+            from_date, to_date, fetch_from, fetch_to, threads, progress_callback
         )
-        self.logger.info(f"Fetched {len(fetched_threads)} threads from API")
 
-        # Merge with cached threads
-        if threads and self.cache_manager:
-            threads = self.cache_manager.merge_threads(threads, fetched_threads)
-            self.logger.info(f"Merged to {len(threads)} unique threads")
-        else:
-            threads = fetched_threads
+    def _load_cached_threads(self) -> list[ThreadRecord]:
+        """Load threads from the cache manager.
 
-        # Filter by date range before caching so only requested threads are persisted
-        if from_date or to_date:
-            threads = self._filter_by_date_range(threads, from_date, to_date)
-            self.logger.info(
-                f"Filtered to {len(threads)} threads (from_date={from_date}, to_date={to_date})"
-            )
+        Returns:
+            List of ThreadRecord objects, or empty list if cache is unavailable.
+        """
+        cache_data = self.cache_manager.load_cache() if self.cache_manager else None
+        if not cache_data:
+            return []
+        return convert_cache_dicts_to_thread_records(cache_data.get("threads", []))
 
-        # Update cache with filtered threads
+    def _try_cache_only(
+        self, from_date: str | None, to_date: str | None
+    ) -> list[ThreadRecord] | None:
+        """Attempt to satisfy the request from cache alone.
+
+        Returns:
+            List of ThreadRecord if cache covers the range, or None if fresh data is needed.
+        """
+        if not self.cache_manager or self.force_refresh:
+            return None
+
+        needs_fresh, _, _ = self.cache_manager.requires_fresh_data(from_date, to_date)
+        if needs_fresh:
+            return None
+
+        self.logger.info("Using cached threads (no fresh data needed)")
+        threads = self._load_cached_threads()
+        return self._filter_by_date_range(threads, from_date, to_date)
+
+    def _prepare_fetch(
+        self, from_date: str | None, to_date: str | None
+    ) -> tuple[list[ThreadRecord], str | None, str | None]:
+        """Load cached threads and determine the date range to fetch from API.
+
+        Returns:
+            Tuple of (cached_threads, fetch_from, fetch_to).
+        """
+        if self.force_refresh:
+            self.logger.info("Force refresh enabled, ignoring cache")
+            return [], from_date, to_date
+
+        if not self.cache_manager:
+            return [], from_date, to_date
+
+        _, fetch_from, fetch_to = self.cache_manager.requires_fresh_data(from_date, to_date)
+        self.logger.info("Cache gap detected, fetching %s to %s", fetch_from, fetch_to)
+        return self._load_cached_threads(), fetch_from, fetch_to
+
+    def _merge_and_save(
+        self,
+        from_date: str | None,
+        to_date: str | None,
+        cached_threads: list[ThreadRecord],
+        fetched_threads: list[ThreadRecord],
+    ) -> list[ThreadRecord]:
+        """Merge fetched threads with cache, filter by date, and persist.
+
+        Args:
+            from_date: Requested start date or None.
+            to_date: Requested end date or None.
+            cached_threads: Previously cached threads.
+            fetched_threads: Newly fetched threads from API.
+
+        Returns:
+            Final filtered list of ThreadRecord objects.
+        """
+        threads = self._merge_with_cache(cached_threads, fetched_threads)
+        threads = self._filter_by_date_range(threads, from_date, to_date)
+
         if self.cache_manager:
             self.cache_manager.save_cache(threads)
 
         return threads
 
-    @staticmethod
-    def _validate_date_params(from_date: str | None, to_date: str | None) -> None:
-        """Validate that from_date and to_date are parseable date strings.
+    def _merge_with_cache(
+        self,
+        cached_threads: list[ThreadRecord],
+        fetched_threads: list[ThreadRecord],
+    ) -> list[ThreadRecord]:
+        """Merge cached and fetched threads, deduplicating by URL.
 
         Args:
-            from_date: Start date string to validate (or None).
-            to_date: End date string to validate (or None).
+            cached_threads: Previously cached threads.
+            fetched_threads: Newly fetched threads from API.
+
+        Returns:
+            Merged list of threads.
+        """
+        if not cached_threads or not self.cache_manager:
+            return fetched_threads
+        merged = self.cache_manager.merge_threads(cached_threads, fetched_threads)
+        self.logger.info("Merged to %s unique threads", len(merged))
+        return merged
+
+    async def _fetch_and_merge(  # nosemgrep: too-many-parameters
+        self,
+        from_date: str | None,
+        to_date: str | None,
+        fetch_from: str | None,
+        fetch_to: str | None,
+        cached_threads: list[ThreadRecord],
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[ThreadRecord]:
+        """Fetch threads from API, merge with cached, filter, and save.
+
+        Returns:
+            Final list of ThreadRecord objects.
+        """
+        session_token = extract_session_token(self.token)
+        fetched_threads = await self._fetch_all_threads_from_api(
+            session_token, progress_callback, from_date=fetch_from, to_date=fetch_to
+        )
+        self.logger.info("Fetched %s threads from API", len(fetched_threads))
+
+        return self._merge_and_save(from_date, to_date, cached_threads, fetched_threads)
+
+    async def _make_api_request(
+        self, client: AsyncSession, headers: dict, cookies: dict, request_body: dict
+    ) -> list[dict]:
+        """Make a single paginated API request and return thread data.
+
+        Args:
+            client: The async HTTP session.
+            headers: Request headers.
+            cookies: Request cookies.
+            request_body: JSON body with pagination parameters.
+
+        Returns:
+            List of thread dictionaries from the API response.
 
         Raises:
-            ValueError: If either date string cannot be parsed.
+            AuthenticationError: If API returns 401.
+            RateLimitError: If API returns 429.
+            PerplexityRequestError: On network errors.
+            UpstreamSchemaError: If response cannot be parsed.
         """
-        for label, value in [("from_date", from_date), ("to_date", to_date)]:
-            if value is not None:
-                try:
-                    dateutil_parser.parse(value)
-                except (ValueError, OverflowError) as exc:
-                    raise ValueError(
-                        f"Invalid {label} '{value}': expected YYYY-MM-DD format"
-                    ) from exc
+        try:
+            return await self._execute_api_post(client, headers, cookies, request_body)
+        except PerplexityHTTPStatusError as e:
+            _handle_http_error(e)
+            return []  # unreachable, satisfies type checker
+        except RequestException as e:
+            raise PerplexityRequestError(f"Network error while fetching threads: {e}") from e
+
+    async def _execute_api_post(
+        self, client: AsyncSession, headers: dict, cookies: dict, request_body: dict
+    ) -> list[dict]:
+        """Execute the HTTP POST and parse the response.
+
+        Args:
+            client: The async HTTP session.
+            headers: Request headers.
+            cookies: Request cookies.
+            request_body: JSON body with pagination parameters.
+
+        Returns:
+            Parsed list of thread dictionaries.
+
+        Raises:
+            PerplexityHTTPStatusError: If response is not OK.
+            UpstreamSchemaError: If response cannot be parsed.
+        """
+        if self.rate_limiter:
+            wait_time = await self.rate_limiter.acquire()
+            if wait_time > 0:
+                self.logger.debug("Rate limited: waited %ss", round(wait_time, 2))
+
+        response = await client.post(
+            f"{self.api_url}?version={self.api_version}&source=default",
+            headers=headers,
+            cookies=to_curl_cffi_cookies(cookies),
+            json=request_body,
+        )
+
+        if not response.ok:
+            raise_http_status_error(response)
+
+        try:
+            return parse_thread_list_payload(response.json())
+        except ValueError as e:
+            raise UpstreamSchemaError("Malformed thread list response from upstream API") from e
+
+    def _build_auth_context(self, session_token: str) -> tuple[dict, dict]:
+        """Build headers and cookies for API requests.
+
+        Args:
+            session_token: The authentication session token.
+
+        Returns:
+            Tuple of (headers, cookies).
+        """
+        headers = {"Content-Type": "application/json"}
+        cookies = dict(self.cookies or {})
+        cookies.setdefault("__Secure-next-auth.session-token", session_token)
+        return headers, cookies
 
     async def _fetch_all_threads_from_api(
         self,
@@ -237,161 +509,90 @@ class ThreadScraper:
             RuntimeError: If API request fails
             PerplexityHTTPStatusError: If API returns error status
         """
-        threads = []
+        threads: list[ThreadRecord] = []
         offset = 0
-        limit = 100  # Fetch 100 threads per request
-        total_threads = None
+        limit = 100
+        headers, cookies = self._build_auth_context(session_token)
 
-        # Build headers with authentication
-        # curl_cffi sets User-Agent automatically from the impersonation profile
-        headers = {
-            "Content-Type": "application/json",
-        }
-
-        # Build cookies dict for curl_cffi (passed via cookies parameter, not header)
-        cookies = dict(self.cookies or {})
-        cookies.setdefault("__Secure-next-auth.session-token", session_token)
-
-        async with self._create_async_session(timeout=30) as client:
+        async with _create_async_session(timeout=30) as client:
             while True:
-                # Prepare API request body
                 request_body = {
                     "limit": limit,
-                    "ascending": False,  # Newest first
+                    "ascending": False,
                     "offset": offset,
                     "search_term": "",
                 }
+                self.logger.debug("Fetching threads: offset=%s, limit=%s", offset, limit)
 
-                self.logger.debug(f"Fetching threads: offset={offset}, limit={limit}")
+                thread_data = await self._make_api_request(client, headers, cookies, request_body)
+                if not thread_data:
+                    break
 
-                try:
-                    if self.rate_limiter:
-                        wait_time = await self.rate_limiter.acquire()
-                        if wait_time > 0:
-                            self.logger.debug(f"Rate limited: waited {wait_time:.2f}s")
+                if self._process_thread_batch(
+                    thread_data, threads, from_date, None, progress_callback
+                ):
+                    break
 
-                    # Make API request
-                    response = await client.post(
-                        f"{self.api_url}?version={self.api_version}&source=default",
-                        headers=headers,
-                        cookies=to_curl_cffi_cookies(cookies),
-                        json=request_body,
-                    )
+                if not _has_more_pages(thread_data):
+                    break
 
-                    # Check for HTTP errors
-                    if not response.ok:
-                        raise_http_status_error(response)
-
-                    # Parse response
-                    try:
-                        thread_data = parse_thread_list_payload(response.json())
-                    except ValueError as e:
-                        raise UpstreamSchemaError(
-                            "Malformed thread list response from upstream API"
-                        ) from e
-
-                    if not thread_data or len(thread_data) == 0:
-                        # No more threads
-                        break
-
-                    # Extract thread records from API response
-                    should_stop = False
-                    for thread_dict in thread_data:
-                        try:
-                            # Get total count from first response
-                            if total_threads is None:
-                                raw_total_threads = thread_dict.get(
-                                    "total_threads", len(thread_data)
-                                )
-                                if not isinstance(raw_total_threads, int):
-                                    raise UpstreamSchemaError(
-                                        "Malformed total_threads value in upstream API response"
-                                    )
-                                total_threads = raw_total_threads
-
-                            # Extract timestamp
-                            timestamp_str = thread_dict.get("last_query_datetime")
-                            if not isinstance(timestamp_str, str) or not timestamp_str:
-                                raise UpstreamSchemaError(
-                                    "Malformed thread timestamp in upstream API response"
-                                )
-
-                            # Parse ISO 8601 timestamp
-                            # API returns format like "2025-10-14T00:05:15.472548"
-                            dt = datetime.fromisoformat(timestamp_str)
-
-                            # Convert to ISO 8601 with Z suffix
-                            iso_date = to_iso8601(dt)
-
-                            # When fetching a date range (partial fetch for cache gap),
-                            # stop when we reach threads older than from_date
-                            if from_date:
-                                if not is_in_date_range(dt, from_date, None):
-                                    should_stop = True
-                                    break
-
-                            # Build thread URL from slug
-                            slug = thread_dict.get("slug", "")
-                            if not isinstance(slug, str):
-                                raise UpstreamSchemaError(
-                                    "Malformed thread slug in upstream API response"
-                                )
-                            url = f"{get_perplexity_base_url()}/search/{slug}"
-
-                            # Get title
-                            title = thread_dict.get("title", "Untitled")
-                            if not isinstance(title, str):
-                                raise UpstreamSchemaError(
-                                    "Malformed thread title in upstream API response"
-                                )
-
-                            threads.append(ThreadRecord(title=title, url=url, created_at=iso_date))
-
-                        except ValueError as e:
-                            raise UpstreamSchemaError(
-                                "Malformed thread timestamp in upstream API response"
-                            ) from e
-
-                    # Progress callback
-                    if progress_callback and total_threads:
-                        progress_callback(len(threads), total_threads)
-
-                    # Stop if we've reached the from_date cutoff
-                    if should_stop:
-                        self.logger.debug(
-                            f"Reached from_date cutoff, stopping fetch at {len(threads)} threads"
-                        )
-                        break
-
-                    # Check if we have more pages
-                    has_next_page = (
-                        thread_data[0].get("has_next_page", False) if thread_data else False
-                    )
-
-                    if not has_next_page:
-                        break
-
-                    # Move to next page
-                    offset += limit
-
-                except PerplexityHTTPStatusError as e:
-                    if e.response.status_code == 401:
-                        raise AuthenticationError(
-                            "Authentication failed. Token may be expired. "
-                            "Please re-authenticate with: perplexity-cli auth"
-                        ) from e
-                    if e.response.status_code == 429:
-                        raise RateLimitError(
-                            "Rate limit exceeded while fetching threads. Please try again later."
-                        ) from e
-                    raise
-
-                except RequestException as e:
-                    raise PerplexityRequestError(
-                        f"Network error while fetching threads: {e}"
-                    ) from e
+                offset += limit
 
         return threads
+
+    def _process_thread_batch(  # nosemgrep: too-many-parameters
+        self,
+        thread_data: list[dict],
+        threads: list[ThreadRecord],
+        from_date: str | None,
+        total_threads: int | None,
+        progress_callback: Callable[[int, int], None] | None,
+    ) -> bool:
+        """Process a batch of thread dicts, appending records to threads list.
+
+        Args:
+            thread_data: Raw thread dictionaries from API.
+            threads: Accumulator list to append parsed records to.
+            from_date: Optional lower date bound for early stopping.
+            total_threads: Known total thread count (for progress reporting).
+            progress_callback: Optional progress callback.
+
+        Returns:
+            True if fetching should stop (from_date cutoff reached).
+        """
+        for thread_dict in thread_data:
+            stopped = self._process_single_thread_entry(thread_dict, threads, from_date)
+            if stopped:
+                return True
+
+        _report_progress(progress_callback, len(threads), total_threads)
+        return False
+
+    def _process_single_thread_entry(
+        self,
+        thread_dict: dict,
+        threads: list[ThreadRecord],
+        from_date: str | None,
+    ) -> bool:
+        """Parse and append a single thread entry.
+
+        Args:
+            thread_dict: Raw thread dictionary.
+            threads: Accumulator list.
+            from_date: Optional lower date bound.
+
+        Returns:
+            True if fetching should stop.
+        """
+        try:
+            record, should_stop = _parse_single_thread(thread_dict, from_date)
+            if should_stop:
+                return True
+            if record:
+                threads.append(record)
+        except ValueError as e:
+            raise UpstreamSchemaError("Malformed thread timestamp in upstream API response") from e
+        return False
 
     def _filter_by_date_range(
         self,

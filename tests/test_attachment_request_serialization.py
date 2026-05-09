@@ -8,6 +8,7 @@ import pytest
 
 from perplexity_cli.api.client import SSEClient
 from perplexity_cli.api.models import FileAttachment
+from perplexity_cli.auth.models import AuthContext
 
 
 class TestFileAttachmentRequestSerialization:
@@ -43,7 +44,7 @@ class TestFileAttachmentRequestSerialization:
 
     def test_stream_post_with_attachments_sent_correctly(self):
         """Test that file attachments are sent correctly in stream_post."""
-        client = SSEClient(token="test-token")
+        client = SSEClient(auth=AuthContext(token="test-token"))
 
         # Create test file attachment
         test_file = Path("/tmp/test_attachment2_req.txt")

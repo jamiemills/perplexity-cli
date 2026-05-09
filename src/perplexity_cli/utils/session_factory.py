@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 try:
     from curl_cffi.requests import AsyncSession, Session
-    from curl_cffi.requests.exceptions import RequestException  # noqa: F401
+    from curl_cffi.requests.exceptions import RequestException
 
     _CURL_CFFI_AVAILABLE = True
     _CURL_CFFI_IMPORT_ERROR: str | None = None

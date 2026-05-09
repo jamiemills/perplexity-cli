@@ -96,9 +96,137 @@ def run_doctor_security_command(*, json_mode: bool | None = None) -> None:
         )
 
 
+def _build_status_envelope(  # nosemgrep: too-many-parameters
+    authenticated: bool,
+    tm,
+    token_age_days=None,
+    cookies_stored=0,
+    verified=None,
+):
+    """Build a status envelope dictionary."""
+    return success_envelope(
+        "pxcli auth status",
+        {
+            "authenticated": authenticated,
+            "token_path": str(tm.token_path),
+            "token_age_days": token_age_days,
+            "cookies_stored": cookies_stored,
+            "verified": verified,
+        },
+    )
+
+
+def _verify_token(token, cookies, logger) -> bool | None:
+    """Run token verification against the API."""
+    from perplexity_cli.api.endpoints import PerplexityAPI
+
+    try:
+        from perplexity_cli.config.defaults import DEFAULT_STATUS_CHECK_TIMEOUT
+
+        logger.debug("Verifying token validity")
+        with PerplexityAPI(
+            token=token, cookies=cookies, timeout=DEFAULT_STATUS_CHECK_TIMEOUT
+        ) as api:
+            test_answer = api.get_complete_answer("test")
+        return bool(test_answer and len(test_answer.text) > 0)
+    except (
+        PerplexityHTTPStatusError,
+        PerplexityRequestError,
+        UpstreamSchemaError,
+        AuthenticationError,
+    ):
+        return False
+
+
+def _get_token_age_days(token_path) -> int | None:
+    """Compute the age of the token file in days."""
+    try:
+        stat_result = token_path.stat()
+        modified_time = datetime.fromtimestamp(stat_result.st_mtime)
+        return (datetime.now() - modified_time).days
+    except OSError:
+        return None
+
+
+def _output_status_text(  # nosemgrep: too-many-parameters
+    token, cookies, token_age_days, verified, verify, tm
+) -> None:
+    """Print human-readable status output."""
+    logger = get_logger()
+    click.echo("Perplexity CLI Status")
+    click.echo("=" * 40)
+    click.echo("Status: [OK] Authenticated")
+    click.echo(f"Token file: {tm.token_path}")
+    click.echo(f"Token length: {len(token)} characters")
+    if cookies:
+        click.echo(f"Cookies: {len(cookies)} stored")
+
+    _output_token_modified_time(tm.token_path, token_age_days)
+
+    if not verify:
+        click.echo("\n[INFO] Live verification not run")
+        click.echo("Use 'pxcli status --verify' to test the current token against the API.")
+        return
+
+    _output_verification_result(verified, logger)
+
+
+def _output_token_modified_time(token_path, token_age_days) -> None:
+    """Print token modification time if available."""
+    if token_age_days is None:
+        return
+    try:
+        stat_result = token_path.stat()
+        modified_time = datetime.fromtimestamp(stat_result.st_mtime)
+        click.echo(f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    except OSError:
+        click.echo("Token last modified: unavailable")
+
+
+def _output_verification_result(verified, logger) -> None:
+    """Print verification result."""
+    if verified is True:
+        click.echo("\n[OK] Token is valid and working")
+        logger.info("Token verification successful")
+    elif verified is False:
+        click.echo("\n[ERROR] Token verification failed")
+    else:
+        click.echo("\n[INFO] Token verification returned empty response")
+        logger.warning("Token verification returned empty response")
+
+
+def _handle_no_token(json_mode: bool, tm, show_auth_hint: bool = True) -> None:
+    """Handle the case where no valid token is available."""
+    if json_mode:
+        write_envelope(_build_status_envelope(False, tm), include_schema=_get_include_schema())
+        return
+    click.echo("Perplexity CLI Status")
+    click.echo("=" * 40)
+    click.echo("Status: [ERROR] Not authenticated")
+    if show_auth_hint:
+        click.echo("\nAuthenticate with: pxcli auth")
+
+
+def _handle_authenticated_status(  # nosemgrep: too-many-parameters
+    token, cookies, verify, json_mode, tm, logger
+) -> None:
+    """Handle status output when a valid token is present."""
+    token_age_days = _get_token_age_days(tm.token_path)
+    cookies_stored = len(cookies) if cookies else 0
+    verified = _verify_token(token, cookies, logger) if verify else None
+
+    if json_mode:
+        write_envelope(
+            _build_status_envelope(True, tm, token_age_days, cookies_stored, verified),
+            include_schema=_get_include_schema(),
+        )
+        return
+
+    _output_status_text(token, cookies, token_age_days, verified, verify, tm)
+
+
 def run_status_command(verify: bool, *, json_mode: bool | None = None) -> None:
     """Execute the status command."""
-    from perplexity_cli.api.endpoints import PerplexityAPI
     from perplexity_cli.auth.token_manager import TokenManager
 
     if json_mode is None:
@@ -108,124 +236,21 @@ def run_status_command(verify: bool, *, json_mode: bool | None = None) -> None:
     tm = TokenManager()
 
     if not tm.token_exists():
-        if json_mode:
-            env = success_envelope(
-                "pxcli auth status",
-                {
-                    "authenticated": False,
-                    "token_path": str(tm.token_path),
-                    "token_age_days": None,  # nosec B105
-                    "cookies_stored": 0,
-                    "verified": None,  # nosec B105
-                },
-            )
-            write_envelope(env, include_schema=_get_include_schema())
-            return
-
-        click.echo("Perplexity CLI Status")
-        click.echo("=" * 40)
-        click.echo("Status: [ERROR] Not authenticated")
-        click.echo("\nAuthenticate with: pxcli auth")
+        _handle_no_token(json_mode, tm)
         return
 
     try:
         token, cookies = tm.load_token()
         if not token:
-            if json_mode:
-                env = success_envelope(
-                    "pxcli auth status",
-                    {
-                        "authenticated": False,
-                        "token_path": str(tm.token_path),
-                        "token_age_days": None,  # nosec B105
-                        "cookies_stored": 0,
-                        "verified": None,  # nosec B105
-                    },
-                )
-                write_envelope(env, include_schema=_get_include_schema())
-                return
-
-            click.echo("Perplexity CLI Status")
-            click.echo("=" * 40)
-            click.echo("Status: [ERROR] Not authenticated")
+            _handle_no_token(json_mode, tm, show_auth_hint=False)
             return
 
-        # Compute token age
-        token_age_days = None
-        try:
-            stat_result = tm.token_path.stat()
-            modified_time = datetime.fromtimestamp(stat_result.st_mtime)
-            token_age_days = (datetime.now() - modified_time).days
-        except OSError:
-            pass
-
-        cookies_stored = len(cookies) if cookies else 0
-        verified = None
-
-        if verify:
-            try:
-                from perplexity_cli.config.defaults import DEFAULT_STATUS_CHECK_TIMEOUT
-
-                logger.debug("Verifying token validity")
-                with PerplexityAPI(
-                    token=token, cookies=cookies, timeout=DEFAULT_STATUS_CHECK_TIMEOUT
-                ) as api:
-                    test_answer = api.get_complete_answer("test")
-                verified = bool(test_answer and len(test_answer.text) > 0)
-            except (
-                PerplexityHTTPStatusError,
-                PerplexityRequestError,
-                UpstreamSchemaError,
-                AuthenticationError,
-            ):
-                verified = False
-
-        if json_mode:
-            env = success_envelope(
-                "pxcli auth status",
-                {
-                    "authenticated": True,
-                    "token_path": str(tm.token_path),
-                    "token_age_days": token_age_days,
-                    "cookies_stored": cookies_stored,
-                    "verified": verified,
-                },
-            )
-            write_envelope(env, include_schema=_get_include_schema())
-            return
-
-        click.echo("Perplexity CLI Status")
-        click.echo("=" * 40)
-        click.echo("Status: [OK] Authenticated")
-        click.echo(f"Token file: {tm.token_path}")
-        click.echo(f"Token length: {len(token)} characters")
-        if cookies:
-            click.echo(f"Cookies: {len(cookies)} stored")
-
-        if token_age_days is not None:
-            try:
-                stat_result = tm.token_path.stat()
-                modified_time = datetime.fromtimestamp(stat_result.st_mtime)
-                click.echo(f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            except OSError:
-                pass
-
-        if not verify:
-            click.echo("\n[INFO] Live verification not run")
-            click.echo("Use 'pxcli status --verify' to test the current token against the API.")
-            return
-
-        if verified is True:
-            click.echo("\n[OK] Token is valid and working")
-            logger.info("Token verification successful")
-        elif verified is False:
-            click.echo("\n[ERROR] Token verification failed")
-        else:
-            click.echo("\n[INFO] Token verification returned empty response")
-            logger.warning("Token verification returned empty response")
+        _handle_authenticated_status(token, cookies, verify, json_mode, tm, logger)
 
     except AuthenticationError as e:
         click.echo("Status: [INFO] Token file has insecure permissions")
         click.echo(f"Error: {e}")
         click.echo(f"\nFix with: chmod 0600 {tm.token_path}")
-        logger.error(f"Token file has insecure permissions: {e}")
+        logger.error(  # nosemgrep: python-logger-credential-disclosure
+            "Token file has insecure permissions: %s", e
+        )

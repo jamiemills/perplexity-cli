@@ -10,7 +10,7 @@ from typing import Any
 import click
 
 # ---------------------------------------------------------------------------
-# Group callbacks – ensure ctx.obj is always a dict
+# Group callbacks - ensure ctx.obj is always a dict
 # ---------------------------------------------------------------------------
 
 
@@ -114,7 +114,7 @@ def _add_help_sections(
                 for var in env_vars:
                     formatter.write_text(var)
 
-    setattr(cmd, "format_help", enhanced_format_help)  # noqa: B010
+    setattr(cmd, "format_help", enhanced_format_help)  # noqa: B010 - monkey-patching Click command
     return cmd
 
 
@@ -1433,7 +1433,7 @@ skill_group.add_command(skill_show)
 
 
 # ---------------------------------------------------------------------------
-# Doctor group (existing – kept as-is)
+# Doctor group (existing - kept as-is)
 # ---------------------------------------------------------------------------
 
 
@@ -1710,7 +1710,7 @@ def query(
         created by Guido van Rossum and first released in 1991 [1].
         ...
 
-        References
+    References:
         ----------
         [1] Python (programming language) - Wikipedia
             https://en.wikipedia.org/wiki/Python_(programming_language)

@@ -5,7 +5,16 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from click.testing import CliRunner
 
-from perplexity_cli.api.models import Answer, Block, SSEMessage, WebResult
+from perplexity_cli.api.models import (
+    Answer,
+    Block,
+    OutputOptions,
+    QueryInput,
+    RenderContext,
+    SSEMessage,
+    TraceContext,
+    WebResult,
+)
 from perplexity_cli.api.streaming import stream_query_response
 from perplexity_cli.cli import query
 
@@ -232,17 +241,17 @@ class TestStreamingOutputFailures:
         )
         formatter = Mock()
         formatter.format_references.side_effect = OSError("stdout closed")
+        render = RenderContext(
+            formatter=formatter,
+            options=OutputOptions(output_format="plain", strip_references=False),
+        )
+        query_input = QueryInput(query="test query")
+        trace = TraceContext()
 
         with patch("perplexity_cli.api.streaming.click.echo") as mock_echo:
             mock_echo.side_effect = [None, None, None, None, None]
 
             with pytest.raises(SystemExit) as exc_info:
-                stream_query_response(
-                    mock_api,
-                    "test query",
-                    formatter,
-                    output_format="plain",
-                    strip_references=False,
-                )
+                stream_query_response(mock_api, query_input, render, trace)
 
         assert exc_info.value.code == 1

@@ -7,6 +7,7 @@ by checking the thread response data.
 from unittest.mock import MagicMock, patch
 
 from perplexity_cli.api.endpoints import PerplexityAPI
+from perplexity_cli.api.models import QueryInput
 
 
 def _make_thread_response_with_attachments(attachment_urls: list[str]) -> dict:
@@ -87,7 +88,7 @@ class TestFileAttachmentE2E:
 
             # Create API and submit query with S3 URL attachment
             api = PerplexityAPI(token="test-token")
-            messages = list(api.submit_query("Test", attachments=[s3_url]))
+            messages = list(api.submit_query(QueryInput(query="Test", attachment_urls=[s3_url])))
 
             # Verify the attachment was passed through
             assert len(messages) > 0
@@ -144,7 +145,7 @@ class TestFileAttachmentE2E:
 
             # Create API and submit query with S3 URL attachments
             api = PerplexityAPI(token="test-token")
-            list(api.submit_query("Test", attachments=s3_urls))
+            list(api.submit_query(QueryInput(query="Test", attachment_urls=s3_urls)))
 
             # Verify both attachments were passed
             call_args = mock_client.stream_post.call_args
@@ -195,7 +196,7 @@ class TestFileAttachmentE2E:
 
             # Create API and submit query with S3 URL attachments
             api = PerplexityAPI(token="test-token")
-            list(api.submit_query("Test", attachments=s3_urls))
+            list(api.submit_query(QueryInput(query="Test", attachment_urls=s3_urls)))
 
             # Verify all attachments were passed
             call_args = mock_client.stream_post.call_args
@@ -219,7 +220,7 @@ class TestFileAttachmentE2E:
 
             api = PerplexityAPI(token="test-token")
             try:
-                list(api.submit_query("Test", attachments=[s3_url]))
+                list(api.submit_query(QueryInput(query="Test", attachment_urls=[s3_url])))
             except StopIteration:
                 pass
 

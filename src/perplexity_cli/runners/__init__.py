@@ -18,14 +18,14 @@ from perplexity_cli.runners.status import run_doctor_security_command, run_statu
 
 __all__ = [
     "run_auth_command",
-    "run_logout_command",
-    "run_configure_command",
-    "run_view_style_command",
     "run_clear_style_command",
+    "run_configure_command",
+    "run_doctor_security_command",
+    "run_export_threads_command",
+    "run_logout_command",
     "run_set_config_command",
     "run_show_config_command",
-    "run_export_threads_command",
-    "run_status_command",
-    "run_doctor_security_command",
     "run_show_skill_command",
+    "run_status_command",
+    "run_view_style_command",
 ]

@@ -23,27 +23,35 @@ VALIDATION = 7
 INTERRUPTED = 130
 
 
+_EXCEPTION_EXIT_CODE_TABLE: list[tuple[type, int]] = [
+    (AuthenticationError, AUTH_REQUIRED),
+    (RateLimitError, TRANSIENT),
+    (PerplexityRequestError, TRANSIENT),
+    (ConfigurationError, VALIDATION),
+    (UpstreamSchemaError, VALIDATION),
+    (AttachmentError, VALIDATION),
+    (ValueError, GENERAL_FAILURE),
+    (KeyboardInterrupt, INTERRUPTED),
+]
+
+
+def _exit_code_for_http_error(exc: PerplexityHTTPStatusError) -> int:
+    """Determine exit code for an HTTP status error."""
+    status = exc.response.status_code
+    if status in (401, 403):
+        return AUTH_REQUIRED
+    if status == 429 or status >= 500:
+        return TRANSIENT
+    return GENERAL_FAILURE
+
+
 def exit_code_for_exception(exc: BaseException) -> int:
     """Map an exception to the appropriate CLI exit code."""
-    if isinstance(exc, AuthenticationError):
-        return AUTH_REQUIRED
-    if isinstance(exc, RateLimitError):
-        return TRANSIENT
     if isinstance(exc, PerplexityHTTPStatusError):
-        status = exc.response.status_code
-        if status in (401, 403):
-            return AUTH_REQUIRED
-        if status == 429 or status >= 500:
-            return TRANSIENT
-        return GENERAL_FAILURE
-    if isinstance(exc, PerplexityRequestError):
-        return TRANSIENT
-    if isinstance(exc, (ConfigurationError, UpstreamSchemaError, AttachmentError)):
-        return VALIDATION
-    if isinstance(exc, ValueError):
-        return GENERAL_FAILURE
-    if isinstance(exc, KeyboardInterrupt):
-        return INTERRUPTED
+        return _exit_code_for_http_error(exc)
+    for exc_type, code in _EXCEPTION_EXIT_CODE_TABLE:
+        if isinstance(exc, exc_type):
+            return code
     return GENERAL_FAILURE
 
 

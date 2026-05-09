@@ -1,4 +1,4 @@
-"""Tests for improved help formatting (spec 5.1.1–5.1.6)."""
+"""Tests for improved help formatting (spec 5.1.1-5.1.6)."""
 
 from click.testing import CliRunner
 
