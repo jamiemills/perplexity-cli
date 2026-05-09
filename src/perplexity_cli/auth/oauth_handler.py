@@ -13,6 +13,7 @@ from typing import Any
 
 import websockets
 
+from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.exceptions import AuthenticationError
 
 from ..utils.config import get_perplexity_base_url
@@ -313,4 +314,4 @@ def authenticate_sync(
         RuntimeError: If Chrome is not available or authentication fails.
         TimeoutError: If authentication timeout is exceeded.
     """
-    return asyncio.run(authenticate_with_browser(url, port, timeout, poll_interval))
+    return run_async(authenticate_with_browser(url, port, timeout, poll_interval))

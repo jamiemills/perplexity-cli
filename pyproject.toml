@@ -48,6 +48,7 @@ dev = [
     "ruff>=0.1",
     "ty>=0.0.24",
     "lefthook>=2.1.6",
+    "bandit>=1.7",
 ]
 
 [project.urls]
@@ -109,7 +110,7 @@ source = ["perplexity_cli"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 40
+fail_under = 75
 
 [tool.bandit]
 exclude_dirs = ["tests"]

@@ -11,7 +11,7 @@ from types import TracebackType
 from ..utils.config import get_query_endpoint
 from ..utils.exceptions import UpstreamSchemaError
 from .client import SSEClient
-from .models import Answer, Block, QueryParams, QueryRequest, SSEMessage, WebResult
+from .models import Answer, QueryParams, QueryRequest, SSEMessage, WebResult
 
 
 class PerplexityAPI:
@@ -94,7 +94,7 @@ class PerplexityAPI:
         # Submit query and stream responses
         query_endpoint = get_query_endpoint()
         for message_data in self.client.stream_post(query_endpoint, request.to_dict()):
-            yield SSEMessage.from_dict(message_data)
+            yield SSEMessage.model_validate(message_data)
 
     def get_complete_answer(
         self,
@@ -159,46 +159,3 @@ class PerplexityAPI:
             )
 
         return Answer(text=final_answer, references=references)
-
-    def _extract_plan_block_info(self, block) -> dict | None:
-        """Extract progress information from a plan block.
-
-        Args:
-            block: Block object that may contain plan information.
-
-        Returns:
-            Dictionary with progress info if this is a plan block, None otherwise.
-        """
-        return Block(
-            intended_usage=getattr(block, "intended_usage", ""),
-            content=getattr(block, "content", {}),
-        ).extract_plan_info()
-
-    def _extract_text_from_block(self, block_content: dict) -> str | None:
-        """Extract text from a block's content.
-
-        Args:
-            block_content: The block content dictionary.
-
-        Returns:
-            Extracted text, or None if no text found.
-        """
-        return Block(intended_usage="", content=block_content).extract_text()
-
-    def _format_references(self, references: list[WebResult]) -> str:
-        """Format references for display.
-
-        Args:
-            references: List of WebResult objects to format.
-
-        Returns:
-            Formatted references string with numbered URLs.
-        """
-        if not references:
-            return ""
-
-        lines = []
-        for i, ref in enumerate(references, 1):
-            lines.append(f"[{i}] {ref.url}")
-
-        return "\n".join(lines)

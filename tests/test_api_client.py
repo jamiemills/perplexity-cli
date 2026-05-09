@@ -67,7 +67,7 @@ class TestWebResult:
             "timestamp": "2025-01-01T00:00:00",
         }
 
-        result = WebResult.from_dict(data)
+        result = WebResult.model_validate(data)
 
         assert result.name == "Test Article"
         assert result.url == "https://example.com"
@@ -78,7 +78,7 @@ class TestWebResult:
         """Test WebResult with minimal fields."""
         data = {"name": "Article", "url": "https://example.com", "snippet": "Snippet"}
 
-        result = WebResult.from_dict(data)
+        result = WebResult.model_validate(data)
 
         assert result.name == "Article"
         assert result.timestamp is None
@@ -94,7 +94,7 @@ class TestBlock:
             "web_result_block": {"web_results": []},
         }
 
-        block = Block.from_dict(data)
+        block = Block.model_validate(data)
 
         assert block.intended_usage == "web_results"
         assert "web_result_block" in block.content
@@ -168,7 +168,7 @@ class TestSSEMessage:
             "final_sse_message": True,
         }
 
-        message = SSEMessage.from_dict(data)
+        message = SSEMessage.model_validate(data)
 
         assert message.backend_uuid == "backend-123"
         assert message.status == "COMPLETE"
@@ -178,7 +178,7 @@ class TestSSEMessage:
 
     def test_extract_answer_text(self):
         """Test answer text extraction from ask_text blocks."""
-        message = SSEMessage.from_dict(
+        message = SSEMessage.model_validate(
             {
                 "backend_uuid": "backend-123",
                 "context_uuid": "context-456",
@@ -318,7 +318,7 @@ class TestSSEClient:
     def test_sse_message_from_dict_rejects_non_dict(self):
         """Test malformed SSE payloads raise UpstreamSchemaError."""
         with pytest.raises(UpstreamSchemaError, match="Malformed SSE blocks"):
-            SSEMessage.from_dict({"blocks": {}})
+            SSEMessage.model_validate({"blocks": {}})
 
     def test_stream_post_success(self):
         """Test successful POST request with SSE streaming."""
@@ -448,7 +448,9 @@ class TestSSEClient:
         assert "<redacted:2 keys>" in combined
 
     def test_raise_http_status_error(self):
-        """Test _raise_http_status_error constructs valid custom exceptions."""
+        """Test raise_http_status_error constructs valid custom exceptions."""
+        from perplexity_cli.utils.http_errors import raise_http_status_error
+
         mock_response = Mock()
         mock_response.status_code = 500
         mock_response.reason = "Internal Server Error"
@@ -457,7 +459,7 @@ class TestSSEClient:
         mock_response.content = b"Server error"
 
         with pytest.raises(PerplexityHTTPStatusError) as exc_info:
-            SSEClient._raise_http_status_error(mock_response)
+            raise_http_status_error(mock_response)
 
         error = exc_info.value
         assert error.response.status_code == 500

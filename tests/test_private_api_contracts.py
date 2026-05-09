@@ -76,7 +76,7 @@ class TestPrivateAPIContracts:
 
     def test_sse_message_supports_diff_answer_fixture(self):
         """Test diff-style answer blocks remain parseable."""
-        message = SSEMessage.from_dict(load_payload("diff_answer_message.json"))
+        message = SSEMessage.model_validate(load_payload("diff_answer_message.json"))
 
         assert message.extract_answer_text() == "Updated summary from diff payload."
         assert message.web_results is None
@@ -125,12 +125,11 @@ class TestUploadContracts:
         mock_response.json = Mock(return_value=load_payload("upload_url_success_response.json"))
         mock_session.post.return_value = mock_response
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
-            with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
-                mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "fixture-uuid-1"})()
-                response_json, uuid_map = await uploader._request_upload_urls([attachment])
+        with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
+            mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "fixture-uuid-1"})()
+            response_json, uuid_map = await uploader._request_upload_urls(
+                [attachment], mock_session
+            )
 
         assert response_json["results"]["fixture-uuid-1"]["s3_object_url"].endswith("fixture-1.txt")
         assert uuid_map["fixture-uuid-1"].filename == "fixture-1.txt"
@@ -154,13 +153,10 @@ class TestUploadContracts:
         )
         mock_session.post.return_value = mock_response
 
-        with patch("perplexity_cli.attachments.upload_manager.AsyncSession") as mock_session_class:
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock(return_value=None)
-            with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
-                mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "fixture-uuid-1"})()
-                with pytest.raises(AttachmentUploadError, match="File upload quota exhausted"):
-                    await uploader._request_upload_urls([attachment])
+        with patch("perplexity_cli.attachments.upload_manager.uuid.uuid4") as mock_uuid:
+            mock_uuid.return_value = type("UUID", (), {"__str__": lambda s: "fixture-uuid-1"})()
+            with pytest.raises(AttachmentUploadError, match="File upload quota exhausted"):
+                await uploader._request_upload_urls([attachment], mock_session)
 
 
 class TestThreadListContracts:
@@ -186,7 +182,7 @@ class TestThreadListContracts:
         mock_context.__aenter__.return_value = mock_session
         mock_context.__aexit__.return_value = False
 
-        with patch("perplexity_cli.threads.scraper.AsyncSession", return_value=mock_context):
+        with patch("perplexity_cli.utils.session_factory.AsyncSession", return_value=mock_context):
             threads = await scraper._fetch_all_threads_from_api("test-token")
 
         assert [thread.title for thread in threads] == ["Example thread one", "Example thread two"]
@@ -208,7 +204,7 @@ class TestThreadListContracts:
         mock_context.__aenter__.return_value = mock_session
         mock_context.__aexit__.return_value = False
 
-        with patch("perplexity_cli.threads.scraper.AsyncSession", return_value=mock_context):
+        with patch("perplexity_cli.utils.session_factory.AsyncSession", return_value=mock_context):
             with pytest.raises(
                 UpstreamSchemaError,
                 match=r"Malformed thread list payload from upstream API: expected array, got object\(keys=\[error, message\]\)",

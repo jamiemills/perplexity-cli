@@ -1,5 +1,6 @@
 """Authentication utilities for CLI commands."""
 
+import json
 import logging
 import sys
 
@@ -7,6 +8,49 @@ import click
 
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.utils.exceptions import AuthenticationError
+
+
+def extract_session_token(raw_token: str) -> str:
+    """Extract a usable session token from the raw decrypted token data.
+
+    The stored token may be either a raw JWT string or a JSON object
+    containing ``{"user": {"accessToken": "..."}}``.  This function
+    normalises both formats to a plain token string suitable for use
+    as a session cookie or Bearer token.
+
+    Args:
+        raw_token: The decrypted token string (may be JSON or plain).
+
+    Returns:
+        A plain session token string.
+
+    Raises:
+        AuthenticationError: If the token structure is malformed.
+    """
+    try:
+        token_data = json.loads(raw_token)
+    except json.JSONDecodeError:
+        # Not JSON — treat as a raw token string
+        return raw_token
+
+    if not isinstance(token_data, dict):
+        raise AuthenticationError("Stored token has invalid session data format")
+
+    user_data = token_data.get("user")
+    if user_data is None:
+        return raw_token
+
+    if not isinstance(user_data, dict):
+        raise AuthenticationError("Stored token has invalid session user data")
+
+    access_token = user_data.get("accessToken")
+    if access_token is None:
+        return raw_token
+
+    if not isinstance(access_token, str) or not access_token:
+        raise AuthenticationError("Stored token has invalid access token data")
+
+    return access_token
 
 
 def load_or_prompt_token(

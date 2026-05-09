@@ -1,14 +1,13 @@
 """File handling utilities for attachment support."""
 
-import logging
 import re
 from pathlib import Path
 
 from perplexity_cli.api.models import FileAttachment
 from perplexity_cli.utils.exceptions import AttachmentError
-from perplexity_cli.utils.logging import redact_path
+from perplexity_cli.utils.logging import get_logger, redact_path
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 MAX_ATTACHMENT_COUNT = 25
 MAX_ATTACHMENT_FILE_SIZE = 10 * 1024 * 1024
