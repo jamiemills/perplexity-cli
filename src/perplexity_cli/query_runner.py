@@ -6,9 +6,12 @@ existing query behaviour.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
+import time
+import uuid
 from typing import TYPE_CHECKING
 
 import click
@@ -68,7 +71,8 @@ def log_query_debug_context(
     logger.debug(f"Token exists: {token_path.exists()}")
     logger.debug(f"Cookie storage enabled: {get_save_cookies_enabled()}")
     logger.debug(
-        f"Query command invoked: query={redact_text(query_text)}, format={output_format}, stream={stream}"
+        f"Query command invoked: query={redact_text(query_text)}, "
+        f"format={output_format}, stream={stream}"
     )
 
 
@@ -190,6 +194,7 @@ def run_query_command(
     from perplexity_cli.api.streaming import stream_query_response
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.auth.utils import load_token_optional
+    from perplexity_cli.error_handler import handle_error
     from perplexity_cli.utils.http_errors import (
         handle_http_error,
         handle_network_error,
@@ -197,6 +202,26 @@ def run_query_command(
     )
 
     logger = get_logger()
+
+    # Stdin support: if query_text is "-", read from stdin.
+    if query_text == "-":
+        if sys.stdin.isatty():
+            click.echo("Error: stdin is a terminal; pipe input or provide a query.", err=True)
+            sys.exit(2)
+        query_text = sys.stdin.read().strip()
+        if not query_text:
+            click.echo("Error: empty input from stdin.", err=True)
+            sys.exit(2)
+
+    # Read json_mode, timeout, and include_schema from ctx_obj.
+    json_mode = (ctx_obj or {}).get("json", False)
+    timeout = (ctx_obj or {}).get("timeout")
+    include_schema = (ctx_obj or {}).get("schema", False)
+
+    # Generate trace_id and timing.
+    trace_id = str(uuid.uuid4())
+    start_time = time.monotonic()
+
     log_query_debug_context(query_text, output_format, stream)
 
     tm = TokenManager()
@@ -207,7 +232,12 @@ def run_query_command(
         resolved_output_format, formatter = get_query_formatter(output_format)
         final_query = build_final_query(query_text)
 
-        with PerplexityAPI(token=token, cookies=cookies) as api:
+        # Build API kwargs, including timeout if set.
+        api_kwargs: dict = {"token": token, "cookies": cookies}
+        if timeout is not None:
+            api_kwargs["timeout"] = timeout
+
+        with PerplexityAPI(**api_kwargs) as api:
             if stream:
                 logger.info("Streaming query response")
                 stream_query_response(
@@ -217,51 +247,94 @@ def run_query_command(
                     resolved_output_format,
                     strip_references,
                     attachments=attachment_urls,
+                    json_mode=json_mode,
+                    trace_id=trace_id,
+                    start_time=start_time,
                 )
                 return
 
             logger.info("Fetching complete answer")
             answer_obj = api.get_complete_answer(final_query, attachments=attachment_urls)
             logger.debug(
-                f"Received answer: {len(answer_obj.text)} characters, {len(answer_obj.references)} references"
-            )
-            render_complete_answer(
-                answer_obj,
-                formatter,
-                resolved_output_format,
-                strip_references,
+                f"Received answer: {len(answer_obj.text)} characters, "
+                f"{len(answer_obj.references)} references"
             )
 
-    except PerplexityHTTPStatusError as e:
-        debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
-        handle_http_error(e, logger, debug_mode=debug_mode)
+            if json_mode:
+                # Envelope output for --json mode (non-streaming).
+                from perplexity_cli.envelope import Meta, envelope_to_dict, success_envelope
+                from perplexity_cli.utils.version import get_version
 
-    except PerplexityRequestError as e:
-        debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
-        handle_network_error(e, logger, debug_mode=debug_mode)
-
-    except UpstreamSchemaError as e:
-        logger.error(f"Upstream schema error: {e}")
-        click.echo(f"[ERROR] Upstream response format changed: {e}", err=True)
-        sys.exit(1)
-
-    except (ConfigurationError, AttachmentError, AttachmentUploadError, ValueError) as e:
-        logger.error(f"Value error: {e}")
-        click.echo(f"[ERROR] Error: {e}", err=True)
-        sys.exit(1)
+                result = {
+                    "answer": answer_obj.text,
+                    "references": [
+                        {"name": r.name, "url": r.url, "snippet": r.snippet}
+                        for r in answer_obj.references
+                    ],
+                }
+                meta = Meta(
+                    duration_ms=int((time.monotonic() - start_time) * 1000),
+                    version=get_version(),
+                    trace_id=trace_id,
+                )
+                envelope = success_envelope(
+                    command="pxcli query --json",
+                    result=result,
+                    meta=meta,
+                )
+                data = envelope_to_dict(envelope, include_schema=include_schema)
+                sys.stdout.write(json.dumps(data, default=str) + "\n")
+            else:
+                render_complete_answer(
+                    answer_obj,
+                    formatter,
+                    resolved_output_format,
+                    strip_references,
+                )
 
     except KeyboardInterrupt:
+        if json_mode:
+            handle_error(
+                KeyboardInterrupt(),
+                command="pxcli query --json",
+                json_mode=True,
+                debug_mode=(ctx_obj or {}).get("debug", False),
+            )
         logger.info("Query interrupted by user")
         click.echo("\n[ERROR] Query interrupted.", err=True)
         sys.exit(130)
 
-    except Exception as e:
-        debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
-        handle_unexpected_cli_error(
-            e,
-            logger,
-            debug_mode=debug_mode,
-            user_message="[ERROR] An unexpected error occurred.",
-            log_message="Unexpected error",
-            include_debug_hint=True,
-        )
+    except Exception as exc:
+        debug_mode = (ctx_obj or {}).get("debug", False)
+        if json_mode:
+            handle_error(
+                exc,
+                command="pxcli query --json",
+                json_mode=True,
+                debug_mode=debug_mode,
+            )
+
+        # Non-json error handling (existing behaviour).
+        if isinstance(exc, PerplexityHTTPStatusError):
+            handle_http_error(exc, logger, debug_mode=debug_mode)
+        elif isinstance(exc, PerplexityRequestError):
+            handle_network_error(exc, logger, debug_mode=debug_mode)
+        elif isinstance(exc, UpstreamSchemaError):
+            logger.error(f"Upstream schema error: {exc}")
+            click.echo(f"[ERROR] Upstream response format changed: {exc}", err=True)
+            sys.exit(1)
+        elif isinstance(
+            exc, (ConfigurationError, AttachmentError, AttachmentUploadError, ValueError)
+        ):
+            logger.error(f"Value error: {exc}")
+            click.echo(f"[ERROR] Error: {exc}", err=True)
+            sys.exit(1)
+        else:
+            handle_unexpected_cli_error(
+                exc,
+                logger,
+                debug_mode=debug_mode,
+                user_message="[ERROR] An unexpected error occurred.",
+                log_message="Unexpected error",
+                include_debug_hint=True,
+            )

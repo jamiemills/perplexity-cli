@@ -1,322 +1,398 @@
 ---
-name: perplexity-cli-question-answering
-description: Query Perplexity.ai directly from the terminal to find answers to research questions, current events, and detailed explanations. Returns structured JSON output for programmatic parsing. Use when you need current information, comprehensive answers with source references, or want to avoid making separate web search requests.
+name: pxcli-question-answering
+description: Query Perplexity.ai from the terminal. Returns structured JSON envelopes with answers, source references, exit codes, and next-action suggestions. Use when you need current information, comprehensive answers with citations, or programmatic integration via JSON/NDJSON output.
 ---
 
-# Perplexity CLI for Question Answering
+# pxcli — Perplexity CLI for Question Answering
 
-## What Is perplexity-cli?
+## What Is pxcli?
 
-perplexity-cli is a command-line interface for querying Perplexity.ai. It allows you to ask questions and receive comprehensive answers with source citations, directly from your terminal. The tool supports multiple output formats including structured JSON, making it ideal for programmatic use.
+pxcli is a command-line interface for querying Perplexity.ai. It returns comprehensive answers with source citations directly from your terminal, with structured JSON output suitable for programmatic use and agent integration.
 
 ## When to Use This Skill
 
-Use perplexity-cli when you need to:
+Use pxcli when you need to:
 
 - **Find current information**: Ask about recent events, news, or developments
 - **Get detailed explanations**: Request comprehensive answers with source references
 - **Research topics**: Explore subjects with verified sources cited in the response
-- **Parse structured data**: Use JSON output format to integrate answers into workflows
+- **Parse structured data**: Use JSON envelope output to integrate answers into workflows
 - **Avoid multiple tools**: Replace separate web search requests with a single command
-
-Compare to other approaches:
-- **Web search tools**: Good for finding specific URLs, but require manual reading and verification
-- **Web fetch**: Good for reading specific page content, but requires knowing the URL first
-- **perplexity-cli**: Good for getting synthesised answers with automatic source discovery and citations
 
 ## Setup and Authentication
 
 ### One-Time Authentication
 
-perplexity-cli requires a one-time authentication step:
-
 ```bash
-# Install Chrome for Testing (keeps it separate from your main browser)
+# Install Chrome for Testing
 npx @puppeteer/browsers install chrome@stable
 
-# Create a shell alias in your shell config (~/.bashrc, ~/.zshrc, etc.)
+# Create a shell alias
 alias chromefortesting='open ~/.local/bin/chrome/mac_arm-*/chrome-mac-arm64/Google\ Chrome\ for\ Testing.app --args "--remote-debugging-port=9222" "about:blank"'
 
 # Terminal 1: Start Chrome
 chromefortesting
 
 # Terminal 2: Authenticate
-perplexity-cli auth
+pxcli auth login
 ```
 
-Once authenticated, you won't need to authenticate again unless you run `perplexity-cli logout`.
+Once authenticated, credentials persist until you run `pxcli auth logout`.
 
 ### Checking Authentication Status
 
 ```bash
-perplexity-cli status
+pxcli auth status
 ```
 
-This verifies your token is valid and working.
+Returns JSON when using `--json`:
+
+```json
+{
+  "ok": true,
+  "command": "pxcli auth status --json",
+  "result": {
+    "authenticated": true,
+    "token_path": "~/.config/pxcli/token.json",
+    "token_age_days": 3,
+    "cookies_stored": true,
+    "verified": true
+  },
+  "meta": { "duration_ms": 42, "version": "0.7.0", "trace_id": "..." },
+  "next_actions": []
+}
+```
+
+## Commands Reference
+
+| Command | Description |
+|---|---|
+| `pxcli query "..."` | Ask a question |
+| `pxcli auth login` | Authenticate with Perplexity.ai |
+| `pxcli auth logout` | Remove stored credentials |
+| `pxcli auth status` | Check authentication status |
+| `pxcli config set KEY VALUE` | Set a configuration value |
+| `pxcli config show` | Display current configuration |
+| `pxcli style set "..."` | Set a style prompt for all queries |
+| `pxcli style show` | Display current style prompt |
+| `pxcli style clear` | Remove style prompt |
+| `pxcli threads export` | Export conversation threads |
+| `pxcli skill show` | Display this skill definition |
+| `pxcli completion {bash\|zsh\|fish}` | Generate shell completion scripts |
+| `pxcli schema` | Output JSON schema for envelopes |
+| `pxcli doctor security` | Run security diagnostics |
 
 ## Basic Usage
 
 ### Simple Query
 
 ```bash
-perplexity-cli query "What are the latest developments in quantum computing?"
+pxcli query "What are the latest developments in quantum computing?"
 ```
-
-This returns a formatted answer with source references in the terminal.
 
 ### Query with Options
 
 ```bash
-# Get plain text output (good for scripts)
-perplexity-cli query --format plain "What is Python?"
+# Plain text output
+pxcli query --format plain "What is Python?"
 
-# Remove citation numbers and references section
-perplexity-cli query --strip-references "Explain machine learning"
+# Remove citation numbers and references
+pxcli query --strip-references "Explain machine learning"
 
-# Combine options
-perplexity-cli query --format plain --strip-references "What is 2+2?"
+# Stream response in real time
+pxcli query --stream "Your question"
+
+# Pipe question via stdin
+echo "What is Python?" | pxcli query -
+
+# Attach a file for context
+pxcli query --attach report.pdf "Summarise this document"
+
+# Set request timeout
+pxcli query --timeout 30 "Your question"
+
+# Suppress non-essential output
+pxcli query --quiet "Your question"
+
+# Disable coloured output
+pxcli query --no-color "Your question"
 ```
 
-## JSON Output Format
+## JSON Envelope Format
 
-For programmatic use, request JSON output:
+Request JSON output with `--json` (or `--format json`):
 
 ```bash
-perplexity-cli query --format json "What is the capital of France?"
+pxcli query --json "What is the capital of France?"
 ```
 
-### JSON Structure
+### Success Envelope
+
+Every JSON response is wrapped in a standard envelope:
 
 ```json
 {
-  "format_version": "1.0",
-  "answer": "The capital of France is Paris...",
-  "references": [
+  "ok": true,
+  "command": "pxcli query --json \"What is the capital of France?\"",
+  "result": {
+    "answer": "The capital of France is Paris...",
+    "references": [
+      {
+        "index": 1,
+        "title": "Paris - Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Paris",
+        "snippet": "Paris is the capital and largest city of France..."
+      }
+    ]
+  },
+  "meta": {
+    "duration_ms": 1423,
+    "version": "0.7.0",
+    "trace_id": "abc123"
+  },
+  "next_actions": [
     {
-      "index": 1,
-      "title": "Paris - Wikipedia",
-      "url": "https://en.wikipedia.org/wiki/Paris",
-      "snippet": "Paris is the capital and largest city of France..."
+      "command": "pxcli query --json \"Tell me more about Paris\"",
+      "description": "Follow-up query about Paris"
     }
   ]
 }
 ```
 
-### Parsing JSON in Scripts
+### Error Envelope
 
-**Using jq (shell):**
+When `.ok` is `false`, the envelope contains error details and a suggested fix:
 
-```bash
-# Extract just the answer
-perplexity-cli query --format json "Your question" | jq -r '.answer'
-
-# Extract answer with proper newlines
-perplexity-cli query --format json "Your question" | jq -r '.answer'
-
-# Get reference URLs
-perplexity-cli query --format json "Your question" | jq -r '.references[] | .url'
-
-# Count references
-perplexity-cli query --format json "Your question" | jq '.references | length'
+```json
+{
+  "ok": false,
+  "command": "pxcli query --json \"...\"",
+  "error": {
+    "code": "authentication_required",
+    "message": "File attachments require authentication.",
+    "input": {}
+  },
+  "fix": "Run `pxcli auth login` to authenticate.",
+  "next_actions": [
+    { "command": "pxcli auth login", "description": "Authenticate with Perplexity.ai" }
+  ]
+}
 ```
 
-**Using Python:**
+### Error Code Strings
+
+`authentication_required`, `permission_denied`, `rate_limited`, `network_error`, `timeout`, `upstream_schema_error`, `configuration_error`, `attachment_error`, `validation_error`, `not_found`, `internal_error`
+
+### Checking `.ok` Before Processing
+
+Always check `.ok` before accessing `.result`:
+
+```bash
+response=$(pxcli query --json "Your question")
+if echo "$response" | jq -e '.ok' > /dev/null 2>&1; then
+  echo "$response" | jq -r '.result.answer'
+else
+  echo "$response" | jq -r '.error.message' >&2
+  echo "$response" | jq -r '.fix' >&2
+fi
+```
+
+### Per-Command Result Shapes
+
+| Command | `.result` payload |
+|---|---|
+| `query` | `{answer, references}` |
+| `auth status` | `{authenticated, token_path, token_age_days, cookies_stored, verified}` |
+| `auth login` | `{token_path, cookies_stored}` |
+| `auth logout` | `{credentials_existed}` |
+| `config show` | `{config_path, save_cookies, debug_mode, env_overrides}` |
+| `config set` | `{key, value}` |
+| `style set` | `{style}` |
+| `style show` | `{style}` |
+| `style clear` | `{had_style}` |
+| `threads export` | `{threads, total, output_path, date_range}` |
+| `doctor security` | `{storage_backend, token_path, token_permissions, cache_path, cache_permissions, cookies_enabled}` |
+
+## Parsing JSON in Scripts
+
+### Using jq (shell)
+
+```bash
+# Extract the answer
+pxcli query --json "Your question" | jq -r '.result.answer'
+
+# Get reference URLs
+pxcli query --json "Your question" | jq -r '.result.references[].url'
+
+# Count references
+pxcli query --json "Your question" | jq '.result.references | length'
+
+# Get metadata
+pxcli query --json "Your question" | jq '.meta.duration_ms'
+
+# Get suggested next actions
+pxcli query --json "Your question" | jq -r '.next_actions[].command'
+```
+
+### Using Python
+
+```python
+import json
+import subprocess
+import sys
+
+result = subprocess.run(
+    ["pxcli", "query", "--json", "Your question"],
+    capture_output=True,
+    text=True,
+)
+
+if result.returncode != 0:
+    print(f"pxcli exited with code {result.returncode}", file=sys.stderr)
+    sys.exit(result.returncode)
+
+envelope = json.loads(result.stdout)
+
+if not envelope["ok"]:
+    print(f"Error: {envelope['error']['message']}", file=sys.stderr)
+    print(f"Fix: {envelope['fix']}", file=sys.stderr)
+    sys.exit(1)
+
+answer = envelope["result"]["answer"]
+references = envelope["result"]["references"]
+
+print(f"Answer: {answer}")
+for ref in references:
+    print(f"  [{ref['index']}] {ref['title']}: {ref['url']}")
+
+# Follow suggested next actions
+for action in envelope.get("next_actions", []):
+    print(f"Suggested: {action['command']} — {action['description']}")
+```
+
+## NDJSON Streaming
+
+Combine `--json` and `--stream` to receive newline-delimited JSON events:
+
+```bash
+pxcli query --json --stream "Your question"
+```
+
+Each line is a separate JSON object:
+
+```
+{"type": "start", "command": "pxcli query --json --stream \"Your question\"", "ts": "2025-01-01T00:00:00Z"}
+{"type": "chunk", "text": "Python is ", "ts": "2025-01-01T00:00:01Z"}
+{"type": "chunk", "text": "a programming language...", "ts": "2025-01-01T00:00:02Z"}
+{"type": "result", "ok": true, "command": "...", "result": {...}, "meta": {...}, "next_actions": [...], "ts": "2025-01-01T00:00:03Z"}
+```
+
+### Processing NDJSON in Python
 
 ```python
 import json
 import subprocess
 
-result = subprocess.run(
-    ["perplexity-cli", "query", "--format", "json", "Your question"],
-    capture_output=True,
-    text=True
+proc = subprocess.Popen(
+    ["pxcli", "query", "--json", "--stream", "Your question"],
+    stdout=subprocess.PIPE,
+    text=True,
 )
 
-data = json.loads(result.stdout)
-answer = data["answer"]
-references = data["references"]
+for line in proc.stdout:
+    event = json.loads(line)
+    if event["type"] == "chunk":
+        print(event["text"], end="", flush=True)
+    elif event["type"] == "result":
+        references = event["result"]["references"]
+        print(f"\n\n{len(references)} references found.")
 
-print(f"Answer: {answer}")
-for ref in references:
-    print(f"  [{ref['index']}] {ref['title']}: {ref['url']}")
+proc.wait()
 ```
 
-## Practical Patterns
+## Exit Codes
 
-### Pattern 1: Get Answer Without References
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | General failure |
+| 2 | Usage error |
+| 3 | Not found |
+| 4 | Authentication required |
+| 5 | Conflict |
+| 6 | Transient error (retry may help) |
+| 7 | Validation error |
+| 130 | Interrupted (Ctrl+C) |
 
-When you just need the answer without citation numbers:
+Check exit codes in shell scripts:
 
 ```bash
-perplexity-cli query --format plain --strip-references "Your question"
+pxcli query --json "Your question"
+rc=$?
+case $rc in
+  0) echo "Success" ;;
+  4) echo "Run: pxcli auth login" ;;
+  6) echo "Transient error — retrying..." && sleep 2 && pxcli query --json "Your question" ;;
+  *) echo "Failed with exit code $rc" ;;
+esac
 ```
 
-### Pattern 2: Research with Full Context
+## next_actions Usage
 
-Get comprehensive answer with all sources:
+The `next_actions` array in every envelope suggests follow-up commands. Agents should use this to chain operations:
 
-```bash
-perplexity-cli query --format json "Your question"
-# Process JSON to show answer and references
+```python
+envelope = json.loads(result.stdout)
+for action in envelope.get("next_actions", []):
+    # Optionally execute suggested follow-ups
+    subprocess.run(action["command"].split(), capture_output=True, text=True)
 ```
 
-### Pattern 3: Integrate into Workflows
+## Environment Variables
 
-Fetch answer as JSON and parse for further processing:
+| Variable | Purpose |
+|---|---|
+| `NO_COLOR` | Disable coloured output (any non-empty value) |
+| `XDG_CONFIG_HOME` | Override default config directory (default: `~/.config`) |
+| `PERPLEXITY_BASE_URL` | Override the Perplexity.ai base URL |
+| `PXCLI_SESSION_LOG` | Path to session log file |
 
-```bash
-# Get latest information and process
-answer=$(perplexity-cli query --format json "What are the latest AI developments?" | jq -r '.answer')
-
-# Use in next step
-echo "According to Perplexity: $answer"
-```
-
-### Pattern 4: Stream Response (Real-Time)
-
-For interactive use, stream the response as it arrives:
-
-```bash
-perplexity-cli query --stream "Your question"
-```
-
-## Error Handling
-
-### Common Errors
-
-**"Not authenticated"**
-- Run `perplexity-cli auth` to authenticate first
-- Ensure Chrome DevTools authentication completed successfully
-
-**"Token is invalid or expired"**
-- Re-authenticate: `perplexity-cli auth`
-- Token may have expired after extended disuse
-
-**"Rate limit exceeded"**
-- Wait before making more queries
-- Perplexity.ai has rate limiting for heavy usage
-
-**"Network error"**
-- Check your internet connection
-- Verify Perplexity.ai service is accessible
-
-### Debug Information
-
-For troubleshooting, enable debug output:
-
-```bash
-perplexity-cli --debug query "Your question"
-```
-
-This shows detailed logging including HTTP requests and responses.
-
-## Advanced Usage
-
-### Configure Custom Style Prompts
+## Style Prompts
 
 Apply a style prompt to all queries:
 
 ```bash
 # Set a style
-perplexity-cli configure "be concise and technical"
+pxcli style set "be concise and technical"
 
 # View current style
-perplexity-cli view-style
+pxcli style show
 
 # Remove style
-perplexity-cli clear-style
+pxcli style clear
 ```
 
-The style is appended to every query, allowing consistent response formatting.
-
-### Custom Debug Port
-
-If port 9222 is in use:
+## Debug and Diagnostics
 
 ```bash
-# Start Chrome on different port
-chromefortesting='open ~/.local/bin/chrome/mac_arm-*/chrome-mac-arm64/Google\ Chrome\ for\ Testing.app --args "--remote-debugging-port=9223" "about:blank"'
+# Enable debug logging
+pxcli --debug query "Your question"
 
-# Authenticate with custom port
-perplexity-cli auth --port 9223
+# Verbose logging
+pxcli --verbose query "Your question"
+
+# Security diagnostics
+pxcli doctor security
 ```
-
-### Log Files
-
-Logs are stored at `~/.config/perplexity-cli/perplexity-cli.log`
-
-Enable verbose logging:
-
-```bash
-perplexity-cli --verbose query "Your question"
-perplexity-cli --debug query "Your question"
-```
-
-## Complete Examples
-
-### Example 1: Research Current Events
-
-```bash
-# Get latest news on a topic
-perplexity-cli query "What are the latest updates on the James Webb Space Telescope?"
-```
-
-### Example 2: Technical Explanation
-
-```bash
-# Get detailed technical explanation
-perplexity-cli query --format json "How does OAuth 2.0 authentication work?" | jq -r '.answer'
-```
-
-### Example 3: Multi-Step Research Workflow
-
-```bash
-# 1. Get initial answer as JSON
-response=$(perplexity-cli query --format json "What are the main challenges in renewable energy?")
-
-# 2. Extract answer
-answer=$(echo "$response" | jq -r '.answer')
-
-# 3. Extract reference URLs
-urls=$(echo "$response" | jq -r '.references[].url')
-
-# 4. Process results
-echo "=== Answer ==="
-echo "$answer"
-echo ""
-echo "=== References ==="
-echo "$urls"
-```
-
-### Example 4: Batch Queries
-
-```bash
-# Process multiple questions
-questions=("What is Python?" "What is JavaScript?" "What is Rust?")
-
-for question in "${questions[@]}"; do
-  echo "Q: $question"
-  perplexity-cli query --format plain --strip-references "$question"
-  echo ""
-done
-```
-
-## Key Advantages
-
-1. **Structured Output**: JSON format for easy programmatic parsing
-2. **Source Citations**: Every answer includes verified source references
-3. **Current Information**: Access to real-time data and recent events
-4. **No API Keys**: Uses Perplexity.ai via your authenticated session
-5. **Simple Integration**: Single command invocation, straightforward output
-6. **Flexible Formats**: Plain text, Markdown, rich terminal, or JSON
 
 ## Security Considerations
 
 - Token is encrypted at rest using Fernet symmetric encryption
 - Encryption key derived from system identifiers (not portable between machines)
-- Token stored in `~/.config/perplexity-cli/token.json` with restricted permissions (0600)
+- Token stored in `~/.config/pxcli/token.json` with restricted permissions (0600)
 - No credentials displayed in logs
 - Token validated on each request with expiration detection
+- Run `pxcli doctor security` to verify storage permissions and configuration
 
 ## Limitations
 
@@ -325,21 +401,10 @@ done
 - Token bound to your machine (cannot be transferred)
 - Requires active internet connection
 
-## Troubleshooting
+## Quick Start
 
-**Display the Agent Skill definition:**
-
-```bash
-perplexity-cli show-skill
-```
-
-This outputs the full SKILL.md content, useful for sharing with other agents or tools.
-
-## Next Steps
-
-1. Install and authenticate: `perplexity-cli auth`
-2. Check status: `perplexity-cli status`
-3. Try a simple query: `perplexity-cli query "Your question"`
-4. Explore JSON format for integration into your workflows
-
-For full documentation, see the [perplexity-cli README](https://github.com/jamiemills/perplexity-cli#readme).
+1. Authenticate: `pxcli auth login`
+2. Check status: `pxcli auth status`
+3. Query: `pxcli query "Your question"`
+4. JSON output: `pxcli query --json "Your question"`
+5. Show this skill: `pxcli skill show`

@@ -450,9 +450,12 @@ class TestJSONFormatter:
 
         # Parse JSON to verify structure
         parsed = json.loads(result)
-        assert parsed["format_version"] == "1.0"
-        assert parsed["answer"] == "Test answer"
-        assert parsed["references"] == []
+        assert parsed["ok"] is True
+        assert parsed["command"] == "pxcli query"
+        assert parsed["result"]["answer"] == "Test answer"
+        assert parsed["result"]["references"] == []
+        assert parsed["meta"] is None
+        assert parsed["next_actions"] == []
 
     def test_format_complete_with_references(self):
         """Test JSON output includes references."""
@@ -465,18 +468,18 @@ class TestJSONFormatter:
         result = formatter.format_complete(answer)
 
         parsed = json.loads(result)
-        assert parsed["format_version"] == "1.0"
-        assert parsed["answer"] == "Answer text"
-        assert len(parsed["references"]) == 2
+        assert parsed["ok"] is True
+        assert parsed["result"]["answer"] == "Answer text"
+        assert len(parsed["result"]["references"]) == 2
 
         # Verify reference structure
-        ref1 = parsed["references"][0]
+        ref1 = parsed["result"]["references"][0]
         assert ref1["index"] == 1
         assert ref1["title"] == "Test Source"
         assert ref1["url"] == "https://test.com"
         assert ref1["snippet"] == "This is a test snippet"
 
-        ref2 = parsed["references"][1]
+        ref2 = parsed["result"]["references"][1]
         assert ref2["index"] == 2
         assert ref2["title"] == "Second Source"
 
@@ -488,8 +491,8 @@ class TestJSONFormatter:
         result = formatter.format_complete(answer, strip_references=True)
 
         parsed = json.loads(result)
-        assert parsed["answer"] == "Answer text"  # Citation stripped
-        assert parsed["references"] == []
+        assert parsed["result"]["answer"] == "Answer text"  # Citation stripped
+        assert parsed["result"]["references"] == []
 
     def test_format_complete_null_snippets(self):
         """Test that null snippets are handled correctly."""
@@ -499,7 +502,7 @@ class TestJSONFormatter:
         result = formatter.format_complete(answer)
 
         parsed = json.loads(result)
-        assert parsed["references"][0]["snippet"] is None
+        assert parsed["result"]["references"][0]["snippet"] is None
 
     def test_json_output_is_valid(self):
         """Test that output is always valid JSON."""
@@ -514,9 +517,10 @@ class TestJSONFormatter:
         # Should not raise an exception
         parsed = json.loads(result)
         assert isinstance(parsed, dict)
-        assert "format_version" in parsed
-        assert "answer" in parsed
-        assert "references" in parsed
+        assert "ok" in parsed
+        assert "result" in parsed
+        assert "answer" in parsed["result"]
+        assert "references" in parsed["result"]
 
     def test_json_formatter_in_registry(self):
         """Test that JSON formatter is registered."""
@@ -525,3 +529,45 @@ class TestJSONFormatter:
 
         formatter = get_formatter("json")
         assert isinstance(formatter, JSONFormatter)
+
+
+class TestJSONEnvelopeFormat:
+    """Test that JSONFormatter produces the new envelope shape."""
+
+    def test_format_complete_has_ok_field(self):
+        """JSON output has 'ok' field set to True."""
+        formatter = JSONFormatter()
+        answer = Answer(text="Test", references=[])
+        parsed = json.loads(formatter.format_complete(answer))
+        assert parsed["ok"] is True
+
+    def test_format_complete_has_result_with_answer(self):
+        """JSON output has result.answer."""
+        formatter = JSONFormatter()
+        answer = Answer(text="The answer", references=[])
+        parsed = json.loads(formatter.format_complete(answer))
+        assert parsed["result"]["answer"] == "The answer"
+
+    def test_format_complete_has_result_with_references(self):
+        """JSON output has result.references list."""
+        formatter = JSONFormatter()
+        refs = [WebResult(name="Src", url="https://src.com", snippet="s")]
+        answer = Answer(text="Answer", references=refs)
+        parsed = json.loads(formatter.format_complete(answer))
+        assert len(parsed["result"]["references"]) == 1
+        assert parsed["result"]["references"][0]["url"] == "https://src.com"
+
+    def test_format_complete_no_format_version(self):
+        """JSON output does NOT have 'format_version' field (old format removed)."""
+        formatter = JSONFormatter()
+        answer = Answer(text="Test", references=[])
+        parsed = json.loads(formatter.format_complete(answer))
+        assert "format_version" not in parsed
+
+    def test_format_complete_strip_references(self):
+        """With strip_references=True, result.references is empty."""
+        formatter = JSONFormatter()
+        refs = [WebResult(name="Src", url="https://src.com", snippet="s")]
+        answer = Answer(text="Answer[1]", references=refs)
+        parsed = json.loads(formatter.format_complete(answer, strip_references=True))
+        assert parsed["result"]["references"] == []

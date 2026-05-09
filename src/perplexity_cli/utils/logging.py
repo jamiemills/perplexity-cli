@@ -4,6 +4,7 @@ import logging
 import re
 import sys
 from collections.abc import Mapping
+from datetime import UTC
 from pathlib import Path
 
 from perplexity_cli.utils.config import get_config_paths
@@ -42,6 +43,54 @@ class DynamicStderrHandler(logging.StreamHandler):
             except ValueError:
                 # pytest capture can replace and close previous stderr objects
                 pass
+
+
+class JSONLogFormatter(logging.Formatter):
+    """Formatter that outputs log records as JSON objects (one per line).
+
+    Used when --json --verbose is active, so stderr log output is also
+    machine-parseable.
+    """
+
+    def __init__(self, trace_id: str | None = None):
+        super().__init__()
+        self.trace_id = trace_id
+
+    def format(self, record: logging.LogRecord) -> str:
+        import json
+        from datetime import datetime
+
+        entry = {
+            "ts": datetime.now(UTC).isoformat(),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "logger": record.name,
+        }
+        if self.trace_id:
+            entry["trace_id"] = self.trace_id
+        return json.dumps(entry)
+
+
+def configure_quiet_mode(logger: logging.Logger) -> None:
+    """Remove all stderr handlers from the logger to suppress output."""
+    logger.handlers = [
+        h
+        for h in logger.handlers
+        if not isinstance(h, (logging.StreamHandler, DynamicStderrHandler))
+        or isinstance(h, logging.FileHandler)
+    ]
+
+
+def enable_structured_logging(trace_id: str | None = None) -> None:
+    """Switch stderr logging to JSON format.
+
+    Replaces the formatter on all stderr handlers with JSONLogFormatter.
+    """
+    logger = get_logger()
+    json_formatter = JSONLogFormatter(trace_id=trace_id)
+    for handler in logger.handlers:
+        if isinstance(handler, DynamicStderrHandler):
+            handler.setFormatter(json_formatter)
 
 
 def setup_logging(

@@ -6,17 +6,17 @@ import pytest
 
 from perplexity_cli.api.models import Answer
 from perplexity_cli.cli import (
-    auth,
-    clear_style,
-    configure,
+    auth_login,
+    auth_logout,
+    auth_status,
+    config_show,
     doctor_security,
-    export_threads,
-    logout,
     main,
     query,
-    show_config,
-    status,
-    view_style,
+    style_clear,
+    style_set,
+    style_show,
+    threads_export,
 )
 from perplexity_cli.config.models import FeatureConfig
 from perplexity_cli.utils.exceptions import AuthenticationError
@@ -46,8 +46,6 @@ class TestCLICommands:
         assert "Perplexity CLI" in result.output
         assert "auth" in result.output
         assert "query" in result.output
-        assert "logout" in result.output
-        assert "status" in result.output
 
     def test_main_version(self, runner):
         """Test version option."""
@@ -66,7 +64,7 @@ class TestCLICommands:
         mock_tm.token_exists.return_value = False
         mock_tm_class.return_value = mock_tm
 
-        result = runner.invoke(status)
+        result = runner.invoke(auth_status)
 
         assert result.exit_code == 0
         assert "Not authenticated" in result.output
@@ -74,12 +72,12 @@ class TestCLICommands:
 
     @patch("perplexity_cli.utils.config.set_feature")
     def test_set_config_handles_configuration_error(self, mock_set_feature, runner):
-        """Test set-config surfaces configuration errors consistently."""
+        """Test config set surfaces configuration errors consistently."""
         from perplexity_cli.utils.exceptions import ConfigurationError
 
         mock_set_feature.side_effect = ConfigurationError("bad config")
 
-        result = runner.invoke(main, ["set-config", "save_cookies", "true"])
+        result = runner.invoke(main, ["config", "set", "save_cookies", "true"])
 
         assert result.exit_code == 1
         assert "Failed to update configuration: bad config" in result.output
@@ -132,7 +130,7 @@ class TestCLICommands:
         mock_api.get_complete_answer.return_value = mock_answer
         mock_api_class.return_value = mock_api
 
-        result = runner.invoke(status)
+        result = runner.invoke(auth_status)
 
         assert result.exit_code == 0
         assert "Authenticated" in result.output
@@ -158,7 +156,7 @@ class TestCLICommands:
         mock_api.get_complete_answer.return_value = mock_answer
         mock_api_class.return_value = mock_api
 
-        result = runner.invoke(status, ["--verify"])
+        result = runner.invoke(auth_status, ["--verify"])
 
         assert result.exit_code == 0
         assert "Token is valid and working" in result.output
@@ -173,7 +171,7 @@ class TestCLICommands:
         mock_tm.token_exists.return_value = False
         mock_tm_class.return_value = mock_tm
 
-        result = runner.invoke(logout)
+        result = runner.invoke(auth_logout)
 
         assert result.exit_code == 0
         assert "No stored credentials" in result.output
@@ -186,7 +184,7 @@ class TestCLICommands:
         mock_tm.clear_token.return_value = None
         mock_tm_class.return_value = mock_tm
 
-        result = runner.invoke(logout)
+        result = runner.invoke(auth_logout)
 
         assert result.exit_code == 0
         assert "Logged out successfully" in result.output
@@ -200,7 +198,7 @@ class TestCLICommands:
         mock_tm.clear_token.side_effect = OSError("permission denied")
         mock_tm_class.return_value = mock_tm
 
-        result = runner.invoke(logout)
+        result = runner.invoke(auth_logout)
 
         assert result.exit_code == 1
         assert "Error during logout: permission denied" in result.output
@@ -394,7 +392,7 @@ class TestCLICommands:
         mock_tm.token_path = "/path/to/token.json"
         mock_tm_class.return_value = mock_tm
 
-        result = runner.invoke(auth)
+        result = runner.invoke(auth_login)
 
         assert result.exit_code == 0
         assert "Authentication successful" in result.output
@@ -407,7 +405,7 @@ class TestCLICommands:
         # Mock authentication failure
         mock_auth.side_effect = AuthenticationError("Chrome not found")
 
-        result = runner.invoke(auth)
+        result = runner.invoke(auth_login)
 
         assert result.exit_code == 1
         assert "Authentication failed" in result.output
@@ -420,7 +418,7 @@ class TestCLIIntegration:
 
     def test_status_with_real_token(self, runner):
         """Test status command with real token if available."""
-        result = runner.invoke(status)
+        result = runner.invoke(auth_status)
         assert result.exit_code == 0
         # Should show either authenticated or not authenticated
         assert "Status:" in result.output
@@ -428,78 +426,78 @@ class TestCLIIntegration:
     def test_logout_and_status(self, runner):
         """Test logout followed by status check."""
         # First logout
-        result1 = runner.invoke(logout)
+        result1 = runner.invoke(auth_logout)
         assert result1.exit_code == 0
 
         # Then check status
-        result2 = runner.invoke(status)
+        result2 = runner.invoke(auth_status)
         assert result2.exit_code == 0
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     def test_configure_style(self, mock_sm_class, runner):
-        """Test configure command saves style."""
+        """Test style set command saves style."""
         mock_sm = Mock()
         mock_sm_class.return_value = mock_sm
 
-        result = runner.invoke(configure, ["be brief and concise"])
+        result = runner.invoke(style_set, ["be brief and concise"])
         assert result.exit_code == 0
         assert "Style configured successfully" in result.output
         mock_sm.save_style.assert_called_once_with("be brief and concise")
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     def test_configure_style_error(self, mock_sm_class, runner):
-        """Test configure command handles save errors."""
+        """Test style set command handles save errors."""
         mock_sm = Mock()
         mock_sm.save_style.side_effect = ValueError("Invalid style")
         mock_sm_class.return_value = mock_sm
 
-        result = runner.invoke(configure, [""])
+        result = runner.invoke(style_set, [""])
         assert result.exit_code == 1
         assert "Invalid style" in result.output
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     def test_view_style_when_set(self, mock_sm_class, runner):
-        """Test view-style shows configured style."""
+        """Test style show displays configured style."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = "be brief"
         mock_sm_class.return_value = mock_sm
 
-        result = runner.invoke(view_style)
+        result = runner.invoke(style_show)
         assert result.exit_code == 0
         assert "Current style:" in result.output
         assert "be brief" in result.output
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     def test_view_style_when_not_set(self, mock_sm_class, runner):
-        """Test view-style when no style configured."""
+        """Test style show when no style configured."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = None
         mock_sm_class.return_value = mock_sm
 
-        result = runner.invoke(view_style)
+        result = runner.invoke(style_show)
         assert result.exit_code == 0
         assert "No style configured" in result.output
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     def test_clear_style_when_set(self, mock_sm_class, runner):
-        """Test clear-style removes style."""
+        """Test style clear removes style."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = "old style"
         mock_sm_class.return_value = mock_sm
 
-        result = runner.invoke(clear_style)
+        result = runner.invoke(style_clear)
         assert result.exit_code == 0
         assert "Style cleared successfully" in result.output
         mock_sm.clear_style.assert_called_once()
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     def test_clear_style_when_not_set(self, mock_sm_class, runner):
-        """Test clear-style when no style configured."""
+        """Test style clear when no style configured."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = None
         mock_sm_class.return_value = mock_sm
 
-        result = runner.invoke(clear_style)
+        result = runner.invoke(style_clear)
         assert result.exit_code == 0
         assert "No style is currently configured" in result.output
 
@@ -535,12 +533,12 @@ class TestCLIIntegration:
 
 
 class TestShowConfig:
-    """Test show-config command with Pydantic model returns."""
+    """Test config show command with Pydantic model returns."""
 
     @patch("perplexity_cli.utils.config.get_feature_config_path")
     @patch("perplexity_cli.utils.config.get_feature_config")
     def test_show_config_uses_attribute_access(self, mock_get_config, mock_get_path, runner):
-        """Test that show_config accesses Pydantic model attributes, not dict keys."""
+        """Test that config_show accesses Pydantic model attributes, not dict keys."""
         from pathlib import Path
 
         from perplexity_cli.config.models import FeatureConfig
@@ -548,7 +546,7 @@ class TestShowConfig:
         mock_get_config.return_value = FeatureConfig(save_cookies=True, debug_mode=False)
         mock_get_path.return_value = Path("/tmp/test-config.json")
 
-        result = runner.invoke(show_config)
+        result = runner.invoke(config_show)
 
         assert result.exit_code == 0
         assert "save_cookies: True" in result.output
@@ -557,7 +555,7 @@ class TestShowConfig:
     @patch("perplexity_cli.utils.config.get_feature_config_path")
     @patch("perplexity_cli.utils.config.get_feature_config")
     def test_show_config_default_values(self, mock_get_config, mock_get_path, runner):
-        """Test show_config with default FeatureConfig values."""
+        """Test config_show with default FeatureConfig values."""
         from pathlib import Path
 
         from perplexity_cli.config.models import FeatureConfig
@@ -565,7 +563,7 @@ class TestShowConfig:
         mock_get_config.return_value = FeatureConfig()
         mock_get_path.return_value = Path("/tmp/test-config.json")
 
-        result = runner.invoke(show_config)
+        result = runner.invoke(config_show)
 
         assert result.exit_code == 0
         assert "save_cookies: False" in result.output
@@ -573,14 +571,14 @@ class TestShowConfig:
 
 
 class TestExportThreadsRateLimitConfig:
-    """Test export-threads command uses Pydantic model attribute access for rate limiting."""
+    """Test threads export command uses Pydantic model attribute access for rate limiting."""
 
     @patch("perplexity_cli.auth.token_manager.TokenManager")
     @patch("perplexity_cli.utils.config.get_rate_limiting_config")
     def test_export_threads_rate_limit_attribute_access(
         self, mock_get_rl_config, mock_tm_class, runner
     ):
-        """Test that export_threads accesses RateLimitConfig attributes, not dict keys."""
+        """Test that threads_export accesses RateLimitConfig attributes, not dict keys."""
         from perplexity_cli.config.models import RateLimitConfig
 
         # Mock token manager - not authenticated to exit early after rate limit setup
@@ -592,7 +590,7 @@ class TestExportThreadsRateLimitConfig:
             enabled=True, requests_per_period=10, period_seconds=30.0
         )
 
-        result = runner.invoke(export_threads)
+        result = runner.invoke(threads_export)
 
         # Should exit with auth error, but the rate limit config access should not raise TypeError
         assert "Not authenticated" in result.output
@@ -600,7 +598,7 @@ class TestExportThreadsRateLimitConfig:
     @patch("perplexity_cli.auth.token_manager.TokenManager")
     @patch("perplexity_cli.utils.config.get_rate_limiting_config")
     def test_export_threads_rate_limit_disabled(self, mock_get_rl_config, mock_tm_class, runner):
-        """Test export_threads when rate limiting is disabled."""
+        """Test threads_export when rate limiting is disabled."""
         from perplexity_cli.config.models import RateLimitConfig
 
         mock_tm = Mock()
@@ -611,7 +609,7 @@ class TestExportThreadsRateLimitConfig:
             enabled=False, requests_per_period=20, period_seconds=60.0
         )
 
-        result = runner.invoke(export_threads)
+        result = runner.invoke(threads_export)
 
         # Should exit with auth error, no TypeError on rate limit config
         assert "Not authenticated" in result.output
@@ -628,7 +626,7 @@ class TestExportThreadsRateLimitConfig:
         mock_scraper_class,
         runner,
     ):
-        """Test export_threads forwards stored cookies into ThreadScraper."""
+        """Test threads_export forwards stored cookies into ThreadScraper."""
         from perplexity_cli.config.models import RateLimitConfig
 
         mock_tm = Mock()
@@ -647,7 +645,7 @@ class TestExportThreadsRateLimitConfig:
         mock_scraper.scrape_all_threads = AsyncMock(return_value=[])
         mock_scraper_class.return_value = mock_scraper
 
-        result = runner.invoke(export_threads)
+        result = runner.invoke(threads_export)
 
         assert result.exit_code == 1
         assert "No threads found matching criteria" in result.output

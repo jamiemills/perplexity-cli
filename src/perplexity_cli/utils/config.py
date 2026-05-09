@@ -70,8 +70,12 @@ def get_config_dir() -> Path:
         base_dir = Path(os.getenv("APPDATA", str(Path.home() / "AppData" / "Roaming")))
         config_dir = base_dir / "perplexity-cli"
     else:
-        # Linux/macOS
-        base_dir = Path.home() / ".config"
+        # Linux/macOS — respect XDG_CONFIG_HOME
+        xdg_config = os.getenv("XDG_CONFIG_HOME")
+        if xdg_config:
+            base_dir = Path(xdg_config)
+        else:
+            base_dir = Path.home() / ".config"
         config_dir = base_dir / "perplexity-cli"
 
     try:

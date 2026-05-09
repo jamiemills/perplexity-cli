@@ -8,9 +8,12 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 
 - **Query Perplexity.ai from the terminal** with a single command
 - **Persistent authentication** with encrypted token storage (PBKDF2-HMAC key derivation)
+- **Structured JSON output** -- envelope format with `ok`, `result`, `meta`, and `next_actions` fields
 - **Multiple output formats** -- plain text, Markdown, rich terminal, or structured JSON
 - **Real-time streaming** -- optional incremental output as the response arrives
+- **NDJSON streaming** -- structured streaming with `--json --stream` for agent integration
 - **File attachments** -- attach files or entire directories to queries for context-aware answers
+- **Stdin support** -- pipe queries from stdin with `echo "question" | pxcli query -`
 - **Source references** -- web sources extracted and displayed with inline citations
 - **Citation stripping** -- remove citation markers and references section from output
 - **Response style presets** -- configure a persistent style prompt applied to all queries
@@ -18,6 +21,8 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 - **Date filtering** -- filter exported threads by date range
 - **Automatic retry** -- exponential backoff on transient errors and rate limits
 - **Cloudflare bypass** -- Chrome TLS fingerprint impersonation via curl_cffi
+- **Shell completion** -- generated completion scripts for Bash, Zsh, and Fish
+- **JSON schema** -- machine-readable schema for all envelope types
 - **Diagnostics** -- `doctor security` reports local storage state and file permissions
 - **Agent integration** -- built-in skill definition for use with AI agents
 - **Configurable** -- URLs, rate limits, cookie storage, and debug mode all configurable via file or environment variables
@@ -81,7 +86,7 @@ The `query` command works without authentication for simple questions.
 ### 2. Authenticate for full features (optional, one-time setup)
 
 ```bash
-pxcli auth
+pxcli auth login
 ```
 
 This opens Chrome via the DevTools Protocol, waits for you to log in to Perplexity.ai, extracts your session token, and saves it encrypted locally. See [Authentication setup](#authentication-setup) for full instructions.
@@ -95,13 +100,13 @@ After authentication, you can:
 pxcli query --attach README.md "What is this project?"
 
 # Export your thread library to CSV
-pxcli export-threads
+pxcli threads export
 
 # Check your authentication status
-pxcli status
+pxcli auth status
 
 # Configure a response style to apply to all queries
-pxcli configure "be concise and technical"
+pxcli style set "be concise and technical"
 ```
 
 ## Querying
@@ -114,44 +119,80 @@ pxcli query "What is machine learning?"
 
 # Stream the response as it arrives
 pxcli query --stream "What is machine learning?"
+pxcli query -s "What is machine learning?"
 
 # Remove citation markers [1], [2] and the references section
 pxcli query --strip-references "What is machine learning?"
+pxcli query -S "What is machine learning?"
+
+# Set a timeout (seconds)
+pxcli query --timeout 30 "Complex question"
+pxcli query -t 30 "Complex question"
+
+# Read query from stdin
+echo "What is Python?" | pxcli query -
 ```
 
 ### Output formats
 
-Use `--format` (or `-f`) to choose the output format. The default is `rich`.
+Use `--format` (or `-f`) to choose the output format. The default is `rich` when stdout is a TTY, or `plain` when piped.
 
 ```bash
-# Rich terminal output with colours and formatted tables (default)
+# Rich terminal output with colours and formatted tables (default for TTY)
 pxcli query "What is Python?"
 
-# Plain text with underlined headers (good for scripts and piping)
+# Plain text with underlined headers (default when piped, good for scripts)
 pxcli query --format plain "What is Python?"
 
 # GitHub-flavoured Markdown
 pxcli query --format markdown "What is Python?" > answer.md
 
-# Structured JSON with answer text and references array
-pxcli query --format json "What is Python?" > answer.json
+# Structured JSON envelope
+pxcli query --json "What is Python?" > answer.json
+pxcli query --format json "What is Python?" > answer.json  # equivalent
 ```
 
 #### JSON format
 
-The JSON output has this structure:
+The `--json` flag (or `--format json`) produces a structured envelope:
 
 ```json
 {
-  "format_version": "1.0",
-  "answer": "Python is a high-level programming language...",
-  "references": [
-    {
-      "index": 1,
-      "title": "Python.org",
-      "url": "https://www.python.org",
-      "snippet": "Python is a programming language..."
-    }
+  "ok": true,
+  "command": "pxcli query --json \"What is Python?\"",
+  "result": {
+    "answer": "Python is a high-level programming language...",
+    "references": [
+      {
+        "name": "Python.org",
+        "url": "https://www.python.org",
+        "snippet": "Python is a programming language..."
+      }
+    ]
+  },
+  "meta": {
+    "duration_ms": 1423,
+    "version": "0.7.0",
+    "trace_id": "a1b2c3d4-..."
+  },
+  "next_actions": []
+}
+```
+
+Error responses use the same envelope structure with `"ok": false`:
+
+```json
+{
+  "ok": false,
+  "command": "pxcli query --json \"...\"",
+  "error": {
+    "code": "authentication_required",
+    "message": "File attachments require authentication.",
+    "input": {}
+  },
+  "fix": "Run `pxcli auth login` to authenticate.",
+  "next_actions": [
+    { "command": "pxcli auth login", "description": "Authenticate with Perplexity.ai" }
   ]
 }
 ```
@@ -159,18 +200,36 @@ The JSON output has this structure:
 Useful with `jq`:
 
 ```bash
+# Check success
+pxcli query --json "What is Python?" | jq '.ok'
+
 # Extract just the answer text (use -r so newlines render properly)
-pxcli query --format json "What is Python?" | jq -r '.answer'
+pxcli query --json "What is Python?" | jq -r '.result.answer'
 
 # Extract reference URLs
-pxcli query --format json "What is Python?" | jq -r '.references[].url'
+pxcli query --json "What is Python?" | jq -r '.result.references[].url'
 
-# Count references
-pxcli query --format json "What is Python?" | jq '.references | length'
+# Get timing metadata
+pxcli query --json "What is Python?" | jq '.meta.duration_ms'
 
 # Strip references from JSON output
-pxcli query --format json --strip-references "What is Python?"
+pxcli query --json --strip-references "What is Python?"
 ```
+
+#### NDJSON streaming
+
+Use `--json --stream` together for structured streaming output. Each line is a valid JSON object:
+
+```bash
+pxcli query --json --stream "What is Python?"
+```
+
+Line types:
+- `{"type": "start", "command": "...", "ts": "..."}` -- first line
+- `{"type": "chunk", "text": "...", "ts": "..."}` -- incremental content
+- `{"type": "result", ...full envelope..., "ts": "..."}` -- final line
+
+Without `--json`, `--stream` produces raw text (the existing behaviour).
 
 ### File attachments
 
@@ -196,8 +255,10 @@ Flags can be combined freely:
 
 ```bash
 pxcli query --format plain --strip-references "What is 2+2?"
+pxcli query -f plain -S "What is 2+2?"
 pxcli query --stream --strip-references "Explain Kubernetes"
 pxcli query --format markdown --strip-references "How does DNS work?" > dns.md
+pxcli query --json --timeout 60 "Complex analysis question"
 ```
 
 ### Scripting
@@ -207,40 +268,42 @@ pxcli query --format markdown --strip-references "How does DNS work?" > dns.md
 ANSWER=$(pxcli query --format plain "What is 2+2?")
 echo "The answer is: $ANSWER"
 
-# Parse JSON in Python
+# Parse JSON envelope in Python
 python3 << 'EOF'
 import json, subprocess
 result = subprocess.run(
-    ["pxcli", "query", "--format", "json", "What is Python?"],
+    ["pxcli", "query", "--json", "What is Python?"],
     capture_output=True, text=True
 )
 data = json.loads(result.stdout)
-print(data["answer"])
-for ref in data["references"]:
-    print(f"- {ref['title']}: {ref['url']}")
+if data["ok"]:
+    print(data["result"]["answer"])
+    for ref in data["result"]["references"]:
+        print(f"- {ref['name']}: {ref['url']}")
+else:
+    print(f"Error: {data['error']['message']}")
 EOF
 ```
 
-### Exit codes and failure behaviour
+### Exit codes
 
-- `0` means the command completed successfully.
-- `1` means the command failed with a user-facing error.
-- `130` means the command was interrupted by the user.
-
-Current failure families are reported consistently where possible:
-
-- **Authentication failures**: expired or missing credentials, or commands that require auth
-- **Network failures**: connectivity and request transport problems
-- **HTTP failures**: upstream non-success status codes such as `401`, `403`, or `429`
-- **Configuration failures**: unreadable or invalid local config state
-- **Attachment failures**: local attachment resolution or upload problems
-- **Upstream schema failures**: unexpected API payload shapes after upstream changes
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | General failure |
+| `2` | Usage error (bad arguments, missing input) |
+| `3` | Not found |
+| `4` | Authentication required |
+| `5` | Conflict |
+| `6` | Transient error (timeout, rate limit, server error -- retry may help) |
+| `7` | Validation error |
+| `130` | Interrupted (Ctrl+C) |
 
 For scripting:
 
-- prefer checking the process exit code first
-- treat stderr as human-readable diagnostics, not a stable machine interface
-- use `--format json` only for successful `query` output, not for error payloads
+- Prefer checking the process exit code first.
+- In `--json` mode, both success and error responses are valid JSON envelopes on stdout. Check the `.ok` field.
+- Without `--json`, stderr contains human-readable diagnostics (not a stable machine interface).
 
 ## Response styles
 
@@ -248,35 +311,37 @@ Set a persistent style prompt that is appended to every query. This lets you con
 
 ```bash
 # Set a style
-pxcli configure "be brief and concise"
+pxcli style set "be brief and concise"
 
 # View the current style
-pxcli view-style
+pxcli style show
 
 # Clear the style
-pxcli clear-style
+pxcli style clear
 ```
 
 The style is stored in `~/.config/perplexity-cli/style.json` and persists across sessions.
 
 ## Authentication
 
-Most commands work without authentication. Only `export-threads` strictly requires a stored token. Here is a summary of authentication requirements:
+Most commands work without authentication. Only `threads export` strictly requires a stored token. Here is a summary of authentication requirements:
 
 ### Commands requiring authentication
 
-- `export-threads` -- Export your thread library to CSV
+- `threads export` -- Export your thread library to CSV
 
 ### Commands that work without authentication
 
 - `query` -- Submit queries (authentication used automatically when available)
-- `status` -- Show authentication status (reports unauthenticated state gracefully)
-- `configure`, `view-style`, `clear-style` -- Manage response styles (local-only, no API calls)
-- `set-config`, `show-config` -- Manage configuration (local-only)
-- `show-skill` -- Display the Agent Skill definition
+- `auth status` -- Show authentication status (reports unauthenticated state gracefully)
+- `style set`, `style show`, `style clear` -- Manage response styles (local-only, no API calls)
+- `config set`, `config show` -- Manage configuration (local-only)
+- `skill show` -- Display the Agent Skill definition
 - `doctor security` -- Report local storage security details
+- `completion {bash|zsh|fish}` -- Generate shell completion scripts
+- `schema` -- Output JSON schema for envelopes
 
-If you have authenticated with `pxcli auth`, your token will be used automatically with `query`. If you haven't authenticated, `query` will attempt to run without a token (behaviour depends on whether the Perplexity API permits unauthenticated requests).
+If you have authenticated with `pxcli auth login`, your token will be used automatically with `query`. If you haven't authenticated, `query` will attempt to run without a token (behaviour depends on whether the Perplexity API permits unauthenticated requests).
 
 ### Features requiring authentication within `query`
 
@@ -317,7 +382,7 @@ The `mac_arm-*` pattern matches the version directory. Adjust the path for your 
 chromefortesting
 
 # Terminal 2: Run authentication
-pxcli auth
+pxcli auth login
 ```
 
 The process will:
@@ -328,14 +393,15 @@ The process will:
 4. Extract your session token
 5. Save it encrypted to `~/.config/perplexity-cli/token.json`
 
-Once complete, you do not need to authenticate again unless you run `pxcli logout` or the token expires.
+Once complete, you do not need to authenticate again unless you run `pxcli auth logout` or the token expires.
 
 ### Custom port
 
 If port 9222 is in use:
 
 ```bash
-pxcli auth --port 9223
+pxcli auth login --port 9223
+pxcli auth login -p 9223
 ```
 
 Start Chrome with the matching port in your alias.
@@ -346,20 +412,21 @@ Export your entire Perplexity thread history to CSV.
 
 ```bash
 # Export all threads
-pxcli export-threads
+pxcli threads export
 
 # Filter by date range
-pxcli export-threads --from-date 2025-01-01
-pxcli export-threads --from-date 2025-01-01 --to-date 2025-12-31
+pxcli threads export --from-date 2025-01-01
+pxcli threads export --from-date 2025-01-01 --to-date 2025-12-31
 
 # Custom output file
-pxcli export-threads --output my-threads.csv
+pxcli threads export --output my-threads.csv
+pxcli threads export -o my-threads.csv
 
 # Bypass local cache
-pxcli export-threads --force-refresh
+pxcli threads export --force-refresh
 
 # Clear cache before export
-pxcli export-threads --clear-cache
+pxcli threads export --clear-cache
 ```
 
 ### Output format
@@ -379,6 +446,21 @@ Thread exports are cached locally in encrypted form at `~/.config/perplexity-cli
 ### Rate limiting
 
 Thread export requests are rate-limited by default (20 requests per 60 seconds) to avoid HTTP 429 errors. See [Rate limiting](#rate-limiting) for configuration.
+
+## Shell completion
+
+Generate shell completion scripts for tab-completion of commands and options:
+
+```bash
+# Bash -- add to ~/.bashrc
+eval "$(pxcli completion bash)"
+
+# Zsh -- add to ~/.zshrc
+eval "$(pxcli completion zsh)"
+
+# Fish
+pxcli completion fish | source
+```
 
 ## Configuration
 
@@ -400,24 +482,24 @@ Manage settings with:
 
 ```bash
 # View current configuration
-pxcli show-config
+pxcli config show
 
 # Enable cookie storage (saves Cloudflare cookies alongside JWT token)
-pxcli set-config save_cookies true
+pxcli config set save_cookies true
 
 # Enable persistent debug logging
-pxcli set-config debug_mode true
+pxcli config set debug_mode true
 
 # Disable
-pxcli set-config save_cookies false
-pxcli set-config debug_mode false
+pxcli config set save_cookies false
+pxcli config set debug_mode false
 ```
 
 After changing `save_cookies`, re-authenticate for the change to take effect:
 
 ```bash
-pxcli set-config save_cookies true
-pxcli auth
+pxcli config set save_cookies true
+pxcli auth login
 ```
 
 ### Token storage
@@ -434,8 +516,8 @@ If cookie storage is enabled, browser cookies are stored in the same encrypted f
 To re-authenticate:
 
 ```bash
-pxcli logout
-pxcli auth
+pxcli auth logout
+pxcli auth login
 ```
 
 ### URL configuration
@@ -485,11 +567,15 @@ Environment variables override configuration file settings. Precedence: CLI flag
 |---|---|
 | `PERPLEXITY_BASE_URL` | API base URL |
 | `PERPLEXITY_QUERY_ENDPOINT` | Query endpoint path |
+| `PERPLEXITY_CONFIG_DIR` | Override config directory location |
 | `PERPLEXITY_SAVE_COOKIES` | `true` or `false` -- override cookie storage |
 | `PERPLEXITY_DEBUG_MODE` | `true` or `false` -- override debug mode |
 | `PERPLEXITY_RATE_LIMITING_ENABLED` | `true` or `false` |
 | `PERPLEXITY_RATE_LIMITING_RPS` | Requests per period (integer) |
 | `PERPLEXITY_RATE_LIMITING_PERIOD` | Period in seconds (integer) |
+| `XDG_CONFIG_HOME` | XDG base directory for config (default: `~/.config`) |
+| `NO_COLOR` | Disable coloured output (any value) |
+| `PXCLI_SESSION_LOG` | Set to `true` to enable NDJSON session logging |
 
 ## Command reference
 
@@ -503,93 +589,105 @@ Options:
   -v, --verbose    INFO level logging
   -d, --debug      DEBUG level logging
   --log-file PATH  Log file path (default: ~/.config/perplexity-cli/perplexity-cli.log)
+  -q, --quiet      Suppress non-essential output
+  --no-color       Disable coloured output
 
-Command options:
-  query           -f {plain,markdown,rich,json}  --strip-references
-                  --stream / --no-stream  -a/--attach FILE
-  auth            --port PORT
-  export-threads  --from-date DATE  --to-date DATE  --output PATH
-                  --force-refresh  --clear-cache
-  configure       STYLE
-  set-config      KEY VALUE
+Command groups:
+  auth             Authentication management (login, logout, status)
+  config           Configuration management (set, show)
+  style            Style prompt management (set, show, clear)
+  threads          Thread management (export)
+  skill            Agent skill management (show)
+  doctor           Diagnostics (security)
+  completion       Shell completion scripts (bash, zsh, fish)
+
+Root commands:
+  query            Submit a query to Perplexity.ai
+  schema           Output JSON schema for command envelopes
 ```
-
-### `pxcli auth [--port PORT]`
-
-Authenticate with Perplexity.ai via Chrome DevTools Protocol. Default port: 9222.
 
 ### `pxcli query QUERY [OPTIONS]`
 
 Submit a query and display the answer.
 
-| Option | Description |
-|---|---|
-| `--format`, `-f` | Output format: `plain`, `markdown`, `rich` (default), `json` |
-| `--strip-references` | Remove citation markers and references section |
-| `--stream` / `--no-stream` | Stream response incrementally (default: `--no-stream`) |
-| `--attach`, `-a` | Attach file(s): single path, comma-separated, repeated flag, or directory (recursive) |
+| Option | Short | Description |
+|---|---|---|
+| `--format` | `-f` | Output format: `plain`, `markdown`, `rich` (default), `json` |
+| `--json` | | Structured JSON envelope output |
+| `--strip-references` | `-S` | Remove citation markers and references section |
+| `--stream` / `--no-stream` | `-s` | Stream response incrementally (default: `--no-stream`) |
+| `--attach` | `-a` | Attach file(s): single path, comma-separated, repeated flag, or directory (recursive) |
+| `--timeout` | `-t` | Request timeout in seconds |
 
-Exit codes: `0` success, `1` error, `130` interrupted.
+### `pxcli auth login [--port PORT]`
 
-### `pxcli status [--verify]`
+Authenticate with Perplexity.ai via Chrome DevTools Protocol. Default port: 9222.
+
+### `pxcli auth status [--verify]`
 
 Display local authentication status. Use `--verify` to perform a live API verification check.
 
-### `pxcli logout`
+### `pxcli auth logout`
 
 Remove stored authentication token.
 
-### `pxcli configure STYLE`
-
-Set a persistent style prompt applied to all queries.
-
-### `pxcli view-style`
-
-Display the currently configured style.
-
-### `pxcli clear-style`
-
-Remove the configured style.
-
-### `pxcli set-config KEY VALUE`
+### `pxcli config set KEY VALUE`
 
 Set a configuration option. Keys: `save_cookies`, `debug_mode`. Values: `true`, `false`.
 
-### `pxcli show-config`
+### `pxcli config show`
 
 Display current configuration and any environment variable overrides.
+
+### `pxcli style set STYLE`
+
+Set a persistent style prompt applied to all queries.
+
+### `pxcli style show`
+
+Display the currently configured style.
+
+### `pxcli style clear`
+
+Remove the configured style.
+
+### `pxcli threads export [OPTIONS]`
+
+Export thread library to CSV. Uses the stored token and any saved browser cookies for the export request path.
+
+| Option | Short | Description |
+|---|---|---|
+| `--from-date` | | Start date filter (YYYY-MM-DD, inclusive) |
+| `--to-date` | | End date filter (YYYY-MM-DD, inclusive) |
+| `--output` | `-o` | Output file path (default: `threads-TIMESTAMP.csv`) |
+| `--force-refresh` | | Bypass local cache |
+| `--clear-cache` | | Delete cache before export |
 
 ### `pxcli doctor security`
 
 Display local storage backend details, token/cache permission state, and cookie-storage risk information.
 
-### `pxcli show-skill`
+### `pxcli skill show`
 
 Display the Agent Skill definition for integrating pxcli with AI agents.
 
-### `pxcli export-threads [OPTIONS]`
+### `pxcli completion {bash|zsh|fish}`
 
-Export thread library to CSV.
+Generate shell completion scripts for the specified shell.
 
-Uses the stored token and any saved browser cookies for the export request path.
+### `pxcli schema`
 
-| Option | Description |
-|---|---|
-| `--from-date DATE` | Start date filter (YYYY-MM-DD, inclusive) |
-| `--to-date DATE` | End date filter (YYYY-MM-DD, inclusive) |
-| `--output PATH` | Output file path (default: `threads-TIMESTAMP.csv`) |
-| `--force-refresh` | Bypass local cache |
-| `--clear-cache` | Delete cache before export |
+Output JSON schema for success and error envelopes, plus per-command result schemas.
 
 ## Troubleshooting
 
 ### "Not authenticated"
 
-Run `pxcli auth` to authenticate.
+Run `pxcli auth login` to authenticate.
 
 ### "Failed to decrypt token"
 
-The token was encrypted on a different machine or with a different user. Run `pxcli auth` to re-authenticate.
+The token was encrypted on a different machine or with a different user. Run `pxcli auth login` to re-authenticate.
 
 ### Chrome connection fails
 
@@ -601,7 +699,7 @@ Delete the file and re-authenticate:
 
 ```bash
 rm ~/.config/perplexity-cli/token.json
-pxcli auth
+pxcli auth login
 ```
 
 ## Development
@@ -702,12 +800,18 @@ pxc() {
   local q="$*"
   uvx pxcli query --strip-references --format plain "${q}. Just give me the commands to run on a Mac. Put them on a single line"
 }
+
+pxj() {
+  local q="$*"
+  uvx pxcli query --json "${q}" | jq -r '.result.answer'
+}
 ```
 
 after which you can run, for example
 
 ```
 pxc "how can I find what remote branches exist for this repo"
+pxj "what is the latest version of Python?"
 ```
 
 ## Licence

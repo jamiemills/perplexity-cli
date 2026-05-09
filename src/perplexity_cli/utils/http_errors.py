@@ -7,9 +7,11 @@ Shared policy:
   ``handle_unexpected_cli_error()``
 """
 
+from __future__ import annotations
+
 import logging
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 
@@ -19,6 +21,9 @@ from perplexity_cli.utils.exceptions import (
     SimpleRequest,
     SimpleResponse,
 )
+
+if TYPE_CHECKING:
+    from perplexity_cli.envelope import ErrorCode
 
 
 def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
@@ -96,6 +101,65 @@ def handle_unexpected_cli_error(
         click.echo("Run with --debug for more information.", err=True)
 
     sys.exit(1)
+
+
+def classify_http_error(
+    error: PerplexityHTTPStatusError,
+) -> tuple[ErrorCode, str, str | None]:
+    """Classify an HTTP error into a structured error tuple.
+
+    Returns:
+        Tuple of (error_code, human_message, fix_suggestion).
+    """
+    from perplexity_cli.envelope import ErrorCode
+
+    status = error.response.status_code
+    if status == 401:
+        return (
+            ErrorCode.authentication_required,
+            "Authentication failed. Token may be expired.",
+            "Run `pxcli auth login` to re-authenticate.",
+        )
+    if status == 403:
+        return (
+            ErrorCode.permission_denied,
+            "Access forbidden. Check your permissions.",
+            None,
+        )
+    if status == 429:
+        return (
+            ErrorCode.rate_limited,
+            "Rate limit exceeded. Please wait and try again.",
+            "Wait a moment and retry.",
+        )
+    if status >= 500:
+        return (
+            ErrorCode.network_error,
+            f"Server error (HTTP {status}).",
+            "Try again later.",
+        )
+    return (
+        ErrorCode.network_error,
+        f"HTTP error {status}.",
+        None,
+    )
+
+
+def classify_network_error(
+    error: PerplexityRequestError,
+) -> tuple[ErrorCode, str, str | None]:
+    """Classify a network error into a structured error tuple.
+
+    Returns:
+        Tuple of (error_code, human_message, fix_suggestion).
+    """
+    from perplexity_cli.envelope import ErrorCode
+
+    return (
+        ErrorCode.network_error,
+        "Network error. Please check your internet connection.",
+        "Check your internet connection.",
+    )
 
 
 def handle_http_error(
