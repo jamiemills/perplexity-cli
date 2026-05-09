@@ -22,6 +22,18 @@ from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.api.models import FileAttachment
 from perplexity_cli.attachments.upload_manager import AttachmentUploader
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.utils.exceptions import AttachmentUploadError
+
+
+def _upload_or_skip(uploader: AttachmentUploader, attachments: list) -> list[str]:
+    """Upload files, skipping the test if the account quota is exhausted."""
+    try:
+        return asyncio.run(uploader.upload_files(attachments))
+    except AttachmentUploadError as exc:
+        if "quota" in str(exc).lower():
+            pytest.skip(f"Perplexity upload quota exhausted: {exc}")
+        raise
+
 
 pytestmark = [
     pytest.mark.integration,
@@ -73,7 +85,7 @@ class TestFileAttachmentRealE2E:
 
         # Upload file to S3
         file_attachment = FileAttachment.from_file(test_file)
-        s3_urls = asyncio.run(attachment_uploader.upload_files([file_attachment]))
+        s3_urls = _upload_or_skip(attachment_uploader, [file_attachment])
 
         assert len(s3_urls) == 1, f"Expected 1 S3 URL, got {len(s3_urls)}"
         s3_url = s3_urls[0]
@@ -108,7 +120,7 @@ class TestFileAttachmentRealE2E:
             FileAttachment.from_file(file1),
             FileAttachment.from_file(file2),
         ]
-        s3_urls = asyncio.run(attachment_uploader.upload_files(attachments))
+        s3_urls = _upload_or_skip(attachment_uploader, attachments)
 
         assert len(s3_urls) == 2, f"Expected 2 S3 URLs, got {len(s3_urls)}"
 
@@ -143,7 +155,7 @@ class TestFileAttachmentRealE2E:
 
         # Upload all files from directory
         attachments = [FileAttachment.from_file(f) for f in sorted(test_dir.glob("*.txt"))]
-        s3_urls = asyncio.run(attachment_uploader.upload_files(attachments))
+        s3_urls = _upload_or_skip(attachment_uploader, attachments)
 
         assert len(s3_urls) == 3, f"Expected 3 S3 URLs, got {len(s3_urls)}"
 
@@ -191,7 +203,7 @@ class TestFileAttachmentRealE2E:
 
         # Upload file to S3
         file_attachment = FileAttachment.from_file(test_file)
-        s3_urls = asyncio.run(attachment_uploader.upload_files([file_attachment]))
+        s3_urls = _upload_or_skip(attachment_uploader, [file_attachment])
 
         # Query API to extract specific information
         with PerplexityAPI(token=token, cookies=cookies) as api:
