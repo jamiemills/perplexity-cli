@@ -37,7 +37,7 @@ def main(ctx: click.Context, verbose: bool, debug: bool, log_file: Path | None) 
     \b
     Command options:
       query           -f {plain,markdown,rich,json}  --strip-references
-                      --stream / --no-stream
+                      --stream / --no-stream  -a/--attach FILE
       auth            --port PORT
       export-threads  --from-date DATE  --to-date DATE  --output PATH
                       --force-refresh  --clear-cache
