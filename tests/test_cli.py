@@ -320,8 +320,9 @@ class TestCLICommands:
         assert "Test answer" in result.output
         # Rich table format is now used by default
         assert "Wikipedia" in result.output or "#" in result.output  # References table
-        assert "https://en.wikipedia.org/wiki/Python" in result.output
-        assert "https://www.python.org" in result.output
+        ref_urls = ["https://en.wikipedia.org/wiki/Python", "https://www.python.org"]
+        for url in ref_urls:
+            assert result.output.count(url) >= 1
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.auth.token_manager.TokenManager")
