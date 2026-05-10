@@ -90,7 +90,7 @@ def test_stream_query_response_renders_plain_references(capsys):
 
     captured = capsys.readouterr()
     assert "Answer text" in captured.out
-    assert "https://example.com" in captured.out
+    assert captured.out.count("https://example.com") >= 1
     render.formatter.format_references.assert_called_once()
 
 
