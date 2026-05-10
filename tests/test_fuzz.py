@@ -16,11 +16,16 @@ Note on dateutil:
 """
 
 import ast
+import importlib.util
 import pathlib
 import subprocess
 import sys
 
 import pytest
+
+# atheris is an optional dependency -- skip fuzz harness tests when absent
+# (e.g. in CI where it is not installed).
+_HAS_ATHERIS = importlib.util.find_spec("atheris") is not None
 
 # Number of fuzz iterations per harness.
 _FUZZ_ITERATIONS = 5_000
@@ -52,6 +57,7 @@ def _run_harness(harness_name: str, iterations: int = _FUZZ_ITERATIONS) -> None:
 
 
 @pytest.mark.fuzz
+@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzSSEParser:
     """Fuzz tests for the SSE wire-format parser."""
 
@@ -78,6 +84,7 @@ class TestFuzzSSEParser:
 
 
 @pytest.mark.fuzz
+@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzFormatting:
     """Fuzz tests for text transformation functions."""
 
@@ -100,6 +107,7 @@ class TestFuzzFormatting:
 
 
 @pytest.mark.fuzz
+@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzEncryption:
     """Fuzz tests for decryption of corrupt ciphertext."""
 
@@ -114,6 +122,7 @@ class TestFuzzEncryption:
 
 
 @pytest.mark.fuzz
+@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzScraperFields:
     """Fuzz tests for thread-parsing module-level functions."""
 
@@ -132,6 +141,7 @@ class TestFuzzScraperFields:
 
 
 @pytest.mark.fuzz
+@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzContracts:
     """Fuzz tests for upstream payload validation helpers."""
 
@@ -158,6 +168,7 @@ class TestFuzzContracts:
 
 
 @pytest.mark.fuzz
+@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzPydanticModels:
     """Fuzz tests for Pydantic model validation with untrusted input."""
 
