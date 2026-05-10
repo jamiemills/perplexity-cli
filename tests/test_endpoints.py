@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from perplexity_cli.api.endpoints import PerplexityAPI
-from perplexity_cli.api.models import Answer, SSEMessage, WebResult
+from perplexity_cli.api.models import Answer, QueryInput, SSEMessage, WebResult
 from perplexity_cli.utils.exceptions import UpstreamSchemaError
 
 
@@ -133,3 +133,30 @@ class TestPerplexityAPIGetCompleteAnswer:
         result = api.get_complete_answer("test query")
 
         assert result.text == "This is a multi-chunk answer"
+
+
+class TestPerplexityAPISubmitQuery:
+    """Test submit_query request construction."""
+
+    @patch(
+        "perplexity_cli.api.endpoints.get_query_endpoint", return_value="https://example.com/query"
+    )
+    def test_submit_query_merges_request_param_overrides(self, mock_endpoint):
+        """Experimental request params are merged into the outbound payload."""
+        api = PerplexityAPI(token="test-token")
+        api.client = Mock()
+        api.client.stream_post.return_value = iter(())
+
+        list(
+            api.submit_query(
+                QueryInput(
+                    query="test query",
+                    request_params={"workflow_key": "deep_research", "search_mode": "research"},
+                )
+            )
+        )
+
+        mock_endpoint.assert_called_once_with()
+        _, payload = api.client.stream_post.call_args.args
+        assert payload["params"]["workflow_key"] == "deep_research"
+        assert payload["params"]["search_mode"] == "research"
