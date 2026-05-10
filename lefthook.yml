@@ -5,6 +5,9 @@
 #   Stage 2  Auto-fixers                     (piped,    ~0.7s)
 #   Stage 3  Unit tests (no coverage)        (single,   ~21s)
 #
+# Check commands are defined in the Makefile (single source of truth).
+# Staged-file auto-fixers remain here as they need git-specific behaviour.
+#
 # Fail-fast: a pyright or bandit error aborts in ~2-4s instead of ~24s.
 # Coverage enforcement, supply-chain scanning, and fuzz testing run on
 # pre-push where per-commit granularity is not needed.
@@ -18,6 +21,7 @@ pre-commit:
     #
     # None of these modify files. Running them first gives the fastest
     # possible feedback on real errors that no fixer can address.
+    # Commands delegate to Makefile targets for consistency with CI.
     # Wall time: ~4s (semgrep is the bottleneck).
     # -----------------------------------------------------------------
     - name: lint-and-validate
@@ -26,50 +30,31 @@ pre-commit:
         jobs:
           - name: pyright-check
             glob: "*.py"
-            run: uv run pyright src/
+            run: make typecheck-pyright
 
           - name: ty-check
             glob: "*.py"
-            run: uv run ty check src
+            run: make typecheck
 
           - name: bandit
             glob: "*.py"
-            run: uvx --from bandit bandit -c pyproject.toml -r src/ -ll -ii
+            run: make bandit
 
           - name: vulture
             glob: "*.py"
-            run: uv run vulture src/ vulture_whitelist.py --min-confidence 80
+            run: make vulture
 
           - name: radon-cc
             glob: "*.py"
-            run: >
-              output=$(uv run radon cc src/ -s -n B) &&
-              if [ -n "$output" ]; then
-                echo "Cyclomatic complexity violations (B or worse):" &&
-                echo "$output" &&
-                exit 1;
-              fi
+            run: make complexity-cc
 
           - name: radon-mi
             glob: "*.py"
-            run: >
-              output=$(uv run radon mi src/ -s -n B) &&
-              if [ -n "$output" ]; then
-                echo "Maintainability index violations (B or worse):" &&
-                echo "$output" &&
-                exit 1;
-              fi
+            run: make complexity-mi
 
           - name: semgrep
             glob: "*.py"
-            run: >
-              semgrep
-              --config .semgrep.yml
-              --config p/python
-              --config p/comment
-              --config p/r2c-best-practices
-              --severity ERROR --severity WARNING
-              --error --metrics=off .
+            run: make semgrep
 
           - name: check-yaml
             glob: "*.yml|*.yaml"
@@ -103,8 +88,9 @@ pre-commit:
     # -----------------------------------------------------------------
     # Stage 2: auto-fixers (piped -- sequential to avoid file races)
     #
-    # These modify staged files. Running them after linters ensures we
-    # only fix code that has already passed read-only validation.
+    # These modify staged files and re-stage the result.  This is
+    # git-specific behaviour that cannot be expressed in the Makefile,
+    # so commands remain inline here.
     # Wall time: ~0.7s sequential.
     # -----------------------------------------------------------------
     - name: fix-formatting
@@ -137,9 +123,7 @@ pre-commit:
     # Wall time: ~21s.
     # -----------------------------------------------------------------
     - name: pytest-check
-      run: >
-        uv run pytest tests/ -q --tb=line -x
-        -m "not integration and not real_api and not manual and not real_user_config and not fuzz"
+      run: make test
 
 # =============================================================================
 # Pre-push: expensive whole-project validations (parallel)
@@ -153,17 +137,13 @@ pre-push:
   parallel: true
   jobs:
     - name: pytest-coverage
-      run: >
-        uv run pytest tests/ -q --tb=line -x
-        -m "not integration and not real_api and not manual and not real_user_config and not fuzz"
-        --cov --cov-report=json --cov-report=xml:coverage.xml --cov-fail-under=85 &&
-        uv run python scripts/check_module_coverage.py --min-coverage 85
+      run: make test-coverage
 
     - name: safety-scan
-      run: uvx safety scan --target .
+      run: make safety
 
     - name: fuzz-check
-      run: uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz
+      run: make test-fuzz
 
     - name: generate-sonar-reports
-      run: uv run python scripts/generate_sonar_reports.py
+      run: make sonar-reports
