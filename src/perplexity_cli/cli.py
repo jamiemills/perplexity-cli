@@ -87,6 +87,7 @@ def main(
     Command groups:
       auth        Manage authentication (login, logout, status)
       config      Read and write persistent feature toggles
+      models      List available models for your subscription tier
       style       Set, view, or clear a style prompt for all queries
       threads     Export conversation thread library
       skill       View the agent skill definition (SKILL.md)
