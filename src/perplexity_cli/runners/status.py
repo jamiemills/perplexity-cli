@@ -96,7 +96,7 @@ def run_doctor_security_command(*, json_mode: bool | None = None) -> None:
         )
 
 
-def _build_status_envelope(  # nosemgrep: too-many-parameters
+def _build_status_envelope(  # nosemgrep: too-many-parameters, boolean-flag-argument
     authenticated: bool,
     tm,
     token_age_days=None,
@@ -128,7 +128,7 @@ def _verify_token(token, cookies, logger) -> bool | None:
             token=token, cookies=cookies, timeout=DEFAULT_STATUS_CHECK_TIMEOUT
         ) as api:
             test_answer = api.get_complete_answer("test")
-        return bool(test_answer and len(test_answer.text) > 0)
+        return bool(test_answer and test_answer.text)
     except (
         PerplexityHTTPStatusError,
         PerplexityRequestError,
@@ -165,7 +165,7 @@ def _output_status_text(  # nosemgrep: too-many-parameters
 
     if not verify:
         click.echo("\n[INFO] Live verification not run")
-        click.echo("Use 'pxcli status --verify' to test the current token against the API.")
+        click.echo("Use 'pxcli auth status --verify' to test the current token against the API.")
         return
 
     _output_verification_result(verified, logger)
@@ -195,7 +195,9 @@ def _output_verification_result(verified, logger) -> None:
         logger.warning("Token verification returned empty response")
 
 
-def _handle_no_token(json_mode: bool, tm, show_auth_hint: bool = True) -> None:
+def _handle_no_token(  # nosemgrep: boolean-flag-argument
+    json_mode: bool, tm, show_auth_hint: bool = True
+) -> None:
     """Handle the case where no valid token is available."""
     if json_mode:
         write_envelope(_build_status_envelope(False, tm), include_schema=_get_include_schema())
@@ -204,7 +206,7 @@ def _handle_no_token(json_mode: bool, tm, show_auth_hint: bool = True) -> None:
     click.echo("=" * 40)
     click.echo("Status: [ERROR] Not authenticated")
     if show_auth_hint:
-        click.echo("\nAuthenticate with: pxcli auth")
+        click.echo("\nAuthenticate with: pxcli auth login")
 
 
 def _handle_authenticated_status(  # nosemgrep: too-many-parameters
@@ -225,7 +227,9 @@ def _handle_authenticated_status(  # nosemgrep: too-many-parameters
     _output_status_text(token, cookies, token_age_days, verified, verify, tm)
 
 
-def run_status_command(verify: bool, *, json_mode: bool | None = None) -> None:
+def run_status_command(  # nosemgrep: boolean-flag-argument
+    verify: bool, *, json_mode: bool | None = None
+) -> None:
     """Execute the status command."""
     from perplexity_cli.auth.token_manager import TokenManager
 

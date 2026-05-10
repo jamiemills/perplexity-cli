@@ -22,7 +22,7 @@ DEFAULT_DEEP_RESEARCH_TIMEOUT: int = 360
 #: Timeout for S3 file-upload requests.
 DEFAULT_UPLOAD_TIMEOUT: int = 300
 
-#: Short timeout used by ``pxcli status --verify``.
+#: Short timeout used by ``pxcli auth status --verify``.
 DEFAULT_STATUS_CHECK_TIMEOUT: int = 10
 
 # ---------------------------------------------------------------------------

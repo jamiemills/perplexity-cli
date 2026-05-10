@@ -182,7 +182,7 @@ class PerplexityAPI:
         if final_answer is not None:
             return Answer(text=final_answer, references=references)
 
-        status = getattr(final_message, "status", "<missing>")
+        status = final_message.status or "<empty>"
         block_usages = final_message.describe_block_usages()
         raise UpstreamSchemaError(
             "No answer found in final upstream response: "

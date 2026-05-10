@@ -83,8 +83,8 @@ class ThreadCacheManager:
             with open(self.cache_path, encoding="utf-8") as f:
                 raw_data = json.load(f)
 
-            data = self._validate_outer_format(raw_data)
-            cache_data = self._decrypt_and_validate_cache(data)
+            validated_cache = self._validate_outer_format(raw_data)
+            cache_data = self._decrypt_and_validate_cache(validated_cache)
 
             # Audit log: cache loaded
             self.logger.info("Cache loaded from %s", redact_path(self.cache_path))
@@ -107,25 +107,27 @@ class ThreadCacheManager:
             ConfigurationError: If format is invalid or cache is not encrypted.
         """
         try:
-            data = CacheFormat.model_validate(raw_data)
+            cache_format = CacheFormat.model_validate(raw_data)
         except ValidationError as e:
             self.logger.error("Cache file has invalid outer format: %s", e)
             raise ConfigurationError("Cache file has invalid format") from e
 
-        if not data.encrypted:
+        if not cache_format.encrypted:
             self.logger.warning("Cache file is not encrypted")
             raise ConfigurationError(
                 "Cache file is not encrypted. Cache may be corrupted. "
                 "Consider deleting and rebuilding."
             )
 
-        if not data.cache:
+        if not cache_format.cache:
             self.logger.error("Cache file missing encrypted cache data")
             raise ConfigurationError("Cache file is missing encrypted cache data")
 
-        return data
+        return cache_format
 
-    def _decrypt_and_validate_cache(self, data: CacheFormat) -> CacheContent:
+    def _decrypt_and_validate_cache(  # nosemgrep: meaningless-name
+        self, data: CacheFormat
+    ) -> CacheContent:
         """Decrypt and validate the inner cache content.
 
         Args:

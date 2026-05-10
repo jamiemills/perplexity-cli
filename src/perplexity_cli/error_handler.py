@@ -61,7 +61,7 @@ def _classify_exception(exc: BaseException) -> tuple[ErrorCode, str | None]:
     return ErrorCode.internal_error, None
 
 
-def handle_error(  # nosemgrep: too-many-parameters
+def handle_error(  # nosemgrep: too-many-parameters, boolean-flag-argument
     exc: BaseException,
     *,
     command: str,
@@ -76,8 +76,8 @@ def handle_error(  # nosemgrep: too-many-parameters
 
     if json_mode:
         env = error_envelope(command, code, str(exc), fix=fix)
-        data = envelope_to_dict(env, include_schema=include_schema)
-        sys.stdout.write(json.dumps(data, default=str) + "\n")
+        envelope_dict = envelope_to_dict(env, include_schema=include_schema)
+        sys.stdout.write(json.dumps(envelope_dict, default=str) + "\n")
         sys.exit(exit_code)
     else:
         message = str(exc)

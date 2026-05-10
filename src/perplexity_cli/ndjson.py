@@ -84,7 +84,7 @@ class NDJSONWriter:
         """Write a chunk event."""
         self.write_event(ChunkEvent(text=text))
 
-    def result(  # nosemgrep: too-many-parameters
+    def result(  # nosemgrep: too-many-parameters, boolean-flag-argument
         self,
         ok: bool,
         command: str,
@@ -105,9 +105,9 @@ class NDJSONWriter:
             meta=meta,
             next_actions=next_actions if next_actions is not None else [],
         )
-        data = event.model_dump(mode="json")
+        event_dict = event.model_dump(mode="json")
         if include_schema:
-            data = {"$schema": ResultEvent.model_json_schema(), **data}
-        line = json.dumps(data)
+            event_dict = {"$schema": ResultEvent.model_json_schema(), **event_dict}
+        line = json.dumps(event_dict)
         self._output.write(line + "\n")
         self._output.flush()

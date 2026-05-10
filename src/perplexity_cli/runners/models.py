@@ -86,8 +86,8 @@ def _detect_subscription_level(client: Any) -> SubscriptionLevel:
 
     logger = get_logger()
     try:
-        data = client.get_json(get_user_settings_endpoint())
-        settings = UserSettings.model_validate(data)
+        settings_payload = client.get_json(get_user_settings_endpoint())
+        settings = UserSettings.model_validate(settings_payload)
         level = settings.infer_subscription_level()
         logger.debug("Detected subscription level: %s", level.value)
         return level
@@ -295,7 +295,7 @@ def run_models_list_command(
         click.echo(format_model_table(entries))
 
 
-def _output_json(
+def _output_json(  # nosemgrep: boolean-flag-argument
     entries: list[ModelConfigEntry],
     include_schema: bool,
 ) -> None:
@@ -312,7 +312,7 @@ def _output_json(
     write_envelope(envelope, include_schema=include_schema)
 
 
-def _handle_list_error(
+def _handle_list_error(  # nosemgrep: boolean-flag-argument
     exc: Exception,
     json_mode: bool,
     logger: Any,

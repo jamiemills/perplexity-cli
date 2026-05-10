@@ -142,11 +142,11 @@ class ChromeDevToolsClient:
             raise AuthenticationError("Not connected to Chrome")
         while True:
             response = await self.ws.recv()
-            data = json.loads(response)
-            if data.get("id") == self.message_id:
-                if "error" in data:
-                    raise AuthenticationError(f"Chrome error: {data['error']}")
-                return data.get("result", {})
+            cdp_message = json.loads(response)
+            if cdp_message.get("id") == self.message_id:
+                if "error" in cdp_message:
+                    raise AuthenticationError(f"Chrome error: {cdp_message['error']}")
+                return cdp_message.get("result", {})
 
     async def close(self) -> None:
         """Close the WebSocket connection."""

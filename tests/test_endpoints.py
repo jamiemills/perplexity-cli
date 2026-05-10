@@ -104,6 +104,7 @@ class TestPerplexityAPIGetCompleteAnswer:
         mock_message.blocks = []  # No blocks
         mock_message.extract_answer_text.return_value = None
         mock_message.web_results = None
+        mock_message.status = ""
 
         mock_submit.return_value = [mock_message]
 

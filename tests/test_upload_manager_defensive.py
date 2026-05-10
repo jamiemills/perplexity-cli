@@ -638,7 +638,7 @@ class TestUploadManagerLogging:
             assert any(
                 "invalid or expired token" in record.message.lower() for record in error_logs
             )
-            assert any("pxcli auth" in record.message for record in error_logs)
+            assert any("pxcli auth login" in record.message for record in error_logs)
 
     @pytest.mark.asyncio
     async def test_unexpected_fields_type_warning_logged(self, uploader, caplog):

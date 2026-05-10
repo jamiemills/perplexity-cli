@@ -17,6 +17,8 @@ from perplexity_cli.utils.exceptions import (
     PerplexityRequestError,
 )
 
+_HTTP_SERVER_ERROR_FLOOR = 500
+
 T = TypeVar("T")
 
 
@@ -94,7 +96,7 @@ def is_retryable_error(exception: Exception) -> bool:
 
     # HTTP 5xx errors are retryable
     if isinstance(exception, PerplexityHTTPStatusError):
-        if exception.response.status_code >= 500:
+        if exception.response.status_code >= _HTTP_SERVER_ERROR_FLOOR:
             return True
         # Rate limiting (429) is retryable
         if exception.response.status_code == 429:

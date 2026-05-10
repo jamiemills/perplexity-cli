@@ -107,7 +107,7 @@ def error_envelope(  # nosemgrep: too-many-parameters
     )
 
 
-def envelope_to_dict(
+def envelope_to_dict(  # nosemgrep: boolean-flag-argument
     env: Envelope | ErrorEnvelope,
     *,
     include_schema: bool = False,
@@ -118,14 +118,14 @@ def envelope_to_dict(
     the envelope's concrete type is prepended as ``$schema``, making the
     output self-describing.
     """
-    data = env.model_dump(mode="json")
+    envelope_dict = env.model_dump(mode="json")
     if include_schema:
         schema = type(env).model_json_schema()
-        data = {"$schema": schema, **data}
-    return data
+        envelope_dict = {"$schema": schema, **envelope_dict}
+    return envelope_dict
 
 
-def write_envelope(
+def write_envelope(  # nosemgrep: boolean-flag-argument
     env: Envelope | ErrorEnvelope,
     *,
     include_schema: bool = False,
@@ -146,5 +146,5 @@ def write_envelope(
     import sys
 
     out = output if output is not None else sys.stdout
-    data = envelope_to_dict(env, include_schema=include_schema)
-    out.write(json.dumps(data, default=str) + "\n")
+    envelope_dict = envelope_to_dict(env, include_schema=include_schema)
+    out.write(json.dumps(envelope_dict, default=str) + "\n")

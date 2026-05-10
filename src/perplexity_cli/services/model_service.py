@@ -57,8 +57,8 @@ class ModelService:
         """
         url = get_model_config_endpoint()
         self._logger.debug("Fetching model config from %s", url)
-        data = self._client.get_json(url)
-        return ModelConfigResponse.model_validate(data)
+        config_payload = self._client.get_json(url)
+        return ModelConfigResponse.model_validate(config_payload)
 
     def fetch_user_settings(self) -> UserSettings:
         """Fetch user settings from the API.
@@ -72,8 +72,8 @@ class ModelService:
         """
         url = get_user_settings_endpoint()
         self._logger.debug("Fetching user settings from %s", url)
-        data = self._client.get_json(url)
-        return UserSettings.model_validate(data)
+        settings_payload = self._client.get_json(url)
+        return UserSettings.model_validate(settings_payload)
 
     def list_available_models(self) -> list[ModelConfigEntry]:
         """Fetch and return models accessible to the current user.

@@ -39,13 +39,13 @@ class DynamicStderrHandler(logging.StreamHandler):
     def _flush_current_stderr() -> None:
         """Flush the active stderr stream if it is still valid."""
         stream = sys.stderr
-        if stream and hasattr(stream, "flush"):
-            try:
+        try:
+            if stream:
                 stream.flush()
-            except ValueError:
-                # pytest capture can replace and close previous stderr objects;
-                # flushing a closed stream raises ValueError — safe to ignore
-                return
+        except (ValueError, AttributeError):
+            # pytest capture can replace and close previous stderr objects;
+            # flushing a closed stream raises ValueError — safe to ignore
+            return
 
 
 class JSONLogFormatter(logging.Formatter):
@@ -97,7 +97,7 @@ def enable_structured_logging(trace_id: str | None = None) -> None:
             handler.setFormatter(json_formatter)
 
 
-def setup_logging(
+def setup_logging(  # nosemgrep: boolean-flag-argument
     level: int = logging.WARNING,
     log_file: Path | None = None,
     verbose: bool = False,

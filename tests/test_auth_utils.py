@@ -88,7 +88,7 @@ class TestLoadOrPromptToken:
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "Authentication error: corrupt token" in captured.err
-        assert "pxcli auth" in captured.err
+        assert "pxcli auth login" in captured.err
 
     def test_exits_when_token_is_none(self, capsys):
         """Test that None token causes sys.exit(1)."""

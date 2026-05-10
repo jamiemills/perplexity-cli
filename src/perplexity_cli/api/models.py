@@ -96,6 +96,9 @@ class RenderContext:
     options: OutputOptions
 
 
+_MAX_FILENAME_LENGTH = 255
+
+
 class FileAttachment(BaseModel):
     """File attachment for API requests.
 
@@ -111,7 +114,7 @@ class FileAttachment(BaseModel):
         ...,
         description="MIME type of the file (e.g., 'text/plain', 'application/json')",
     )
-    data: str = Field(
+    data: str = Field(  # nosemgrep: meaningless-name
         ...,
         description="Base64-encoded file content",
     )
@@ -122,8 +125,8 @@ class FileAttachment(BaseModel):
         """Validate filename is non-empty and within length limit."""
         if not v:
             raise ValueError("Filename must be non-empty")
-        if len(v) > 255:
-            raise ValueError("Filename must be ≤255 characters")
+        if len(v) > _MAX_FILENAME_LENGTH:
+            raise ValueError(f"Filename must be ≤{_MAX_FILENAME_LENGTH} characters")
         return v
 
     @field_validator("content_type")
@@ -291,9 +294,9 @@ class WebResult(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_upstream_shape(cls, data: Any) -> Any:
+    def _validate_upstream_shape(cls, raw_result: Any) -> Any:
         """Ensure the raw input is a mapping before field validation."""
-        return require_mapping(data, "Malformed web result block in upstream response")
+        return require_mapping(raw_result, "Malformed web result block in upstream response")
 
 
 class Block(BaseModel):
@@ -314,19 +317,19 @@ class Block(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _split_flat_payload(cls, data: Any) -> Any:
+    def _split_flat_payload(cls, raw_block: Any) -> Any:
         """Transform a flat upstream block dict into {intended_usage, content}.
 
-        If the data already contains a ``content`` key (e.g. from direct
+        If the payload already contains a ``content`` key (e.g. from direct
         construction or a ``model_dump`` round-trip), it is passed through
         unchanged.
         """
-        data = require_mapping(data, "Malformed block in upstream response")
-        if "content" not in data:
-            intended_usage = data.get("intended_usage", "")
-            content = {k: v for k, v in data.items() if k != "intended_usage"}
+        raw_block = require_mapping(raw_block, "Malformed block in upstream response")
+        if "content" not in raw_block:
+            intended_usage = raw_block.get("intended_usage", "")
+            content = {k: v for k, v in raw_block.items() if k != "intended_usage"}
             return {"intended_usage": intended_usage, "content": content}
-        return data
+        return raw_block
 
     def extract_text(self) -> str | None:
         """Extract answer text from a private API block shape."""
@@ -447,11 +450,13 @@ class SSEMessage(BaseModel):
     web_results: list[WebResult] | None = Field(default=None)
     attachments: list[str] = Field(default_factory=list, description="S3 URLs of attached files")
 
-    @model_validator(mode="before")
+    @model_validator(mode="before")  # nosemgrep: meaningless-name
     @classmethod
     def _validate_upstream_shape(cls, data: Any) -> Any:
         """Enforce upstream contract: top-level mapping with list-shaped blocks."""
-        data = require_mapping(data, "Malformed SSE message in upstream response")
+        data = require_mapping(  # nosemgrep: meaningless-name
+            data, "Malformed SSE message in upstream response"
+        )
         require_list(data.get("blocks", []), "Malformed SSE blocks in upstream response")
         return data
 

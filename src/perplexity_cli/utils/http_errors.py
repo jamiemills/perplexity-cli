@@ -22,6 +22,8 @@ from perplexity_cli.utils.exceptions import (
     SimpleResponse,
 )
 
+_HTTP_SERVER_ERROR_FLOOR = 500
+
 if TYPE_CHECKING:
     from perplexity_cli.envelope import ErrorCode
 
@@ -67,7 +69,7 @@ def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
     )
 
 
-def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters
+def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters, boolean-flag-argument
     error: Exception,
     logger: logging.Logger,
     *,
@@ -132,7 +134,7 @@ def classify_http_error(
             "Rate limit exceeded. Please wait and try again.",
             "Wait a moment and retry.",
         )
-    if status >= 500:
+    if status >= _HTTP_SERVER_ERROR_FLOOR:
         return (
             ErrorCode.network_error,
             f"Server error (HTTP {status}).",
@@ -173,7 +175,7 @@ _HTTP_ERROR_EXTRAS: dict[int, str] = {
 }
 
 
-def handle_http_error(
+def handle_http_error(  # nosemgrep: boolean-flag-argument
     error: PerplexityHTTPStatusError,
     logger: logging.Logger,
     debug_mode: bool = False,
@@ -208,7 +210,7 @@ def handle_http_error(
     sys.exit(1)
 
 
-def handle_network_error(
+def handle_network_error(  # nosemgrep: boolean-flag-argument
     error: PerplexityRequestError,
     logger: logging.Logger,
     debug_mode: bool = False,
