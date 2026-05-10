@@ -99,7 +99,7 @@ def _execute_auth(  # nosemgrep: too-many-parameters
     except (TimeoutError, AuthenticationError) as e:
         if json_mode:
             handle_error(e, command=_AUTH_LOGIN_COMMAND, json_mode=True)
-        logger.error("Authentication failed: %s", e, exc_info=True)
+        logger.debug("Authentication failed: %s", e, exc_info=True)
         click.echo(f"[ERROR] Authentication failed: {e}", err=True)
         _print_auth_troubleshooting(port, base_url)
         sys.exit(1)
