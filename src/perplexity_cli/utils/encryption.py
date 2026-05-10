@@ -79,9 +79,9 @@ def derive_encryption_key() -> bytes:
         RuntimeError: If unable to determine system identifiers.
     """
     try:
-        return _derive_fernet_key(
-            _KEY_DERIVATION_SALT
-        )  # NOSONAR -- deterministic salt required for at-rest token decryption; new encryptions use per-message random salt
+        # Deterministic salt required for at-rest token decryption;
+        # new encryptions use per-message random salt.
+        return _derive_fernet_key(_KEY_DERIVATION_SALT)  # NOSONAR
 
     except OSError as e:
         raise ConfigurationError(f"Failed to derive encryption key: {e}") from e

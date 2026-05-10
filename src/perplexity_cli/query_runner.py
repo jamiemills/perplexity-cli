@@ -577,19 +577,18 @@ def run_query_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
                 _fetch_and_render(api, query_input, render, trace)
 
     except KeyboardInterrupt:
-        _handle_keyboard_interrupt(ctx_obj, json_mode, logger)
+        _handle_keyboard_interrupt(json_mode, logger)
 
     except Exception as exc:
         _handle_query_exception(exc, ctx_obj, json_mode)
 
 
 def _handle_keyboard_interrupt(  # nosemgrep: boolean-flag-argument
-    _ctx_obj: dict | None, json_mode: bool, logger: logging.Logger
+    json_mode: bool, logger: logging.Logger
 ) -> None:
     """Handle a keyboard interrupt during query execution.
 
     Args:
-        _ctx_obj: The Click context object dictionary (reserved for future use).
         json_mode: Whether JSON output mode is active.
         logger: Logger instance.
     """

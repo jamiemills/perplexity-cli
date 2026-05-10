@@ -279,11 +279,11 @@ class ThreadScraper:
             return cached_result
 
         # Load existing cached threads and determine fetch range
-        threads, fetch_from, fetch_to = self._prepare_fetch(from_date, to_date)
+        threads, fetch_from, _fetch_to = self._prepare_fetch(from_date, to_date)
 
         # Fetch from API and merge
         return await self._fetch_and_merge(
-            from_date, to_date, fetch_from, fetch_to, threads, progress_callback
+            from_date, to_date, fetch_from, threads, progress_callback
         )
 
     def _load_cached_threads(self) -> list[ThreadRecord]:
@@ -386,7 +386,6 @@ class ThreadScraper:
         from_date: str | None,
         to_date: str | None,
         fetch_from: str | None,
-        _fetch_to: str | None,
         cached_threads: list[ThreadRecord],
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[ThreadRecord]:

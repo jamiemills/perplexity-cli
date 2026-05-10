@@ -32,7 +32,7 @@ def _process_header(line: str, result: list[str]) -> tuple[bool, int]:
         A tuple of (was_header, blank_count). If the line was a header,
         was_header is True and blank_count is reset to 0.
     """
-    header_match = re.match(r"^(#{1,6})\s+(.+)$", line)
+    header_match = re.match(r"^(#{1,6})\s+(\S.*)$", line)
     if not header_match:
         return False, 0
     content = _strip_markdown_emphasis(header_match.group(2))

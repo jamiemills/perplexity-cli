@@ -156,7 +156,7 @@ pre-push:
       run: >
         uv run pytest tests/ -q --tb=line -x
         -m "not integration and not real_api and not manual and not real_user_config and not fuzz"
-        --cov --cov-report=json --cov-fail-under=85 &&
+        --cov --cov-report=json --cov-report=xml:coverage.xml --cov-fail-under=85 &&
         uv run python scripts/check_module_coverage.py --min-coverage 85
 
     - name: safety-scan
@@ -164,3 +164,6 @@ pre-push:
 
     - name: fuzz-check
       run: uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz
+
+    - name: generate-sonar-reports
+      run: uv run python scripts/generate_sonar_reports.py

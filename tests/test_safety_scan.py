@@ -12,9 +12,12 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.integration
 def test_no_scan_failing_vulnerabilities() -> None:
     """Safety scan finds no unresolved (scan-failing) vulnerabilities."""
     result = subprocess.run(
@@ -34,6 +37,7 @@ def test_no_scan_failing_vulnerabilities() -> None:
     )
 
 
+@pytest.mark.integration
 def test_safety_cli_available() -> None:
     """Safety CLI is available via uvx."""
     result = subprocess.run(
