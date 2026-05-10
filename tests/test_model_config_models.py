@@ -287,6 +287,37 @@ class TestUserSettings:
         assert settings.default_model == "turbo"
         assert settings.is_subscriber is False
 
+    def test_infer_subscription_level_active_defaults_to_pro(self) -> None:
+        settings = UserSettings(
+            subscription_status="active",
+            subscription_source="stripe",
+            subscription_tier="monthly",
+        )
+        assert settings.infer_subscription_level() == SubscriptionLevel.PRO
+
+    def test_infer_subscription_level_inactive_returns_free(self) -> None:
+        settings = UserSettings(
+            subscription_status="none",
+            subscription_source="none",
+        )
+        assert settings.infer_subscription_level() == SubscriptionLevel.FREE
+
+    def test_infer_subscription_level_empty_status_returns_free(self) -> None:
+        settings = UserSettings(subscription_status="")
+        assert settings.infer_subscription_level() == SubscriptionLevel.FREE
+
+    def test_infer_subscription_level_null_status_returns_free(self) -> None:
+        settings = UserSettings(subscription_status="null")
+        assert settings.infer_subscription_level() == SubscriptionLevel.FREE
+
+    def test_infer_subscription_level_yearly_subscriber(self) -> None:
+        """Billing frequency should not affect level inference."""
+        settings = UserSettings(
+            subscription_status="active",
+            subscription_tier="yearly",
+        )
+        assert settings.infer_subscription_level() == SubscriptionLevel.PRO
+
 
 # ---------------------------------------------------------------------------
 # SubscriptionLevel

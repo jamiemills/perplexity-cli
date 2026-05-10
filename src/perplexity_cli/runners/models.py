@@ -48,31 +48,75 @@ def _resolve_auth() -> tuple[str | None, dict[str, str] | None]:
     return load_token_optional(token_manager, logger)
 
 
-def _create_model_service(
+def _create_rest_client(
     token: str,
     cookies: dict[str, str] | None,
-) -> ModelService:
-    """Create a ModelService configured for listing all models.
-
-    Uses MAX subscription level to ensure all non-internal models
-    are visible in the listing.
+) -> Any:
+    """Create a REST client for API calls.
 
     Args:
         token: Authentication token.
         cookies: Optional browser cookies.
 
     Returns:
-        Configured ModelService instance.
+        Configured RestClient instance.
     """
     from perplexity_cli.api.rest_client import RestClient
     from perplexity_cli.auth.models import AuthContext
-    from perplexity_cli.services.model_service import ModelService
 
     auth = AuthContext(token=token, cookies=cookies)
-    client = RestClient(auth=auth)
+    return RestClient(auth=auth)
+
+
+def _detect_subscription_level(client: Any) -> SubscriptionLevel:
+    """Detect the user's subscription level from the settings API.
+
+    Fetches user settings and infers the subscription level.
+    Falls back to Pro on any error, since an authenticated user
+    who reaches this point is likely a subscriber.
+
+    Args:
+        client: REST client for API calls.
+
+    Returns:
+        The detected subscription level.
+    """
+    from perplexity_cli.models.model_config import UserSettings
+    from perplexity_cli.utils.config import get_user_settings_endpoint
+
+    logger = get_logger()
+    try:
+        data = client.get_json(get_user_settings_endpoint())
+        settings = UserSettings.model_validate(data)
+        level = settings.infer_subscription_level()
+        logger.debug("Detected subscription level: %s", level.value)
+        return level
+    except Exception as exc:
+        logger.warning(
+            "Could not detect subscription level, defaulting to Pro: %s",
+            exc,
+        )
+        return SubscriptionLevel.PRO
+
+
+def _create_model_service(
+    client: Any,
+    subscription_level: SubscriptionLevel,
+) -> ModelService:
+    """Create a ModelService with the given client and subscription level.
+
+    Args:
+        client: REST client for API calls.
+        subscription_level: The user's subscription level.
+
+    Returns:
+        Configured ModelService instance.
+    """
+    from perplexity_cli.services.model_service import ModelService
+
     return ModelService(
         rest_client=client,
-        subscription_level=SubscriptionLevel.MAX,
+        subscription_level=subscription_level,
     )
 
 
@@ -237,7 +281,9 @@ def run_models_list_command(
         sys.exit(1)
 
     try:
-        service = _create_model_service(token, cookies)
+        client = _create_rest_client(token, cookies)
+        level = _detect_subscription_level(client)
+        service = _create_model_service(client, level)
         entries = service.list_available_models()
     except Exception as exc:
         _handle_list_error(exc, json_mode, logger)
