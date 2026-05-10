@@ -4,6 +4,8 @@ import io
 import json
 from datetime import datetime
 
+import pytest
+
 from perplexity_cli.ndjson import (
     ChunkEvent,
     NDJSONWriter,
@@ -91,7 +93,7 @@ class TestNDJSONWriter:
         data = json.loads(buf.getvalue().strip())
         assert data["type"] == "progress"
         assert data["message"] == "Loading"
-        assert data["percent"] == 50.0
+        assert data["percent"] == pytest.approx(50.0)
 
     def test_result_writes_result_event(self) -> None:
         buf = io.StringIO()

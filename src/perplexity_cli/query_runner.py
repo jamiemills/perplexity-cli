@@ -576,12 +576,12 @@ def run_query_command(  # nosemgrep: too-many-parameters
 
 
 def _handle_keyboard_interrupt(
-    ctx_obj: dict | None, json_mode: bool, logger: logging.Logger
+    _ctx_obj: dict | None, json_mode: bool, logger: logging.Logger
 ) -> None:
     """Handle a keyboard interrupt during query execution.
 
     Args:
-        ctx_obj: The Click context object dictionary.
+        _ctx_obj: The Click context object dictionary (reserved for future use).
         json_mode: Whether JSON output mode is active.
         logger: Logger instance.
     """

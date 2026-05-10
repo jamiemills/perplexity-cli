@@ -87,7 +87,9 @@ class TestRetryUtilities:
 
     def test_get_backoff_delay_without_jitter(self):
         """Test deterministic backoff delay when jitter is disabled."""
-        assert get_backoff_delay(2, base_delay=1.0, max_delay=10.0, jitter_factor=0.0) == 4.0
+        assert get_backoff_delay(
+            2, base_delay=1.0, max_delay=10.0, jitter_factor=0.0
+        ) == pytest.approx(4.0)
 
     def test_get_backoff_delay_with_jitter_is_bounded(self):
         """Test jittered backoff stays within expected bounds."""
@@ -102,7 +104,7 @@ class TestRetryUtilities:
         resp = SimpleResponse(status_code=429, headers={"Retry-After": "3.5"}, request=req)
         error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
 
-        assert get_retry_after_delay(error) == 3.5
+        assert get_retry_after_delay(error) == pytest.approx(3.5)
 
     def test_get_retry_after_delay_invalid_header_returns_none(self):
         """Test invalid Retry-After values are ignored."""

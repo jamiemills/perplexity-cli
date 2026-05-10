@@ -50,7 +50,7 @@ class TestRateLimitConfig:
         cfg = RateLimitConfig()
         assert cfg.enabled is True
         assert cfg.requests_per_period == 20
-        assert cfg.period_seconds == 60.0
+        assert cfg.period_seconds == pytest.approx(60.0)
 
     def test_zero_requests_raises(self):
         with pytest.raises(ValidationError):

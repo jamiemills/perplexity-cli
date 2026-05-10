@@ -108,4 +108,4 @@ class TestErrorCode:
             "internal_error",
         ]
         for code_str in expected:
-            assert ErrorCode(code_str) is not None
+            assert isinstance(ErrorCode(code_str), ErrorCode)

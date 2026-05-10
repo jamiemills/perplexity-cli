@@ -236,7 +236,7 @@ async def _fetch_local_storage(client: ChromeDevToolsClient) -> dict[str, Any]:
 
 async def _poll_for_auth_data(
     client: ChromeDevToolsClient,
-    timeout: int,
+    timeout: int,  # NOSONAR -- synchronous urllib polling; asyncio.timeout() not applicable
     poll_interval: float,
     logger: Any,
 ) -> tuple[str, dict[str, str]]:
@@ -288,7 +288,8 @@ async def _poll_for_auth_data(
 async def authenticate_with_browser(
     url: str | None = None,
     port: int | None = None,
-    timeout: int | None = None,
+    timeout: int
+    | None = None,  # NOSONAR -- synchronous auth flow; asyncio.timeout() not applicable
     poll_interval: float | None = None,
 ) -> tuple[str, dict[str, str]]:
     """Authenticate with Perplexity via Google and extract the session token and cookies.
@@ -333,7 +334,9 @@ async def authenticate_with_browser(
         await client.close()
 
 
-async def _wait_for_page_load(client: ChromeDevToolsClient, timeout: int | None = None) -> None:
+async def _wait_for_page_load(
+    client: ChromeDevToolsClient, timeout: int | None = None
+) -> None:  # NOSONAR -- synchronous page polling; asyncio.timeout() not applicable
     """Wait for page to finish loading.
 
     Args:

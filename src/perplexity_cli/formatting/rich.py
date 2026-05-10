@@ -142,7 +142,7 @@ class RichFormatter(Formatter):
             output_console.print()
 
             # Create and print references table
-            table = Table(show_header=True, header_style="bold cyan")
+            table = Table(show_header=True, header_style=_SECTION_HEADER_STYLE)
             table.add_column("#", style="cyan", width=3)
             table.add_column("Source", style="white")
             table.add_column("URL", style="bright_blue")
@@ -174,7 +174,7 @@ class RichFormatter(Formatter):
                 if level == 1:
                     style = "bold bright_cyan"
                 elif level == 2:
-                    style = "bold cyan"
+                    style = _SECTION_HEADER_STYLE
                 else:
                     style = "bold white"
                 self.console.print(Text(content, style=style))

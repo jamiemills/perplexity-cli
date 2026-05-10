@@ -50,3 +50,5 @@ Thumbs.db
 threads-*
 .deepsec
 .sonar/report-task.txt
+.scannerwork/
+sonar-project.properties

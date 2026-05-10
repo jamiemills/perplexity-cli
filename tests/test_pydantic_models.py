@@ -230,7 +230,7 @@ class TestRateLimiterConfig:
             period_seconds=60.0,
         )
         assert config.requests_per_period == 20
-        assert config.period_seconds == 60.0
+        assert config.period_seconds == pytest.approx(60.0)
 
     def test_rate_limiter_config_zero_requests_rejected(self):
         """Test that zero requests is rejected."""
@@ -261,7 +261,7 @@ class TestRateLimiterState:
             requests_per_period=20,
             period_seconds=60.0,
         )
-        assert state.tokens == 10.0
+        assert state.tokens == pytest.approx(10.0)
 
     def test_rate_limiter_state_negative_tokens_rejected(self):
         """Test that negative tokens are rejected."""
@@ -284,7 +284,7 @@ class TestRateLimiterStats:
             total_wait_time=5.0,
         )
         assert stats.total_requests == 100
-        assert stats.total_wait_time == 5.0
+        assert stats.total_wait_time == pytest.approx(5.0)
 
     def test_rate_limiter_stats_from_data(self):
         """Test RateLimiterStats creation from raw data."""
@@ -293,7 +293,7 @@ class TestRateLimiterStats:
             total_wait_time=10.0,
         )
         assert stats.total_requests == 100
-        assert stats.average_wait_time == 0.1  # 10.0 / 100
+        assert stats.average_wait_time == pytest.approx(0.1)  # 10.0 / 100
 
     def test_rate_limiter_stats_zero_requests_average(self):
         """Test average wait time with zero requests."""
@@ -301,7 +301,7 @@ class TestRateLimiterStats:
             total_requests=0,
             total_wait_time=0.0,
         )
-        assert stats.average_wait_time == 0.0
+        assert stats.average_wait_time == pytest.approx(0.0)
 
     def test_rate_limiter_stats_negative_rejected(self):
         """Test that negative stats are rejected."""
