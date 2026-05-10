@@ -232,6 +232,7 @@ class TestCLICommands:
             "What is Python?",
             attachments=[],
             model_preference=None,
+            request_params={},
         )
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")

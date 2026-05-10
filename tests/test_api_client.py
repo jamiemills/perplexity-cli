@@ -560,6 +560,15 @@ class TestResolveEffectiveTimeout:
         assert is_deep is False
         assert timeout == 45
 
+    def test_research_override_timeout(self):
+        """Research workflow overrides also use the extended timeout."""
+        client = SSEClient(auth=AuthContext(token="test-token"), timeout=45)
+        is_deep, timeout = client._resolve_effective_timeout(
+            {"params": {"workflow_key": "deep_research"}}
+        )
+        assert is_deep is True
+        assert timeout == 360
+
 
 class TestLogRequestContext:
     """Tests for _log_request_context."""

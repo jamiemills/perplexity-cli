@@ -448,6 +448,13 @@ class TestQueryParamsSearchMode:
         assert "search_implementation_mode" in request_dict
         assert request_dict["search_implementation_mode"] == "multi_step"
 
+    def test_extra_request_fields_are_preserved(self):
+        """Experimental request params survive serialisation."""
+        params = QueryParams.model_construct(workflow_key="deep_research", search_mode="research")
+        request_dict = params.to_dict()
+        assert request_dict["workflow_key"] == "deep_research"
+        assert request_dict["search_mode"] == "research"
+
 
 # ---------------------------------------------------------------------------
 # Item 15: WebResult, Block, SSEMessage -- model_validate and validation tests

@@ -5,7 +5,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 from perplexity_cli.api.models import Answer, QueryInput, RenderContext, TraceContext
-from perplexity_cli.query_runner import build_final_query, get_query_formatter, run_query_command
+from perplexity_cli.query_runner import (
+    build_final_query,
+    get_query_formatter,
+    parse_request_param_overrides,
+    run_query_command,
+)
 from perplexity_cli.utils.exceptions import UpstreamSchemaError
 
 
@@ -74,6 +79,7 @@ def test_run_query_command_non_streaming_renders_answer(capsys):
         "final query",
         attachments=[],
         model_preference=None,
+        request_params={},
     )
 
 
@@ -141,3 +147,55 @@ def test_run_query_command_reports_upstream_schema_error(capsys):
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
     assert "Upstream response format changed: bad payload" in captured.err
+
+
+def test_parse_request_param_overrides_parses_multiple_values():
+    """Repeated ``key=value`` overrides are parsed into a request mapping."""
+    parsed = parse_request_param_overrides(("workflow_key=deep_research", "search_mode=research"))
+
+    assert parsed == {
+        "workflow_key": "deep_research",
+        "search_mode": "research",
+    }
+
+
+def test_parse_request_param_overrides_rejects_duplicates():
+    """Duplicate override keys fail fast with a clear error."""
+    with pytest.raises(ValueError, match="Duplicate request parameter override"):
+        parse_request_param_overrides(("workflow_key=deep_research", "workflow_key=wide_research"))
+
+
+def test_parse_request_param_overrides_rejects_invalid_shape():
+    """Malformed overrides must use ``key=value`` format."""
+    with pytest.raises(ValueError, match="key=value"):
+        parse_request_param_overrides(("workflow_key",))
+
+
+def test_run_query_command_passes_request_param_overrides_to_api():
+    """Batch queries pass parsed request overrides to the API layer."""
+    answer = Answer(text="Test answer", references=[])
+    mock_api = _make_api_mock(answer)
+
+    with (
+        patch("perplexity_cli.auth.token_manager.TokenManager", return_value=Mock()),
+        patch("perplexity_cli.auth.utils.load_token_optional", return_value=("token-123", None)),
+        patch("perplexity_cli.query_runner.resolve_attachment_urls", return_value=[]),
+        patch("perplexity_cli.api.endpoints.PerplexityAPI", return_value=mock_api),
+        patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
+    ):
+        run_query_command(
+            ctx_obj={"debug": False},
+            query_text="What is Python?",
+            output_format="plain",
+            strip_references=False,
+            stream=False,
+            attachments_str=(),
+            request_param_overrides=("workflow_key=deep_research", "search_mode=research"),
+        )
+
+    mock_api.get_complete_answer.assert_called_once_with(
+        "final query",
+        attachments=[],
+        model_preference=None,
+        request_params={"workflow_key": "deep_research", "search_mode": "research"},
+    )

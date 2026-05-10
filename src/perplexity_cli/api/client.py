@@ -399,8 +399,11 @@ class SSEClient:
         Returns:
             Tuple of (is_deep_research, effective_timeout_seconds).
         """
-        is_deep_research = (
-            json_data.get("params", {}).get("search_implementation_mode") == "multi_step"
+        params = json_data.get("params", {})
+        deep_research_values = {"research", "deep_research", "RESEARCH"}
+        is_deep_research = params.get("search_implementation_mode") == "multi_step" or any(
+            isinstance(params.get(key), str) and params.get(key) in deep_research_values
+            for key in ("searchModeOverride", "search_mode", "workflow_key")
         )
         if is_deep_research:
             from perplexity_cli.config.defaults import DEFAULT_DEEP_RESEARCH_TIMEOUT
