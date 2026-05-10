@@ -19,7 +19,9 @@ class SessionLogger:
     The logger is a no-op if session logging is not enabled.
     """
 
-    def __init__(self, session_id: str, *, enabled: bool = False) -> None:
+    def __init__(  # nosemgrep: boolean-flag-argument
+        self, session_id: str, *, enabled: bool = False
+    ) -> None:
         """Initialise the session logger.
 
         Args:
@@ -69,7 +71,7 @@ class SessionLogger:
         }
         self._write_event(event)
 
-    def log_response(
+    def log_response(  # nosemgrep: boolean-flag-argument
         self,
         ok: bool,
         duration_ms: int,

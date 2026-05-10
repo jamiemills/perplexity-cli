@@ -54,7 +54,7 @@ def _is_prose_boundary(next_line: str, next_stripped: str) -> bool:
     Returns:
         True if the line should terminate prose collection.
     """
-    if next_line.strip() == "" or next_stripped.startswith("```"):
+    if not next_line.strip() or next_stripped.startswith("```"):
         return True
     return _is_structural_line(next_stripped)
 
@@ -142,7 +142,7 @@ def _dispatch_line(lines: list[str], i: int, result: list[str]) -> int:
     line = lines[i]
     if line.lstrip().startswith("```"):
         return _collect_code_block(lines, i, result)
-    if line.strip() == "":
+    if not line.strip():
         result.append("")
         return i + 1
     if _is_structural_line(line.lstrip()):

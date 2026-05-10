@@ -251,7 +251,7 @@ class AttachmentUploader:
             logger.error(
                 "Upload URL request failed with status %s. "
                 "This may indicate an invalid or expired token. "
-                "Try running 'pxcli auth' to refresh authentication.",
+                "Try running 'pxcli auth login' to refresh authentication.",
                 response.status_code,
             )
             raise_http_status_error(response)

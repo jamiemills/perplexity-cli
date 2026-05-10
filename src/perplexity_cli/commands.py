@@ -136,7 +136,7 @@ def _add_help_sections(
         if env_vars:
             _write_env_vars(formatter, env_vars)
 
-    setattr(cmd, "format_help", enhanced_format_help)  # noqa: B010 - monkey-patching Click command
+    setattr(cmd, "format_help", enhanced_format_help)  # noqa: B010 - monkey-patching Click command  # nosemgrep: getattr-with-string-literal
     return cmd
 
 

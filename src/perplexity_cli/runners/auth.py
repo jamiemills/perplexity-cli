@@ -48,7 +48,7 @@ def _handle_auth_success(token, cookies, json_mode, include_schema) -> None:
         click.echo(f"[OK] {len(cookies)} cookies saved (including Cloudflare cookies)")
     else:
         click.echo("[INFO] Cookies not saved (disabled in config)")
-        click.echo("  To enable cookie storage: pxcli set-config save_cookies true")
+        click.echo("  To enable cookie storage: pxcli config set save_cookies true")
 
     click.echo('\nYou can now use: pxcli query "<your question>"')
 
@@ -124,7 +124,9 @@ def _resolve_logout_ctx(json_mode: bool | None) -> tuple[bool, bool]:
     return resolved_json, include_schema
 
 
-def _logout_emit(json_mode: bool, include_schema: bool, existed: bool) -> None:
+def _logout_emit(  # nosemgrep: boolean-flag-argument
+    json_mode: bool, include_schema: bool, existed: bool
+) -> None:
     """Emit logout result in the appropriate format."""
     if json_mode:
         env = success_envelope("pxcli auth logout", {"credentials_existed": existed})

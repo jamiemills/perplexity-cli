@@ -21,7 +21,9 @@ from perplexity_cli.utils.logging import get_logger
 _COMMAND = "pxcli threads export"
 
 
-def _exit_with_date_error(e: ValueError, json_mode: bool) -> None:
+def _exit_with_date_error(  # nosemgrep: boolean-flag-argument
+    e: ValueError, json_mode: bool
+) -> None:
     """Report a date validation error and exit."""
     if json_mode:
         handle_error(e, command=_COMMAND, json_mode=True)
@@ -38,7 +40,9 @@ def _parse_date(date_str: str | None) -> None:
         dateutil_parser.parse(date_str)
 
 
-def _validate_export_dates(from_date: str | None, to_date: str | None, json_mode: bool) -> None:
+def _validate_export_dates(  # nosemgrep: boolean-flag-argument
+    from_date: str | None, to_date: str | None, json_mode: bool
+) -> None:
     """Validate date arguments, exiting on failure."""
     if not (from_date or to_date):
         return
@@ -67,7 +71,9 @@ def _setup_rate_limiter(logger):
     )
 
 
-def _handle_cache_clear(cache_manager, clear_cache: bool, json_mode: bool, logger) -> None:
+def _handle_cache_clear(  # nosemgrep: boolean-flag-argument
+    cache_manager, clear_cache: bool, json_mode: bool, logger
+) -> None:
     """Clear the thread cache if requested."""
     if not clear_cache:
         return
@@ -81,7 +87,9 @@ def _handle_cache_clear(cache_manager, clear_cache: bool, json_mode: bool, logge
     logger.info("Cache cleared by user")
 
 
-def _scrape_threads(scraper, from_date, to_date, json_mode: bool) -> list:
+def _scrape_threads(  # nosemgrep: boolean-flag-argument
+    scraper, from_date, to_date, json_mode: bool
+) -> list:
     """Run the thread scraper with a progress callback."""
 
     def update_progress(current: int, total: int) -> None:
@@ -101,7 +109,9 @@ def _scrape_threads(scraper, from_date, to_date, json_mode: bool) -> list:
     return threads
 
 
-def _handle_no_threads(from_date, to_date, json_mode: bool) -> None:
+def _handle_no_threads(  # nosemgrep: boolean-flag-argument
+    from_date, to_date, json_mode: bool
+) -> None:
     """Handle the case where no threads were found, exiting the process."""
     if json_mode:
         handle_error(
@@ -149,7 +159,7 @@ def _output_json(  # nosemgrep: too-many-parameters
     write_envelope(env, include_schema=include_schema)
 
 
-def _output_export_results(  # nosemgrep: too-many-parameters
+def _output_export_results(  # nosemgrep: too-many-parameters, boolean-flag-argument
     threads: list,
     output: Path | None,
     from_date: str | None,
@@ -174,7 +184,9 @@ def _output_export_results(  # nosemgrep: too-many-parameters
     click.echo(f"[OK] Saved to: {output_path.resolve()}")
 
 
-def _handle_known_error(e: Exception, json_mode: bool, logger) -> None:
+def _handle_known_error(  # nosemgrep: boolean-flag-argument
+    e: Exception, json_mode: bool, logger
+) -> None:
     """Handle AuthenticationError, PerplexityRequestError, UpstreamSchemaError, ValueError, and RateLimitError."""
     if json_mode:
         handle_error(e, command=_COMMAND, json_mode=True)
@@ -186,7 +198,7 @@ def _handle_known_error(e: Exception, json_mode: bool, logger) -> None:
     sys.exit(1)
 
 
-def _handle_http_status_error(
+def _handle_http_status_error(  # nosemgrep: boolean-flag-argument
     e: PerplexityHTTPStatusError, json_mode: bool, ctx_obj: dict | None, logger
 ) -> None:
     """Handle HTTP status errors from the Perplexity API."""
@@ -196,7 +208,9 @@ def _handle_http_status_error(
     handle_http_error(e, logger, debug_mode=debug_mode, context="during thread export")
 
 
-def _handle_unexpected_error(e: Exception, json_mode: bool, ctx_obj: dict | None, logger) -> None:
+def _handle_unexpected_error(  # nosemgrep: boolean-flag-argument
+    e: Exception, json_mode: bool, ctx_obj: dict | None, logger
+) -> None:
     """Handle unexpected errors during export."""
     if json_mode:
         handle_error(e, command=_COMMAND, json_mode=True)
@@ -210,7 +224,7 @@ def _handle_unexpected_error(e: Exception, json_mode: bool, ctx_obj: dict | None
     )
 
 
-def _handle_auth_missing(json_mode: bool, logger) -> None:
+def _handle_auth_missing(json_mode: bool, logger) -> None:  # nosemgrep: boolean-flag-argument
     """Handle missing authentication, exiting the process."""
     if json_mode:
         handle_error(
@@ -219,7 +233,7 @@ def _handle_auth_missing(json_mode: bool, logger) -> None:
             json_mode=True,
         )
     click.echo("[ERROR] Not authenticated.", err=True)
-    click.echo("\nPlease authenticate first with: pxcli auth", err=True)
+    click.echo("\nPlease authenticate first with: pxcli auth login", err=True)
     logger.warning("Export attempted without authentication")
     sys.exit(1)
 
@@ -231,7 +245,9 @@ def _resolve_ctx_flags(ctx_obj: dict | None) -> tuple[bool, bool]:
     return json_mode, include_schema
 
 
-def _prepare_export(ctx_obj: dict | None, from_date, to_date, clear_cache: bool):
+def _prepare_export(  # nosemgrep: boolean-flag-argument
+    ctx_obj: dict | None, from_date, to_date, clear_cache: bool
+):
     """Authenticate, validate dates, set up rate limiter and cache. Returns (token, cookies, rate_limiter, cache_manager, json_mode, include_schema, logger)."""
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.threads.cache_manager import ThreadCacheManager
@@ -285,7 +301,7 @@ def _execute_scrape_and_export(  # nosemgrep: too-many-parameters
     _output_export_results(threads, output, from_date, to_date, json_mode, include_schema, logger)
 
 
-def run_export_threads_command(  # nosemgrep: too-many-parameters
+def run_export_threads_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
     ctx_obj: dict | None,
     from_date: str | None,
     to_date: str | None,

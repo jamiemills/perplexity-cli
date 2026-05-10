@@ -346,7 +346,7 @@ class TestAttachmentAuthentication:
         assert result.exit_code == 1
         # Should show authentication error
         assert "File attachments require authentication" in result.output
-        assert "pxcli auth" in result.output
+        assert "pxcli auth login" in result.output
 
     @patch("perplexity_cli.utils.file_handler.resolve_file_arguments")
     @patch("perplexity_cli.auth.token_manager.TokenManager")
@@ -367,7 +367,7 @@ class TestAttachmentAuthentication:
         assert result.exit_code == 1
         # Should show authentication error
         assert "File attachments require authentication" in result.output
-        assert "pxcli auth" in result.output
+        assert "pxcli auth login" in result.output
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.utils.file_handler.resolve_file_arguments")

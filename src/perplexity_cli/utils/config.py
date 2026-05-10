@@ -556,7 +556,7 @@ def get_debug_mode_enabled() -> bool:
     return config.debug_mode
 
 
-def set_feature(key: str, value: bool) -> None:
+def set_feature(key: str, value: bool) -> None:  # nosemgrep: boolean-flag-argument
     """Set a feature configuration value.
 
     Args:

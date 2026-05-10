@@ -30,8 +30,8 @@ class StyleManager:
 
         try:
             with open(self.style_path, encoding="utf-8") as f:
-                data = json.load(f)
-                return data.get("style")
+                style_config = json.load(f)
+                return style_config.get("style")
         except (json.JSONDecodeError, KeyError) as e:
             raise OSError(f"Failed to load style from {self.style_path}: {e}") from e
 
@@ -46,7 +46,7 @@ class StyleManager:
         """
         if not style or not isinstance(style, str):
             raise ValueError("Style must be a non-empty string")
-        if len(style.strip()) == 0:
+        if not style.strip():
             raise ValueError("Style cannot be blank or whitespace only")
         if len(style) > MAX_STYLE_LENGTH:
             raise ValueError(
@@ -68,14 +68,14 @@ class StyleManager:
 
         self.style_path.parent.mkdir(parents=True, exist_ok=True)
 
-        data = {
+        style_config = {
             "style": style,
             "created_at": datetime.now().isoformat(),
         }
 
         try:
             with open(self.style_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
+                json.dump(style_config, f, indent=2)
             os.chmod(self.style_path, 0o600)
         except OSError as e:
             raise OSError(f"Failed to save style to {self.style_path}: {e}") from e
@@ -102,7 +102,7 @@ class StyleManager:
         """
         if not isinstance(style, str):
             return False
-        if len(style.strip()) == 0:
+        if not style.strip():
             return False
         if len(style) > MAX_STYLE_LENGTH:
             return False

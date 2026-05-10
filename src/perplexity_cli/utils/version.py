@@ -19,23 +19,23 @@ def _read_pyproject_version() -> str | None:
 
     try:
         with pyproject_path.open("rb") as f:
-            data = tomllib.load(f)
+            parsed_toml = tomllib.load(f)
     except (OSError, tomllib.TOMLDecodeError):
         return None
 
-    return _extract_version_from_data(data)
+    return _extract_version_from_data(parsed_toml)
 
 
-def _extract_version_from_data(data: dict) -> str | None:
+def _extract_version_from_data(parsed_toml: dict) -> str | None:
     """Extract the version string from parsed pyproject data.
 
     Args:
-        data: Parsed TOML data dictionary.
+        parsed_toml: Parsed TOML data dictionary.
 
     Returns:
         Version string if found and valid, None otherwise.
     """
-    project = data.get("project")
+    project = parsed_toml.get("project")
     if not isinstance(project, dict):
         return None
     package_version = project.get("version")

@@ -47,14 +47,14 @@ class TokenManager:
         """
         try:
             encrypted_token = encrypt_token(token)
-            data = self._prepare_token_data(encrypted_token, cookies)
+            token_record = self._prepare_token_data(encrypted_token, cookies)
 
             with open(self.token_path, "w", encoding="utf-8") as f:
-                json.dump(data, f)
+                json.dump(token_record, f)
 
             os.chmod(self.token_path, self.SECURE_PERMISSIONS)
 
-            saved_cookies = "cookies" in data
+            saved_cookies = "cookies" in token_record
             cookie_count = len(cookies) if cookies else 0
             cookie_msg = f" and {cookie_count} cookies" if saved_cookies else ""
             self.logger.info(  # nosemgrep: python-logger-credential-disclosure
@@ -79,7 +79,7 @@ class TokenManager:
         Returns:
             Dictionary ready to be serialised to JSON.
         """
-        data = {
+        token_record = {
             "version": 2,
             "encrypted": True,
             "token": encrypted_token,
@@ -90,13 +90,13 @@ class TokenManager:
 
             if get_save_cookies_enabled():
                 encrypted_cookies = encrypt_token(json.dumps(cookies))
-                data["cookies"] = encrypted_cookies
+                token_record["cookies"] = encrypted_cookies
                 self.logger.debug("Saving %s cookies (cookie storage enabled)", len(cookies))
             else:
                 self.logger.debug(
                     "Skipping %s cookies (cookie storage disabled in config)", len(cookies)
                 )
-        return data
+        return token_record
 
     def load_token(self) -> tuple[str | None, dict[str, str] | None]:
         """Load the authentication token and cookies from disk and decrypt them.
@@ -121,12 +121,12 @@ class TokenManager:
         self._verify_permissions()
 
         try:
-            data = self._read_and_validate_token_file()
-            self._check_token_age(data.get("created_at"))
+            token_record = self._read_and_validate_token_file()
+            self._check_token_age(token_record.get("created_at"))
 
-            token = decrypt_token(data["token"])
-            version = data.get("version", 1)
-            cookies = self._decrypt_cookies(data, version)
+            token = decrypt_token(token_record["token"])
+            version = token_record.get("version", 1)
+            cookies = self._decrypt_cookies(token_record, version)
 
             cookie_msg = f" and {len(cookies)} cookies" if cookies else ""
             self.logger.info(  # nosemgrep: python-logger-credential-disclosure
@@ -151,19 +151,19 @@ class TokenManager:
             AuthenticationError: If the file is not encrypted or missing token data.
         """
         with open(self.token_path, encoding="utf-8") as f:
-            data = json.load(f)
+            token_record = json.load(f)
 
-        if not data.get("encrypted", False):
+        if not token_record.get("encrypted", False):
             self.logger.warning("Token file is not encrypted")
             raise AuthenticationError(
-                "Token file is not encrypted. Please re-authenticate with: pxcli auth"
+                "Token file is not encrypted. Please re-authenticate with: pxcli auth login"
             )
 
-        if not data.get("token"):
+        if not token_record.get("token"):
             self.logger.error("Token file missing encrypted token data")
             raise AuthenticationError("Token file is missing encrypted token data")
 
-        return data
+        return token_record
 
     def _check_token_age(self, created_at_str: str | None) -> None:
         """Log a warning if the token is older than the configured threshold.
@@ -187,11 +187,11 @@ class TokenManager:
         except (ValueError, TypeError):
             self.logger.debug("Could not parse token creation timestamp")
 
-    def _decrypt_cookies(self, data: dict, version: int) -> dict[str, str] | None:
+    def _decrypt_cookies(self, token_record: dict, version: int) -> dict[str, str] | None:
         """Decrypt and validate cookies from the token data.
 
         Args:
-            data: The parsed token file data.
+            token_record: The parsed token file data.
             version: The token file format version.
 
         Returns:
@@ -200,7 +200,7 @@ class TokenManager:
         Raises:
             AuthenticationError: If cookie data is malformed.
         """
-        if version != 2 or "cookies" not in data:
+        if version != 2 or "cookies" not in token_record:
             if version == 2:
                 self.logger.debug("Token is v2 format but no cookies stored")
             else:
@@ -209,7 +209,7 @@ class TokenManager:
                 )
             return None
 
-        encrypted_cookies = data.get("cookies")
+        encrypted_cookies = token_record.get("cookies")
         if not encrypted_cookies:
             return None
 

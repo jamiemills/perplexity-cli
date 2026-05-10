@@ -68,7 +68,7 @@ class TestCLICommands:
 
         assert result.exit_code == 0
         assert "Not authenticated" in result.output
-        assert "pxcli auth" in result.output
+        assert "pxcli auth login" in result.output
 
     @patch("perplexity_cli.utils.config.set_feature")
     def test_set_config_handles_configuration_error(self, mock_set_feature, runner):

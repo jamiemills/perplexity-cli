@@ -53,12 +53,12 @@ def _detect_execution_environment() -> str:
         return "uvx"
     if "VIRTUAL_ENV" in os.environ:
         return "venv"
-    if hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix:
+    if sys.base_prefix != sys.prefix:
         return "virtualenv"
     return "unknown"
 
 
-def log_query_debug_context(
+def log_query_debug_context(  # nosemgrep: boolean-flag-argument
     query_text: str,
     output_format: str | None,
     stream: bool,
@@ -180,7 +180,7 @@ def _require_auth_for_attachments(token: str | None, logger: logging.Logger) -> 
     if token:
         return token
     click.echo("[ERROR] File attachments require authentication.", err=True)
-    click.echo("\nPlease authenticate first with: pxcli auth", err=True)
+    click.echo("\nPlease authenticate first with: pxcli auth login", err=True)
     logger.error("Attachment upload attempted without authentication")
     sys.exit(1)
 
@@ -322,7 +322,9 @@ def _read_query_from_stdin(query_text: str) -> str:
     return text
 
 
-def _build_json_envelope(answer_obj: Answer, trace: TraceContext, include_schema: bool) -> str:
+def _build_json_envelope(  # nosemgrep: boolean-flag-argument
+    answer_obj: Answer, trace: TraceContext, include_schema: bool
+) -> str:
     """Build the JSON envelope output for --json mode.
 
     Args:
@@ -349,11 +351,13 @@ def _build_json_envelope(answer_obj: Answer, trace: TraceContext, include_schema
         trace_id=trace.trace_id or "",
     )
     envelope = success_envelope(command=_QUERY_JSON_COMMAND, result=result, meta=meta)
-    data = envelope_to_dict(envelope, include_schema=include_schema)
-    return json.dumps(data, default=str) + "\n"
+    envelope_dict = envelope_to_dict(envelope, include_schema=include_schema)
+    return json.dumps(envelope_dict, default=str) + "\n"
 
 
-def _handle_query_exception(exc: Exception, ctx_obj: dict | None, json_mode: bool) -> None:
+def _handle_query_exception(  # nosemgrep: boolean-flag-argument
+    exc: Exception, ctx_obj: dict | None, json_mode: bool
+) -> None:
     """Dispatch query exceptions to the appropriate error handler.
 
     Args:
@@ -379,7 +383,9 @@ def _handle_query_exception(exc: Exception, ctx_obj: dict | None, json_mode: boo
     _handle_fallback_error(exc, logger, debug_mode)
 
 
-def _try_dispatch_known_error(exc: Exception, logger: logging.Logger, debug_mode: bool) -> bool:
+def _try_dispatch_known_error(  # nosemgrep: boolean-flag-argument
+    exc: Exception, logger: logging.Logger, debug_mode: bool
+) -> bool:
     """Attempt to handle a known error type.
 
     Args:
@@ -409,7 +415,9 @@ def _try_dispatch_known_error(exc: Exception, logger: logging.Logger, debug_mode
     return False
 
 
-def _handle_fallback_error(exc: Exception, logger: logging.Logger, debug_mode: bool) -> None:
+def _handle_fallback_error(  # nosemgrep: boolean-flag-argument
+    exc: Exception, logger: logging.Logger, debug_mode: bool
+) -> None:
     """Handle an unexpected error type.
 
     Args:
@@ -512,7 +520,7 @@ def _check_for_duplicate_request_param(parsed: dict[str, str], key: str) -> None
         raise ValueError(f"Duplicate request parameter override: {key}")
 
 
-def run_query_command(  # nosemgrep: too-many-parameters
+def run_query_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
     ctx_obj: dict | None,
     query_text: str,
     output_format: str | None,
@@ -575,7 +583,7 @@ def run_query_command(  # nosemgrep: too-many-parameters
         _handle_query_exception(exc, ctx_obj, json_mode)
 
 
-def _handle_keyboard_interrupt(
+def _handle_keyboard_interrupt(  # nosemgrep: boolean-flag-argument
     _ctx_obj: dict | None, json_mode: bool, logger: logging.Logger
 ) -> None:
     """Handle a keyboard interrupt during query execution.

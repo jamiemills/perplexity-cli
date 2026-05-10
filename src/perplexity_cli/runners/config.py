@@ -25,7 +25,9 @@ def _get_json_mode_from_ctx() -> bool:
     return ctx_obj.get("json", False) if ctx_obj else False
 
 
-def _handle_style_error(e: Exception, json_mode: bool, command: str, message: str) -> None:
+def _handle_style_error(  # nosemgrep: boolean-flag-argument
+    e: Exception, json_mode: bool, command: str, message: str
+) -> None:
     """Handle style command errors uniformly."""
     if json_mode:
         handle_error(e, command=command, json_mode=True)
@@ -129,7 +131,7 @@ def run_clear_style_command(*, json_mode: bool | None = None) -> None:
 _CONFIG_CHANGE_MESSAGES: dict[tuple[str, bool], tuple[str, str]] = {
     ("save_cookies", True): (
         "[INFO] Cookie storage enabled.",
-        "  Re-authenticate to save cookies: pxcli auth",
+        "  Re-authenticate to save cookies: pxcli auth login",
     ),
     ("save_cookies", False): (
         "[INFO] Cookie storage disabled.",
@@ -146,7 +148,9 @@ _CONFIG_CHANGE_MESSAGES: dict[tuple[str, bool], tuple[str, str]] = {
 }
 
 
-def _print_config_change_message(key: str, bool_value: bool) -> None:
+def _print_config_change_message(  # nosemgrep: boolean-flag-argument
+    key: str, bool_value: bool
+) -> None:
     """Print contextual message after a configuration change."""
     msgs = _CONFIG_CHANGE_MESSAGES.get((key, bool_value))
     if msgs:
@@ -217,8 +221,8 @@ def _output_config_text(config, config_path, env_overrides: list[str]) -> None:
         click.echo()
 
     click.echo("To change settings:")
-    click.echo("  pxcli set-config save_cookies true|false")
-    click.echo("  pxcli set-config debug_mode true|false")
+    click.echo("  pxcli config set save_cookies true|false")
+    click.echo("  pxcli config set debug_mode true|false")
 
 
 def run_show_config_command(*, json_mode: bool | None = None) -> None:

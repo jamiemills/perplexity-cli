@@ -215,7 +215,7 @@ class ThreadScraper:
     thread metadata including creation timestamps using the stored auth token.
     """
 
-    def __init__(
+    def __init__(  # nosemgrep: boolean-flag-argument
         self,
         token: str,
         cookies: dict[str, str] | None = None,

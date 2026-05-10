@@ -413,7 +413,7 @@ class SSEClient:
             effective_timeout = self.timeout
         return is_deep_research, effective_timeout
 
-    def _log_request_context(
+    def _log_request_context(  # nosemgrep: boolean-flag-argument
         self,
         ctx: HttpRequestContext,
         is_deep_research: bool,

@@ -18,6 +18,7 @@ from pathlib import Path
 
 DEFAULT_MIN_COVERAGE = 85
 DEFAULT_REPORT = "coverage.json"
+_MIN_REPORTABLE_STATEMENTS = 5
 
 
 def _parse_args() -> argparse.Namespace:
@@ -50,11 +51,11 @@ def _load_report(path: str) -> dict:
         return json.load(f)
 
 
-def _check_modules(data: dict, min_coverage: float) -> list[tuple[str, float, int, int]]:
+def _check_modules(coverage_data: dict, min_coverage: float) -> list[tuple[str, float, int, int]]:
     """Return a list of (module, percentage, statements, missing) for failing modules."""
     failures: list[tuple[str, float, int, int]] = []
 
-    for filepath, entry in sorted(data.get("files", {}).items()):
+    for filepath, entry in sorted(coverage_data.get("files", {}).items()):
         summary = entry.get("summary", {})
         pct = summary.get("percent_covered", 0.0)
         stmts = summary.get("num_statements", 0)
@@ -62,7 +63,7 @@ def _check_modules(data: dict, min_coverage: float) -> list[tuple[str, float, in
 
         # Skip modules with very few statements (e.g. __init__.py with 0-2 lines)
         # as they can swing wildly on a single line change.
-        if stmts < 5:
+        if stmts < _MIN_REPORTABLE_STATEMENTS:
             continue
 
         if pct < min_coverage:
@@ -74,12 +75,12 @@ def _check_modules(data: dict, min_coverage: float) -> list[tuple[str, float, in
 
 def main() -> None:
     args = _parse_args()
-    data = _load_report(args.report)
-    failures = _check_modules(data, args.min_coverage)
+    coverage_report = _load_report(args.report)
+    failures = _check_modules(coverage_report, args.min_coverage)
 
     if not failures:
-        total_pct = data.get("totals", {}).get("percent_covered", 0.0)
-        file_count = len(data.get("files", {}))
+        total_pct = coverage_report.get("totals", {}).get("percent_covered", 0.0)
+        file_count = len(coverage_report.get("files", {}))
         print(
             f"Per-module coverage check passed: all {file_count} modules "
             f">= {args.min_coverage}% (overall: {total_pct:.1f}%)"

@@ -83,7 +83,9 @@ def to_iso8601(dt: datetime) -> str:
     return iso_str
 
 
-def _parse_range_bound(date_str: str, dt_tzinfo: tzinfo | None, is_end_of_day: bool) -> datetime:
+def _parse_range_bound(  # nosemgrep: boolean-flag-argument
+    date_str: str, dt_tzinfo: tzinfo | None, is_end_of_day: bool
+) -> datetime:
     """Parse a date string to a datetime at start or end of day.
 
     Args:

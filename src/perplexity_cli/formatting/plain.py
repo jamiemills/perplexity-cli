@@ -5,6 +5,8 @@ import re
 from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting.base import Formatter
 
+_MAX_CONSECUTIVE_BLANK_LINES = 2
+
 
 def _strip_markdown_emphasis(text: str) -> str:
     """Remove markdown bold and italic markers from text.
@@ -59,7 +61,7 @@ def _process_blank_line(
     if skip_next_blank:
         return False, blank_count
     blank_count += 1
-    if blank_count <= 2:
+    if blank_count <= _MAX_CONSECUTIVE_BLANK_LINES:
         result.append("")
     return False, blank_count
 
@@ -88,7 +90,7 @@ def _process_plain_line(
     if was_header:
         return True, blank_count_new
 
-    if line.strip() == "":
+    if not line.strip():
         return _process_blank_line(result, skip_next_blank, blank_count)
 
     result.append(_strip_markdown_emphasis(line))

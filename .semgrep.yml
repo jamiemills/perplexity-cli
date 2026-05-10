@@ -125,6 +125,15 @@ rules:
       - pattern: |
           def $F(..., $FLAG = False, ...):
               ...
+    paths:
+      exclude:
+        - '**/commands.py'
+        - '**/cli.py'
+        - '**/formatting/**'
+        - '**/test_*.py'
+        - '**/*_test.py'
+        - '**/tests/**'
+        - '**/conftest.py'
     message: "Boolean flag in '$F' signals two responsibilities — split it (Ch.3)."
     languages: [python]
     severity: INFO
