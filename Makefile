@@ -155,6 +155,26 @@ smoke-test:  ## Install wheel in isolated venv and run smoke tests
 	scripts/smoke_test.sh
 
 # ---------------------------------------------------------------------------
+# Release
+# ---------------------------------------------------------------------------
+
+.PHONY: release
+
+release:  ## Bump version, lock, commit, tag, and push (usage: make release V=0.7.2)
+ifndef V
+	$(error V is not set. Usage: make release V=0.7.2)
+endif
+	@echo "Releasing v$(V)..."
+	sed -i '' 's/^version = ".*"/version = "$(V)"/' pyproject.toml
+	uv lock
+	$(MAKE) ci
+	git add pyproject.toml uv.lock
+	git commit -m "Release $(V)"
+	git tag -a "v$(V)" -m "Release $(V)"
+	git push origin master
+	git push origin "v$(V)"
+
+# ---------------------------------------------------------------------------
 # Composite targets
 # ---------------------------------------------------------------------------
 
