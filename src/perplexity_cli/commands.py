@@ -23,6 +23,74 @@ def _ensure_ctx_obj(ctx: click.Context) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _write_json_example(formatter: click.HelpFormatter, example: str) -> None:
+    """Write a JSON output example section."""
+    formatter.write("\n")
+    formatter.write("Example Output (--json):\n")
+    for line in example.strip().splitlines():
+        formatter.write("  " + line + "\n")
+    formatter.write("\n")
+
+
+def _write_ndjson_example(formatter: click.HelpFormatter, example: str) -> None:
+    """Write an NDJSON streaming output example section."""
+    formatter.write("\n")
+    formatter.write("NDJSON Streaming Output (--json --stream):\n")
+    formatter.write(
+        "  Each line is a self-contained JSON object.  Event types:\n"
+        "  start, progress, chunk, result (final line).\n\n"
+    )
+    for line in example.strip().splitlines():
+        formatter.write("  " + line + "\n")
+    formatter.write("\n")
+
+
+def _write_json_schema(formatter: click.HelpFormatter) -> None:
+    """Write Pydantic JSON schema sections for Envelope and ErrorEnvelope."""
+    from perplexity_cli.envelope import Envelope, ErrorEnvelope
+
+    formatter.write("\n")
+    formatter.write("JSON Schema (Success Envelope):\n")
+    schema_text = _json.dumps(Envelope.model_json_schema(), indent=2)
+    for line in schema_text.splitlines():
+        formatter.write("  " + line + "\n")
+    formatter.write("\n")
+
+    formatter.write("JSON Schema (Error Envelope):\n")
+    err_schema_text = _json.dumps(ErrorEnvelope.model_json_schema(), indent=2)
+    for line in err_schema_text.splitlines():
+        formatter.write("  " + line + "\n")
+    formatter.write("\n")
+
+
+def _write_exit_codes(formatter: click.HelpFormatter) -> None:
+    """Write the standard exit-code table section."""
+    from perplexity_cli.exit_codes import format_exit_codes_help
+
+    formatter.write("\n")
+    with formatter.section("Exit Codes"):
+        for line in format_exit_codes_help().strip().splitlines():
+            if line.startswith("Exit codes:"):
+                continue
+            formatter.write_text(line.strip())
+
+
+def _write_see_also(formatter: click.HelpFormatter, refs: list[str]) -> None:
+    """Write the See Also section."""
+    formatter.write("\n")
+    with formatter.section("See Also"):
+        for ref in refs:
+            formatter.write_text(ref)
+
+
+def _write_env_vars(formatter: click.HelpFormatter, variables: list[str]) -> None:
+    """Write the Environment Variables section."""
+    formatter.write("\n")
+    with formatter.section("Environment Variables"):
+        for var in variables:
+            formatter.write_text(var)
+
+
 def _add_help_sections(
     cmd: click.Command,
     *,
@@ -55,64 +123,18 @@ def _add_help_sections(
 
     def enhanced_format_help(ctx: click.Context, formatter: click.HelpFormatter) -> None:
         original_format_help(ctx, formatter)
-
         if json_example:
-            formatter.write("\n")
-            formatter.write("Example Output (--json):\n")
-            for line in json_example.strip().splitlines():
-                formatter.write("  " + line + "\n")
-            formatter.write("\n")
-
+            _write_json_example(formatter, json_example)
         if ndjson_example:
-            formatter.write("\n")
-            formatter.write("NDJSON Streaming Output (--json --stream):\n")
-            formatter.write(
-                "  Each line is a self-contained JSON object.  Event types:\n"
-                "  start, progress, chunk, result (final line).\n\n"
-            )
-            for line in ndjson_example.strip().splitlines():
-                formatter.write("  " + line + "\n")
-            formatter.write("\n")
-
+            _write_ndjson_example(formatter, ndjson_example)
         if json_schema:
-            formatter.write("\n")
-            formatter.write("JSON Schema (Success Envelope):\n")
-            from perplexity_cli.envelope import Envelope
-
-            schema_text = _json.dumps(Envelope.model_json_schema(), indent=2)
-            for line in schema_text.splitlines():
-                formatter.write("  " + line + "\n")
-            formatter.write("\n")
-
-            formatter.write("JSON Schema (Error Envelope):\n")
-            from perplexity_cli.envelope import ErrorEnvelope
-
-            err_schema_text = _json.dumps(ErrorEnvelope.model_json_schema(), indent=2)
-            for line in err_schema_text.splitlines():
-                formatter.write("  " + line + "\n")
-            formatter.write("\n")
-
+            _write_json_schema(formatter)
         if exit_codes:
-            formatter.write("\n")
-            with formatter.section("Exit Codes"):
-                from perplexity_cli.exit_codes import format_exit_codes_help
-
-                for line in format_exit_codes_help().strip().splitlines():
-                    if line.startswith("Exit codes:"):
-                        continue
-                    formatter.write_text(line.strip())
-
+            _write_exit_codes(formatter)
         if see_also:
-            formatter.write("\n")
-            with formatter.section("See Also"):
-                for ref in see_also:
-                    formatter.write_text(ref)
-
+            _write_see_also(formatter, see_also)
         if env_vars:
-            formatter.write("\n")
-            with formatter.section("Environment Variables"):
-                for var in env_vars:
-                    formatter.write_text(var)
+            _write_env_vars(formatter, env_vars)
 
     setattr(cmd, "format_help", enhanced_format_help)  # noqa: B010 - monkey-patching Click command
     return cmd

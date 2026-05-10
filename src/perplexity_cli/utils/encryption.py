@@ -7,7 +7,6 @@ machine-bound obfuscation rather than strong OS-backed secret storage.
 """
 
 import base64
-import binascii
 import hashlib
 import os
 import secrets
@@ -80,7 +79,9 @@ def derive_encryption_key() -> bytes:
         RuntimeError: If unable to determine system identifiers.
     """
     try:
-        return _derive_fernet_key(_KEY_DERIVATION_SALT)
+        return _derive_fernet_key(
+            _KEY_DERIVATION_SALT
+        )  # NOSONAR -- deterministic salt required for at-rest token decryption; new encryptions use per-message random salt
 
     except OSError as e:
         raise ConfigurationError(f"Failed to derive encryption key: {e}") from e
@@ -160,13 +161,13 @@ def decrypt_token(encrypted_token: str) -> str:
     try:
         decoded_payload = base64.urlsafe_b64decode(encrypted_token.encode())
         return _decrypt_with_current_format(decoded_payload)
-    except (ConfigurationError, ValueError, TypeError, InvalidToken, binascii.Error):
+    except (ConfigurationError, ValueError, TypeError, InvalidToken):
         try:
             return _decrypt_with_legacy_pbkdf2(encrypted_token)
-        except (ConfigurationError, ValueError, TypeError, InvalidToken, binascii.Error):
+        except (ConfigurationError, ValueError, TypeError, InvalidToken):
             try:
                 return _decrypt_with_legacy_sha256(encrypted_token)
-            except (ConfigurationError, ValueError, TypeError, InvalidToken, binascii.Error) as e:
+            except (ConfigurationError, ValueError, TypeError, InvalidToken) as e:
                 raise AuthenticationError(
                     "Failed to decrypt token. This usually means the token was "
                     "encrypted on a different machine or with a different user. "

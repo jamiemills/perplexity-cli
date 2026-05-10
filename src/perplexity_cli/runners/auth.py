@@ -6,6 +6,7 @@ import click
 
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
+from perplexity_cli.runners._utils import resolve_json_flag
 from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationError
 from perplexity_cli.utils.http_errors import handle_unexpected_cli_error
 from perplexity_cli.utils.logging import get_logger
@@ -118,18 +119,9 @@ def _resolve_logout_ctx(json_mode: bool | None) -> tuple[bool, bool]:
     """Resolve json_mode and include_schema from context."""
     ctx = click.get_current_context(silent=True)
     ctx_obj = ctx.obj if ctx else {}
-    resolved_json = _resolve_json_flag(json_mode, ctx_obj)
+    resolved_json = resolve_json_flag(json_mode, ctx_obj)
     include_schema = ctx_obj.get("schema", False) if ctx_obj else False
     return resolved_json, include_schema
-
-
-def _resolve_json_flag(json_mode: bool | None, ctx_obj: dict | None) -> bool:
-    """Resolve the effective JSON mode flag."""
-    if json_mode is not None:
-        return json_mode
-    if not ctx_obj:
-        return False
-    return ctx_obj.get("json", False)
 
 
 def _logout_emit(json_mode: bool, include_schema: bool, existed: bool) -> None:

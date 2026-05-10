@@ -15,27 +15,27 @@ class TestRateLimiterInitialisation:
         """Test creation with valid parameters."""
         limiter = RateLimiter(requests_per_period=10, period_seconds=30.0)
         assert limiter.requests_per_period == 10
-        assert limiter.period_seconds == 30.0
-        assert limiter._state.tokens == 10.0
+        assert limiter.period_seconds == pytest.approx(30.0)
+        assert limiter._state.tokens == pytest.approx(10.0)
         assert limiter.total_requests == 0
-        assert limiter.total_wait_time == 0.0
+        assert limiter.total_wait_time == pytest.approx(0.0)
 
     def test_single_request_per_period(self):
         """Test creation with minimum valid requests_per_period."""
         limiter = RateLimiter(requests_per_period=1, period_seconds=1.0)
         assert limiter.requests_per_period == 1
-        assert limiter._state.tokens == 1.0
+        assert limiter._state.tokens == pytest.approx(1.0)
 
     def test_large_capacity(self):
         """Test creation with a large number of requests per period."""
         limiter = RateLimiter(requests_per_period=10000, period_seconds=3600.0)
         assert limiter.requests_per_period == 10000
-        assert limiter._state.tokens == 10000.0
+        assert limiter._state.tokens == pytest.approx(10000.0)
 
     def test_fractional_period_seconds(self):
         """Test creation with fractional period_seconds."""
         limiter = RateLimiter(requests_per_period=5, period_seconds=0.5)
-        assert limiter.period_seconds == 0.5
+        assert limiter.period_seconds == pytest.approx(0.5)
 
     def test_zero_requests_per_period_raises(self):
         """Test that zero requests_per_period raises ValueError."""
@@ -73,7 +73,7 @@ class TestRateLimiterAcquire:
         """Test that acquire() returns 0 wait time when tokens are available."""
         limiter = RateLimiter(requests_per_period=10, period_seconds=60.0)
         wait_time = await limiter.acquire()
-        assert wait_time == 0.0
+        assert wait_time == pytest.approx(0.0)
         assert limiter.total_requests == 1
 
     @pytest.mark.asyncio
@@ -96,7 +96,7 @@ class TestRateLimiterAcquire:
 
         # First acquire should be immediate
         wait1 = await limiter.acquire()
-        assert wait1 == 0.0
+        assert wait1 == pytest.approx(0.0)
 
         # Second acquire should wait (bucket is empty)
         start = time.monotonic()
@@ -153,7 +153,7 @@ class TestRateLimiterAcquire:
 
         # After 0.05s with 10 req/0.1s = 100 req/s, we should have earned ~5 tokens
         # so we should not need to wait
-        assert wait_time == 0.0
+        assert wait_time == pytest.approx(0.0)
 
 
 class TestRateLimiterGetStats:
@@ -165,11 +165,11 @@ class TestRateLimiterGetStats:
         stats = limiter.get_stats()
 
         assert stats["requests_per_period"] == 20
-        assert stats["period_seconds"] == 60.0
+        assert stats["period_seconds"] == pytest.approx(60.0)
         assert stats["total_requests"] == 0
-        assert stats["total_wait_time"] == 0.0
-        assert stats["average_wait_per_request"] == 0.0
-        assert stats["current_tokens"] == 20.0
+        assert stats["total_wait_time"] == pytest.approx(0.0)
+        assert stats["average_wait_per_request"] == pytest.approx(0.0)
+        assert stats["current_tokens"] == pytest.approx(20.0)
 
     @pytest.mark.asyncio
     async def test_get_stats_after_requests(self):
@@ -183,7 +183,7 @@ class TestRateLimiterGetStats:
 
         assert stats["total_requests"] == 2
         assert stats["requests_per_period"] == 5
-        assert stats["period_seconds"] == 60.0
+        assert stats["period_seconds"] == pytest.approx(60.0)
 
     @pytest.mark.asyncio
     async def test_get_stats_average_wait_calculation(self):

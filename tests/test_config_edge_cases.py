@@ -161,7 +161,7 @@ class TestEnvironmentVariableOverridesRateLimiting:
         monkeypatch.setenv("PERPLEXITY_RATE_LIMITING_PERIOD", "120.5")
 
         config = get_rate_limiting_config()
-        assert config.period_seconds == 120.5
+        assert config.period_seconds == pytest.approx(120.5)
 
     def test_rate_limiting_rps_invalid_raises(self, monkeypatch):
         """Test that non-integer PERPLEXITY_RATE_LIMITING_RPS raises RuntimeError."""

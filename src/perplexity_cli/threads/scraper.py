@@ -386,7 +386,7 @@ class ThreadScraper:
         from_date: str | None,
         to_date: str | None,
         fetch_from: str | None,
-        fetch_to: str | None,
+        _fetch_to: str | None,
         cached_threads: list[ThreadRecord],
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[ThreadRecord]:

@@ -325,7 +325,7 @@ class TestResolveAuthDefaults:
         assert url == "https://example.com"
         assert port == 1234
         assert timeout == 60
-        assert poll == 2.0
+        assert poll == pytest.approx(2.0)
 
     def test_applies_defaults_for_none(self):
         """Applies config defaults when arguments are None."""

@@ -5,6 +5,7 @@ from importlib.resources import files  # nosemgrep: python37-compatibility-impor
 import click
 
 from perplexity_cli.envelope import success_envelope, write_envelope
+from perplexity_cli.runners._utils import resolve_json_flag
 
 
 def _load_skill_content() -> str:
@@ -22,9 +23,7 @@ def _resolve_ctx_flags(json_mode: bool | None) -> tuple[bool, bool]:
     """Resolve json_mode and include_schema from the click context."""
     ctx = click.get_current_context(silent=True)
     ctx_obj = ctx.obj if ctx else {}
-    resolved_json = (
-        json_mode if json_mode is not None else (ctx_obj.get("json", False) if ctx_obj else False)
-    )
+    resolved_json = resolve_json_flag(json_mode, ctx_obj)
     include_schema = ctx_obj.get("schema", False) if ctx_obj else False
     return resolved_json, include_schema
 
