@@ -70,6 +70,7 @@ def handle_error(  # nosemgrep: too-many-parameters
     include_schema: bool = False,
 ) -> NoReturn:
     """Handle an exception, outputting either JSON or human-readable error, then exit."""
+    del debug_mode
     code, fix = _classify_exception(exc)
     exit_code = exit_code_for_exception(exc)
 

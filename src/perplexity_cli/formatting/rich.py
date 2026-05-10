@@ -10,6 +10,8 @@ from rich.text import Text
 from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting.base import Formatter
 
+_SECTION_HEADER_STYLE = "bold cyan"
+
 
 class RichFormatter(Formatter):
     """Formatter using Rich library for advanced terminal output."""
@@ -55,7 +57,7 @@ class RichFormatter(Formatter):
 
         # Create table with text wrapping
         table = Table(
-            title="References", show_header=True, header_style="bold cyan", padding=(0, 1)
+            title="References", show_header=True, header_style=_SECTION_HEADER_STYLE, padding=(0, 1)
         )
         table.add_column("#", style="cyan", width=3, no_wrap=True)
         table.add_column("Source", style="white", no_wrap=False, max_width=40)
@@ -94,12 +96,12 @@ class RichFormatter(Formatter):
             self.console.print()
             self.console.print("─" * 50, style="dim")
             self.console.print()
-            self.console.print(Text("References", style="bold cyan"))
+            self.console.print(Text("References", style=_SECTION_HEADER_STYLE))
             self.console.print()
 
             # Create and print references table with text wrapping
             # Use no_wrap=True for # column, but allow wrapping for others
-            table = Table(show_header=True, header_style="bold cyan", padding=(0, 1))
+            table = Table(show_header=True, header_style=_SECTION_HEADER_STYLE, padding=(0, 1))
             table.add_column("#", style="cyan", width=3, no_wrap=True)
             table.add_column("Source", style="white", no_wrap=False, max_width=40)
             table.add_column("URL", style="bright_blue", no_wrap=False, max_width=120)

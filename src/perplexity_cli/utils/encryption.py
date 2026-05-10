@@ -10,6 +10,7 @@ import base64
 import binascii
 import hashlib
 import os
+import secrets
 import socket
 from functools import lru_cache
 
@@ -19,6 +20,21 @@ from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationEr
 
 # Salt used for key derivation - consistent across installations
 _KEY_DERIVATION_SALT = b"perplexity-cli-token-encryption"
+_ENCRYPTED_TOKEN_VERSION_PREFIX = b"v2:"
+_PER_MESSAGE_SALT_BYTES = 16
+
+
+def _build_key_material() -> bytes:
+    """Build deterministic machine-specific key material."""
+    hostname = socket.gethostname()
+    username = os.getenv("USER") or os.getenv("USERNAME") or "unknown"
+    return f"{hostname}:{username}".encode()
+
+
+def _derive_fernet_key(salt: bytes) -> bytes:
+    """Derive a Fernet-compatible key from machine key material and salt."""
+    key_hash = hashlib.pbkdf2_hmac("sha256", _build_key_material(), salt, iterations=100000)
+    return base64.urlsafe_b64encode(key_hash)
 
 
 def _derive_encryption_key_legacy() -> bytes:
@@ -34,13 +50,8 @@ def _derive_encryption_key_legacy() -> bytes:
         RuntimeError: If unable to determine system identifiers.
     """
     try:
-        # Get system identifiers
-        hostname = socket.gethostname()
-        username = os.getenv("USER") or os.getenv("USERNAME") or "unknown"
-
         # Create deterministic key from system identifiers (legacy SHA-256)
-        key_material = f"{hostname}:{username}".encode()
-        key_hash = hashlib.sha256(key_material + _KEY_DERIVATION_SALT).digest()
+        key_hash = hashlib.sha256(_build_key_material() + _KEY_DERIVATION_SALT).digest()
 
         # Convert to Fernet-compatible key (base64-encoded 32 bytes)
         fernet_key = base64.urlsafe_b64encode(key_hash)
@@ -69,19 +80,7 @@ def derive_encryption_key() -> bytes:
         RuntimeError: If unable to determine system identifiers.
     """
     try:
-        # Get system identifiers
-        hostname = socket.gethostname()
-        username = os.getenv("USER") or os.getenv("USERNAME") or "unknown"
-
-        # Create deterministic key from system identifiers using PBKDF2
-        key_material = f"{hostname}:{username}".encode()
-        key_hash = hashlib.pbkdf2_hmac(
-            "sha256", key_material, _KEY_DERIVATION_SALT, iterations=100000
-        )
-
-        # Convert to Fernet-compatible key (base64-encoded 32 bytes)
-        fernet_key = base64.urlsafe_b64encode(key_hash)
-        return fernet_key
+        return _derive_fernet_key(_KEY_DERIVATION_SALT)
 
     except OSError as e:
         raise ConfigurationError(f"Failed to derive encryption key: {e}") from e
@@ -100,12 +99,46 @@ def encrypt_token(token: str) -> str:
         RuntimeError: If encryption fails.
     """
     try:
-        key = derive_encryption_key()
+        salt = secrets.token_bytes(_PER_MESSAGE_SALT_BYTES)
+        key = _derive_fernet_key(salt)
         cipher = Fernet(key)
         encrypted = cipher.encrypt(token.encode())
-        return base64.urlsafe_b64encode(encrypted).decode()
+        payload = _ENCRYPTED_TOKEN_VERSION_PREFIX + salt + encrypted
+        return base64.urlsafe_b64encode(payload).decode()
     except (ConfigurationError, ValueError, TypeError) as e:
         raise ConfigurationError(f"Failed to encrypt token: {e}") from e
+
+
+def _decrypt_with_current_format(decoded_payload: bytes) -> str:
+    """Decrypt a token stored in the current format with a per-message salt."""
+    if not decoded_payload.startswith(_ENCRYPTED_TOKEN_VERSION_PREFIX):
+        raise ValueError("Encrypted token is not in the current format")
+
+    payload = decoded_payload[len(_ENCRYPTED_TOKEN_VERSION_PREFIX) :]
+    if len(payload) <= _PER_MESSAGE_SALT_BYTES:
+        raise ValueError("Encrypted token payload is truncated")
+
+    salt = payload[:_PER_MESSAGE_SALT_BYTES]
+    encrypted_bytes = payload[_PER_MESSAGE_SALT_BYTES:]
+    cipher = Fernet(_derive_fernet_key(salt))
+    decrypted = cipher.decrypt(encrypted_bytes)
+    return decrypted.decode()
+
+
+def _decrypt_with_legacy_pbkdf2(encrypted_token: str) -> str:
+    """Decrypt a token stored with the legacy fixed-salt PBKDF2 format."""
+    cipher = Fernet(derive_encryption_key())
+    encrypted_bytes = base64.urlsafe_b64decode(encrypted_token.encode())
+    decrypted = cipher.decrypt(encrypted_bytes)
+    return decrypted.decode()
+
+
+def _decrypt_with_legacy_sha256(encrypted_token: str) -> str:
+    """Decrypt a token stored with the legacy SHA-256-derived format."""
+    cipher = Fernet(_derive_encryption_key_legacy())
+    encrypted_bytes = base64.urlsafe_b64decode(encrypted_token.encode())
+    decrypted = cipher.decrypt(encrypted_bytes)
+    return decrypted.decode()
 
 
 def decrypt_token(encrypted_token: str) -> str:
@@ -124,24 +157,18 @@ def decrypt_token(encrypted_token: str) -> str:
     Raises:
         RuntimeError: If decryption fails with both methods.
     """
-    # Try PBKDF2 first (current method)
     try:
-        key = derive_encryption_key()
-        cipher = Fernet(key)
-        encrypted_bytes = base64.urlsafe_b64decode(encrypted_token.encode())
-        decrypted = cipher.decrypt(encrypted_bytes)
-        return decrypted.decode()
+        decoded_payload = base64.urlsafe_b64decode(encrypted_token.encode())
+        return _decrypt_with_current_format(decoded_payload)
     except (ConfigurationError, ValueError, TypeError, InvalidToken, binascii.Error):
-        # Fall back to SHA-256 for backward compatibility
         try:
-            key = _derive_encryption_key_legacy()
-            cipher = Fernet(key)
-            encrypted_bytes = base64.urlsafe_b64decode(encrypted_token.encode())
-            decrypted = cipher.decrypt(encrypted_bytes)
-            return decrypted.decode()
-        except (ConfigurationError, ValueError, TypeError, InvalidToken, binascii.Error) as e:
-            raise AuthenticationError(
-                "Failed to decrypt token. This usually means the token was "
-                "encrypted on a different machine or with a different user. "
-                "Please re-authenticate with: perplexity-cli auth"
-            ) from e
+            return _decrypt_with_legacy_pbkdf2(encrypted_token)
+        except (ConfigurationError, ValueError, TypeError, InvalidToken, binascii.Error):
+            try:
+                return _decrypt_with_legacy_sha256(encrypted_token)
+            except (ConfigurationError, ValueError, TypeError, InvalidToken, binascii.Error) as e:
+                raise AuthenticationError(
+                    "Failed to decrypt token. This usually means the token was "
+                    "encrypted on a different machine or with a different user. "
+                    "Please re-authenticate with: perplexity-cli auth"
+                ) from e

@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from perplexity_cli.formatting.base import Formatter
 
 
+_TEXT_PLAIN_CONTENT_TYPE = "text/plain"
+
+
 # ---------------------------------------------------------------------------
 # Lightweight parameter objects (dataclasses, not Pydantic)
 # ---------------------------------------------------------------------------
@@ -70,13 +73,15 @@ class QueryInput:
     """User query text, file attachments, and optional model selection.
 
     Pairs the query string with its resolved attachment URLs and an
-    optional model preference so that downstream functions receive one
-    domain object rather than multiple loosely-related parameters.
+    optional model preference plus experimental request parameter
+    overrides so that downstream functions receive one domain object
+    rather than multiple loosely-related parameters.
     """
 
     query: str
     attachment_urls: list[str] = field(default_factory=list)
     model_preference: str | None = None
+    request_params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,17 +170,17 @@ class FileAttachment(BaseModel):
 
         # Detect content type from extension
         extension_to_type = {
-            ".txt": "text/plain",
+            ".txt": _TEXT_PLAIN_CONTENT_TYPE,
             ".md": "text/markdown",
             ".json": "application/json",
-            ".py": "text/plain",
-            ".js": "text/plain",
-            ".ts": "text/plain",
-            ".tsx": "text/plain",
-            ".jsx": "text/plain",
-            ".yaml": "text/plain",
-            ".yml": "text/plain",
-            ".toml": "text/plain",
+            ".py": _TEXT_PLAIN_CONTENT_TYPE,
+            ".js": _TEXT_PLAIN_CONTENT_TYPE,
+            ".ts": _TEXT_PLAIN_CONTENT_TYPE,
+            ".tsx": _TEXT_PLAIN_CONTENT_TYPE,
+            ".jsx": _TEXT_PLAIN_CONTENT_TYPE,
+            ".yaml": _TEXT_PLAIN_CONTENT_TYPE,
+            ".yml": _TEXT_PLAIN_CONTENT_TYPE,
+            ".toml": _TEXT_PLAIN_CONTENT_TYPE,
             ".csv": "text/csv",
             ".html": "text/html",
             ".xml": "text/xml",
@@ -196,7 +201,7 @@ class FileAttachment(BaseModel):
 class QueryParams(BaseModel):
     """Parameters for a Perplexity query request."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     language: str = Field(default="en-US")
     timezone: str = Field(default="Europe/London")

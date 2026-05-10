@@ -10,6 +10,8 @@ from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationEr
 from perplexity_cli.utils.http_errors import handle_unexpected_cli_error
 from perplexity_cli.utils.logging import get_logger
 
+_AUTH_LOGIN_COMMAND = "pxcli auth login"
+
 
 def _print_auth_troubleshooting(port: int, base_url: str) -> None:
     """Print authentication troubleshooting steps."""
@@ -32,7 +34,7 @@ def _handle_auth_success(token, cookies, json_mode, include_schema) -> None:
 
     if json_mode:
         env = success_envelope(
-            "pxcli auth login",
+            _AUTH_LOGIN_COMMAND,
             {"token_path": str(tm.token_path), "cookies_stored": len(cookies)},
         )
         write_envelope(env, include_schema=include_schema)
@@ -95,14 +97,14 @@ def _execute_auth(  # nosemgrep: too-many-parameters
         _handle_auth_success(token, cookies, json_mode, include_schema)
     except (TimeoutError, AuthenticationError) as e:
         if json_mode:
-            handle_error(e, command="pxcli auth login", json_mode=True)
+            handle_error(e, command=_AUTH_LOGIN_COMMAND, json_mode=True)
         logger.error("Authentication failed: %s", e, exc_info=True)
-        click.echo(f"[ERROR] {e}", err=True)
+        click.echo(f"[ERROR] Authentication failed: {e}", err=True)
         _print_auth_troubleshooting(port, base_url)
         sys.exit(1)
     except (OSError, ConfigurationError) as e:
         if json_mode:
-            handle_error(e, command="pxcli auth login", json_mode=True)
+            handle_error(e, command=_AUTH_LOGIN_COMMAND, json_mode=True)
         handle_unexpected_cli_error(
             e,
             logger,
@@ -116,11 +118,18 @@ def _resolve_logout_ctx(json_mode: bool | None) -> tuple[bool, bool]:
     """Resolve json_mode and include_schema from context."""
     ctx = click.get_current_context(silent=True)
     ctx_obj = ctx.obj if ctx else {}
-    resolved_json = (
-        json_mode if json_mode is not None else (ctx_obj.get("json", False) if ctx_obj else False)
-    )
+    resolved_json = _resolve_json_flag(json_mode, ctx_obj)
     include_schema = ctx_obj.get("schema", False) if ctx_obj else False
     return resolved_json, include_schema
+
+
+def _resolve_json_flag(json_mode: bool | None, ctx_obj: dict | None) -> bool:
+    """Resolve the effective JSON mode flag."""
+    if json_mode is not None:
+        return json_mode
+    if not ctx_obj:
+        return False
+    return ctx_obj.get("json", False)
 
 
 def _logout_emit(json_mode: bool, include_schema: bool, existed: bool) -> None:

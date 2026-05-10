@@ -175,6 +175,10 @@ end
 complete -c pxcli -f -a "(__fish_pxcli_complete)"
 """
 
+_AUTH_LOGIN_HELP_REF = "pxcli auth login"
+_AUTH_STATUS_HELP_REF = "pxcli auth status"
+_STYLE_SET_HELP_REF = "pxcli style set"
+
 
 # ---------------------------------------------------------------------------
 # Schema command result definitions
@@ -1646,6 +1650,17 @@ doctor.add_command(doctor_security)
         "subscription tier."
     ),
 )
+@click.option(
+    "--request-param",
+    "request_param_overrides",
+    type=str,
+    multiple=True,
+    help=(
+        "Experimental: inject an extra key=value pair into the outbound "
+        "request params.  Repeat for multiple fields.  Intended for private "
+        "API investigation only.  Example: --request-param workflow_key=deep_research"
+    ),
+)
 @click.pass_context
 def query(
     ctx: click.Context,
@@ -1658,6 +1673,7 @@ def query(
     schema_flag: bool,
     timeout: int | None,
     model_preference: str | None,
+    request_param_overrides: tuple[str, ...],
 ) -> None:
     """Submit a query to Perplexity.ai and get an answer.
 
@@ -1755,6 +1771,7 @@ def query(
         stream,
         attachments_str,
         model_preference=model_preference,
+        request_param_overrides=request_param_overrides,
     )
 
 
@@ -2063,7 +2080,7 @@ _add_help_sections(
     ndjson_example=_QUERY_NDJSON_EXAMPLE,
     json_schema=True,
     exit_codes=True,
-    see_also=["pxcli auth login", "pxcli config show", "pxcli style set", "pxcli schema"],
+    see_also=[_AUTH_LOGIN_HELP_REF, "pxcli config show", _STYLE_SET_HELP_REF, "pxcli schema"],
     env_vars=["PERPLEXITY_BASE_URL", "NO_COLOR", "XDG_CONFIG_HOME", "PERPLEXITY_CONFIG_DIR"],
 )
 
@@ -2073,7 +2090,7 @@ _add_help_sections(
     json_example=_AUTH_LOGIN_JSON_EXAMPLE,
     json_schema=True,
     exit_codes=True,
-    see_also=["pxcli auth status", "pxcli auth logout"],
+    see_also=[_AUTH_STATUS_HELP_REF, "pxcli auth logout"],
 )
 
 # auth logout
@@ -2082,7 +2099,7 @@ _add_help_sections(
     json_example=_AUTH_LOGOUT_JSON_EXAMPLE,
     json_schema=True,
     exit_codes=True,
-    see_also=["pxcli auth login", "pxcli auth status"],
+    see_also=[_AUTH_LOGIN_HELP_REF, _AUTH_STATUS_HELP_REF],
 )
 
 # auth status
@@ -2091,7 +2108,7 @@ _add_help_sections(
     json_example=_AUTH_STATUS_JSON_EXAMPLE,
     json_schema=True,
     exit_codes=True,
-    see_also=["pxcli auth login", "pxcli auth logout"],
+    see_also=[_AUTH_LOGIN_HELP_REF, "pxcli auth logout"],
 )
 
 # config set
@@ -2129,7 +2146,7 @@ _add_help_sections(
     json_example=_STYLE_SHOW_JSON_EXAMPLE,
     json_schema=True,
     exit_codes=True,
-    see_also=["pxcli style set", "pxcli style clear"],
+    see_also=[_STYLE_SET_HELP_REF, "pxcli style clear"],
 )
 
 # style clear
@@ -2138,7 +2155,7 @@ _add_help_sections(
     json_example=_STYLE_CLEAR_JSON_EXAMPLE,
     json_schema=True,
     exit_codes=True,
-    see_also=["pxcli style set"],
+    see_also=[_STYLE_SET_HELP_REF],
 )
 
 # threads export
@@ -2147,7 +2164,7 @@ _add_help_sections(
     json_example=_THREADS_EXPORT_JSON_EXAMPLE,
     json_schema=True,
     exit_codes=True,
-    see_also=["pxcli auth login"],
+    see_also=[_AUTH_LOGIN_HELP_REF],
     env_vars=["PERPLEXITY_CONFIG_DIR", "XDG_CONFIG_HOME"],
 )
 

@@ -7,6 +7,7 @@ All API-specific code is isolated here to enable rapid adaptation if APIs change
 import uuid
 from collections.abc import Iterator
 from types import TracebackType
+from typing import Any
 
 from ..auth.models import AuthContext
 from ..utils.config import get_query_endpoint
@@ -76,13 +77,11 @@ class PerplexityAPI:
         frontend_context_uuid = str(uuid.uuid4())
 
         # Build query parameters
-        effective_model = query_input.model_preference or "pplx_pro"
-        params = QueryParams(
-            frontend_uuid=frontend_uuid,
-            frontend_context_uuid=frontend_context_uuid,
-            search_implementation_mode=search_implementation_mode,
-            attachments=query_input.attachment_urls or [],
-            model_preference=effective_model,
+        params = self._build_query_params(
+            query_input,
+            frontend_uuid,
+            frontend_context_uuid,
+            search_implementation_mode,
         )
 
         # Build request
@@ -93,6 +92,26 @@ class PerplexityAPI:
         for message_data in self.client.stream_post(query_endpoint, request.to_dict()):
             yield SSEMessage.model_validate(message_data)
 
+    @staticmethod
+    def _build_query_params(
+        query_input: QueryInput,
+        frontend_uuid: str,
+        frontend_context_uuid: str,
+        search_implementation_mode: str,
+    ) -> QueryParams:
+        """Build validated query parameters for a request."""
+        effective_model = query_input.model_preference or "pplx_pro"
+        params = QueryParams(
+            frontend_uuid=frontend_uuid,
+            frontend_context_uuid=frontend_context_uuid,
+            search_implementation_mode=search_implementation_mode,
+            attachments=query_input.attachment_urls or [],
+            model_preference=effective_model,
+        )
+        if not query_input.request_params:
+            return params
+        return params.model_copy(update=dict[str, Any](query_input.request_params))
+
     def get_complete_answer(  # nosemgrep: too-many-parameters
         self,
         query: str,
@@ -100,6 +119,7 @@ class PerplexityAPI:
         attachments: list[str] | None = None,
         *,
         model_preference: str | None = None,
+        request_params: dict[str, object] | None = None,
     ) -> Answer:
         """Submit a query and return the complete answer with references.
 
@@ -109,6 +129,8 @@ class PerplexityAPI:
                 'multi_step' for deep research).
             attachments: Optional list of S3 URLs for file attachments.
             model_preference: Optional model ID override.
+            request_params: Optional extra fields merged into the
+                outbound request params for controlled experiments.
 
         Returns:
             Answer object containing text and references list.
@@ -122,6 +144,7 @@ class PerplexityAPI:
             query=query,
             attachment_urls=attachments or [],
             model_preference=model_preference,
+            request_params=request_params or {},
         )
         final_message = self._collect_final_message(
             query_input,

@@ -397,7 +397,7 @@ class ThreadScraper:
         """
         session_token = extract_session_token(self.token)
         fetched_threads = await self._fetch_all_threads_from_api(
-            session_token, progress_callback, from_date=fetch_from, to_date=fetch_to
+            session_token, progress_callback, from_date=fetch_from
         )
         self.logger.info("Fetched %s threads from API", len(fetched_threads))
 
@@ -488,7 +488,6 @@ class ThreadScraper:
         session_token: str,
         progress_callback: Callable[[int, int], None] | None = None,
         from_date: str | None = None,
-        to_date: str | None = None,
     ) -> list[ThreadRecord]:
         """Fetch all threads by paginating through the API endpoint.
 

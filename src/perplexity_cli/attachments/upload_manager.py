@@ -206,7 +206,7 @@ class AttachmentUploader:
                     "Malformed upload result entry from upstream API",
                     detail=f"file_uuid={file_uuid}",
                 )
-                task = self._upload_to_s3(attachment, upload_data, session)
+                task = self._upload_to_s3(attachment, upload_data)
                 tasks.append(task)
                 uuid_list.append(file_uuid)
 
@@ -331,14 +331,14 @@ class AttachmentUploader:
         self,
         attachment: FileAttachment,
         upload_data: dict[str, Any],
-        session: AsyncSession,
+        _session: AsyncSession | None = None,
     ) -> str:
         """Upload file to S3 using presigned URL.
 
         Args:
             attachment: The FileAttachment to upload.
             upload_data: Presigned URL data from API (includes form fields).
-            session: AsyncSession for making the request.
+            _session: Unused compatibility parameter kept for older tests and callers.
 
         Returns:
             The final S3 URL for the uploaded file.
