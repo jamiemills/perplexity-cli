@@ -7,6 +7,7 @@ A command-line interface for querying Perplexity.ai with persistent authenticati
 ## Features
 
 - **Query Perplexity.ai from the terminal** with a single command
+- **Model selection** -- choose a specific model with `--model` or list available models with `pxcli models list`
 - **Persistent authentication** with encrypted token storage (PBKDF2-HMAC key derivation)
 - **Structured JSON output** -- envelope format with `ok`, `result`, `meta`, and `next_actions` fields
 - **Multiple output formats** -- plain text, Markdown, rich terminal, or structured JSON
@@ -595,6 +596,7 @@ Options:
 Command groups:
   auth             Authentication management (login, logout, status)
   config           Configuration management (set, show)
+  models           Model listing (list)
   style            Style prompt management (set, show, clear)
   threads          Thread management (export)
   skill            Agent skill management (show)
@@ -617,6 +619,7 @@ Submit a query and display the answer.
 | `--strip-references` | `-S` | Remove citation markers and references section |
 | `--stream` / `--no-stream` | `-s` | Stream response incrementally (default: `--no-stream`) |
 | `--attach` | `-a` | Attach file(s): single path, comma-separated, repeated flag, or directory (recursive) |
+| `--model` | `-m` | Model to use (see `pxcli models list` for identifiers) |
 | `--timeout` | `-t` | Request timeout in seconds |
 
 ### `pxcli auth login [--port PORT]`
@@ -630,6 +633,21 @@ Display local authentication status. Use `--verify` to perform a live API verifi
 ### `pxcli auth logout`
 
 Remove stored authentication token.
+
+### `pxcli models list [OPTIONS]`
+
+List models available to your subscription tier.
+
+| Option | Description |
+|---|---|
+| `--json` | Structured JSON envelope output |
+| `--schema` | Embed JSON Schema in envelope (requires `--json`) |
+
+```bash
+pxcli models list                                   # table output
+pxcli models list --json                             # JSON envelope
+pxcli models list --json | jq '.result.models[].model_id'  # extract IDs
+```
 
 ### `pxcli config set KEY VALUE`
 

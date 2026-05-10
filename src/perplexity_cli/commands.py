@@ -1641,9 +1641,8 @@ doctor.add_command(doctor_security)
         "Examples:\n\n"
         "  --model gpt54           GPT-5.4\n\n"
         "  --model claude46sonnet  Claude Sonnet 4.6\n\n"
-        "  --model gpt55           GPT-5.5 (Max tier only)\n\n"
         "  -m experimental         Sonar 2\n\n"
-        "Run 'pxcli models list' to see all available models for your "
+        "Run 'pxcli models list' to see available models for your "
         "subscription tier."
     ),
 )
@@ -1769,9 +1768,10 @@ def query(
     help=(
         "Model listing and information.\n\n"
         "Query the Perplexity model catalogue to discover which models are "
-        "available for use with the --model flag on the query command.\n\n"
+        "available for your subscription tier, for use with the --model "
+        "flag on the query command.\n\n"
         "Subcommands:\n\n"
-        "  list  - List all available models with their identifiers and tiers\n\n"
+        "  list  - List models available to your subscription tier\n\n"
         "Quick start:\n\n"
         "  pxcli models list                # Show available models\n\n"
         "  pxcli models list --json         # JSON envelope output\n\n"
@@ -1808,10 +1808,10 @@ def models_group(ctx: click.Context) -> None:
 def models_list(ctx: click.Context, json_flag: bool, schema_flag: bool) -> None:
     """List available models.
 
-    Fetches the model catalogue from Perplexity and displays all models
+    Fetches the model catalogue from Perplexity and displays the models
     accessible to your subscription tier.  Each model is shown with its
-    identifier (for use with --model), display name, subscription tier
-    requirement, and a short description.
+    identifier (for use with --model), display name, and a short
+    description.  Models that require a higher tier are excluded.
 
     Requires authentication.  Run 'pxcli auth login' first if you have
     not already authenticated.
@@ -1839,7 +1839,6 @@ def models_list(ctx: click.Context, json_flag: bool, schema_flag: bool) -> None:
         --------------  ---------------------  ----  -------------------------
         pplx_pro        Best (default)         Pro   Auto-select the best model
         gpt54           GPT-5.4                Pro   OpenAI GPT-5.4
-        gpt55           GPT-5.5                Max   OpenAI GPT-5.5
         claude46sonnet  Claude Sonnet 4.6      Pro   Anthropic Claude
     """
     ctx.ensure_object(dict)

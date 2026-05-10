@@ -190,3 +190,18 @@ class UserSettings(BaseModel):
     def is_subscriber(self) -> bool:
         """Return whether the user has an active subscription."""
         return self.subscription_status not in ("none", "", "null")
+
+    def infer_subscription_level(self) -> SubscriptionLevel:
+        """Infer the user's subscription level from settings fields.
+
+        Active subscribers are assumed to be Pro.  The API does not
+        currently expose a reliable field to distinguish Pro from Max;
+        if such a field is discovered in future, detection should be
+        added here.
+
+        Returns:
+            The inferred subscription level.
+        """
+        if not self.is_subscriber:
+            return SubscriptionLevel.FREE
+        return SubscriptionLevel.PRO
