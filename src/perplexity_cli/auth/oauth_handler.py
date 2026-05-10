@@ -61,7 +61,7 @@ class ChromeDevToolsClient:
             # Scheme and host are hardcoded literals; only port varies.
             with urllib.request.urlopen(url, timeout=5) as response:  # nosec B310
                 targets = json.loads(response.read())
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             raise AuthenticationError(
                 f"Failed to connect to Chrome on port {self.port}. "
                 f"Ensure Chrome is running with --remote-debugging-port={self.port}. "

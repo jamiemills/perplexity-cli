@@ -11,6 +11,7 @@ from perplexity_cli.utils.file_permissions import verify_secure_permissions
 from perplexity_cli.utils.logging import get_logger, redact_mapping_keys, redact_path
 
 TOKEN_AGE_WARNING_DAYS = 30
+_MALFORMED_COOKIES_ERROR = "Token file contains malformed cookies data"
 
 
 class TokenManager:
@@ -231,7 +232,7 @@ class TokenManager:
         try:
             cookies = json.loads(cookies_json)
         except json.JSONDecodeError as e:
-            raise AuthenticationError("Token file contains malformed cookies data") from e
+            raise AuthenticationError(_MALFORMED_COOKIES_ERROR) from e
 
         self._validate_cookie_types(cookies)
         return cookies
@@ -247,12 +248,12 @@ class TokenManager:
             AuthenticationError: If cookie data is malformed.
         """
         if not isinstance(cookies, dict):
-            raise AuthenticationError("Token file contains malformed cookies data")
+            raise AuthenticationError(_MALFORMED_COOKIES_ERROR)
 
         if not all(
             isinstance(key, str) and isinstance(value, str) for key, value in cookies.items()
         ):
-            raise AuthenticationError("Token file contains malformed cookies data")
+            raise AuthenticationError(_MALFORMED_COOKIES_ERROR)
 
     def _log_cookie_details(self, cookies: dict[str, str]) -> None:
         """Log debug details about loaded cookies.

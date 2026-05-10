@@ -12,6 +12,7 @@ import os
 import sys
 import time
 import uuid
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 import click
@@ -33,6 +34,8 @@ from perplexity_cli.utils.exceptions import (
     UpstreamSchemaError,
 )
 from perplexity_cli.utils.logging import get_logger, redact_path, redact_text, redact_url
+
+_QUERY_JSON_COMMAND = "pxcli query --json"
 
 
 def _is_uvx_environment() -> bool:
@@ -345,7 +348,7 @@ def _build_json_envelope(answer_obj: Answer, trace: TraceContext, include_schema
         version=get_version(),
         trace_id=trace.trace_id or "",
     )
-    envelope = success_envelope(command="pxcli query --json", result=result, meta=meta)
+    envelope = success_envelope(command=_QUERY_JSON_COMMAND, result=result, meta=meta)
     data = envelope_to_dict(envelope, include_schema=include_schema)
     return json.dumps(data, default=str) + "\n"
 
@@ -366,9 +369,8 @@ def _handle_query_exception(exc: Exception, ctx_obj: dict | None, json_mode: boo
     if json_mode:
         handle_error(
             exc,
-            command="pxcli query --json",
+            command=_QUERY_JSON_COMMAND,
             json_mode=True,
-            debug_mode=debug_mode,
         )
 
     if _try_dispatch_known_error(exc, logger, debug_mode):
@@ -447,6 +449,7 @@ def _fetch_and_render(
         query_input.query,
         attachments=query_input.attachment_urls,
         model_preference=query_input.model_preference,
+        request_params=query_input.request_params,
     )
     logger.debug(
         "Received answer: %s characters, %s references",
@@ -475,6 +478,40 @@ def _read_ctx_options(ctx_obj: dict | None) -> tuple[bool, int | None, bool]:
     return opts.get("json", False), opts.get("timeout"), opts.get("schema", False)
 
 
+def parse_request_param_overrides(overrides: Iterable[str]) -> dict[str, str]:
+    """Parse repeated ``key=value`` request parameter overrides.
+
+    Args:
+        overrides: Raw override strings from the CLI.
+
+    Returns:
+        Mapping of request parameter keys to values.
+
+    Raises:
+        ValueError: If any override is malformed or repeated.
+    """
+    parsed: dict[str, str] = {}
+    for raw_override in overrides:
+        key, value = _parse_request_param_override(raw_override)
+        _check_for_duplicate_request_param(parsed, key)
+        parsed[key] = value
+    return parsed
+
+
+def _parse_request_param_override(raw_override: str) -> tuple[str, str]:
+    """Parse a single request parameter override."""
+    key, separator, value = raw_override.partition("=")
+    if not separator or not key or not value:
+        raise ValueError("Request parameter overrides must use the form key=value")
+    return key, value
+
+
+def _check_for_duplicate_request_param(parsed: dict[str, str], key: str) -> None:
+    """Reject duplicate request parameter override keys."""
+    if key in parsed:
+        raise ValueError(f"Duplicate request parameter override: {key}")
+
+
 def run_query_command(  # nosemgrep: too-many-parameters
     ctx_obj: dict | None,
     query_text: str,
@@ -484,6 +521,7 @@ def run_query_command(  # nosemgrep: too-many-parameters
     attachments_str: tuple[str, ...],
     *,
     model_preference: str | None = None,
+    request_param_overrides: tuple[str, ...] = (),
 ) -> None:
     """Execute the query command while keeping cli.py focused on wiring."""
     from perplexity_cli.api.endpoints import PerplexityAPI
@@ -507,11 +545,13 @@ def run_query_command(  # nosemgrep: too-many-parameters
     try:
         resolved_output_format, formatter = get_query_formatter(output_format)
         final_query = build_final_query(query_text)
+        request_params = parse_request_param_overrides(request_param_overrides)
 
         query_input = QueryInput(
             query=final_query,
             attachment_urls=attachment_urls,
             model_preference=model_preference,
+            request_params=request_params,
         )
         output_opts = OutputOptions(
             output_format=resolved_output_format,
@@ -550,9 +590,8 @@ def _handle_keyboard_interrupt(
 
         handle_error(
             KeyboardInterrupt(),
-            command="pxcli query --json",
+            command=_QUERY_JSON_COMMAND,
             json_mode=True,
-            debug_mode=(ctx_obj or {}).get("debug", False),
         )
     logger.info("Query interrupted by user")
     click.echo("\n[ERROR] Query interrupted.", err=True)

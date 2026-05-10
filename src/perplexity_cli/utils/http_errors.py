@@ -50,7 +50,7 @@ def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
     try:
         body = response.content
         text = body.decode("utf-8") if isinstance(body, bytes) else str(body)
-    except (AttributeError, UnicodeDecodeError, TypeError, ValueError):
+    except (AttributeError, TypeError, ValueError):
         text = ""
 
     simple_response = SimpleResponse(
