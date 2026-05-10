@@ -45,90 +45,12 @@ jobs:
           fi
 
       - name: Sync dependencies
-        run: |
-          uv sync --all-extras --locked
+        run: uv sync --all-extras --locked
 
-      - name: Check formatting
-        run: |
-          uv run ruff format --check src tests
-
-      - name: Check linting
-        run: |
-          uv run ruff check src tests
-
-      - name: Check typing
-        run: |
-          uv run ty check src
-
-      - name: Run tests
-        run: |
-          uv run pytest --cov=perplexity_cli --cov-report=term-missing --cov-fail-under=40
-
-      - name: Build distributions
-        run: |
-          rm -rf dist
-          uv build
-
-      - name: Verify distributions
-        run: |
-          ls -lh dist/
-          uvx twine check dist/*
-          python - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile
-
-          wheels = sorted(Path("dist").glob("pxcli-*.whl"))
-          if not wheels:
-              raise SystemExit("No built wheel found in dist/.")
-
-          with ZipFile(wheels[-1]) as wheel:
-              names = set(wheel.namelist())
-
-          required = "perplexity_cli/config/urls.json"
-          if required not in names:
-              raise SystemExit(f"Missing required packaged resource: {required}")
-
-          print(f"Verified required packaged resource: {required}")
-          PY
-
-      - name: Run installed-package smoke test
-        run: |
-          TMP_ROOT=$(mktemp -d)
-          VENV_DIR="$TMP_ROOT/venv"
-          CONFIG_DIR="$TMP_ROOT/config"
-          cleanup() {
-            rm -rf "$TMP_ROOT"
-          }
-          trap cleanup EXIT
-
-          WHEEL_PATH=$(ls dist/pxcli-*.whl 2>/dev/null | sort | tail -n 1)
-          if [ -z "$WHEEL_PATH" ]; then
-            echo "No built wheel found in dist/" >&2
-            exit 1
-          fi
-
-          uv venv "$VENV_DIR" >/dev/null
-          uv pip install --python "$VENV_DIR/bin/python" "$WHEEL_PATH" >/dev/null
-
-          export PERPLEXITY_CONFIG_DIR="$CONFIG_DIR"
-
-          "$VENV_DIR/bin/pxcli" --version >/dev/null
-          "$VENV_DIR/bin/pxcli" show-config >/dev/null
-          QUERY_ENDPOINT=$(
-            "$VENV_DIR/bin/python" -c "from perplexity_cli.utils.config import get_query_endpoint; print(get_query_endpoint())"
-          )
-
-          if [ -z "$QUERY_ENDPOINT" ]; then
-            echo "Installed-package smoke test failed: empty query endpoint" >&2
-            exit 1
-          fi
-
-          if [ ! -f "$CONFIG_DIR/urls.json" ]; then
-            echo "Installed-package smoke test failed: urls.json was not created in isolated config" >&2
-            exit 1
-          fi
-
-          echo "Installed-package smoke test passed"
+      - name: Run CI pipeline
+        env:
+          SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+        run: make ci
 
       - name: Publish to PyPI (OIDC)
         uses: pypa/gh-action-pypi-publish@release/v1
