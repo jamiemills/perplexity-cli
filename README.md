@@ -200,7 +200,7 @@ Every command that accepts `--json` produces a structured envelope on stdout. Th
   },
   "meta": {
     "duration_ms": 1423,
-    "version": "0.7.0",
+    "version": "0.7.1",
     "trace_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "truncated": false
   },
@@ -798,20 +798,40 @@ uv run lefthook install
 ### Testing
 
 ```bash
-uv run pytest                   # safe default test suite (1371 tests)
+uv run pytest                   # safe default test suite (1369 tests)
 uv run pytest -m security       # security tests only
 uv run pytest -m fuzz           # fuzz tests (17 atheris harnesses)
 ```
 
+### Makefile
+
+The `Makefile` is the single source of truth for all lint, test, and build commands.
+Both CI (GitHub Actions) and local git hooks (`lefthook`) delegate to it.
+
+```bash
+make ci                         # run the full CI pipeline locally
+make lint                       # ruff + bandit + vulture + semgrep
+make test                       # pytest with coverage
+make build                      # build wheel and sdist
+```
+
 ### Releasing
 
-Releases are triggered by pushing a `vX.Y.Z` tag on `master`. Run `.claude/scripts/release-check.sh` before tagging, or use `.claude/scripts/prepare-release.sh X.Y.Z` to prepare a release commit and local tag.
+Use the `release` target to bump the version, run CI, commit, tag, and push:
+
+```bash
+make release V=0.8.0
+```
+
+This runs `uv lock`, the full CI pipeline, commits the version bump, creates a
+`v0.8.0` tag, and pushes both to `origin`. The `publish-to-pypi` workflow then
+publishes to PyPI via OIDC trusted publishing.
 
 The detailed release workflow is documented in `.claude/PUBLISHING.md`.
 
 ### Compatibility
 
-Supported Python versions: 3.12 and 3.13.
+Supported Python versions: 3.12+.  CI tests against 3.12.
 
 ## Project governance
 
