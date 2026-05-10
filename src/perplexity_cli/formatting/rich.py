@@ -165,7 +165,7 @@ class RichFormatter(Formatter):
         lines = text.split("\n")
         for line in lines:
             # Check for headers (###, ##, #)
-            header_match = re.match(r"^(#{1,6})\s+(.+)$", line)
+            header_match = re.match(r"^(#{1,6})\s+(\S.*)$", line)
             if header_match:
                 hashes = header_match.group(1)
                 content = header_match.group(2)
