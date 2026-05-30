@@ -12,6 +12,27 @@
 
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
+PYTHON_VERSION ?= 3.12
+
+# ---------------------------------------------------------------------------
+# Development setup
+# ---------------------------------------------------------------------------
+
+.PHONY: check-uv setup
+
+check-uv:  ## Verify uv is installed
+	@command -v uv >/dev/null 2>&1 || { \
+		echo "uv is required to set up this project."; \
+		echo "Install it from https://docs.astral.sh/uv/getting-started/installation/"; \
+		echo "or run: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
+		exit 1; \
+	}
+
+setup: check-uv  ## Set up a local development environment
+	uv venv --python $(PYTHON_VERSION) --allow-existing
+	uv sync --locked --extra dev --group dev
+	uv run lefthook install
+	uv run pxcli --help > /dev/null
 
 # ---------------------------------------------------------------------------
 # Formatting

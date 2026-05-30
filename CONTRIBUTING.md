@@ -5,10 +5,8 @@
 ```bash
 git clone https://github.com/jamiemills/perplexity-cli.git
 cd perplexity-cli
-uv venv
+make setup
 source .venv/bin/activate
-uv pip install -e ".[dev]"
-uv run lefthook install
 ```
 
 ## Test Taxonomy
