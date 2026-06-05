@@ -32,6 +32,7 @@ dependencies = [
     "cryptography>=46.0.7",
     "curl-cffi>=0.15.0",
     "httpx>=0.25",
+    "mcp>=1.0.0",
     "websockets>=12.0",
     "rich>=13.0",
     "tenacity>=8.0",
@@ -61,6 +62,7 @@ Repository = "https://github.com/jamiemills/perplexity-cli"
 [project.scripts]
 pxcli = "perplexity_cli.cli:main"
 perplexity-cli = "perplexity_cli.cli:main"
+pxcli-mcp = "perplexity_cli.mcp_server:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -141,6 +143,12 @@ paths = ["src/"]
 exclude = []
 min_confidence = 80
 
+[tool.mutmut]
+paths_to_mutate = ["src/perplexity_cli/"]
+tests_dir = ["tests/"]
+pytest_add_cli_args = []
+type_check_command = ["uv", "run", "pyright", "src/"]
+
 [tool.pyright]
 include = ["src/"]
 pythonVersion = "3.12"
@@ -151,4 +159,6 @@ dev = [
     "pyright>=1.1",
     "radon>=6.0.1",
     "vulture>=2.16",
+    "mutmut>=3.0",
+    "hypothesis>=6.0",
 ]

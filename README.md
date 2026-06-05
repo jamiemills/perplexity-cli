@@ -84,6 +84,200 @@ pxc "how can I find what remote branches exist for this repo"
 pxj "what is the capital of France?"
 ```
 
+## MCP server
+
+`pxcli` can also run as an MCP server for coding agents. It exposes two tools:
+
+- `perplexity_quick_info`: Fast lookups, short explanations, fact checks, and recent info.
+- `perplexity_deep_info`: Multi-step research, comparisons, timelines, and broader synthesis.
+
+Both tools support `output_format` values `json`, `markdown`, and `plain`.
+
+### What the tools are for
+
+- Use `perplexity_quick_info` for current facts, short summaries, and quick validation.
+- Use `perplexity_deep_info` for broader research, comparisons, timelines, and synthesis across sources.
+- Use `output_format=json` when another agent step needs structured fields.
+- Use `output_format=markdown` for readable summaries.
+- Use `output_format=plain` for compact text and terminal-oriented follow-up work.
+
+### Run the server
+
+Run the MCP server over stdio:
+
+```bash
+uv run pxcli-mcp
+```
+
+Run it from a local checkout without activating the environment:
+
+```bash
+uv run --directory /path/to/perplexity-cli pxcli-mcp
+```
+
+Run it directly from GitHub without cloning:
+
+```bash
+uvx --from git+https://github.com/jamiemills/perplexity-cli.git pxcli-mcp
+```
+
+Run it from PyPI:
+
+```bash
+uvx --from pxcli pxcli-mcp
+```
+
+Or after installing `pxcli` locally:
+
+```bash
+pxcli-mcp
+```
+
+Run it over Streamable HTTP:
+
+```bash
+uv run pxcli-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+This serves the MCP endpoint at `http://127.0.0.1:8000/mcp` by default.
+
+### Claude Code
+
+Project-local config for the current repo only:
+
+```bash
+claude mcp add --transport stdio --scope local perplexity-cli -- \
+  uv run --directory /path/to/perplexity-cli pxcli-mcp
+```
+
+User-level config for all projects:
+
+```bash
+claude mcp add --transport stdio --scope user perplexity-cli -- \
+  uv run --directory /path/to/perplexity-cli pxcli-mcp
+```
+
+Project-local HTTP config:
+
+```bash
+claude mcp add --transport http --scope local perplexity-cli \
+  http://127.0.0.1:8000/mcp
+```
+
+User-level HTTP config:
+
+```bash
+claude mcp add --transport http --scope user perplexity-cli \
+  http://127.0.0.1:8000/mcp
+```
+
+### Codex
+
+Project-local config in `.codex/config.toml`:
+
+```toml
+[mcp_servers.perplexity_cli]
+command = "uv"
+args = ["run", "--directory", "/path/to/perplexity-cli", "pxcli-mcp"]
+```
+
+User-level config in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.perplexity_cli]
+command = "uv"
+args = ["run", "--directory", "/path/to/perplexity-cli", "pxcli-mcp"]
+```
+
+If you prefer the Codex CLI, add the server first and then move the resulting config to the scope you want:
+
+```bash
+codex mcp add perplexity-cli -- uv run --directory /path/to/perplexity-cli pxcli-mcp
+```
+
+Project-local HTTP config in `.codex/config.toml`:
+
+```toml
+[mcp_servers.perplexity_cli]
+url = "http://127.0.0.1:8000/mcp"
+```
+
+User-level HTTP config in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.perplexity_cli]
+url = "http://127.0.0.1:8000/mcp"
+```
+
+### OpenCode
+
+Project-local config in `opencode.json` or `opencode.jsonc`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "perplexity_cli": {
+      "type": "local",
+      "command": ["uv", "run", "--directory", "/path/to/perplexity-cli", "pxcli-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+User-level config in `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "perplexity_cli": {
+      "type": "local",
+      "command": ["uv", "run", "--directory", "/path/to/perplexity-cli", "pxcli-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Project-local HTTP config:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "perplexity_cli": {
+      "type": "remote",
+      "url": "http://127.0.0.1:8000/mcp",
+      "enabled": true
+    }
+  }
+}
+```
+
+User-level HTTP config in `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "perplexity_cli": {
+      "type": "remote",
+      "url": "http://127.0.0.1:8000/mcp",
+      "enabled": true
+    }
+  }
+}
+```
+
+### Summary
+
+- Use stdio when the MCP server should be launched by the client on demand.
+- Use Streamable HTTP when you want to run one long-lived server and let multiple clients connect to it.
+- Use project-local config when the MCP server should only be available in this repo.
+- Use user-level config when you want the same Perplexity MCP server available in all your projects.
+
 ## Querying
 
 ### Basic usage

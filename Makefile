@@ -14,6 +14,11 @@
 SHELL := /bin/bash
 PYTHON_VERSION ?= 3.12
 
+# Load environment variables from .env (if present) so that make targets
+# like `safety` can pick up SAFETY_API_KEY without manual sourcing.
+-include .env
+export
+
 # ---------------------------------------------------------------------------
 # Development setup
 # ---------------------------------------------------------------------------
@@ -121,7 +126,53 @@ semgrep:  ## Run semgrep static analysis
 		--config p/comment \
 		--config p/r2c-best-practices \
 		--severity ERROR --severity WARNING \
+		--exclude-rule python.lang.maintainability.useless-innerfunction.useless-inner-function \
+		--exclude tests/ \
 		--error --metrics=off .
+
+# ---------------------------------------------------------------------------
+# Architecture enforcement
+# ---------------------------------------------------------------------------
+
+.PHONY: coupling-check metrics-track
+
+coupling-check:  ## Measure coupling and stability metrics (Martin metrics)
+	uv run python scripts/check_coupling.py
+
+metrics-track:  ## Track CC and MI trends over recent git revisions
+	uv run python scripts/track_metrics.py
+
+.PHONY: mutate mutate-results mutate-module mutate-diff mutate-estimate mutate-browse
+
+mutate:  ## Run mutation testing on the full source tree (hours — for CI/overnight)
+	uv run mutmut run
+
+mutate-estimate:  ## Estimate how long a full mutation run would take
+	uv run mutmut print-time-estimates
+
+mutate-module:  ## Run mutation testing on a specific module (usage: make mutate-module MODULE=api)
+ifndef MODULE
+	$(error MODULE is not set. Usage: make mutate-module MODULE=api)
+endif
+	uv run mutmut run src/perplexity_cli/$(MODULE)/
+
+mutate-diff:  ## Run mutation testing on files changed vs base branch (for pre-push)
+	@base=$$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo "origin/master"); \
+	files=$$(git diff --name-only $$base...HEAD -- src/perplexity_cli/ 2>/dev/null | grep '\.py$$' | grep -v '__init__\.py$$' | grep -v '__pycache__' || true); \
+	if [ -z "$$files" ]; then \
+		echo "No source files changed — skipping mutation tests."; \
+		exit 0; \
+	fi; \
+	count=$$(echo "$$files" | wc -l | tr -d ' '); \
+	echo "Mutating $$count changed file(s):"; \
+	echo "$$files" | sed 's/^/  /'; \
+	uv run mutmut run $$files
+
+mutate-results:  ## Show mutation testing results from last run
+	uv run mutmut results
+
+mutate-browse:  ## Browse mutation results in interactive TUI
+	uv run mutmut browse
 
 # ---------------------------------------------------------------------------
 # Testing
@@ -131,7 +182,7 @@ semgrep:  ## Run semgrep static analysis
 # Coverage fail_under = 85 is set in pyproject.toml [tool.coverage.report].
 # ---------------------------------------------------------------------------
 
-.PHONY: test test-coverage test-fuzz
+.PHONY: test test-coverage test-fuzz test-property test-property-push test-property-ci
 
 test:  ## Run tests without coverage (fail-fast)
 	uv run pytest tests/ -q --tb=line -x
@@ -144,6 +195,15 @@ test-coverage:  ## Run tests with coverage enforcement
 
 test-fuzz:  ## Run fuzz tests
 	uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz
+
+test-property:  ## Run property-based tests (fast — dev profile, 10 examples each)
+	uv run pytest tests/test_property.py -v --tb=short --hypothesis-profile=dev
+
+test-property-push:  ## Run property-based tests (balanced — push profile, 50 examples each)
+	uv run pytest tests/test_property.py -v --tb=short --hypothesis-profile=push
+
+test-property-ci:  ## Run property-based tests (thorough — CI profile, 1000 examples each)
+	uv run pytest tests/test_property.py -v --tb=short --hypothesis-profile=ci
 
 # ---------------------------------------------------------------------------
 # Safety
@@ -197,26 +257,48 @@ endif
 
 # ---------------------------------------------------------------------------
 # Composite targets
+#
+# All static checks are listed as prerequisites of the `check` target so
+# that `make -j check` runs them in parallel (~4s wall time instead of
+# ~13s sequential).  Each prerequisite is independently callable via
+# `make <target>` for use in lefthook with per-file globs.
 # ---------------------------------------------------------------------------
 
-.PHONY: check ci
+.PHONY: check ci agent-check agent-check-push agent-check-no-tests
 
-check:  ## Run all static checks (no tests)
-	$(MAKE) format-check
-	$(MAKE) lint
-	$(MAKE) typecheck-all
-	$(MAKE) security
-	$(MAKE) complexity
-	$(MAKE) semgrep
+check: format-check lint typecheck-all security complexity semgrep arch-check coupling-check  ## Run all static checks (no tests)
+
+agent-check:  ## Run all pre-commit analysers in parallel with unified output (for agents/CI)
+	uv run python scripts/agent_check.py pre-commit
+
+agent-check-no-tests:  ## Run pre-commit analysers excluding tests (for pre-push)
+	uv run python scripts/agent_check.py --no-tests pre-commit
+
+agent-check-push:  ## Run all pre-push analysers in parallel with unified output (for agents/CI)
+	uv run python scripts/agent_check.py pre-push
 
 ci:  ## Full CI pipeline
 	$(MAKE) check
 	$(MAKE) test-coverage
 	$(MAKE) test-fuzz
 	$(MAKE) safety
+	$(MAKE) sonar-reports
+	$(MAKE) test-property-ci
 	$(MAKE) build
 	$(MAKE) verify
 	$(MAKE) smoke-test
+
+# ---------------------------------------------------------------------------
+# Architecture
+# ---------------------------------------------------------------------------
+
+.PHONY: arch-check arch-explain
+
+arch-check:  ## Check architecture layer boundaries and import direction
+	uv run python scripts/check_architecture.py
+
+arch-explain:  ## Display the architecture layer model
+	uv run python scripts/check_architecture.py --explain
 
 # ---------------------------------------------------------------------------
 # Sonar

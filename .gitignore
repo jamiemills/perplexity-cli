@@ -20,6 +20,7 @@ coverage.xml
 .mypy_cache/
 htmlcov/
 .pytest_cache/
+.mutmut-cache
 
 # Distribution / packaging
 dist/

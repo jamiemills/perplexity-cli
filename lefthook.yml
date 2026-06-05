@@ -136,6 +136,9 @@ pre-commit:
 pre-push:
   parallel: true
   jobs:
+    - name: agent-check
+      run: make agent-check-no-tests
+
     - name: pytest-coverage
       run: make test-coverage
 
@@ -147,3 +150,15 @@ pre-push:
 
     - name: generate-sonar-reports
       run: make sonar-reports
+
+    - name: arch-check
+      run: make arch-check
+
+    - name: coupling-check
+      run: make coupling-check
+
+    - name: mutate-diff
+      run: make mutate-diff
+
+    - name: test-property
+      run: make test-property-push

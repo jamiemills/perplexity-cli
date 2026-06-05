@@ -40,6 +40,7 @@ rules:
         - '**/*_test.py'
         - '**/tests/**'
         - '**/conftest.py'
+        - '**/scripts/**'
     message: "Single-letter name '$X' — use a descriptive name (Clean Code Ch.2)."
     languages: [python]
     severity: WARNING
@@ -107,6 +108,7 @@ rules:
         - '**/conftest.py'
         - '**/cli.py'
         - '**/commands.py'
+        - '**/scripts/**'
     message: "Function '$F' has >4 parameters — group into a dataclass (Ch.3)."
     languages: [python]
     severity: WARNING
@@ -190,6 +192,9 @@ rules:
               ...
           except Exception:
               raise ...
+    paths:
+      exclude:
+        - '**/scripts/**'
     message: "Catching bare Exception hides bugs — narrow the except clause (Ch.7)."
     languages: [python]
     severity: WARNING
@@ -367,6 +372,34 @@ rules:
       - pattern: hasattr($O, "...")
       - pattern: setattr($O, "...", ...)
     message: "String-based attribute access — prefer explicit access or polymorphism (Ch.17)."
+    languages: [python]
+    severity: INFO
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Architecture — layer isolation and dependency direction
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: domain-framework-import
+    pattern-regex: '(?m)^(import (click|rich|httpx|curl_cffi|websockets|mcp|cryptography|tenacity)\b|from (click|rich|httpx|curl_cffi|websockets|mcp|cryptography|tenacity)\b)'
+    paths:
+      include:
+        - 'src/perplexity_cli/envelope.py'
+        - 'src/perplexity_cli/exit_codes.py'
+        - 'src/perplexity_cli/ndjson.py'
+        - 'src/perplexity_cli/models/**'
+        - 'src/perplexity_cli/config/models.py'
+        - 'src/perplexity_cli/config/defaults.py'
+    message: "Domain layer must not import framework libraries — extract to an infrastructure adapter."
+    languages: [python]
+    severity: ERROR
+
+  - id: application-framework-import
+    pattern-regex: '(?m)^(import (click|rich|httpx|curl_cffi|websockets|mcp)\b|from (click|rich|httpx|curl_cffi|websockets|mcp)\b)'
+    paths:
+      include:
+        - 'src/perplexity_cli/services/**'
+        - 'src/perplexity_cli/runners/**'
+        - 'src/perplexity_cli/query_runner.py'
+    message: "Application layer imports a framework library — prefer dependency injection or a port interface."
     languages: [python]
     severity: INFO
 

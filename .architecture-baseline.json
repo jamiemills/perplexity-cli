@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "accepted": [
+    {
+      "rule": "import-direction",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/api/models.py:17",
+      "message": "api.models (layer: infrastructure) imports formatting.base (layer: presentation), but infrastructure may only import from: domain, infrastructure"
+    },
+    {
+      "rule": "import-direction",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/exit_codes.py:5",
+      "message": "exit_codes (layer: domain) imports utils.exceptions (layer: infrastructure), but domain may only import from: domain"
+    },
+    {
+      "rule": "framework-isolation",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/query_runner.py:18",
+      "message": "query_runner (layer: application) imports 'click', but application must not depend on framework libraries"
+    },
+    {
+      "rule": "import-direction",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/query_runner.py:23",
+      "message": "query_runner (layer: application) imports formatting.base (layer: presentation), but application may only import from: domain, application, infrastructure"
+    },
+    {
+      "rule": "import-direction",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/query_runner.py:259",
+      "message": "query_runner (layer: application) imports formatting (layer: presentation), but application may only import from: domain, application, infrastructure"
+    },
+    {
+      "rule": "import-direction",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/query_runner.py:368",
+      "message": "query_runner (layer: application) imports error_handler (layer: presentation), but application may only import from: domain, application, infrastructure"
+    },
+    {
+      "rule": "import-direction",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/query_runner.py:596",
+      "message": "query_runner (layer: application) imports error_handler (layer: presentation), but application may only import from: domain, application, infrastructure"
+    },
+    {
+      "rule": "framework-isolation",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/runners/auth.py:5",
+      "message": "runners.auth (layer: application) imports 'click', but application must not depend on framework libraries"
+    },
+    {
+      "rule": "import-direction",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/runners/auth.py:8",
+      "message": "runners.auth (layer: application) imports error_handler (layer: presentation), but application may only import from: domain, application, infrastructure"
+    },
+    {
+      "rule": "framework-isolation",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/runners/config.py:6",
+      "message": "runners.config (layer: application) imports 'click', but application must not depend on framework libraries"
+    },
+    {
+      "rule": "import-direction",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/runners/config.py:9",
+      "message": "runners.config (layer: application) imports error_handler (layer: presentation), but application may only import from: domain, application, infrastructure"
+    },
+    {
+      "rule": "framework-isolation",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/runners/export.py:6",
+      "message": "runners.export (layer: application) imports 'click', but application must not depend on framework libraries"
+    },
+    {
+      "rule": "import-direction",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/runners/export.py:9",
+      "message": "runners.export (layer: application) imports error_handler (layer: presentation), but application may only import from: domain, application, infrastructure"
+    },
+    {
+      "rule": "framework-isolation",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/runners/models.py:13",
+      "message": "runners.models (layer: application) imports 'click', but application must not depend on framework libraries"
+    },
+    {
+      "rule": "import-direction",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/runners/models.py:333",
+      "message": "runners.models (layer: application) imports error_handler (layer: presentation), but application may only import from: domain, application, infrastructure"
+    },
+    {
+      "rule": "framework-isolation",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/runners/skill.py:5",
+      "message": "runners.skill (layer: application) imports 'click', but application must not depend on framework libraries"
+    },
+    {
+      "rule": "framework-isolation",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/runners/status.py:7",
+      "message": "runners.status (layer: application) imports 'click', but application must not depend on framework libraries"
+    },
+    {
+      "rule": "adapter-independence",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/threads/scraper.py:27",
+      "message": "threads.scraper (infra: threads) imports api.contracts (infra: api).  Infrastructure adapters should be independent; consider extracting shared code to a port or a dedicated shared-kernel module."
+    },
+    {
+      "rule": "adapter-independence",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/threads/scraper.py:28",
+      "message": "threads.scraper (infra: threads) imports auth.utils (infra: auth).  Infrastructure adapters should be independent; consider extracting shared code to a port or a dedicated shared-kernel module."
+    },
+    {
+      "rule": "adapter-independence",
+      "file": "/Users/jamiemills/Projects/code/perplexity-cli/src/perplexity_cli/utils/file_handler.py:6",
+      "message": "utils.file_handler (infra: utils) imports api.models (infra: api).  Infrastructure adapters should be independent; consider extracting shared code to a port or a dedicated shared-kernel module."
+    }
+  ]
+}
