@@ -95,6 +95,9 @@ pre-commit:
             glob: "tests/**/*.py"
             run: uvx --from pre-commit-hooks name-tests-test --pytest-test-first {staged_files}
 
+          - name: infisical-scan
+            run: make infisical-scan
+
     # -----------------------------------------------------------------
     # Stage 2: auto-fixers (piped -- sequential to avoid file races)
     #

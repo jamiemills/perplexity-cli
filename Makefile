@@ -213,10 +213,13 @@ test-property-ci:  ## Run property-based tests (thorough — CI profile, 1000 ex
 # Safety
 # ---------------------------------------------------------------------------
 
-.PHONY: safety
+.PHONY: safety infisical-scan
 
 safety:  ## Run safety dependency scan
 	infisical run --env dev -- uv run python scripts/agent_check.py safety
+
+infisical-scan:  ## Scan uncommitted changes for secrets
+	infisical scan git-changes --verbose --exit-code 1
 
 # ---------------------------------------------------------------------------
 # Build and verify
