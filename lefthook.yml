@@ -70,7 +70,7 @@ pre-commit:
 
           - name: check-env-files
             run: |
-              env_files=$(git diff --cached --name-only --diff-filter=A | grep -E '(^|/)\.env')
+              env_files=$(git diff --cached --name-only --diff-filter=A | grep -E '(^|/)\.env$')
               if [ -n "$env_files" ]; then
                 echo "ERROR: .env files must not be committed — they may contain secrets."
                 echo "Blocked files:"
