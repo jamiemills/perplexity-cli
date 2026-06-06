@@ -16,11 +16,15 @@ Usage
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,6 +40,61 @@ class Analyser:
     name: str
     command: list[str]
     fixer: bool = False  # True if this analyser modifies source files
+    command_builder: Callable[[Path], tuple[list[str], TemporaryDirectory | None]] | None = None
+
+
+SAFETY_INPUT_PATHS: tuple[str, ...] = (
+    "pyproject.toml",
+    "uv.lock",
+    "src",
+    "tests",
+    "scripts",
+    "vulture_whitelist.py",
+)
+SAFETY_COPY_EXCLUDES: tuple[str, ...] = (
+    "*.egg-info",
+    "*.pyc",
+    "*.pyo",
+    ".coverage*",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+)
+
+
+def _build_safety_stage(cwd: Path) -> TemporaryDirectory:
+    stage = TemporaryDirectory(prefix="pxcli-safety-")
+    stage_root = Path(stage.name)
+
+    for relative_path in SAFETY_INPUT_PATHS:
+        source_path = cwd / relative_path
+        if not source_path.exists():
+            continue
+
+        destination_path = stage_root / relative_path
+        if source_path.is_dir():
+            shutil.copytree(
+                source_path,
+                destination_path,
+                ignore=shutil.ignore_patterns(*SAFETY_COPY_EXCLUDES),
+            )
+        else:
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, destination_path)
+
+    return stage
+
+
+def _build_safety_command(cwd: Path) -> tuple[list[str], TemporaryDirectory]:
+    stage = _build_safety_stage(cwd)
+    stage_root = Path(stage.name)
+    command = ["uvx", "safety"]
+    safety_api_key = os.environ.get("SAFETY_API_KEY")
+    if safety_api_key:
+        command.extend(["--key", safety_api_key, "--stage", "cicd"])
+    command.extend(["scan", "--target", str(stage_root)])
+    return command, stage
 
 
 # Pre-commit analysers: fixers run first (sequential), then linters (parallel), then tests.
@@ -112,7 +171,7 @@ PRE_PUSH_ALL: tuple[Analyser, ...] = (
             "--cov-report=xml:coverage.xml",
         ],
     ),
-    Analyser("safety", ["uvx", "safety", "scan", "--target", "."]),
+    Analyser("safety", [], command_builder=_build_safety_command),
     Analyser(
         "fuzz", ["uv", "run", "pytest", "tests/test_fuzz.py", "-v", "--tb=long", "-m", "fuzz"]
     ),
@@ -179,7 +238,11 @@ def _run_one(analyser: Analyser, cwd: str) -> AnalyserResult:
     """Run a single analyser and return its result."""
     start = time.monotonic()
     cmd = analyser.command
+    cleanup_target: TemporaryDirectory | None = None
     try:
+        if analyser.command_builder is not None:
+            cmd, cleanup_target = analyser.command_builder(Path(cwd))
+
         proc = subprocess.run(
             cmd,
             capture_output=True,
@@ -212,6 +275,9 @@ def _run_one(analyser: Analyser, cwd: str) -> AnalyserResult:
             duration_s=time.monotonic() - start,
             stderr=f"Command not found: {cmd[0]}",
         )
+    finally:
+        if cleanup_target is not None:
+            cleanup_target.cleanup()
 
 
 def _run_sequential(analysers: tuple[Analyser, ...], cwd: str) -> list[AnalyserResult]:
@@ -278,7 +344,7 @@ def _append_analyser_section(
         f"[{index + 1}/{total}] {result.name} — {status} "
         f"({result.duration_s:.1f}s, exit {result.exit_code})"
     )
-    lines.append(f"    $ {' '.join(result.command)}")
+    lines.append(f"    $ {' '.join(_redact_command(result.command))}")
     lines.append(SEP)
 
     _append_output_block(lines, result.stdout, "stdout", "stderr" if result.stderr else None)
@@ -314,6 +380,16 @@ def _append_truncated_lines(lines: list[str], output: str) -> None:
         lines.append(f"    {line}")
     if len(output_lines) > TRUNCATE_LINES:
         lines.append(f"    ... ({len(output_lines) - TRUNCATE_LINES} more lines)")
+
+
+def _redact_command(command: list[str]) -> list[str]:
+    redacted = command[:]
+    for index, value in enumerate(redacted):
+        if value == "--key" and index + 1 < len(redacted):
+            redacted[index + 1] = "[REDACTED]"
+        elif value.startswith("--key="):
+            redacted[index] = "--key=[REDACTED]"
+    return redacted
 
 
 def _format_json(report: RunReport) -> str:
@@ -370,6 +446,15 @@ def _run_pre_push(cwd: str) -> RunReport:
     )
 
 
+def _run_safety(cwd: str) -> RunReport:
+    t0 = time.monotonic()
+    analyser = Analyser("safety", [], command_builder=_build_safety_command)
+    return RunReport(
+        results=[_run_one(analyser, cwd)],
+        total_duration_s=time.monotonic() - t0,
+    )
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -384,7 +469,7 @@ def _parse_args(raw: list[str]) -> tuple[bool, str | None, bool]:
             json_mode = True
         elif arg == "--no-tests":
             skip_tests = True
-        elif arg in ("pre-commit", "pre-push"):
+        elif arg in ("pre-commit", "pre-push", "safety"):
             scope = arg
     return json_mode, scope, skip_tests
 
@@ -400,6 +485,8 @@ def main() -> None:
 
     if scope == "pre-commit":
         report = _run_pre_commit(cwd, skip_tests=skip_tests)
+    elif scope == "safety":
+        report = _run_safety(cwd)
     else:
         report = _run_pre_push(cwd)
 

@@ -157,16 +157,14 @@ endif
 	uv run mutmut run src/perplexity_cli/$(MODULE)/
 
 mutate-diff:  ## Run mutation testing on files changed vs base branch (for pre-push)
-	@base=$$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo "origin/master"); \
-	files=$$(git diff --name-only $$base...HEAD -- src/perplexity_cli/ 2>/dev/null | grep '\.py$$' | grep -v '__init__\.py$$' | grep -v '__pycache__' || true); \
-	if [ -z "$$files" ]; then \
+	@mapfile -t files < <(uv run python scripts/discover_mutate_diff_files.py); \
+	if [ "$${#files[@]}" -eq 0 ]; then \
 		echo "No source files changed — skipping mutation tests."; \
 		exit 0; \
 	fi; \
-	count=$$(echo "$$files" | wc -l | tr -d ' '); \
-	echo "Mutating $$count changed file(s):"; \
-	echo "$$files" | sed 's/^/  /'; \
-	uv run mutmut run $$files
+	echo "Mutating $${#files[@]} changed file(s):"; \
+	printf '  %s\n' "$${files[@]}"; \
+	uv run mutmut run "$${files[@]}"
 
 mutate-results:  ## Show mutation testing results from last run
 	uv run mutmut results
@@ -212,11 +210,7 @@ test-property-ci:  ## Run property-based tests (thorough — CI profile, 1000 ex
 .PHONY: safety
 
 safety:  ## Run safety dependency scan
-ifdef SAFETY_API_KEY
-	uvx safety --key $(SAFETY_API_KEY) --stage cicd scan --target .
-else
-	uvx safety scan --target .
-endif
+	uv run python scripts/agent_check.py safety
 
 # ---------------------------------------------------------------------------
 # Build and verify

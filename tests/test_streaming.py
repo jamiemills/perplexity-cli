@@ -8,14 +8,9 @@ from unittest.mock import Mock, patch
 import pytest
 from click import ClickException
 
-from perplexity_cli.api.models import (
-    OutputOptions,
-    QueryInput,
-    RenderContext,
-    TraceContext,
-    WebResult,
-)
-from perplexity_cli.api.streaming import (
+from perplexity_cli.api.models import QueryInput, TraceContext, WebResult
+from perplexity_cli.formatting.context import OutputOptions, RenderContext
+from perplexity_cli.query_streaming import (
     _handle_stream_error,
     _process_stream_message,
     _write_ndjson_result,
@@ -128,7 +123,7 @@ def test_stream_query_response_surfaces_output_failure():
     query_input = QueryInput(query="test query")
     trace = TraceContext()
 
-    with patch("perplexity_cli.api.streaming.click.echo") as mock_echo:
+    with patch("perplexity_cli.query_streaming.click.echo") as mock_echo:
         mock_echo.side_effect = [None, None, None, None, None]
 
         with pytest.raises(SystemExit) as exc_info:
@@ -149,7 +144,7 @@ def test_stream_query_response_uses_shared_unexpected_error_handler():
     query_input = QueryInput(query="test query")
     trace = TraceContext()
 
-    with patch("perplexity_cli.api.streaming.handle_unexpected_cli_error") as mock_handle:
+    with patch("perplexity_cli.query_streaming.handle_unexpected_cli_error") as mock_handle:
         with pytest.raises(SystemExit):
             mock_handle.side_effect = SystemExit(1)
             stream_query_response(api, query_input, render, trace)
@@ -167,7 +162,7 @@ def test_stream_query_response_maps_click_exception_to_render_failure():
     query_input = QueryInput(query="test query")
     trace = TraceContext()
 
-    with patch("perplexity_cli.api.streaming.click.echo") as mock_echo:
+    with patch("perplexity_cli.query_streaming.click.echo") as mock_echo:
         mock_echo.side_effect = [ClickException("bad tty"), None, None]
 
         with pytest.raises(SystemExit) as exc_info:
@@ -266,7 +261,7 @@ class TestHandleStreamError:
 
     def test_returns_after_matched_handler(self):
         """Handler returns (does not fall through) for a matched error type."""
-        import perplexity_cli.api.streaming as streaming_mod
+        import perplexity_cli.query_streaming as streaming_mod
 
         # Reset the handler cache so it reinitialises
         streaming_mod._STREAM_ERROR_HANDLERS = []
@@ -278,11 +273,11 @@ class TestHandleStreamError:
         mock_response.headers = {}
         error = PerplexityHTTPStatusError("test", request=Mock(), response=mock_response)
 
-        with patch("perplexity_cli.api.streaming.handle_http_error"):
-            with patch("perplexity_cli.api.streaming.click.echo"):
+        with patch("perplexity_cli.query_streaming.handle_http_error"):
+            with patch("perplexity_cli.query_streaming.click.echo"):
                 # Should return without calling handle_unexpected_cli_error
                 with patch(
-                    "perplexity_cli.api.streaming.handle_unexpected_cli_error"
+                    "perplexity_cli.query_streaming.handle_unexpected_cli_error"
                 ) as mock_unexpected:
                     _handle_stream_error(error)
                     mock_unexpected.assert_not_called()
@@ -303,7 +298,7 @@ class TestStreamQueryResponseJsonMode:
         query_input = QueryInput(query="test")
         trace = TraceContext(trace_id="t-1")
 
-        with patch("perplexity_cli.api.streaming.sys") as mock_sys:
+        with patch("perplexity_cli.query_streaming.sys") as mock_sys:
             output = StringIO()
             mock_sys.stdout = output
 

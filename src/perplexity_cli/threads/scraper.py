@@ -24,8 +24,6 @@ except ImportError:  # pragma: no cover
 if TYPE_CHECKING:
     from curl_cffi.requests import AsyncSession
 
-from perplexity_cli.api.contracts import parse_thread_list_payload
-from perplexity_cli.auth.utils import extract_session_token
 from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
@@ -42,6 +40,8 @@ from perplexity_cli.utils.exceptions import (
 from perplexity_cli.utils.http_errors import raise_http_status_error
 from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.rate_limiter import RateLimiter
+from perplexity_cli.utils.session_token import extract_session_token
+from perplexity_cli.utils.upstream_contracts import parse_thread_list_payload
 from perplexity_cli.utils.version import get_api_version
 
 # ---------------------------------------------------------------------------

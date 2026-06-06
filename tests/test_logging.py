@@ -138,8 +138,7 @@ class TestDynamicStderrHandler:
             with pytest.raises(RecursionError):
                 handler.emit(record)
 
-    def test_emit_handles_generic_exception(self):
-        """Generic exceptions in emit should call handleError."""
+    def test_emit_handles_type_error(self):
         handler = DynamicStderrHandler()
         record = logging.LogRecord(
             name="test",

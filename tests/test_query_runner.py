@@ -4,7 +4,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from perplexity_cli.api.models import Answer, QueryInput, RenderContext, TraceContext
+from perplexity_cli.api.models import Answer, QueryInput, TraceContext
+from perplexity_cli.formatting.context import RenderContext
 from perplexity_cli.query_runner import (
     build_final_query,
     get_query_formatter,
@@ -95,7 +96,7 @@ def test_run_query_command_streaming_delegates_to_stream_handler():
         ),
         patch("perplexity_cli.api.endpoints.PerplexityAPI", return_value=mock_api),
         patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
-        patch("perplexity_cli.api.streaming.stream_query_response") as mock_stream,
+        patch("perplexity_cli.query_streaming.stream_query_response") as mock_stream,
     ):
         run_query_command(
             ctx_obj={"debug": False},

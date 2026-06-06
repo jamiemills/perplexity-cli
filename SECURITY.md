@@ -27,7 +27,7 @@ Include:
 ## Releases and Supply Chain
 
 - PyPI publishing uses GitHub Actions with OIDC trusted publishing.
-- Maintainers should run `sh .claude/scripts/release-check.sh` before tagging a release.
+- Maintainers should run `make ci` before tagging or publishing a release.
 
 ## Changelog Source
 

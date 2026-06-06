@@ -662,9 +662,14 @@ class TestAuthenticateSync:
 
     def test_delegates_to_run_async(self):
         """Calls run_async with the coroutine from authenticate_with_browser."""
+
+        def close_and_return(coro):
+            coro.close()
+            return ("token", {"c": "v"})
+
         with patch(
             "perplexity_cli.auth.oauth_handler.run_async",
-            return_value=("token", {"c": "v"}),
+            side_effect=close_and_return,
         ) as mock_run:
             result = authenticate_sync(
                 url="https://example.com", port=1234, timeout=30, poll_interval=1.0

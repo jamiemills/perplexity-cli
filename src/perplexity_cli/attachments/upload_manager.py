@@ -21,8 +21,7 @@ except ImportError:  # pragma: no cover
 if TYPE_CHECKING:
     from curl_cffi.requests import AsyncSession
 
-from perplexity_cli.api.contracts import parse_upload_url_response, require_mapping
-from perplexity_cli.api.models import FileAttachment
+from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
     AttachmentUploadError,
@@ -31,6 +30,7 @@ from perplexity_cli.utils.exceptions import (
 from perplexity_cli.utils.http_errors import raise_http_status_error
 from perplexity_cli.utils.http_headers import build_perplexity_headers
 from perplexity_cli.utils.logging import get_logger, redact_path, redact_response_text
+from perplexity_cli.utils.upstream_contracts import parse_upload_url_response, require_mapping
 
 logger = get_logger()
 

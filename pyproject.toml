@@ -111,22 +111,19 @@ convention = "google"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = '--strict-markers -v -m "not integration and not real_api and not manual and not real_user_config and not fuzz"'
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: marks tests as integration tests",
     "security: marks tests as security tests",
     "slow: marks tests as slow-running",
-    "unit: marks tests as unit tests",
     "real_api: marks tests that call the real Perplexity API (skipped in CI)",
     "manual: marks tests that require interactive input (run with pytest -m manual -s)",
     "real_user_config: marks tests that intentionally use the real user config directory",
     "fuzz: marks tests as atheris fuzz tests (cpu-intensive, ~2-3s each)",
 ]
-filterwarnings = [
-    "ignore::RuntimeWarning:.*coroutine.*authenticate_with_browser.*was never awaited",
-]
-
 [tool.coverage.run]
 source = ["perplexity_cli"]
+branch = true
 
 [tool.coverage.report]
 show_missing = true
@@ -146,8 +143,8 @@ min_confidence = 80
 [tool.mutmut]
 paths_to_mutate = ["src/perplexity_cli/"]
 tests_dir = ["tests/"]
-pytest_add_cli_args = []
-type_check_command = ["uv", "run", "pyright", "src/"]
+pytest_add_cli_args = ["--ignore=tests/test_cyclomatic_complexity.py", "--ignore=tests/test_test_isolation.py", "--ignore=tests/test_vulture_dead_code.py", "--ignore=tests/test_semgrep_clean_code.py"]
+do_not_mutate = ["**/formatting/registry.py"]
 
 [tool.pyright]
 include = ["src/"]

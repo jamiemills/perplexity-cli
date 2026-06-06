@@ -30,17 +30,18 @@ Layer model
 The project follows a ports-and-adapters (hexagonal) architecture:
 
   domain/       Core business objects and rules.  No framework imports.
-                Modules: envelope, exit_codes, config/models, models/
+                Modules: envelope, config/models, models/, ndjson
 
   application/  Use cases and orchestration.  Depends on domain + utils.
-                Modules: services/, runners/, query_runner
+                Modules: services/
 
   infrastructure/  Adapters for external systems (HTTP, auth, file I/O).
                 Modules: api/, auth/, attachments/, threads/, utils/
 
   presentation/  User interface and CLI machinery.
                 Modules: cli, commands, command_runner, formatting/,
-                error_handler, help_json, mcp_server, ndjson, session_log
+                error_handler, exit_codes, query_runner, query_streaming,
+                runners/, help_json, mcp_server, session_log
 """
 
 from __future__ import annotations
@@ -97,7 +98,6 @@ LAYERS: tuple[LayerRule, ...] = (
         description="Core business objects and rules — no framework imports",
         modules=(
             "envelope",
-            "exit_codes",
             "config.models",
             "config.defaults",
             "models",
@@ -118,11 +118,7 @@ LAYERS: tuple[LayerRule, ...] = (
     LayerRule(
         name="application",
         description="Use cases and orchestration — depends on domain + utils",
-        modules=(
-            "services",
-            "runners",
-            "query_runner",
-        ),
+        modules=("services",),
         allowed_imports_from=("domain", "application", "infrastructure"),
         forbidden_frameworks=(
             "click",
@@ -158,6 +154,10 @@ LAYERS: tuple[LayerRule, ...] = (
             "command_runner",
             "formatting",
             "error_handler",
+            "exit_codes",
+            "query_runner",
+            "query_streaming",
+            "runners",
             "help_json",
             "session_log",
             "mcp_server",

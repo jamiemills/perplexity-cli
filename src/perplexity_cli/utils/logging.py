@@ -22,8 +22,7 @@ class DynamicStderrHandler(logging.StreamHandler):
             self.flush()
         except RecursionError:
             raise
-        except Exception:
-            # Standard logging.StreamHandler pattern — must catch all non-recursive errors.
+        except (OSError, TypeError, ValueError):
             self.handleError(record)
 
     def flush(self) -> None:

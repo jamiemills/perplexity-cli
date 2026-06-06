@@ -25,7 +25,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-REPORT_DIR = Path("build/reports")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SOURCE_DIR = PROJECT_ROOT / "src"
+REPORT_DIR = PROJECT_ROOT / "build" / "reports"
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +50,7 @@ TOOLS: list[ToolSpec] = [
             "-c",
             "pyproject.toml",
             "-r",
-            "src/",
+            str(SOURCE_DIR),
             "-f",
             "json",
             "-o",

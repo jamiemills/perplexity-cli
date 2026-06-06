@@ -22,6 +22,22 @@ from perplexity_cli.runners.export import (
 )
 
 
+def _close_run_async_return(value):
+    def run(coro):
+        coro.close()
+        return value
+
+    return run
+
+
+def _close_run_async_raise(exc):
+    def run(coro):
+        coro.close()
+        raise exc
+
+    return run
+
+
 class TestRunExportThreadsCommand:
     """Tests for run_export_threads_command()."""
 
@@ -89,9 +105,9 @@ class TestRunExportThreadsCommand:
         mock_tm_class.return_value = mock_tm
 
         mock_rate_config.return_value = Mock(enabled=False)
-        mock_run_async.return_value = [
-            {"title": "Thread 1", "created_at": "2025-01-01", "url": "https://perplexity.ai/t/1"}
-        ]
+        mock_run_async.side_effect = _close_run_async_return(
+            [{"title": "Thread 1", "created_at": "2025-01-01", "url": "https://perplexity.ai/t/1"}]
+        )
         mock_write_csv.return_value = Path("/tmp/threads.csv")
 
         run_export_threads_command(
@@ -128,9 +144,9 @@ class TestRunExportThreadsCommand:
         mock_tm_class.return_value = mock_tm
 
         mock_rate_config.return_value = Mock(enabled=False)
-        mock_run_async.return_value = [
-            {"title": "Thread 1", "created_at": "2025-01-01", "url": "https://perplexity.ai/t/1"}
-        ]
+        mock_run_async.side_effect = _close_run_async_return(
+            [{"title": "Thread 1", "created_at": "2025-01-01", "url": "https://perplexity.ai/t/1"}]
+        )
         mock_write_csv.return_value = Path("/tmp/threads.csv")
 
         run_export_threads_command(
@@ -258,7 +274,7 @@ class TestScrapeThreads:
     @patch("perplexity_cli.runners.export.run_async")
     def test_progress_callback_echoes(self, mock_run_async, capsys):
         """Progress callback prints extraction progress in human mode."""
-        mock_run_async.return_value = [{"title": "T1"}]
+        mock_run_async.side_effect = _close_run_async_return([{"title": "T1"}])
         scraper = Mock()
         result = _scrape_threads(scraper, None, None, json_mode=False)
         assert result == [{"title": "T1"}]
@@ -379,7 +395,7 @@ class TestRunExportErrorHandlers:
     def test_keyboard_interrupt(self, mock_run_async, capsys):
         """KeyboardInterrupt exits with code 130."""
         patches, _, ctx = self._prepare_mocks()
-        mock_run_async.side_effect = KeyboardInterrupt()
+        mock_run_async.side_effect = _close_run_async_raise(KeyboardInterrupt())
 
         with pytest.raises(SystemExit) as exc_info:
             run_export_threads_command(ctx, None, None, None, False, False)
@@ -391,7 +407,7 @@ class TestRunExportErrorHandlers:
     def test_known_error_handler(self, mock_run_async, capsys):
         """ValueError routes through _handle_known_error."""
         patches, _, ctx = self._prepare_mocks()
-        mock_run_async.side_effect = ValueError("bad value")
+        mock_run_async.side_effect = _close_run_async_raise(ValueError("bad value"))
 
         with pytest.raises(SystemExit):
             run_export_threads_command(ctx, None, None, None, False, False)
@@ -409,7 +425,7 @@ class TestRunExportErrorHandlers:
         mock_response.status_code = 500
         mock_response.headers = {}
         error = PerplexityHTTPStatusError("server error", request=Mock(), response=mock_response)
-        mock_run_async.side_effect = error
+        mock_run_async.side_effect = _close_run_async_raise(error)
 
         with patch("perplexity_cli.runners.export.handle_http_error", side_effect=SystemExit(1)):
             with pytest.raises(SystemExit):
@@ -421,7 +437,7 @@ class TestRunExportErrorHandlers:
     def test_unexpected_error_handler(self, mock_run_async):
         """Unexpected exceptions route through _handle_unexpected_error."""
         patches, _, ctx = self._prepare_mocks()
-        mock_run_async.side_effect = RuntimeError("boom")
+        mock_run_async.side_effect = _close_run_async_raise(RuntimeError("boom"))
 
         with patch(
             "perplexity_cli.runners.export.handle_unexpected_cli_error", side_effect=SystemExit(1)

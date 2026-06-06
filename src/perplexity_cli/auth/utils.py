@@ -1,6 +1,5 @@
 """Authentication utilities for CLI commands."""
 
-import json
 import logging
 import sys
 
@@ -8,80 +7,9 @@ import click
 
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.utils.exceptions import AuthenticationError
+from perplexity_cli.utils.session_token import extract_session_token
 
-
-def extract_session_token(raw_token: str) -> str:
-    """Extract a usable session token from the raw decrypted token data.
-
-    The stored token may be either a raw JWT string or a JSON object
-    containing ``{"user": {"accessToken": "..."}}``.  This function
-    normalises both formats to a plain token string suitable for use
-    as a session cookie or Bearer token.
-
-    Args:
-        raw_token: The decrypted token string (may be JSON or plain).
-
-    Returns:
-        A plain session token string.
-
-    Raises:
-        AuthenticationError: If the token structure is malformed.
-    """
-    try:
-        token_data = json.loads(raw_token)
-    except json.JSONDecodeError:
-        return raw_token
-
-    if not isinstance(token_data, dict):
-        raise AuthenticationError("Stored token has invalid session data format")
-
-    return _extract_access_token_from_json(token_data, raw_token)
-
-
-def _extract_access_token_from_json(token_data: dict, raw_token: str) -> str:
-    """Extract the access token from parsed JSON token data.
-
-    Args:
-        token_data: The parsed token dictionary.
-        raw_token: The original raw token string, returned as fallback.
-
-    Returns:
-        The access token string, or the raw token if no access token is present.
-
-    Raises:
-        AuthenticationError: If the token structure is malformed.
-    """
-    user_data = token_data.get("user")
-    if user_data is None:
-        return raw_token
-
-    if not isinstance(user_data, dict):
-        raise AuthenticationError("Stored token has invalid session user data")
-
-    return _validate_access_token(user_data, raw_token)
-
-
-def _validate_access_token(user_data: dict, raw_token: str) -> str:
-    """Validate and return the access token from user data.
-
-    Args:
-        user_data: The user dictionary from the token.
-        raw_token: Fallback raw token string.
-
-    Returns:
-        The validated access token, or the raw token as fallback.
-
-    Raises:
-        AuthenticationError: If the access token is malformed.
-    """
-    access_token = user_data.get("accessToken")
-    if access_token is None:
-        return raw_token
-
-    if not isinstance(access_token, str) or not access_token:
-        raise AuthenticationError("Stored token has invalid access token data")
-
-    return access_token
+__all__ = ["extract_session_token"]
 
 
 def load_or_prompt_token(

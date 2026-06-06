@@ -7,8 +7,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 from perplexity_cli.api.client import SSEClient
-from perplexity_cli.api.models import FileAttachment
 from perplexity_cli.auth.models import AuthContext
+from perplexity_cli.utils.attachment_models import FileAttachment
 
 
 class TestFileAttachmentRequestSerialization:

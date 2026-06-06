@@ -8,15 +8,14 @@ from click.testing import CliRunner
 from perplexity_cli.api.models import (
     Answer,
     Block,
-    OutputOptions,
     QueryInput,
-    RenderContext,
     SSEMessage,
     TraceContext,
     WebResult,
 )
-from perplexity_cli.api.streaming import stream_query_response
 from perplexity_cli.cli import query
+from perplexity_cli.formatting.context import OutputOptions, RenderContext
+from perplexity_cli.query_streaming import stream_query_response
 
 
 def _make_api_mock(**kwargs):
@@ -248,7 +247,7 @@ class TestStreamingOutputFailures:
         query_input = QueryInput(query="test query")
         trace = TraceContext()
 
-        with patch("perplexity_cli.api.streaming.click.echo") as mock_echo:
+        with patch("perplexity_cli.query_streaming.click.echo") as mock_echo:
             mock_echo.side_effect = [None, None, None, None, None]
 
             with pytest.raises(SystemExit) as exc_info:

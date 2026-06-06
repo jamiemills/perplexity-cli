@@ -3,7 +3,6 @@
 from .client import SSEClient
 from .endpoints import PerplexityAPI
 from .models import Block, QueryParams, QueryRequest, SSEMessage, WebResult
-from .streaming import stream_query_response
 
 __all__ = [
     "Block",
@@ -13,5 +12,4 @@ __all__ = [
     "SSEClient",
     "SSEMessage",
     "WebResult",
-    "stream_query_response",
 ]

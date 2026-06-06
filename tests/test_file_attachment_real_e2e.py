@@ -19,9 +19,9 @@ import textwrap
 import pytest
 
 from perplexity_cli.api.endpoints import PerplexityAPI
-from perplexity_cli.api.models import FileAttachment
 from perplexity_cli.attachments.upload_manager import AttachmentUploader
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.exceptions import AttachmentUploadError
 
 

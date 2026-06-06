@@ -15,7 +15,35 @@ permissions:
 
 jobs:
   test:
+    name: Ubuntu / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --locked
+
+      - name: Run CI pipeline
+        env:
+          SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+        run: make ci
+
+  test-macos:
+    name: macOS / Python 3.12 safe checks
+    runs-on: macos-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,7 +59,5 @@ jobs:
       - name: Sync dependencies
         run: uv sync --all-extras --locked
 
-      - name: Run CI pipeline
-        env:
-          SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
-        run: make ci
+      - name: Run safe checks
+        run: make check && make test

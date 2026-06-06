@@ -17,6 +17,8 @@ source .venv/bin/activate
 uv run pytest
 ```
 
+  - This stays hermetic in CI and local default runs because `pyproject.toml` excludes `integration`, `real_api`, `manual`, `real_user_config`, and `fuzz` by default.
+
 - Security-focused tests:
 
 ```bash
@@ -26,14 +28,42 @@ uv run pytest -m security
 - Live API tests:
 
 ```bash
-uv run pytest -m "integration and real_api and real_user_config"
+uv run pytest -m "real_api"
 ```
 
-- Manual auth tests:
+- Real user config tests:
 
 ```bash
-uv run pytest -m manual -s
+uv run pytest -m "real_user_config"
 ```
+
+- Manual auth/browser tests:
+
+```bash
+uv run pytest -m "manual" -s
+```
+
+- Browser auth helper lane:
+
+```bash
+uv run pytest tests/test_manual_auth.py -m manual -s
+```
+
+- Live attachment E2E tests:
+
+```bash
+uv run pytest tests/test_file_attachment_real_e2e.py -m "integration and real_api and real_user_config" -q
+```
+
+Prerequisites for the manual/browser and live lanes:
+
+- Chrome installed and started with remote debugging enabled.
+- A Perplexity.ai account for interactive sign-in.
+- A free debugging port, or `--port <port>` if `9222` is already in use.
+- Existing Perplexity credentials in `~/.config/perplexity-cli/config.json` for the live API and attachment lanes.
+- Network access to the Perplexity API and S3 for the attachment E2E lane.
+
+Optional live lanes are opt-in only; keep using the default test command for hermetic CI and local verification.
 
 ## Code Quality
 
@@ -88,10 +118,11 @@ Guidance:
 Releases are tag-driven from `master`.
 
 ```bash
-sh .claude/scripts/prepare-release.sh X.Y.Z
+make ci
+make release V=X.Y.Z
 ```
 
-This updates both version files, refreshes `uv.lock`, runs release checks, creates the release commit, and creates the local `vX.Y.Z` tag. Then push `master` and the tag. See `.claude/PUBLISHING.md` for the detailed flow.
+`make ci` runs the full local verification pipeline. `make release` updates `pyproject.toml` and `uv.lock`, runs CI checks, creates the release commit, tags `vX.Y.Z`, and pushes `master` plus the tag. The tag triggers `.github/workflows/publish-to-pypi.yml`, which publishes to PyPI via OIDC trusted publishing.
 
 ## Python and Dependency Policy
 

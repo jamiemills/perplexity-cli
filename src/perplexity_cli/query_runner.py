@@ -22,8 +22,9 @@ if TYPE_CHECKING:
     from perplexity_cli.api.models import Answer
     from perplexity_cli.formatting.base import Formatter
 
-from perplexity_cli.api.models import OutputOptions, QueryInput, RenderContext, TraceContext
+from perplexity_cli.api.models import QueryInput, TraceContext
 from perplexity_cli.auth.models import AuthContext
+from perplexity_cli.formatting.context import OutputOptions, RenderContext
 from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
@@ -533,9 +534,9 @@ def run_query_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
 ) -> None:
     """Execute the query command while keeping cli.py focused on wiring."""
     from perplexity_cli.api.endpoints import PerplexityAPI
-    from perplexity_cli.api.streaming import stream_query_response
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.auth.utils import load_token_optional
+    from perplexity_cli.query_streaming import stream_query_response
 
     logger = get_logger()
     query_text = _read_query_from_stdin(query_text)

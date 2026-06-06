@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from perplexity_cli.api.models import FileAttachment
+from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.exceptions import AttachmentError
 from perplexity_cli.utils.logging import get_logger, redact_path
 

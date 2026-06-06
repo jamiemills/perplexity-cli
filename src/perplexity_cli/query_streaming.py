@@ -18,11 +18,11 @@ from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.api.models import (
     Answer,
     QueryInput,
-    RenderContext,
     SSEMessage,
     TraceContext,
     WebResult,
 )
+from perplexity_cli.formatting.context import RenderContext
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,

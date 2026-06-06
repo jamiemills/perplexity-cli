@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from perplexity_cli.api.models import FileAttachment
 from perplexity_cli.attachments.upload_manager import AttachmentUploader
+from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, UpstreamSchemaError
 
 

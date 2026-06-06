@@ -54,3 +54,8 @@ threads-*
 .sonar/report-task.txt
 .scannerwork/
 sonar-project.properties
+.safety-project.ini
+# OpenCode local state
+.omo/
+# Mutation testing output
+mutants/

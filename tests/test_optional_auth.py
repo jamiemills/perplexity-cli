@@ -370,6 +370,7 @@ class TestAttachmentAuthentication:
         assert "pxcli auth login" in result.output
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.query_runner.run_async")
     @patch("perplexity_cli.utils.file_handler.resolve_file_arguments")
     @patch("perplexity_cli.utils.file_handler.load_attachments")
     @patch("perplexity_cli.attachments.AttachmentUploader")
@@ -382,11 +383,12 @@ class TestAttachmentAuthentication:
         mock_uploader_class,
         mock_load_attachments,
         mock_resolve_files,
+        mock_run_async,
         mock_sm_class,
         runner,
     ):
         """Test query with --attach flag succeeds with authentication."""
-        from perplexity_cli.api.models import FileAttachment
+        from perplexity_cli.utils.attachment_models import FileAttachment
 
         mock_tm = Mock()
         test_token = "test-token-123"
@@ -410,6 +412,12 @@ class TestAttachmentAuthentication:
         mock_uploader = Mock()
         mock_uploader.upload_files = AsyncMock(return_value=["https://s3.example.com/file.txt"])
         mock_uploader_class.return_value = mock_uploader
+
+        def close_upload_coroutine(coro):
+            coro.close()
+            return ["https://s3.example.com/file.txt"]
+
+        mock_run_async.side_effect = close_upload_coroutine
 
         # Mock API response
         mock_answer = Answer(text="Answer with attachment", references=[])

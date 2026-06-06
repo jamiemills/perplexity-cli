@@ -18,6 +18,7 @@ Usage
     python scripts/check_coupling.py --json       # machine-readable output
     python scripts/check_coupling.py --threshold 0.3  # custom D threshold
     python scripts/check_coupling.py --module api.client  # single module detail
+    python scripts/check_coupling.py --max-flagged 20
 """
 
 from __future__ import annotations
@@ -178,6 +179,17 @@ def _count_classes(filepath: Path) -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_imported_module(imported: str, known_modules: set[str]) -> str | None:
+    """Resolve an imported path to the nearest concrete source module."""
+    parts = imported.split(".")
+    while parts:
+        candidate = ".".join(parts)
+        if candidate in known_modules:
+            return candidate
+        parts.pop()
+    return None
+
+
 def _build_import_graph(
     files: list[Path],
 ) -> tuple[dict[str, set[str]], dict[str, set[str]], dict[str, tuple[int, int]]]:
@@ -185,22 +197,20 @@ def _build_import_graph(
     efferent: dict[str, set[str]] = defaultdict(set)
     afferent: dict[str, set[str]] = defaultdict(set)
     abstractness: dict[str, tuple[int, int]] = {}
-
-    all_modules: set[str] = set()
+    known_modules = {_module_from_path(filepath) for filepath in files}
 
     for filepath in files:
         module = _module_from_path(filepath)
-        all_modules.add(module)
 
         abs_count, conc_count = _count_classes(filepath)
         abstractness[module] = (abs_count, conc_count)
 
         for imported in _extract_imports(filepath):
-            # Resolve to top-level internal module
-            target = imported.split(".")[0] if "." in imported else imported
+            target = _resolve_imported_module(imported, known_modules)
+            if target is None:
+                continue
             efferent[module].add(target)
             afferent[target].add(module)
-            all_modules.add(target)
 
     return dict(efferent), dict(afferent), abstractness
 
@@ -270,8 +280,20 @@ def _format_flagged_row(m: ModuleMetrics) -> str:
     )
 
 
-def _format_text(metrics: list[ModuleMetrics], threshold: float) -> str:
-    flagged = [m for m in metrics if m.distance >= threshold]
+def _is_flagged(m: ModuleMetrics, threshold: float) -> bool:
+    """Return True for modules whose coupling distance needs attention."""
+    return m.distance >= threshold and m.ce > 0
+
+
+def _flagged_metrics(metrics: list[ModuleMetrics], threshold: float) -> list[ModuleMetrics]:
+    """Filter metrics to high-signal coupling findings."""
+    return [m for m in metrics if _is_flagged(m, threshold)]
+
+
+def _format_text(
+    metrics: list[ModuleMetrics], threshold: float, max_flagged: int | None = None
+) -> str:
+    flagged = _flagged_metrics(metrics, threshold)
     zones: list[str] = []
 
     zones.append(
@@ -289,16 +311,22 @@ def _format_text(metrics: list[ModuleMetrics], threshold: float) -> str:
         zones.append(_format_flagged_row(m))
 
     zones.append("")
-    zones.append("Zone of Pain (I < 0.3, A < 0.3): stable + concrete - rigid, hard to change.")
+    zones.append(
+        "Zone of Pain (I < 0.3, A < 0.3): stable + concrete with outgoing dependencies - rigid, hard to change."
+    )
     zones.append(
         "Zone of Uselessness (I > 0.7, A > 0.7): unstable + abstract - no one depends on it."
     )
-    zones.append(f"Threshold: D >= {threshold} is flagged. D = 0 means perfectly balanced.")
+    zones.append(
+        f"Threshold: D >= {threshold} with Ce > 0 is flagged. D = 0 means perfectly balanced."
+    )
     return "\n".join(zones)
 
 
-def _format_json(metrics: list[ModuleMetrics], threshold: float) -> str:
-    flagged = [m for m in metrics if m.distance >= threshold]
+def _format_json(
+    metrics: list[ModuleMetrics], threshold: float, max_flagged: int | None = None
+) -> str:
+    flagged = _flagged_metrics(metrics, threshold)
     return json.dumps(
         {
             "total_modules": len(metrics),
@@ -327,10 +355,11 @@ def _format_json(metrics: list[ModuleMetrics], threshold: float) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _parse_args(args: list[str]) -> tuple[bool, float, str | None]:
+def _parse_args(args: list[str]) -> tuple[bool, float, str | None, int | None]:
     json_mode = False
     threshold = DEFAULT_D_THRESHOLD
     single_module: str | None = None
+    max_flagged: int | None = None
 
     i = 0
     while i < len(args):
@@ -343,9 +372,12 @@ def _parse_args(args: list[str]) -> tuple[bool, float, str | None]:
         elif arg == "--module":
             i += 1
             single_module = _parse_module_arg(args, i)
+        elif arg == "--max-flagged":
+            i += 1
+            max_flagged = _parse_max_flagged_arg(args, i)
         i += 1
 
-    return json_mode, threshold, single_module
+    return json_mode, threshold, single_module, max_flagged
 
 
 def _parse_threshold_arg(args: list[str], i: int) -> float:
@@ -362,19 +394,31 @@ def _parse_module_arg(args: list[str], i: int) -> str:
     return args[i]
 
 
-def main() -> None:
-    json_mode, threshold, single_module = _parse_args(sys.argv[1:])
+def _parse_max_flagged_arg(args: list[str], i: int) -> int:
+    if i >= len(args):
+        print("--max-flagged requires an integer value", file=sys.stderr)
+        sys.exit(2)
+    return int(args[i])
+
+
+def main() -> int:
+    json_mode, threshold, single_module, max_flagged = _parse_args(sys.argv[1:])
     files = _collect_files()
     files = _filter_by_module(files, single_module)
     efferent, afferent, abstractness = _build_import_graph(files)
     metrics = _compute_metrics(
         set(efferent.keys()) | set(afferent.keys()), efferent, afferent, abstractness
     )
+    flagged = _flagged_metrics(metrics, threshold)
 
     if json_mode:
-        print(_format_json(metrics, threshold))
+        print(_format_json(metrics, threshold, max_flagged))
     else:
-        print(_format_text(metrics, threshold))
+        print(_format_text(metrics, threshold, max_flagged))
+
+    if max_flagged is not None and len(flagged) > max_flagged:
+        return 1
+    return 0
 
 
 def _filter_by_module(files: list[Path], single_module: str | None) -> list[Path]:
@@ -388,4 +432,4 @@ def _filter_by_module(files: list[Path], single_module: str | None) -> list[Path
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

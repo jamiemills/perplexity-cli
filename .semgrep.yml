@@ -382,12 +382,12 @@ rules:
     pattern-regex: '(?m)^(import (click|rich|httpx|curl_cffi|websockets|mcp|cryptography|tenacity)\b|from (click|rich|httpx|curl_cffi|websockets|mcp|cryptography|tenacity)\b)'
     paths:
       include:
-        - 'src/perplexity_cli/envelope.py'
-        - 'src/perplexity_cli/exit_codes.py'
-        - 'src/perplexity_cli/ndjson.py'
-        - 'src/perplexity_cli/models/**'
-        - 'src/perplexity_cli/config/models.py'
-        - 'src/perplexity_cli/config/defaults.py'
+        - '/src/perplexity_cli/envelope.py'
+        - '/src/perplexity_cli/exit_codes.py'
+        - '/src/perplexity_cli/ndjson.py'
+        - '/src/perplexity_cli/models/**'
+        - '/src/perplexity_cli/config/models.py'
+        - '/src/perplexity_cli/config/defaults.py'
     message: "Domain layer must not import framework libraries — extract to an infrastructure adapter."
     languages: [python]
     severity: ERROR

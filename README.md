@@ -1021,7 +1021,7 @@ This runs `uv lock`, the full CI pipeline, commits the version bump, creates a
 `v0.8.0` tag, and pushes both to `origin`. The `publish-to-pypi` workflow then
 publishes to PyPI via OIDC trusted publishing.
 
-The detailed release workflow is documented in `.claude/PUBLISHING.md`.
+The tracked release path is `make release V=<version>`, followed by the tag-driven `.github/workflows/publish-to-pypi.yml` workflow.
 
 ### Compatibility
 

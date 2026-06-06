@@ -8,9 +8,10 @@ import pytest
 
 from perplexity_cli.api.contracts import describe_payload_shape
 from perplexity_cli.api.endpoints import PerplexityAPI
-from perplexity_cli.api.models import FileAttachment, QueryInput, SSEMessage
+from perplexity_cli.api.models import QueryInput, SSEMessage
 from perplexity_cli.attachments.upload_manager import AttachmentUploader
 from perplexity_cli.threads.scraper import ThreadScraper
+from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.exceptions import AttachmentUploadError, UpstreamSchemaError
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "private_api"
