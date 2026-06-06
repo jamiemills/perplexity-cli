@@ -1,0 +1,35 @@
+# Gitleaks configuration for perplexity-cli
+# Extends default rules with project-specific path exclusions.
+# See https://github.com/gitleaks/gitleaks#configuration for reference.
+
+title = "perplexity-cli gitleaks config"
+
+# ---------------------------------------------------------------------------
+# Allowlist — known false positives that should not block push.
+# ---------------------------------------------------------------------------
+[allowlist]
+  description = "Project-specific false positive allowlist"
+
+  # Historical test report files that contain example JWT headers.
+  paths = [
+    '''\.claudeCode/''',
+  ]
+
+  # Test fixtures may contain example keys/tokens for unit tests.
+  # These are intentionally not real secrets.
+  regexes = [
+    '''fake|example|test[-_]token|placeholder|REPLACE_ME|dummy''',
+  ]
+
+# ---------------------------------------------------------------------------
+# Rules — extend default rules; no custom rules needed.
+# ---------------------------------------------------------------------------
+# The built-in rule set (G001-Gxxx) is comprehensive for common secret
+# patterns.  If we need to suppress a specific rule, add it here:
+#
+# [[rules]]
+#   id = "generic-api-key"
+#   [rules.allowlist]
+#     paths = ['''\.claudeCode/''']
+#
+# NOTE: .gitignore is already respected by default for path exclusions.

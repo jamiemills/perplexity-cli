@@ -136,6 +136,9 @@ pre-commit:
 pre-push:
   parallel: true
   jobs:
+    - name: gitleaks-detect
+      run: make gitleaks
+
     - name: agent-check
       run: make agent-check-no-tests
 

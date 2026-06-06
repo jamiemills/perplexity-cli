@@ -23,7 +23,7 @@ export
 # Development setup
 # ---------------------------------------------------------------------------
 
-.PHONY: check-uv setup
+.PHONY: check-uv check-gitleaks setup
 
 check-uv:  ## Verify uv is installed
 	@command -v uv >/dev/null 2>&1 || { \
@@ -33,7 +33,15 @@ check-uv:  ## Verify uv is installed
 		exit 1; \
 	}
 
-setup: check-uv  ## Set up a local development environment
+check-gitleaks:  ## Verify gitleaks is installed
+	@command -v gitleaks >/dev/null 2>&1 || { \
+		echo "gitleaks is required for pre-push secret detection."; \
+		echo "Install: brew install gitleaks"; \
+		echo "Or see: https://github.com/gitleaks/gitleaks#installing"; \
+		exit 1; \
+	}
+
+setup: check-uv check-gitleaks  ## Set up a local development environment
 	uv venv --python $(PYTHON_VERSION) --allow-existing
 	uv sync --locked --extra dev --group dev
 	uv run lefthook install
@@ -79,13 +87,16 @@ typecheck-all: typecheck typecheck-pyright  ## Run all type checkers
 # Security and dead-code analysis
 # ---------------------------------------------------------------------------
 
-.PHONY: bandit vulture security
+.PHONY: bandit vulture gitleaks security
 
 bandit:  ## Run bandit security linter
 	uvx --from bandit bandit -c pyproject.toml -r src/ -ll -ii
 
 vulture:  ## Run vulture dead-code detector
 	uv run vulture src/ vulture_whitelist.py --min-confidence 80
+
+gitleaks:  ## Run gitleaks secret detection
+	scripts/gitleaks_check.sh
 
 security: bandit vulture  ## Run all security checks
 
