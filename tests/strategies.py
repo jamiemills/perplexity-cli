@@ -76,9 +76,11 @@ def _markdown_code_block() -> st.SearchStrategy[str]:
     languages = st.sampled_from(["", "python", "json", "bash"])
     lines = st.lists(safe_text(32), min_size=1, max_size=4)
     return st.tuples(languages, lines).map(
-        lambda pair: f"```{pair[0]}\n"
-        + "\n".join(_normalise_line(line, "code") for line in pair[1])
-        + "\n```"
+        lambda pair: (
+            f"```{pair[0]}\n"
+            + "\n".join(_normalise_line(line, "code") for line in pair[1])
+            + "\n```"
+        )
     )
 
 
