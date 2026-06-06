@@ -156,7 +156,7 @@ pre-push:
       run: make test-coverage
 
     - name: safety-scan
-      run: make safety
+      run: infisical run --env dev -- make safety
 
     - name: fuzz-check
       run: make test-fuzz

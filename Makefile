@@ -14,11 +14,6 @@
 SHELL := /bin/bash
 PYTHON_VERSION ?= 3.12
 
-# Load environment variables from .env (if present) so that make targets
-# like `safety` can pick up SAFETY_API_KEY without manual sourcing.
--include .env
-export
-
 # ---------------------------------------------------------------------------
 # Development setup
 # ---------------------------------------------------------------------------
