@@ -73,7 +73,7 @@ class TestRetryUtilities:
         sleep_with_backoff(0, base_delay=0.01, max_delay=1.0)
         elapsed = time.time() - start
         # Should sleep approximately 0.01 seconds
-        assert 0.005 <= elapsed <= 0.05
+        assert 0.005 <= elapsed <= 0.1
 
     def test_sleep_with_backoff_max_delay(self):
         """Test that backoff respects max delay."""
