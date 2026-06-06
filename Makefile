@@ -36,7 +36,15 @@ check-gitleaks:  ## Verify gitleaks is installed
 		exit 1; \
 	}
 
-setup: check-uv check-gitleaks  ## Set up a local development environment
+check-infisical:  ## Verify infisical CLI is installed
+	@command -v infisical >/dev/null 2>&1 || { \
+		echo "infisical is required for pre-commit secret scanning."; \
+		echo "Install: brew install infisical"; \
+		echo "Or see: https://infisical.com/docs/cli/overview"; \
+		exit 1; \
+	}
+
+setup: check-uv check-gitleaks check-infisical  ## Set up a local development environment
 	uv venv --python $(PYTHON_VERSION) --allow-existing
 	uv sync --locked --extra dev --group dev
 	uv run lefthook install
