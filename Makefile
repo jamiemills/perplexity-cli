@@ -224,10 +224,13 @@ test-property-ci:  ## Run property-based tests (thorough — CI profile, 1000 ex
 .PHONY: safety infisical-scan
 
 safety:  ## Run safety dependency scan
-	@if command -v infisical >/dev/null 2>&1; then \
+	@if [ -n "$$SAFETY_API_KEY" ]; then \
+		uv run python scripts/agent_check.py safety; \
+	elif command -v infisical >/dev/null 2>&1; then \
 		infisical run --env dev -- uv run python scripts/agent_check.py safety; \
 	else \
-		uv run python scripts/agent_check.py safety; \
+		echo "Safety scan skipped: SAFETY_API_KEY not set and infisical not available."; \
+		echo "Set SAFETY_API_KEY or install infisical (brew install infisical)."; \
 	fi
 
 infisical-scan:  ## Scan uncommitted changes for secrets
