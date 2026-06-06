@@ -10,15 +10,17 @@ title = "perplexity-cli gitleaks config"
 [allowlist]
   description = "Project-specific false positive allowlist"
 
-  # Historical test report files that contain example JWT headers.
-  paths = [
-    '''\.claudeCode/''',
-  ]
-
   # Test fixtures may contain example keys/tokens for unit tests.
   # These are intentionally not real secrets.
   regexes = [
     '''fake|example|test[-_]token|placeholder|REPLACE_ME|dummy''',
+  ]
+
+  # Stopwords — specific strings that are benign in this project.
+  stopwords = [
+    # mutmut mutation test identifiers (e.g. x__derive_encryption_key__mutmut_6).
+    # These are auto-generated function names with high entropy, not secrets.
+    '''__mutmut_''',
   ]
 
 # ---------------------------------------------------------------------------

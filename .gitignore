@@ -2,6 +2,7 @@
 .scratch
 .claude
 .claudecode
+.claudeCode
 
 # OpenCode
 .opencode/node_modules/
