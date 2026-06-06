@@ -68,6 +68,16 @@ pre-commit:
             glob: "*.toml"
             run: uvx --from pre-commit-hooks check-toml {staged_files}
 
+          - name: check-env-files
+            run: |
+              env_files=$(git diff --cached --name-only --diff-filter=A | grep -E '(^|/)\.env')
+              if [ -n "$env_files" ]; then
+                echo "ERROR: .env files must not be committed — they may contain secrets."
+                echo "Blocked files:"
+                echo "$env_files" | sed 's/^/  /'
+                exit 1
+              fi
+
           - name: check-added-large-files
             run: uvx --from pre-commit-hooks check-added-large-files --maxkb=1000 {staged_files}
 
