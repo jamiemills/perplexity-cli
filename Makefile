@@ -224,7 +224,11 @@ test-property-ci:  ## Run property-based tests (thorough — CI profile, 1000 ex
 .PHONY: safety infisical-scan
 
 safety:  ## Run safety dependency scan
-	infisical run --env dev -- uv run python scripts/agent_check.py safety
+	@if command -v infisical >/dev/null 2>&1; then \
+		infisical run --env dev -- uv run python scripts/agent_check.py safety; \
+	else \
+		uv run python scripts/agent_check.py safety; \
+	fi
 
 infisical-scan:  ## Scan uncommitted changes for secrets
 	infisical scan git-changes --verbose --exit-code 1
