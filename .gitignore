@@ -57,6 +57,7 @@ threads-*
 .scannerwork/
 sonar-project.properties
 .safety-project.ini
+.infisical.json
 # OpenCode local state
 .omo/
 # Mutation testing output
