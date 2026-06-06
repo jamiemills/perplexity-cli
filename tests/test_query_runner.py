@@ -200,3 +200,28 @@ def test_run_query_command_passes_request_param_overrides_to_api():
         model_preference=None,
         request_params={"workflow_key": "deep_research", "search_mode": "research"},
     )
+
+
+def test_run_query_command_keyboard_interrupt_json_mode(capsys):
+    """KeyboardInterrupt in json mode delegates to the json error handler."""
+    mock_api = _make_api_mock()
+    mock_api.get_complete_answer.side_effect = KeyboardInterrupt()
+
+    with (
+        patch("perplexity_cli.auth.token_manager.TokenManager", return_value=Mock()),
+        patch("perplexity_cli.auth.utils.load_token_optional", return_value=("token-123", None)),
+        patch("perplexity_cli.query_runner.resolve_attachment_urls", return_value=[]),
+        patch("perplexity_cli.api.endpoints.PerplexityAPI", return_value=mock_api),
+        patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            run_query_command(
+                ctx_obj={"json": True},
+                query_text="What is Python?",
+                output_format=None,
+                strip_references=False,
+                stream=False,
+                attachments_str=(),
+            )
+
+    assert exc_info.value.code == 130

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -237,3 +237,59 @@ def test_load_authentication_returns_tuple(monkeypatch: pytest.MonkeyPatch) -> N
     )
     result = _load_authentication()
     assert result == ("fake-token", None)
+
+
+# ---------------------------------------------------------------------------
+# run_mcp_query — input validation
+# ---------------------------------------------------------------------------
+
+
+def test_run_mcp_query_rejects_empty_query() -> None:
+    with pytest.raises(ValueError, match="query must not be empty"):
+        run_mcp_query("", "quick", "plain")
+
+    with pytest.raises(ValueError, match="query must not be empty"):
+        run_mcp_query("   ", "quick", "plain")
+
+
+# ---------------------------------------------------------------------------
+# create_mcp_server — tool ctx paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_quick_info_reports_progress_via_ctx(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Progress is reported through the MCP context when ctx is provided."""
+    monkeypatch.setattr(
+        "perplexity_cli.mcp_server._request_answer",
+        lambda q, m: Answer(text="test", references=[]),
+    )
+    server = create_mcp_server()
+    tool = server._tool_manager._tools["perplexity_quick_info"]
+    fn = tool.fn
+
+    mock_ctx = AsyncMock()
+    result = await fn(query="test", output_format="plain", ctx=mock_ctx)
+
+    assert result.answer == "test"
+    mock_ctx.info.assert_called_once()
+    assert mock_ctx.report_progress.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_deep_info_reports_progress_via_ctx(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Progress is reported for deep research when ctx is provided."""
+    monkeypatch.setattr(
+        "perplexity_cli.mcp_server._request_answer",
+        lambda q, m: Answer(text="deep result", references=[]),
+    )
+    server = create_mcp_server()
+    tool = server._tool_manager._tools["perplexity_deep_info"]
+    fn = tool.fn
+
+    mock_ctx = AsyncMock()
+    result = await fn(query="research question", output_format="plain", ctx=mock_ctx)
+
+    assert result.answer == "deep result"
+    mock_ctx.info.assert_called_once()
+    assert mock_ctx.report_progress.call_count == 2

@@ -54,6 +54,34 @@ class TestPlainTextFormatter:
         assert "References" in result
         assert result.count("https://test.com") >= 1
 
+    def test_format_answer_with_header(self):
+        """Markdown headers are rendered underlined in plain text."""
+        formatter = PlainTextFormatter()
+        result = formatter.format_answer("# Title")
+        assert result == "Title\n====="
+
+    def test_format_answer_with_header_after_content(self):
+        """A blank line is inserted before a header that follows existing text."""
+        formatter = PlainTextFormatter()
+        result = formatter.format_answer("Some text\n\n# Section")
+        assert "Some text" in result
+        assert "Section" in result
+        assert "=====" in result
+
+    def test_format_answer_skips_horizontal_rule(self):
+        """Markdown horizontal rules (---, ***) are omitted."""
+        formatter = PlainTextFormatter()
+        result = formatter.format_answer("Before\n\n---\n\nAfter")
+        assert "Before" in result
+        assert "After" in result
+        assert "---" not in result
+
+    def test_format_answer_suppresses_excess_blank_lines(self):
+        """More than two consecutive blank lines are collapsed to two."""
+        formatter = PlainTextFormatter()
+        result = formatter.format_answer("Start\n\n\n\n\nEnd")
+        assert result == "Start\n\n\nEnd"
+
 
 class TestMarkdownFormatter:
     """Test MarkdownFormatter."""
