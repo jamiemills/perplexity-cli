@@ -17,6 +17,7 @@ from perplexity_cli.runners.export import (
     _handle_unexpected_error,
     _scrape_threads,
     _setup_rate_limiter,
+    _validate_export_dates,
     run_export_threads_command,
 )
 
@@ -148,6 +149,30 @@ class TestRunExportThreadsCommand:
         assert len(envelope["result"]["threads"]) == 1
 
 
+class TestValidateExportDates:
+    """Tests for _validate_export_dates."""
+
+    def test_passes_with_none_dates(self) -> None:
+        _validate_export_dates(None, None, json_mode=False)
+
+    def test_passes_with_valid_dates(self) -> None:
+        _validate_export_dates("2025-01-01", "2025-12-31", json_mode=False)
+
+    def test_exits_on_invalid_from_date(self) -> None:
+        with pytest.raises(SystemExit):
+            _validate_export_dates("not-a-date", None, json_mode=False)
+
+    def test_exits_on_invalid_to_date(self) -> None:
+        with pytest.raises(SystemExit):
+            _validate_export_dates(None, "not-a-date", json_mode=False)
+
+    def test_json_mode_routes_through_handler(self) -> None:
+        with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
+            with pytest.raises(SystemExit):
+                _validate_export_dates("bad", None, json_mode=True)
+            mock_handle.assert_called_once()
+
+
 class TestExitWithDateError:
     """Tests for _exit_with_date_error."""
 
@@ -158,12 +183,14 @@ class TestExitWithDateError:
                 _exit_with_date_error(ValueError("bad date"), json_mode=True)
             mock_handle.assert_called_once()
 
-    def test_human_mode_shows_message(self, capsys):
-        """In human mode, error message is printed to stderr."""
+    def test_human_mode_shows_date_in_message(self, capsys):
+        """In human mode, the specific invalid date value appears in the error."""
         with pytest.raises(SystemExit) as exc_info:
-            _exit_with_date_error(ValueError("bad date"), json_mode=False)
+            _exit_with_date_error(ValueError("bad date 2025-13-45"), json_mode=False)
         assert exc_info.value.code == 1
-        assert "bad date" in capsys.readouterr().err
+        captured = capsys.readouterr()
+        assert "bad date 2025-13-45" in captured.err
+        assert "YYYY-MM-DD" in captured.err
 
 
 class TestSetupRateLimiter:
@@ -209,6 +236,20 @@ class TestHandleCacheClear:
         cm = Mock()
         _handle_cache_clear(cm, clear_cache=False, json_mode=False, logger=Mock())
         cm.cache_exists.assert_not_called()
+
+    def test_json_mode_silent_no_cache(self, capsys):
+        """In JSON mode, no output is written when cache doesn't exist."""
+        cm = Mock()
+        cm.cache_exists.return_value = False
+        _handle_cache_clear(cm, clear_cache=True, json_mode=True, logger=Mock())
+        assert capsys.readouterr().out == ""
+
+    def test_json_mode_silent_cleared(self, capsys):
+        """In JSON mode, no output is written when cache is cleared."""
+        cm = Mock()
+        cm.cache_exists.return_value = True
+        _handle_cache_clear(cm, clear_cache=True, json_mode=True, logger=Mock())
+        assert capsys.readouterr().out == ""
 
 
 class TestScrapeThreads:
