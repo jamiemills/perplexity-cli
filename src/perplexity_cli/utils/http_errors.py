@@ -151,7 +151,7 @@ def classify_http_error(
 
 
 def classify_network_error(
-    error: PerplexityRequestError,
+    _error: PerplexityRequestError,
 ) -> tuple[ErrorCode, str, str | None]:
     """Classify a network error into a structured error tuple.
 
