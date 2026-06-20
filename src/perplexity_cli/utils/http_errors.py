@@ -10,11 +10,16 @@ Shared policy:
 from __future__ import annotations
 
 import logging
-import sys
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-import click
-
+from perplexity_cli.exit_codes import (
+    HTTP_STATUS_FORBIDDEN,
+    HTTP_STATUS_RATE_LIMITED,
+    HTTP_STATUS_SERVER_ERROR_FLOOR,
+    HTTP_STATUS_UNAUTHORIZED,
+    ActionResult,
+)
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
@@ -22,7 +27,15 @@ from perplexity_cli.utils.exceptions import (
     SimpleResponse,
 )
 
-_HTTP_SERVER_ERROR_FLOOR = 500
+
+@dataclass(frozen=True, slots=True)
+class UnexpectedErrorContext:
+    """Keyword arguments for :func:`handle_unexpected_cli_error`."""
+
+    debug_mode: bool = False
+    user_message: str = "[ERROR] An unexpected error occurred."
+    log_message: str = "Unexpected error"
+    include_debug_hint: bool = False
 
 if TYPE_CHECKING:
     from perplexity_cli.envelope import ErrorCode
@@ -69,40 +82,34 @@ def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
     )
 
 
-def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters, boolean-flag-argument
+def handle_unexpected_cli_error(
     error: Exception,
     logger: logging.Logger,
     *,
-    debug_mode: bool = False,
-    user_message: str = "[ERROR] An unexpected error occurred.",
-    log_message: str = "Unexpected error",
-    include_debug_hint: bool = False,
-) -> None:
-    """Handle unexpected top-level CLI errors consistently.
+    ctx: UnexpectedErrorContext | None = None,
+) -> ActionResult:
+    """Build an ``ActionResult`` for an unexpected top-level CLI error.
 
-    Policy:
-    - always log the original exception once at exception level
-    - always print the provided user-facing error message to stderr
-    - if ``debug_mode`` is enabled, print the traceback
-    - otherwise, optionally print the standard debug hint
-
-    Exits with status code 1.
+    The caller is responsible for presenting the result (``click.echo``)
+    and exiting.
     """
-    logger.exception("%s: %s", log_message, error)
-    click.echo(user_message, err=True)
+    resolved = ctx or UnexpectedErrorContext()
+    logger.exception("%s: %s", resolved.log_message, error)
 
-    if debug_mode:
+    parts: list[str] = [resolved.user_message]
+
+    if resolved.debug_mode:
         import traceback
 
         debug_output = traceback.format_exc()
-        if include_debug_hint:
-            click.echo(f"Debug info:\n{debug_output}", err=True)
+        if resolved.include_debug_hint:
+            parts.append(f"Debug info:\n{debug_output}")
         else:
-            click.echo(debug_output, err=True)
-    elif include_debug_hint:
-        click.echo("Run with --debug for more information.", err=True)
+            parts.append(debug_output)
+    elif resolved.include_debug_hint:
+        parts.append("Run with --debug for more information.")
 
-    sys.exit(1)
+    return ActionResult.error("\n".join(parts), exit_code=1)
 
 
 def classify_http_error(
@@ -116,25 +123,25 @@ def classify_http_error(
     from perplexity_cli.envelope import ErrorCode
 
     status = error.response.status_code
-    if status == 401:
+    if status == HTTP_STATUS_UNAUTHORIZED:
         return (
             ErrorCode.authentication_required,
             "Authentication failed. Token may be expired.",
             "Run `pxcli auth login` to re-authenticate.",
         )
-    if status == 403:
+    if status == HTTP_STATUS_FORBIDDEN:
         return (
             ErrorCode.permission_denied,
             "Access forbidden. Check your permissions.",
             None,
         )
-    if status == 429:
+    if status == HTTP_STATUS_RATE_LIMITED:
         return (
             ErrorCode.rate_limited,
             "Rate limit exceeded. Please wait and try again.",
             "Wait a moment and retry.",
         )
-    if status >= _HTTP_SERVER_ERROR_FLOOR:
+    if status >= HTTP_STATUS_SERVER_ERROR_FLOOR:
         return (
             ErrorCode.network_error,
             f"Server error (HTTP {status}).",
@@ -165,13 +172,13 @@ def classify_network_error(
 
 
 _HTTP_ERROR_MESSAGES: dict[int, str] = {
-    401: "[ERROR] Authentication failed. Token may be expired.",
-    403: "[ERROR] Access forbidden. Check your permissions.",
-    429: "[ERROR] Rate limit exceeded. Please wait and try again.",
+    HTTP_STATUS_UNAUTHORIZED: "[ERROR] Authentication failed. Token may be expired.",
+    HTTP_STATUS_FORBIDDEN: "[ERROR] Access forbidden. Check your permissions.",
+    HTTP_STATUS_RATE_LIMITED: "[ERROR] Rate limit exceeded. Please wait and try again.",
 }
 
 _HTTP_ERROR_EXTRAS: dict[int, str] = {
-    401: "\nRe-authenticate with: perplexity-cli auth",
+    HTTP_STATUS_UNAUTHORIZED: "\nRe-authenticate with: perplexity-cli auth",
 }
 
 
@@ -180,34 +187,21 @@ def handle_http_error(  # nosemgrep: boolean-flag-argument
     logger: logging.Logger,
     debug_mode: bool = False,
     context: str | None = None,
-) -> None:
-    """Handle HTTP status errors with user-friendly messages.
-
-    Handles common HTTP error codes (401, 403, 429) with specific guidance.
-    Falls back to generic error message for other status codes.
-
-    Args:
-        error: The PerplexityHTTPStatusError exception to handle.
-        logger: Logger instance for error logging.
-        debug_mode: If True, include detailed error information in output.
-        context: Optional context string for more specific error messages
-                (e.g., "during streaming").
-
-    Exits with status code 1.
-    """
+) -> ActionResult:
+    """Build an ``ActionResult`` for an HTTP status error."""
     status = error.response.status_code
     context_msg = f" {context}" if context else ""
     logger.error("HTTP error %s%s: %s", status, context_msg, error)
 
-    message = _HTTP_ERROR_MESSAGES.get(status, f"[ERROR] HTTP error {status}.")
-    click.echo(message, err=True)
+    parts: list[str] = [
+        _HTTP_ERROR_MESSAGES.get(status, f"[ERROR] HTTP error {status}.")
+    ]
     if status in _HTTP_ERROR_EXTRAS:
-        click.echo(_HTTP_ERROR_EXTRAS[status], err=True)
-
+        parts.append(_HTTP_ERROR_EXTRAS[status])
     if debug_mode:
-        click.echo(f"Details: {error}", err=True)
+        parts.append(f"Details: {error}")
 
-    sys.exit(1)
+    return ActionResult.error("\n".join(parts), exit_code=1)
 
 
 def handle_network_error(  # nosemgrep: boolean-flag-argument
@@ -215,23 +209,15 @@ def handle_network_error(  # nosemgrep: boolean-flag-argument
     logger: logging.Logger,
     debug_mode: bool = False,
     context: str | None = None,
-) -> None:
-    """Handle network request errors with user-friendly messages.
-
-    Args:
-        error: The PerplexityRequestError exception to handle.
-        logger: Logger instance for error logging.
-        debug_mode: If True, include detailed error information in output.
-        context: Optional context string for more specific error messages
-                (e.g., "during streaming").
-
-    Exits with status code 1.
-    """
+) -> ActionResult:
+    """Build an ``ActionResult`` for a network request error."""
     context_msg = f" {context}" if context else ""
     logger.error("Network error%s: %s", context_msg, error)
-    click.echo("[ERROR] Network error. Please check your internet connection.", err=True)
 
+    parts: list[str] = [
+        "[ERROR] Network error. Please check your internet connection."
+    ]
     if debug_mode:
-        click.echo(f"Details: {error}", err=True)
+        parts.append(f"Details: {error}")
 
-    sys.exit(1)
+    return ActionResult.error("\n".join(parts), exit_code=1)

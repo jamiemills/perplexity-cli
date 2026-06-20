@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Final
 
 from perplexity_cli.utils.exceptions import (
@@ -24,9 +25,30 @@ TRANSIENT = 6
 VALIDATION = 7
 INTERRUPTED = 130
 
+HTTP_STATUS_UNAUTHORIZED: Final[int] = 401
+HTTP_STATUS_FORBIDDEN: Final[int] = 403
+HTTP_STATUS_RATE_LIMITED: Final[int] = 429
+HTTP_STATUS_SERVER_ERROR_FLOOR: Final[int] = 500
 
-_RATE_LIMIT_STATUS: Final[int] = 429
-_SERVER_ERROR_FLOOR: Final[int] = 500
+
+
+@dataclass(frozen=True, slots=True)
+class ActionResult:
+    message: str | None = None
+    exit_code: int = 0
+    is_error: bool = False
+    stream_to_stderr: bool = False
+
+    @staticmethod
+    def ok() -> "ActionResult": return ActionResult()
+
+    @staticmethod
+    def error(message: str, exit_code: int = 1) -> "ActionResult":
+        return ActionResult(message=message, exit_code=exit_code, is_error=True, stream_to_stderr=True)
+
+    @staticmethod
+    def info(message: str) -> "ActionResult": return ActionResult(message=message)
+
 
 _EXCEPTION_EXIT_CODE_TABLE: list[tuple[type, int]] = [
     (AuthenticationError, AUTH_REQUIRED),
@@ -43,9 +65,9 @@ _EXCEPTION_EXIT_CODE_TABLE: list[tuple[type, int]] = [
 def _exit_code_for_http_error(exc: PerplexityHTTPStatusError) -> int:
     """Determine exit code for an HTTP status error."""
     status = exc.response.status_code
-    if status in (401, 403):
+    if status in (HTTP_STATUS_UNAUTHORIZED, HTTP_STATUS_FORBIDDEN):
         return AUTH_REQUIRED
-    if status == _RATE_LIMIT_STATUS or status >= _SERVER_ERROR_FLOOR:
+    if status == HTTP_STATUS_RATE_LIMITED or status >= HTTP_STATUS_SERVER_ERROR_FLOOR:
         return TRANSIENT
     return GENERAL_FAILURE
 

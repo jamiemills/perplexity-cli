@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import NoReturn
-
-import click
-
 from perplexity_cli.envelope import ErrorCode, envelope_to_dict, error_envelope
-from perplexity_cli.exit_codes import exit_code_for_exception
+from perplexity_cli.exit_codes import (
+    HTTP_STATUS_FORBIDDEN,
+    HTTP_STATUS_RATE_LIMITED,
+    HTTP_STATUS_UNAUTHORIZED,
+    ActionResult,
+    exit_code_for_exception,
+)
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
     AuthenticationError,
@@ -20,10 +22,10 @@ from perplexity_cli.utils.exceptions import (
     UpstreamSchemaError,
 )
 
-_HTTP_STATUS_TO_ERROR: list[tuple[object, ErrorCode]] = [
-    (401, ErrorCode.authentication_required),
-    (403, ErrorCode.permission_denied),
-    (429, ErrorCode.rate_limited),
+_HTTP_STATUS_TO_ERROR: list[tuple[int, ErrorCode]] = [
+    (HTTP_STATUS_UNAUTHORIZED, ErrorCode.authentication_required),
+    (HTTP_STATUS_FORBIDDEN, ErrorCode.permission_denied),
+    (HTTP_STATUS_RATE_LIMITED, ErrorCode.rate_limited),
 ]
 
 
@@ -68,8 +70,12 @@ def handle_error(  # nosemgrep: too-many-parameters, boolean-flag-argument
     json_mode: bool = False,
     debug_mode: bool = False,
     include_schema: bool = False,
-) -> NoReturn:
-    """Handle an exception, outputting either JSON or human-readable error, then exit."""
+) -> ActionResult:
+    """Handle an exception, returning a structured result.
+
+    When ``json_mode`` is True the error envelope is written to stdout and
+    the process exits directly.  In human-readable mode the caller receives
+    an ``ActionResult`` that it is responsible for presenting."""
     del debug_mode
     code, fix = _classify_exception(exc)
     exit_code = exit_code_for_exception(exc)
@@ -79,9 +85,8 @@ def handle_error(  # nosemgrep: too-many-parameters, boolean-flag-argument
         envelope_dict = envelope_to_dict(env, include_schema=include_schema)
         sys.stdout.write(json.dumps(envelope_dict, default=str) + "\n")
         sys.exit(exit_code)
-    else:
-        message = str(exc)
-        click.echo(f"Error: {message}", err=True)
-        if fix:
-            click.echo(f"Fix: {fix}", err=True)
-        sys.exit(exit_code)
+    parts: list[str] = [f"Error: {exc}"]
+    if fix:
+        parts.append(f"Fix: {fix}")
+
+    return ActionResult.error("\n".join(parts), exit_code=exit_code)

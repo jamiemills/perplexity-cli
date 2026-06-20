@@ -151,7 +151,7 @@ def test_stream_query_response_uses_shared_unexpected_error_handler():
 
     mock_handle.assert_called_once()
     assert mock_handle.call_args.args[0].args[0] == "boom"
-    assert mock_handle.call_args.kwargs["include_debug_hint"] is True
+    assert mock_handle.call_args.kwargs["ctx"].include_debug_hint is True
 
 
 def test_stream_query_response_maps_click_exception_to_render_failure():

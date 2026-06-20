@@ -36,6 +36,11 @@ def _resolve_base_url(base_url: str | None) -> str:
     return get_perplexity_base_url()
 
 
+def _resolve_options(options: HeaderOptions | None) -> HeaderOptions:
+    """Return the given options or the default."""
+    return options if options is not None else HeaderOptions()
+
+
 def build_perplexity_headers(
     token: str | None,
     cookies: dict[str, str] | None = None,
@@ -56,7 +61,7 @@ def build_perplexity_headers(
     Returns:
         Dictionary of HTTP headers.
     """
-    opts = options or HeaderOptions()
+    opts = _resolve_options(options)
     resolved_url = _resolve_base_url(opts.base_url)
 
     headers: dict[str, str] = {
