@@ -12,10 +12,8 @@ import os
 import sys
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING
-
-import click
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -25,6 +23,7 @@ if TYPE_CHECKING:
     from perplexity_cli.formatting.base import Formatter
     from perplexity_cli.utils.attachment_models import FileAttachment
 
+from perplexity_cli.exit_codes import ActionResult
 from perplexity_cli.api.models import QueryInput, TraceContext
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.formatting.context import OutputOptions, RenderContext
@@ -40,6 +39,14 @@ from perplexity_cli.utils.exceptions import (
 from perplexity_cli.utils.logging import get_logger, redact_path, redact_text, redact_url
 
 _QUERY_JSON_COMMAND = "pxcli query --json"
+
+
+class _FatalError(Exception):
+    """Fatal error carrying an ActionResult for the boundary layer."""
+
+    def __init__(self, result: ActionResult) -> None:
+        super().__init__(result.message or "")
+        self.result = result
 
 
 def _is_uvx_environment() -> bool:
@@ -132,9 +139,8 @@ def resolve_attachment_urls(
     try:
         return _resolve_and_upload(query_text, attachment_list, auth, logger)
     except (FileNotFoundError, AttachmentError, ValueError) as e:
-        click.echo(f"[ERROR] Failed to load attachments: {e}", err=True)
         logger.error("Attachment loading failed: %s", e)
-        sys.exit(1)
+        raise _FatalError(ActionResult.error(f"[ERROR] Failed to load attachments: {e}", exit_code=1)) from e
 
 
 def _resolve_and_upload(
@@ -183,10 +189,8 @@ def _require_auth_for_attachments(token: str | None, logger: logging.Logger) -> 
     """
     if token:
         return token
-    click.echo("[ERROR] File attachments require authentication.", err=True)
-    click.echo("\nPlease authenticate first with: pxcli auth login", err=True)
     logger.error("Attachment upload attempted without authentication")
-    sys.exit(1)
+    raise _FatalError(ActionResult.error("[ERROR] File attachments require authentication.\n\nPlease authenticate first with: pxcli auth login", exit_code=1))
 
 
 def _load_and_upload_attachments(
@@ -248,9 +252,8 @@ def _do_s3_upload(
     try:
         attachment_urls = run_async(uploader.upload_files(file_attachments))
     except AttachmentUploadError as e:
-        click.echo(f"[ERROR] Failed to upload attachments: {e}", err=True)
         logger.error("Attachment upload failed: %s", e)
-        sys.exit(1)
+        raise _FatalError(ActionResult.error(f"[ERROR] Failed to upload attachments: {e}", exit_code=1)) from e
 
     logger.debug("S3 upload complete: %s file(s) uploaded", len(attachment_urls))
     for i, url in enumerate(attachment_urls, 1):
@@ -267,11 +270,9 @@ def get_query_formatter(output_format: str | None) -> tuple[str, Formatter]:
     try:
         formatter = get_formatter(resolved_output_format)
     except ValueError as e:
-        click.echo(f"[ERROR] {e}", err=True)
         available = ", ".join(list_formatters())
-        click.echo(f"Available formats: {available}", err=True)
         logger.error("Invalid formatter: %s", resolved_output_format)
-        sys.exit(1)
+        raise _FatalError(ActionResult.error(f"[ERROR] {e}\nAvailable formats: {available}", exit_code=1)) from e
 
     return resolved_output_format, formatter
 
@@ -289,7 +290,7 @@ def build_final_query(query_text: str) -> str:
     return f"{query_text}\n\n{style}"
 
 
-def render_complete_answer(answer_obj: Answer, render: RenderContext) -> None:
+def render_complete_answer(answer_obj: Answer, render: RenderContext, output_fn: Callable[..., Any] | None = None) -> None:
     """Render the non-streaming query result."""
     if render.options.output_format == "rich":
         render.formatter.render_complete(
@@ -302,7 +303,8 @@ def render_complete_answer(answer_obj: Answer, render: RenderContext) -> None:
         answer_obj,
         strip_references=render.options.strip_references,
     )
-    click.echo(formatted_output)
+    if output_fn:
+        output_fn(formatted_output)
 
 
 def _read_query_from_stdin(query_text: str) -> str:
@@ -317,12 +319,10 @@ def _read_query_from_stdin(query_text: str) -> str:
     if query_text != "-":
         return query_text
     if sys.stdin.isatty():
-        click.echo("Error: stdin is a terminal; pipe input or provide a query.", err=True)
-        sys.exit(2)
+        raise _FatalError(ActionResult.error("Error: stdin is a terminal; pipe input or provide a query.", exit_code=2))
     text = sys.stdin.read().strip()
     if not text:
-        click.echo("Error: empty input from stdin.", err=True)
-        sys.exit(2)
+        raise _FatalError(ActionResult.error("Error: empty input from stdin.", exit_code=2))
     return text
 
 
@@ -359,9 +359,9 @@ def _build_json_envelope(  # nosemgrep: boolean-flag-argument
     return json.dumps(envelope_dict, default=str) + "\n"
 
 
-def _handle_query_exception(  # nosemgrep: boolean-flag-argument
+def _handle_query_exception(
     exc: Exception, ctx_obj: dict[str, object] | None, json_mode: bool
-) -> None:
+) -> ActionResult:
     """Dispatch query exceptions to the appropriate error handler.
 
     Args:
@@ -381,15 +381,12 @@ def _handle_query_exception(  # nosemgrep: boolean-flag-argument
             json_mode=True,
         )
 
-    if _try_dispatch_known_error(exc, logger, debug_mode):
-        return
-
-    _handle_fallback_error(exc, logger, debug_mode)
+    return _try_dispatch_known_error(exc, logger, debug_mode)
 
 
-def _try_dispatch_known_error(  # nosemgrep: boolean-flag-argument
+def _try_dispatch_known_error(
     exc: Exception, logger: logging.Logger, debug_mode: bool
-) -> bool:
+) -> ActionResult:
     """Attempt to handle a known error type.
 
     Args:
@@ -403,25 +400,21 @@ def _try_dispatch_known_error(  # nosemgrep: boolean-flag-argument
     from perplexity_cli.utils.http_errors import handle_http_error, handle_network_error
 
     if isinstance(exc, PerplexityHTTPStatusError):
-        handle_http_error(exc, logger, debug_mode=debug_mode)
-        return True
+        return handle_http_error(exc, logger, debug_mode=debug_mode)
     if isinstance(exc, PerplexityRequestError):
-        handle_network_error(exc, logger, debug_mode=debug_mode)
-        return True
+        return handle_network_error(exc, logger, debug_mode=debug_mode)
     if isinstance(exc, UpstreamSchemaError):
         logger.error("Upstream schema error: %s", exc)
-        click.echo(f"[ERROR] Upstream response format changed: {exc}", err=True)
-        sys.exit(1)
+        return ActionResult.error(f"[ERROR] Upstream response format changed: {exc}", exit_code=1)
     if isinstance(exc, (ConfigurationError, AttachmentError, AttachmentUploadError, ValueError)):
         logger.error("Value error: %s", exc)
-        click.echo(f"[ERROR] Error: {exc}", err=True)
-        sys.exit(1)
-    return False
+        return ActionResult.error(f"[ERROR] Error: {exc}", exit_code=1)
+    return _handle_fallback_error(exc, logger, debug_mode)
 
 
-def _handle_fallback_error(  # nosemgrep: boolean-flag-argument
+def _handle_fallback_error(
     exc: Exception, logger: logging.Logger, debug_mode: bool
-) -> None:
+) -> ActionResult:
     """Handle an unexpected error type.
 
     Args:
@@ -429,15 +422,17 @@ def _handle_fallback_error(  # nosemgrep: boolean-flag-argument
         logger: Logger instance.
         debug_mode: Whether debug mode is active.
     """
-    from perplexity_cli.utils.http_errors import handle_unexpected_cli_error
+    from perplexity_cli.utils.http_errors import UnexpectedErrorContext, handle_unexpected_cli_error
 
-    handle_unexpected_cli_error(
+    return handle_unexpected_cli_error(
         exc,
         logger,
-        debug_mode=debug_mode,
-        user_message="[ERROR] An unexpected error occurred.",
-        log_message="Unexpected error",
-        include_debug_hint=True,
+        ctx=UnexpectedErrorContext(
+            debug_mode=debug_mode,
+            user_message="[ERROR] An unexpected error occurred.",
+            log_message="Unexpected error",
+            include_debug_hint=True,
+        ),
     )
 
 
@@ -446,6 +441,7 @@ def _fetch_and_render(
     query_input: QueryInput,
     render: RenderContext,
     trace: TraceContext,
+    output_fn: Callable[..., Any] | None = None,
 ) -> None:
     """Fetch a complete answer and render it.
 
@@ -474,7 +470,7 @@ def _fetch_and_render(
             _build_json_envelope(answer_obj, trace, render.options.include_schema),
         )
     else:
-        render_complete_answer(answer_obj, render)
+        render_complete_answer(answer_obj, render, output_fn=output_fn)
 
 
 def _read_ctx_options(
@@ -533,7 +529,7 @@ def _check_for_duplicate_request_param(parsed: dict[str, str], key: str) -> None
         raise ValueError(f"Duplicate request parameter override: {key}")
 
 
-def run_query_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
+def run_query_command(
     ctx_obj: dict[str, object] | None,
     query_text: str,
     output_format: str | None,
@@ -543,7 +539,8 @@ def run_query_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
     *,
     model_preference: str | None = None,
     request_param_overrides: tuple[str, ...] = (),
-) -> None:
+    output_fn: Callable[..., Any] | None = None,
+) -> ActionResult:
     """Execute the query command while keeping cli.py focused on wiring."""
     from perplexity_cli.api.endpoints import PerplexityAPI
     from perplexity_cli.auth.token_manager import TokenManager
@@ -551,7 +548,11 @@ def run_query_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
     from perplexity_cli.query_streaming import stream_query_response
 
     logger = get_logger()
-    query_text = _read_query_from_stdin(query_text)
+
+    try:
+        query_text = _read_query_from_stdin(query_text)
+    except _FatalError as e:
+        return e.result
     json_mode, timeout, include_schema = _read_ctx_options(ctx_obj)
 
     trace = TraceContext(trace_id=str(uuid.uuid4()), start_time=time.monotonic())
@@ -561,10 +562,17 @@ def run_query_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
     tm = TokenManager()
     token, cookies = load_token_optional(tm, logger)
     auth = AuthContext(token=token, cookies=cookies)
-    attachment_urls = resolve_attachment_urls(query_text, attachments_str, auth)
+    try:
+        attachment_urls = resolve_attachment_urls(query_text, attachments_str, auth)
+    except _FatalError as e:
+        return e.result
 
     try:
         resolved_output_format, formatter = get_query_formatter(output_format)
+    except _FatalError as e:
+        return e.result
+
+    try:
         final_query = build_final_query(query_text)
         request_params = parse_request_param_overrides(request_param_overrides)
 
@@ -585,20 +593,24 @@ def run_query_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
         with PerplexityAPI(token, cookies, timeout=timeout) as api:
             if stream:
                 logger.info("Streaming query response")
-                stream_query_response(api, query_input, render, trace)
+                stream_result = stream_query_response(api, query_input, render, trace, output_fn=output_fn)
+                if stream_result is not None:
+                    return stream_result
             else:
-                _fetch_and_render(api, query_input, render, trace)
+                _fetch_and_render(api, query_input, render, trace, output_fn=output_fn)
 
     except KeyboardInterrupt:
-        _handle_keyboard_interrupt(json_mode, logger)
+        return _handle_keyboard_interrupt(json_mode, logger)
 
     except Exception as exc:
-        _handle_query_exception(exc, ctx_obj, json_mode)
+        return _handle_query_exception(exc, ctx_obj, json_mode)
+
+    return ActionResult.ok()
 
 
-def _handle_keyboard_interrupt(  # nosemgrep: boolean-flag-argument
+def _handle_keyboard_interrupt(
     json_mode: bool, logger: logging.Logger
-) -> None:
+) -> ActionResult:
     """Handle a keyboard interrupt during query execution.
 
     Args:
@@ -614,5 +626,4 @@ def _handle_keyboard_interrupt(  # nosemgrep: boolean-flag-argument
             json_mode=True,
         )
     logger.info("Query interrupted by user")
-    click.echo("\n[ERROR] Query interrupted.", err=True)
-    sys.exit(130)
+    return ActionResult.error("\n[ERROR] Query interrupted.", exit_code=130)

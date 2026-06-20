@@ -29,6 +29,7 @@ from perplexity_cli.utils.exceptions import (
     UpstreamSchemaError,
 )
 from perplexity_cli.utils.http_errors import (
+    UnexpectedErrorContext,
     handle_http_error,
     handle_network_error,
     handle_unexpected_cli_error,
@@ -245,9 +246,11 @@ def _handle_stream_error(error: Exception) -> None:
     handle_unexpected_cli_error(
         error,
         logger,
-        user_message="[ERROR] An unexpected error occurred.",
-        log_message="Unexpected error during streaming",
-        include_debug_hint=True,
+        ctx=UnexpectedErrorContext(
+            user_message="[ERROR] An unexpected error occurred.",
+            log_message="Unexpected error during streaming",
+            include_debug_hint=True,
+        ),
     )
 
 
