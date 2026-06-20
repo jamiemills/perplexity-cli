@@ -39,7 +39,6 @@ class JSONFormatter(Formatter):
         Returns:
             Empty string.
         """
-        del references
         return ""
 
     def format_complete(self, answer: Answer, strip_references: bool = False) -> str:
