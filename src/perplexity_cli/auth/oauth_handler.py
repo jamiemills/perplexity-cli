@@ -5,11 +5,13 @@ automation. It opens the browser to Perplexity's login page and captures the
 authentication token via Chrome's DevTools Protocol.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 import websockets
 
@@ -17,6 +19,14 @@ from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.exceptions import AuthenticationError
 
 from ..utils.config import get_perplexity_base_url
+
+if TYPE_CHECKING:
+    import logging
+
+
+def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
+    """TypeGuard: value is a dict with string keys."""
+    return isinstance(value, dict)
 
 
 class ChromeDevToolsClient:
@@ -30,7 +40,7 @@ class ChromeDevToolsClient:
         """
         self.port = port
         self.ws: Any | None = None
-        self.message_id = 0
+        self.message_id: int = 0
 
     async def connect(self) -> None:
         """Connect to Chrome's remote debugging endpoint.
@@ -45,9 +55,9 @@ class ChromeDevToolsClient:
         if not ws_url:
             raise AuthenticationError("Could not get WebSocket debugger URL")
 
-        self.ws = await websockets.connect(ws_url)
+        self.ws = await websockets.connect(str(ws_url))
 
-    def _fetch_targets(self) -> list:
+    def _fetch_targets(self) -> list[object]:
         """Fetch the list of debugging targets from Chrome.
 
         Returns:
@@ -74,7 +84,7 @@ class ChromeDevToolsClient:
         return targets
 
     @staticmethod
-    def _find_page_target(targets: list) -> dict:
+    def _find_page_target(targets: list[object]) -> dict[str, object]:
         """Find a page-type target from the targets list.
 
         Args:
@@ -86,10 +96,10 @@ class ChromeDevToolsClient:
         Raises:
             AuthenticationError: If no page target is found.
         """
-        page_target = next((t for t in targets if t.get("type") == "page"), None)
-        if not page_target:
-            raise AuthenticationError("No page target found in Chrome")
-        return page_target
+        for t in targets:
+            if _is_str_dict(t) and t.get("type") == "page":
+                return t
+        raise AuthenticationError("No page target found in Chrome")
 
     async def send_command(
         self, method: str, params: dict[str, Any] | None = None
@@ -185,7 +195,9 @@ def _resolve_auth_defaults(
     )
 
 
-async def _navigate_and_wait(client: ChromeDevToolsClient, url: str, logger: Any) -> None:
+async def _navigate_and_wait(
+    client: ChromeDevToolsClient, url: str, logger: logging.Logger
+) -> None:
     """Navigate to the URL and wait for the page to load.
 
     Args:
@@ -239,7 +251,7 @@ async def _poll_for_auth_data(
     # Synchronous urllib polling — asyncio.timeout() not applicable here.
     timeout: int,  # NOSONAR(S7483)
     poll_interval: float,
-    logger: Any,
+    logger: logging.Logger,
 ) -> tuple[str, dict[str, str]]:
     """Poll Chrome for authentication token and cookies.
 
