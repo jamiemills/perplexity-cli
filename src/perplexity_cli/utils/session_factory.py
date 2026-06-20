@@ -12,16 +12,14 @@ from typing import TYPE_CHECKING
 
 try:
     from curl_cffi.requests import AsyncSession, Session
-    from curl_cffi.requests.exceptions import RequestException
 
-    _CURL_CFFI_AVAILABLE = True
-    _CURL_CFFI_IMPORT_ERROR: str | None = None
+    _curl_cffi_available = True
+    _curl_cffi_import_error: str | None = None
 except ImportError as _exc:  # pragma: no cover
     AsyncSession = None  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
     Session = None  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
-    RequestException = Exception  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
-    _CURL_CFFI_AVAILABLE = False
-    _CURL_CFFI_IMPORT_ERROR = (
+    _curl_cffi_available = False
+    _curl_cffi_import_error = (
         f"curl_cffi is required but could not be imported: {_exc}. "
         "Install it with: uv pip install 'curl-cffi>=0.14.0'"
     )
@@ -36,16 +34,16 @@ IMPERSONATE_PROFILE = "chrome"
 
 def is_curl_cffi_available() -> bool:
     """Return whether ``curl_cffi`` is importable on this platform."""
-    return _CURL_CFFI_AVAILABLE
+    return _curl_cffi_available
 
 
 def _guard_curl_cffi() -> None:
     """Raise ``RuntimeError`` if ``curl_cffi`` is not available."""
-    if not _CURL_CFFI_AVAILABLE:
-        raise RuntimeError(_CURL_CFFI_IMPORT_ERROR)
+    if not _curl_cffi_available:
+        raise RuntimeError(_curl_cffi_import_error)
 
 
-def create_sync_session(timeout: int | None = None) -> SessionType:
+def create_sync_session(timeout: int | None = None) -> SessionType:  # type: ignore[reportMissingTypeArgument]
     """Create a synchronous curl_cffi Session with Chrome TLS impersonation.
 
     Args:
@@ -66,7 +64,7 @@ def create_sync_session(timeout: int | None = None) -> SessionType:
     return Session(impersonate=IMPERSONATE_PROFILE, timeout=timeout)  # type: ignore[misc]
 
 
-def create_async_session(timeout: int | None = None) -> AsyncSessionType:
+def create_async_session(timeout: int | None = None) -> AsyncSessionType:  # type: ignore[reportMissingTypeArgument]
     """Create an asynchronous curl_cffi AsyncSession with Chrome TLS impersonation.
 
     Args:

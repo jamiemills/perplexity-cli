@@ -1,11 +1,20 @@
 """Thread utility functions for data conversion and processing."""
 
+from __future__ import annotations
+
+from typing import TypeGuard
+
 from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.utils.exceptions import UpstreamSchemaError
 
 
+def _is_str_str_dict(value: object) -> TypeGuard[dict[str, str]]:
+    """TypeGuard: value is a dict with string keys and string values."""
+    return isinstance(value, dict)
+
+
 def convert_cache_dicts_to_thread_records(
-    thread_dicts: list[dict],
+    thread_dicts: list[object],
 ) -> list[ThreadRecord]:
     """Convert cache dictionary entries to ThreadRecord objects.
 
@@ -21,7 +30,7 @@ def convert_cache_dicts_to_thread_records(
     """
     records: list[ThreadRecord] = []
     for thread_dict in thread_dicts:
-        if not isinstance(thread_dict, dict):
+        if not _is_str_str_dict(thread_dict):
             raise UpstreamSchemaError("Malformed cached thread record")
 
         try:
