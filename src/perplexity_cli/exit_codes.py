@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Final
-
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
     AuthenticationError,
@@ -25,9 +23,6 @@ VALIDATION = 7
 INTERRUPTED = 130
 
 
-_RATE_LIMIT_STATUS: Final[int] = 429
-_SERVER_ERROR_FLOOR: Final[int] = 500
-
 _EXCEPTION_EXIT_CODE_TABLE: list[tuple[type, int]] = [
     (AuthenticationError, AUTH_REQUIRED),
     (RateLimitError, TRANSIENT),
@@ -45,7 +40,7 @@ def _exit_code_for_http_error(exc: PerplexityHTTPStatusError) -> int:
     status = exc.response.status_code
     if status in (401, 403):
         return AUTH_REQUIRED
-    if status == _RATE_LIMIT_STATUS or status >= _SERVER_ERROR_FLOOR:
+    if status == 429 or status >= 500:
         return TRANSIENT
     return GENERAL_FAILURE
 
