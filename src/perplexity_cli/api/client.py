@@ -28,7 +28,7 @@ from perplexity_cli.utils.exceptions import (
     UpstreamSchemaError,
 )
 from perplexity_cli.utils.http_errors import raise_http_status_error
-from perplexity_cli.utils.http_headers import build_perplexity_headers
+from perplexity_cli.utils.http_headers import HeaderOptions, build_perplexity_headers
 from perplexity_cli.utils.logging import (
     get_logger,
     redact_mapping_keys,
@@ -623,7 +623,7 @@ class SSEClient:
         return build_perplexity_headers(
             self.auth.token,
             self.auth.cookies,
-            accept="text/event-stream",
+            options=HeaderOptions(accept="text/event-stream"),
         )
 
     def _get_client(self) -> object:
