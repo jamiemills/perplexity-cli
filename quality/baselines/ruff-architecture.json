@@ -1,25 +1,5 @@
 {
   "fingerprints": [
-    "src/perplexity_cli/api/endpoints.py:115:PLR0913",
-    "src/perplexity_cli/cli.py:67:PLR0913",
-    "src/perplexity_cli/envelope.py:92:PLR0913",
-    "src/perplexity_cli/error_handler.py:64:PLR0913",
-    "src/perplexity_cli/exit_codes.py:43:PLR2004",
-    "src/perplexity_cli/formatting/json.py:30:ARG002",
-    "src/perplexity_cli/formatting/rich.py:178:PLR2004",
-    "src/perplexity_cli/mcp_server.py:223:C901",
-    "src/perplexity_cli/ndjson.py:87:PLR0913",
-    "src/perplexity_cli/query_runner.py:536:PLR0913",
-    "src/perplexity_cli/runners/status.py:123:PLR0913",
-    "src/perplexity_cli/runners/status.py:179:PLR0913",
-    "src/perplexity_cli/runners/status.py:245:PLR0913",
-    "src/perplexity_cli/runners/status.py:57:C901",
-    "src/perplexity_cli/utils/http_errors.py:119:PLR2004",
-    "src/perplexity_cli/utils/http_errors.py:125:PLR2004",
-    "src/perplexity_cli/utils/http_errors.py:131:PLR2004",
-    "src/perplexity_cli/utils/http_errors.py:151:ARG001",
-    "src/perplexity_cli/utils/http_errors.py:72:PLR0913",
-    "src/perplexity_cli/utils/http_headers.py:28:PLR0913",
-    "src/perplexity_cli/utils/retry.py:102:PLR2004"
+    "src/perplexity_cli/query_streaming.py:186:ARG001"
   ]
 }
