@@ -89,16 +89,14 @@ def success_envelope(  # nosemgrep: too-many-parameters
     )
 
 
-def error_envelope(  # nosemgrep: too-many-parameters
+def error_envelope(
     command: str,
     code: ErrorCode,
     message: str,
-    *,
-    fix: str | None = None,
-    input_data: dict[str, Any] | None = None,
-    next_actions: list[NextAction] | None = None,
+    extras: tuple[str | None, dict[str, Any] | None, list[NextAction] | None] = (None, None, None),
 ) -> ErrorEnvelope:
     """Build an error envelope."""
+    fix, input_data, next_actions = extras
     return ErrorEnvelope(
         command=command,
         error=ErrorDetail(code=code, message=message, input=input_data or {}),

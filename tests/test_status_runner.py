@@ -161,7 +161,7 @@ class TestOutputStatusText:
         tm = Mock()
         tm.token_path = Mock()
         tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
-        _output_status_text("tok", {"c": "v"}, 5, None, verify=False, tm=tm)
+        _output_status_text("tok", {"c": "v"}, (5, None, False), tm=tm)
         captured = capsys.readouterr()
         assert "3 characters" in captured.out
         assert "1 stored" in captured.out
@@ -170,14 +170,14 @@ class TestOutputStatusText:
         tm = Mock()
         tm.token_path = Mock()
         tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
-        _output_status_text("tok", {}, 5, None, verify=False, tm=tm)
+        _output_status_text("tok", {}, (5, None, False), tm=tm)
         assert "Live verification not run" in capsys.readouterr().out
 
     def test_shows_verification_result_when_verify_true(self, capsys) -> None:
         tm = Mock()
         tm.token_path = Mock()
         tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
-        _output_status_text("tok", {}, 5, True, verify=True, tm=tm)
+        _output_status_text("tok", {}, (5, True, True), tm=tm)
         assert "Token is valid and working" in capsys.readouterr().out
 
 
@@ -225,7 +225,7 @@ class TestBuildStatusEnvelope:
     def test_builds_authenticated_envelope(self) -> None:
         tm = Mock()
         tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
-        env = _build_status_envelope(True, tm, token_age_days=5, cookies_stored=2, verified=True)
+        env = _build_status_envelope(True, tm, (5, 2, True))
         assert env.ok is True
         result = env.result
         assert result["authenticated"] is True
@@ -256,10 +256,7 @@ class TestHandleAuthenticatedStatus:
         tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
 
         _handle_authenticated_status(
-            token="tok",
-            cookies={"c": "v"},
-            verify=False,
-            json_mode=True,
+            ("tok", {"c": "v"}, False, True),
             tm=tm,
             logger=Mock(),
         )
@@ -273,10 +270,7 @@ class TestHandleAuthenticatedStatus:
         tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
 
         _handle_authenticated_status(
-            token="tok",
-            cookies={},
-            verify=False,
-            json_mode=False,
+            ("tok", {}, False, False),
             tm=tm,
             logger=Mock(),
         )

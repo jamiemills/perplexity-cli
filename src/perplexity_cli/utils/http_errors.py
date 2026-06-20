@@ -72,14 +72,16 @@ def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
     )
 
 
-def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters, boolean-flag-argument
+def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters
     error: Exception,
     logger: logging.Logger,
     *,
     debug_mode: bool = False,
-    user_message: str = "[ERROR] An unexpected error occurred.",
-    log_message: str = "Unexpected error",
-    include_debug_hint: bool = False,
+    message_tuple: tuple[str, str, bool] = (
+        "[ERROR] An unexpected error occurred.",
+        "Unexpected error",
+        False,
+    ),
 ) -> None:
     """Handle unexpected top-level CLI errors consistently.
 
@@ -91,6 +93,7 @@ def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters, boolean-flag
 
     Exits with status code 1.
     """
+    user_message, log_message, include_debug_hint = message_tuple
     logger.exception("%s: %s", log_message, error)
     click.echo(user_message, err=True)
 

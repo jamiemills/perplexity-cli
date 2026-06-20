@@ -248,7 +248,7 @@ class TestNDJSONSchemaSupport:
             ok=True,
             command="test",
             result={"answer": "42"},
-            include_schema=True,
+            extras=(None, None, True),
         )
         data = json.loads(buf.getvalue())
         assert "$schema" in data
@@ -277,7 +277,7 @@ class TestNDJSONSchemaSupport:
             ok=True,
             command="test",
             result={"answer": "42"},
-            include_schema=True,
+            extras=(None, None, True),
         )
         data = json.loads(buf.getvalue())
         assert data["$schema"] == ResultEvent.model_json_schema()

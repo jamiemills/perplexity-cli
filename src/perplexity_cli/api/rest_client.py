@@ -54,7 +54,7 @@ class RestClient:
         return build_perplexity_headers(
             self.auth.token,
             self.auth.cookies,
-            accept="application/json",
+            header_extras=("application/json", None),
         )
 
     def _get_client(self) -> Session[Response]:

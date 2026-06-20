@@ -69,8 +69,7 @@ def main(
     verbose: bool,
     debug: bool,
     log_file: Path | None,
-    quiet: bool,
-    no_color: bool,
+    **_kwargs: object,
 ) -> None:
     """Perplexity CLI - Query Perplexity.ai from the command line.
 
@@ -127,8 +126,6 @@ def main(
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["debug"] = debug
-    ctx.obj["quiet"] = quiet
-    ctx.obj["no_color"] = no_color
 
 
 register_commands(main)

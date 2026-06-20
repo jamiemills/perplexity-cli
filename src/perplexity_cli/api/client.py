@@ -623,7 +623,7 @@ class SSEClient:
         return build_perplexity_headers(
             self.auth.token,
             self.auth.cookies,
-            accept="text/event-stream",
+            header_extras=("text/event-stream", None),
         )
 
     def _get_client(self) -> object:

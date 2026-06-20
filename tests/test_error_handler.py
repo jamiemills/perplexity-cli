@@ -17,12 +17,13 @@ from perplexity_cli.utils.exceptions import (
 
 def _capture_handle_error(exc, *, json_mode=False, debug_mode=False, command="test"):
     """Run handle_error, capturing stdout, stderr, and the exit code."""
+    del debug_mode
     stdout = StringIO()
     stderr = StringIO()
     exit_code = None
     with patch("sys.stdout", stdout), patch("sys.stderr", stderr):
         try:
-            handle_error(exc, command=command, json_mode=json_mode, debug_mode=debug_mode)
+            handle_error(exc, command=command, json_mode=json_mode)
         except SystemExit as e:
             exit_code = e.code
     return stdout.getvalue(), stderr.getvalue(), exit_code

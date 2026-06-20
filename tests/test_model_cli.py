@@ -150,7 +150,7 @@ class TestQueryModelFlag:
         assert result.exit_code == 0
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args
-        assert call_kwargs.kwargs["model_preference"] == "gpt54"
+        assert call_kwargs.args[2].model_preference == "gpt54"
 
     def test_model_short_flag(self, runner) -> None:
         with patch(
@@ -164,7 +164,7 @@ class TestQueryModelFlag:
         assert result.exit_code == 0
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args
-        assert call_kwargs.kwargs["model_preference"] == "claude46sonnet"
+        assert call_kwargs.args[2].model_preference == "claude46sonnet"
 
     def test_no_model_flag_passes_none(self, runner) -> None:
         with patch(
@@ -178,4 +178,4 @@ class TestQueryModelFlag:
         assert result.exit_code == 0
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args
-        assert call_kwargs.kwargs["model_preference"] is None
+        assert call_kwargs.args[2].model_preference is None

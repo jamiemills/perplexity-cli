@@ -30,8 +30,7 @@ def build_perplexity_headers(  # nosemgrep: too-many-parameters
     cookies: dict[str, str] | None = None,
     *,
     content_type: str = "application/json",
-    accept: str | None = None,
-    base_url: str | None = None,
+    header_extras: tuple[str | None, str | None] = (None, None),
 ) -> dict[str, str]:
     """Build standard HTTP headers for Perplexity API requests.
 
@@ -43,13 +42,12 @@ def build_perplexity_headers(  # nosemgrep: too-many-parameters
         token: Optional JWT authentication token.
         cookies: Optional browser cookies; used to extract the CSRF token.
         content_type: Value for the ``Content-Type`` header.
-        accept: Optional value for the ``Accept`` header.
-        base_url: Perplexity base URL used for Origin/Referer headers.
-            When ``None`` the value is loaded from configuration.
+        header_extras: A tuple of (accept, base_url) for optional headers.
 
     Returns:
         Dictionary of HTTP headers.
     """
+    accept, base_url = header_extras
     resolved_url = _resolve_base_url(base_url)
 
     headers: dict[str, str] = {

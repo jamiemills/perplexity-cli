@@ -21,7 +21,9 @@ from perplexity_cli.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from perplexity_cli.auth.token_manager import TokenManager
+    from perplexity_cli.config.models import FeatureConfig
     from perplexity_cli.envelope import Envelope
+    from perplexity_cli.threads.cache_manager import ThreadCacheManager
 
 
 def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -54,6 +56,72 @@ def _get_json_mode_from_ctx() -> bool:
     return bool(val)
 
 
+def _describe_file_permissions(path: Path | None, expected: int) -> str:
+    """Describe the security state of a file by its permissions."""
+    if path is None or not path.exists():
+        return "not present"
+
+    actual = stat.S_IMODE(path.stat().st_mode)
+    if actual == expected:
+        return f"secure ({oct(actual)})"
+    return f"insecure ({oct(actual)}; expected {oct(expected)})"
+
+
+def _output_doctor_security_json(
+    tm: TokenManager,
+    cache_manager: ThreadCacheManager,
+    feature_config: FeatureConfig,
+) -> None:
+    """Write the doctor security report as a JSON envelope."""
+    token_perms = _describe_file_permissions(tm.token_path, tm.SECURE_PERMISSIONS)
+    cache_perms = _describe_file_permissions(
+        cache_manager.cache_path, cache_manager.SECURE_PERMISSIONS
+    )
+    env = success_envelope(
+        "pxcli doctor security",
+        {
+            "storage_backend": "machine-bound encrypted file storage",
+            "token_path": str(tm.token_path),
+            "token_permissions": token_perms,
+            "cache_path": str(cache_manager.cache_path),
+            "cache_permissions": cache_perms,
+            "cookies_enabled": feature_config.save_cookies,
+        },
+    )
+    write_envelope(env, include_schema=_get_include_schema())
+
+
+def _output_doctor_security_text(
+    tm: TokenManager,
+    cache_manager: ThreadCacheManager,
+    feature_config: FeatureConfig,
+) -> None:
+    """Print the doctor security report as human-readable text."""
+    click.echo("Perplexity CLI Security")
+    click.echo("=" * 40)
+    click.echo("Storage backend: machine-bound encrypted file storage")
+    click.echo(
+        "Threat model: protects against casual file copying between machines, not against "
+        "other local processes or users that can already read these files"
+    )
+    click.echo()
+    click.echo(f"Token file: {tm.token_path}")
+    click.echo(
+        f"Token file permissions: {_describe_file_permissions(tm.token_path, tm.SECURE_PERMISSIONS)}"
+    )
+    click.echo(f"Thread cache file: {cache_manager.cache_path}")
+    click.echo(
+        "Thread cache permissions: "
+        f"{_describe_file_permissions(cache_manager.cache_path, cache_manager.SECURE_PERMISSIONS)}"
+    )
+    click.echo(f"Cookie storage enabled: {feature_config.save_cookies}")
+    if feature_config.save_cookies:
+        click.echo(
+            "Cookie storage warning: browser cookies are sensitive and should only be stored "
+            "when needed for Cloudflare/session reuse"
+        )
+
+
 def run_doctor_security_command(*, json_mode: bool | None = None) -> None:
     """Execute the doctor security command."""
     from perplexity_cli.auth.token_manager import TokenManager
@@ -67,67 +135,20 @@ def run_doctor_security_command(*, json_mode: bool | None = None) -> None:
     cache_manager: ThreadCacheManager = ThreadCacheManager()
     feature_config = get_feature_config()
 
-    def describe_permissions(path: Path | None, expected: int) -> str:
-        if path is None or not path.exists():
-            return "not present"
-
-        actual = stat.S_IMODE(path.stat().st_mode)
-        if actual == expected:
-            return f"secure ({oct(actual)})"
-        return f"insecure ({oct(actual)}; expected {oct(expected)})"
-
     if json_mode:
-        token_perms = describe_permissions(tm.token_path, tm.SECURE_PERMISSIONS)
-        cache_perms = describe_permissions(
-            cache_manager.cache_path, cache_manager.SECURE_PERMISSIONS
-        )
-        env = success_envelope(
-            "pxcli doctor security",
-            {
-                "storage_backend": "machine-bound encrypted file storage",
-                "token_path": str(tm.token_path),
-                "token_permissions": token_perms,
-                "cache_path": str(cache_manager.cache_path),
-                "cache_permissions": cache_perms,
-                "cookies_enabled": feature_config.save_cookies,
-            },
-        )
-        write_envelope(env, include_schema=_get_include_schema())
+        _output_doctor_security_json(tm, cache_manager, feature_config)
         return
 
-    click.echo("Perplexity CLI Security")
-    click.echo("=" * 40)
-    click.echo("Storage backend: machine-bound encrypted file storage")
-    click.echo(
-        "Threat model: protects against casual file copying between machines, not against "
-        "other local processes or users that can already read these files"
-    )
-    click.echo()
-    click.echo(f"Token file: {tm.token_path}")
-    click.echo(
-        f"Token file permissions: {describe_permissions(tm.token_path, tm.SECURE_PERMISSIONS)}"
-    )
-    click.echo(f"Thread cache file: {cache_manager.cache_path}")
-    click.echo(
-        "Thread cache permissions: "
-        f"{describe_permissions(cache_manager.cache_path, cache_manager.SECURE_PERMISSIONS)}"
-    )
-    click.echo(f"Cookie storage enabled: {feature_config.save_cookies}")
-    if feature_config.save_cookies:
-        click.echo(
-            "Cookie storage warning: browser cookies are sensitive and should only be stored "
-            "when needed for Cloudflare/session reuse"
-        )
+    _output_doctor_security_text(tm, cache_manager, feature_config)
 
 
-def _build_status_envelope(  # nosemgrep: too-many-parameters, boolean-flag-argument
+def _build_status_envelope(
     authenticated: bool,
     tm: TokenManager,
-    token_age_days: object = None,
-    cookies_stored: object = 0,
-    verified: object = None,
+    token_info: tuple[object, object, object] = (None, 0, None),
 ) -> Envelope:
     """Build a status envelope dictionary."""
+    token_age_days, cookies_stored, verified = token_info
     return success_envelope(
         "pxcli auth status",
         {
@@ -176,15 +197,14 @@ def _get_token_age_days(token_path: Any) -> int | None:
         return None
 
 
-def _output_status_text(  # nosemgrep: too-many-parameters
+def _output_status_text(
     token: str,
     cookies: dict[str, str] | None,
-    token_age_days: object,
-    verified: object,
-    verify: object,
+    verify_info: tuple[object, object, object],
     tm: TokenManager,
 ) -> None:
     """Print human-readable status output."""
+    token_age_days, verified, verify = verify_info
     logger = get_logger()
     click.echo("Perplexity CLI Status")
     click.echo("=" * 40)
@@ -242,27 +262,25 @@ def _handle_no_token(  # nosemgrep: boolean-flag-argument
         click.echo("\nAuthenticate with: pxcli auth login")
 
 
-def _handle_authenticated_status(  # nosemgrep: too-many-parameters
-    token: str,
-    cookies: dict[str, str] | None,
-    verify: bool,
-    json_mode: bool,
+def _handle_authenticated_status(
+    status_data: tuple[str, dict[str, str] | None, bool, bool],
     tm: TokenManager,
     logger: logging.Logger,
 ) -> None:
     """Handle status output when a valid token is present."""
+    token, cookies, verify, json_mode = status_data
     token_age_days = _get_token_age_days(tm.token_path)
     cookies_stored = len(cookies) if cookies else 0
     verified = _verify_token(token, cookies, logger) if verify else None
 
     if json_mode:
         write_envelope(
-            _build_status_envelope(True, tm, token_age_days, cookies_stored, verified),
+            _build_status_envelope(True, tm, (token_age_days, cookies_stored, verified)),
             include_schema=_get_include_schema(),
         )
         return
 
-    _output_status_text(token, cookies, token_age_days, verified, verify, tm)
+    _output_status_text(token, cookies, (token_age_days, verified, verify), tm)
 
 
 def run_status_command(  # nosemgrep: boolean-flag-argument
@@ -287,7 +305,7 @@ def run_status_command(  # nosemgrep: boolean-flag-argument
             _handle_no_token(json_mode, tm, show_auth_hint=False)
             return
 
-        _handle_authenticated_status(token, cookies, verify, json_mode, tm, logger)
+        _handle_authenticated_status((token, cookies, verify, json_mode), tm, logger)
 
     except AuthenticationError as e:
         click.echo("Status: [INFO] Token file has insecure permissions")

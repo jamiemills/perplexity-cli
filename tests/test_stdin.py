@@ -7,7 +7,16 @@ from unittest.mock import Mock, patch
 import pytest
 
 from perplexity_cli.api.models import Answer
-from perplexity_cli.query_runner import run_query_command
+from perplexity_cli.query_runner import QueryOptions, run_query_command
+
+_QUERY_OPTIONS = QueryOptions(
+    output_format="plain",
+    strip_references=False,
+    stream=False,
+    attachments=(),
+    model_preference=None,
+    request_param_overrides=(),
+)
 
 
 def _make_api_mock(answer: Answer | None = None):
@@ -56,10 +65,7 @@ class TestStdinSupport:
             run_query_command(
                 ctx_obj={"debug": False},
                 query_text="-",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_QUERY_OPTIONS,
             )
 
         mock_api.get_complete_answer.assert_called_once()
@@ -78,10 +84,7 @@ class TestStdinSupport:
             run_query_command(
                 ctx_obj={"debug": False},
                 query_text="-",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_QUERY_OPTIONS,
             )
 
         assert exc_info.value.code == 2
@@ -98,10 +101,7 @@ class TestStdinSupport:
             run_query_command(
                 ctx_obj={"debug": False},
                 query_text="-",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_QUERY_OPTIONS,
             )
 
         assert exc_info.value.code == 2
@@ -116,10 +116,7 @@ class TestStdinSupport:
             run_query_command(
                 ctx_obj={"debug": False},
                 query_text="What is Python?",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_QUERY_OPTIONS,
             )
 
         captured = capsys.readouterr()
@@ -138,10 +135,7 @@ class TestStdinSupport:
             run_query_command(
                 ctx_obj={"debug": False},
                 query_text="-",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_QUERY_OPTIONS,
             )
 
         captured = capsys.readouterr()

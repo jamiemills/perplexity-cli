@@ -135,8 +135,7 @@ def _execute_auth(  # nosemgrep: too-many-parameters
             e,
             logger,
             debug_mode=debug_mode,
-            user_message=f"[ERROR] Unexpected error: {e}",
-            log_message="Unexpected error during authentication",
+            message_tuple=(f"[ERROR] Unexpected error: {e}", "Unexpected error during authentication", False),
         )
 
 
@@ -184,6 +183,5 @@ def run_logout_command(*, json_mode: bool | None = None) -> None:
         handle_unexpected_cli_error(
             e,
             logger,
-            user_message=f"[ERROR] Error during logout: {e}",
-            log_message="Error during logout",
+            message_tuple=(f"[ERROR] Error during logout: {e}", "Error during logout", False),
         )

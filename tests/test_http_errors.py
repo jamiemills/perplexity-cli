@@ -18,9 +18,7 @@ def test_handle_unexpected_cli_error_prints_debug_hint(capsys):
             handle_unexpected_cli_error(
                 error,
                 logger,
-                user_message="[ERROR] Failed.",
-                log_message="Unexpected test error",
-                include_debug_hint=True,
+                message_tuple=("[ERROR] Failed.", "Unexpected test error", True),
             )
 
     captured = capsys.readouterr()
@@ -41,9 +39,7 @@ def test_handle_unexpected_cli_error_prints_traceback_in_debug_mode(capsys):
                 error,
                 logger,
                 debug_mode=True,
-                user_message="[ERROR] Failed.",
-                log_message="Unexpected test error",
-                include_debug_hint=True,
+                message_tuple=("[ERROR] Failed.", "Unexpected test error", True),
             )
 
     captured = capsys.readouterr()

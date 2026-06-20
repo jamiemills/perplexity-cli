@@ -230,9 +230,7 @@ class TestCLICommands:
         assert "Test answer" in result.output
         mock_api.get_complete_answer.assert_called_once_with(
             "What is Python?",
-            attachments=[],
-            model_preference=None,
-            request_params={},
+            extra_params=([], None, {}),
         )
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")

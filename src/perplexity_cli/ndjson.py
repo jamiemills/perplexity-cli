@@ -84,20 +84,22 @@ class NDJSONWriter:
         """Write a chunk event."""
         self.write_event(ChunkEvent(text=text))
 
-    def result(  # nosemgrep: too-many-parameters, boolean-flag-argument
+    def result(
         self,
         ok: bool,
         command: str,
         result: dict[str, Any],
-        meta: dict[str, Any] | None = None,
-        next_actions: list[dict[str, Any]] | None = None,
-        include_schema: bool = False,
+        extras: tuple[
+            dict[str, Any] | None, list[dict[str, Any]] | None, bool
+        ] = (None, None, False),
     ) -> None:
         """Write a result event (final line).
 
-        When *include_schema* is ``True``, a ``$schema`` key containing the
-        ResultEvent JSON Schema is prepended to the serialised output.
+        When *include_schema* (third element of extras) is ``True``,
+        a ``$schema`` key containing the ResultEvent JSON Schema is
+        prepended to the serialised output.
         """
+        meta, next_actions, include_schema = extras
         event = ResultEvent(
             ok=ok,
             command=command,

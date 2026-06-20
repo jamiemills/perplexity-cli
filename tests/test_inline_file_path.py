@@ -79,8 +79,8 @@ Status: Complete""",
                         # Verify file was attached as S3 URL
                         call_args = mock_api.get_complete_answer.call_args
                         assert call_args is not None
-                        assert "attachments" in call_args[1]
-                        attachments = call_args[1]["attachments"]
+                        assert "extra_params" in call_args[1]
+                        attachments = call_args[1]["extra_params"][0]
                         assert len(attachments) == 1
                         assert isinstance(attachments[0], str)
                         assert attachments[0].startswith(

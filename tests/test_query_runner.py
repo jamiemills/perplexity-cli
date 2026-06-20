@@ -7,6 +7,7 @@ import pytest
 from perplexity_cli.api.models import Answer, QueryInput, TraceContext
 from perplexity_cli.formatting.context import RenderContext
 from perplexity_cli.query_runner import (
+    QueryOptions,
     build_final_query,
     get_query_formatter,
     parse_request_param_overrides,
@@ -23,6 +24,20 @@ def _make_api_mock(answer: Answer | None = None):
     if answer is not None:
         mock_api.get_complete_answer.return_value = answer
     return mock_api
+
+
+def _default_options(**overrides: object) -> QueryOptions:
+    """Build a QueryOptions with sensible test defaults."""
+    defaults: dict[str, object] = {
+        "output_format": "plain",
+        "strip_references": False,
+        "stream": False,
+        "attachments": (),
+        "model_preference": None,
+        "request_param_overrides": (),
+    }
+    defaults.update(overrides)
+    return QueryOptions(**defaults)  # type: ignore[arg-type]
 
 
 def test_build_final_query_appends_style():
@@ -68,19 +83,14 @@ def test_run_query_command_non_streaming_renders_answer(capsys):
         run_query_command(
             ctx_obj={"debug": False},
             query_text="What is Python?",
-            output_format="plain",
-            strip_references=False,
-            stream=False,
-            attachments_str=(),
+            options=_default_options(),
         )
 
     captured = capsys.readouterr()
     assert "Test answer" in captured.out
     mock_api.get_complete_answer.assert_called_once_with(
         "final query",
-        attachments=[],
-        model_preference=None,
-        request_params={},
+        extra_params=([], None, {}),
     )
 
 
@@ -101,10 +111,7 @@ def test_run_query_command_streaming_delegates_to_stream_handler():
         run_query_command(
             ctx_obj={"debug": False},
             query_text="What is Python?",
-            output_format="plain",
-            strip_references=True,
-            stream=True,
-            attachments_str=(),
+            options=_default_options(strip_references=True, stream=True),
         )
 
     mock_stream.assert_called_once()
@@ -139,10 +146,7 @@ def test_run_query_command_reports_upstream_schema_error(capsys):
             run_query_command(
                 ctx_obj={"debug": False},
                 query_text="What is Python?",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_default_options(),
             )
 
     captured = capsys.readouterr()
@@ -187,18 +191,14 @@ def test_run_query_command_passes_request_param_overrides_to_api():
         run_query_command(
             ctx_obj={"debug": False},
             query_text="What is Python?",
-            output_format="plain",
-            strip_references=False,
-            stream=False,
-            attachments_str=(),
-            request_param_overrides=("workflow_key=deep_research", "search_mode=research"),
+            options=_default_options(
+                request_param_overrides=("workflow_key=deep_research", "search_mode=research"),
+            ),
         )
 
     mock_api.get_complete_answer.assert_called_once_with(
         "final query",
-        attachments=[],
-        model_preference=None,
-        request_params={"workflow_key": "deep_research", "search_mode": "research"},
+        extra_params=([], None, {"workflow_key": "deep_research", "search_mode": "research"}),
     )
 
 
@@ -218,10 +218,7 @@ def test_run_query_command_keyboard_interrupt_json_mode(capsys):
             run_query_command(
                 ctx_obj={"json": True},
                 query_text="What is Python?",
-                output_format=None,
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_default_options(output_format=None),
             )
 
     assert exc_info.value.code == 130

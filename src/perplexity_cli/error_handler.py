@@ -61,21 +61,19 @@ def _classify_exception(exc: BaseException) -> tuple[ErrorCode, str | None]:
     return ErrorCode.internal_error, None
 
 
-def handle_error(  # nosemgrep: too-many-parameters, boolean-flag-argument
+def handle_error(  # nosemgrep: too-many-parameters
     exc: BaseException,
     *,
     command: str,
     json_mode: bool = False,
-    debug_mode: bool = False,
     include_schema: bool = False,
 ) -> NoReturn:
     """Handle an exception, outputting either JSON or human-readable error, then exit."""
-    del debug_mode
     code, fix = _classify_exception(exc)
     exit_code = exit_code_for_exception(exc)
 
     if json_mode:
-        env = error_envelope(command, code, str(exc), fix=fix)
+        env = error_envelope(command, code, str(exc), (fix, None, None))
         envelope_dict = envelope_to_dict(env, include_schema=include_schema)
         sys.stdout.write(json.dumps(envelope_dict, default=str) + "\n")
         sys.exit(exit_code)

@@ -105,7 +105,7 @@ def _write_ndjson_result(
         ok=True,
         command="pxcli query --json --stream",
         result=result_data,
-        meta=meta.model_dump(mode="json"),
+        extras=(meta.model_dump(mode="json"), None, False),
     )
 
 
@@ -245,9 +245,7 @@ def _handle_stream_error(error: Exception) -> None:
     handle_unexpected_cli_error(
         error,
         logger,
-        user_message="[ERROR] An unexpected error occurred.",
-        log_message="Unexpected error during streaming",
-        include_debug_hint=True,
+        message_tuple=("[ERROR] An unexpected error occurred.", "Unexpected error during streaming", True),
     )
 
 

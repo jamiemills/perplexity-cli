@@ -84,8 +84,8 @@ class TestAttachmentsIntegration:
                         call_args = mock_api.get_complete_answer.call_args
                         assert call_args is not None
                         assert call_args[0][0] == "What is this file?"
-                        assert "attachments" in call_args[1]
-                        attachments = call_args[1]["attachments"]
+                        assert "extra_params" in call_args[1]
+                        attachments = call_args[1]["extra_params"][0]
                         assert len(attachments) == 1
                         assert isinstance(attachments[0], str)
                         assert attachments[0].startswith(
@@ -148,7 +148,7 @@ class TestAttachmentsIntegration:
 
                         # Verify API received both S3 URL attachments
                         call_args = mock_api.get_complete_answer.call_args
-                        attachments = call_args[1]["attachments"]
+                        attachments = call_args[1]["extra_params"][0]
                         assert len(attachments) == 2
                         assert all(
                             isinstance(url, str) and url.startswith("https://")
@@ -212,7 +212,7 @@ class TestAttachmentsIntegration:
 
                         # Verify both S3 URLs received
                         call_args = mock_api.get_complete_answer.call_args
-                        attachments = call_args[1]["attachments"]
+                        attachments = call_args[1]["extra_params"][0]
                         assert len(attachments) == 2
                         assert all(
                             isinstance(url, str) and url.startswith("https://")
@@ -294,7 +294,7 @@ class TestAttachmentsIntegration:
 
                         # Verify all files from directory are included
                         call_args = mock_api.get_complete_answer.call_args
-                        attachments = call_args[1]["attachments"]
+                        attachments = call_args[1]["extra_params"][0]
                         assert len(attachments) == 3
                         assert all(
                             isinstance(url, str) and url.startswith("https://")
@@ -345,7 +345,7 @@ class TestAttachmentsIntegration:
                         )
 
                         assert result.exit_code == 0
-                        attachments = mock_api.get_complete_answer.call_args[1]["attachments"]
+                        attachments = mock_api.get_complete_answer.call_args[1]["extra_params"][0]
                         assert attachments == uploaded_urls
 
     def test_query_with_too_many_directory_files_fails(self, runner, tmp_path):

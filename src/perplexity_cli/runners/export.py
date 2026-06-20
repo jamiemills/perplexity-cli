@@ -518,8 +518,7 @@ def _handle_unexpected_error(  # nosemgrep: boolean-flag-argument
         e,
         logger,
         debug_mode=debug_mode,
-        user_message=f"\n[ERROR] Unexpected error: {e}",
-        log_message="Unexpected error during export",
+        message_tuple=(f"\n[ERROR] Unexpected error: {e}", "Unexpected error during export", False),
     )
 
 

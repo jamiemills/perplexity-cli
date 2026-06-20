@@ -13,17 +13,10 @@ import sys
 import time
 import uuid
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import click
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from perplexity_cli.api.endpoints import PerplexityAPI
-    from perplexity_cli.api.models import Answer
-    from perplexity_cli.formatting.base import Formatter
-    from perplexity_cli.utils.attachment_models import FileAttachment
 
 from perplexity_cli.api.models import QueryInput, TraceContext
 from perplexity_cli.auth.models import AuthContext
@@ -38,6 +31,26 @@ from perplexity_cli.utils.exceptions import (
     UpstreamSchemaError,
 )
 from perplexity_cli.utils.logging import get_logger, redact_path, redact_text, redact_url
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from perplexity_cli.api.endpoints import PerplexityAPI
+    from perplexity_cli.api.models import Answer
+    from perplexity_cli.formatting.base import Formatter
+    from perplexity_cli.utils.attachment_models import FileAttachment
+
+
+@dataclass(frozen=True, slots=True)
+class QueryOptions:
+    """Optional flags for :func:`run_query_command`, built from CLI flags."""
+
+    output_format: str | None
+    strip_references: bool
+    stream: bool
+    attachments: tuple[str, ...]
+    model_preference: str | None
+    request_param_overrides: tuple[str, ...]
 
 _QUERY_JSON_COMMAND = "pxcli query --json"
 
@@ -435,9 +448,7 @@ def _handle_fallback_error(  # nosemgrep: boolean-flag-argument
         exc,
         logger,
         debug_mode=debug_mode,
-        user_message="[ERROR] An unexpected error occurred.",
-        log_message="Unexpected error",
-        include_debug_hint=True,
+        message_tuple=("[ERROR] An unexpected error occurred.", "Unexpected error", True),
     )
 
 
@@ -459,9 +470,7 @@ def _fetch_and_render(
     logger.info("Fetching complete answer")
     answer_obj = api.get_complete_answer(
         query_input.query,
-        attachments=query_input.attachment_urls,
-        model_preference=query_input.model_preference,
-        request_params=query_input.request_params,
+        extra_params=(query_input.attachment_urls, query_input.model_preference, query_input.request_params),
     )
     logger.debug(
         "Received answer: %s characters, %s references",
@@ -533,18 +542,19 @@ def _check_for_duplicate_request_param(parsed: dict[str, str], key: str) -> None
         raise ValueError(f"Duplicate request parameter override: {key}")
 
 
-def run_query_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
+def run_query_command(
     ctx_obj: dict[str, object] | None,
     query_text: str,
-    output_format: str | None,
-    strip_references: bool,
-    stream: bool,
-    attachments_str: tuple[str, ...],
-    *,
-    model_preference: str | None = None,
-    request_param_overrides: tuple[str, ...] = (),
+    options: QueryOptions,
 ) -> None:
     """Execute the query command while keeping cli.py focused on wiring."""
+    output_format = options.output_format
+    strip_references = options.strip_references
+    stream = options.stream
+    attachments_str = options.attachments
+    model_preference = options.model_preference
+    request_param_overrides = options.request_param_overrides
+
     from perplexity_cli.api.endpoints import PerplexityAPI
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.auth.utils import load_token_optional

@@ -112,14 +112,14 @@ class PerplexityAPI:
             return params
         return params.model_copy(update=dict[str, Any](query_input.request_params))
 
-    def get_complete_answer(  # nosemgrep: too-many-parameters
+    def get_complete_answer(
         self,
         query: str,
         search_implementation_mode: str = "standard",
-        attachments: list[str] | None = None,
         *,
-        model_preference: str | None = None,
-        request_params: dict[str, object] | None = None,
+        extra_params: tuple[
+            list[str] | None, str | None, dict[str, object] | None
+        ] = (None, None, None),
     ) -> Answer:
         """Submit a query and return the complete answer with references.
 
@@ -127,10 +127,8 @@ class PerplexityAPI:
             query: The user's query text.
             search_implementation_mode: Search mode ('standard' or
                 'multi_step' for deep research).
-            attachments: Optional list of S3 URLs for file attachments.
-            model_preference: Optional model ID override.
-            request_params: Optional extra fields merged into the
-                outbound request params for controlled experiments.
+            extra_params: A tuple of (attachments, model_preference,
+                request_params) for optional query overrides.
 
         Returns:
             Answer object containing text and references list.
@@ -140,6 +138,7 @@ class PerplexityAPI:
             PerplexityRequestError: For network errors.
             UpstreamSchemaError: For malformed responses or if no answer is found.
         """
+        attachments, model_preference, request_params = extra_params
         query_input = QueryInput(
             query=query,
             attachment_urls=attachments or [],

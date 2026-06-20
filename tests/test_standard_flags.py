@@ -5,7 +5,16 @@ from contextlib import ExitStack
 from unittest.mock import Mock, patch
 
 from perplexity_cli.api.models import Answer
-from perplexity_cli.query_runner import run_query_command
+from perplexity_cli.query_runner import QueryOptions, run_query_command
+
+_DEFAULT_OPTIONS = QueryOptions(
+    output_format="plain",
+    strip_references=False,
+    stream=False,
+    attachments=(),
+    model_preference=None,
+    request_param_overrides=(),
+)
 
 
 def _make_api_mock(answer: Answer | None = None):
@@ -54,10 +63,7 @@ class TestTimeoutFlag:
             run_query_command(
                 ctx_obj={"debug": False, "timeout": 10},
                 query_text="test",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_DEFAULT_OPTIONS,
             )
 
         api_cls.assert_called_once()
@@ -74,10 +80,7 @@ class TestTimeoutFlag:
             run_query_command(
                 ctx_obj={"debug": False},
                 query_text="test",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_DEFAULT_OPTIONS,
             )
 
         api_cls.assert_called_once()
@@ -97,10 +100,7 @@ class TestJsonFlag:
             run_query_command(
                 ctx_obj={"debug": False, "json": True},
                 query_text="test",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_DEFAULT_OPTIONS,
             )
 
         captured = capsys.readouterr()
@@ -118,10 +118,7 @@ class TestJsonFlag:
             run_query_command(
                 ctx_obj={"debug": False, "json": True},
                 query_text="test",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_DEFAULT_OPTIONS,
             )
 
         captured = capsys.readouterr()
@@ -138,10 +135,7 @@ class TestJsonFlag:
             run_query_command(
                 ctx_obj={"debug": False, "json": True},
                 query_text="test",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_DEFAULT_OPTIONS,
             )
 
         captured = capsys.readouterr()
@@ -158,10 +152,7 @@ class TestJsonFlag:
             run_query_command(
                 ctx_obj={"debug": False, "json": False},
                 query_text="test",
-                output_format="plain",
-                strip_references=False,
-                stream=False,
-                attachments_str=(),
+                options=_DEFAULT_OPTIONS,
             )
 
         captured = capsys.readouterr()

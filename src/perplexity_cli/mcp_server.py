@@ -231,57 +231,62 @@ def create_mcp_server(config: ServerConfig | None = None) -> FastMCP:
         streamable_http_path=active_config.mount_path,
     )
 
-    @server.tool(
-        name="perplexity_quick_info",
-        title="Perplexity Quick Info",
-        description=(
-            "Fast Perplexity lookup for recent facts, short explanations, and quick validation. "
-            "Use this first when you need concise current information without multi-step research."
-        ),
-        meta=_server_meta(),
-    )
-    # nosemgrep: useless-inner-function
-    async def perplexity_quick_info(
-        query: str,
-        output_format: OutputFormat = "markdown",
-        ctx: Context[ServerSession, None] | None = None,
-    ) -> MCPQueryResult:
-        """Get a fast Perplexity answer for a targeted question."""
-        if ctx is not None:
-            await ctx.info("Running quick Perplexity lookup")
-            await ctx.report_progress(progress=0.2, total=1.0, message="Starting quick lookup")
-        result = run_mcp_query(query, "quick", output_format)
-        if ctx is not None:
-            await ctx.report_progress(progress=1.0, total=1.0, message="Quick lookup complete")
-        return result
-
-    @server.tool(
-        name="perplexity_deep_info",
-        title="Perplexity Deep Info",
-        description=(
-            "Deeper Perplexity research for comparisons, timelines, synthesis, or topics that need "
-            "multi-step investigation across sources. Use when a quick answer may be incomplete."
-        ),
-        meta=_server_meta(),
-    )
-    # nosemgrep: useless-inner-function
-    async def perplexity_deep_info(
-        query: str,
-        output_format: OutputFormat = "markdown",
-        ctx: Context[ServerSession, None] | None = None,
-    ) -> MCPQueryResult:
-        """Get a deeper Perplexity answer using multi-step research."""
-        if ctx is not None:
-            await ctx.info("Running deep Perplexity research")
-            await ctx.report_progress(progress=0.1, total=1.0, message="Starting deep research")
-        result = run_mcp_query(query, "deep", output_format)
-        if ctx is not None:
-            await ctx.report_progress(progress=1.0, total=1.0, message="Deep research complete")
-        return result
-
-    _ = (perplexity_quick_info, perplexity_deep_info)
-
+    _register_mcp_tools(server)
     return server
+
+
+def _register_mcp_tools(server: FastMCP) -> None:
+    """Register the Perplexity query tools on the MCP server."""
+    _ = (
+        server.tool(
+            name="perplexity_quick_info",
+            title="Perplexity Quick Info",
+            description=(
+                "Fast Perplexity lookup for recent facts, short explanations, and quick validation. "
+                "Use this first when you need concise current information without multi-step research."
+            ),
+            meta=_server_meta(),
+        )(_perplexity_quick_info),
+        server.tool(
+            name="perplexity_deep_info",
+            title="Perplexity Deep Info",
+            description=(
+                "Deeper Perplexity research for comparisons, timelines, synthesis, or topics that need "
+                "multi-step investigation across sources. Use when a quick answer may be incomplete."
+            ),
+            meta=_server_meta(),
+        )(_perplexity_deep_info),
+    )
+
+
+async def _perplexity_quick_info(
+    query: str,
+    output_format: OutputFormat = "markdown",
+    ctx: Context[ServerSession, None] | None = None,
+) -> MCPQueryResult:
+    """Get a fast Perplexity answer for a targeted question."""
+    if ctx is not None:
+        await ctx.info("Running quick Perplexity lookup")
+        await ctx.report_progress(progress=0.2, total=1.0, message="Starting quick lookup")
+    result = run_mcp_query(query, "quick", output_format)
+    if ctx is not None:
+        await ctx.report_progress(progress=1.0, total=1.0, message="Quick lookup complete")
+    return result
+
+
+async def _perplexity_deep_info(
+    query: str,
+    output_format: OutputFormat = "markdown",
+    ctx: Context[ServerSession, None] | None = None,
+) -> MCPQueryResult:
+    """Get a deeper Perplexity answer using multi-step research."""
+    if ctx is not None:
+        await ctx.info("Running deep Perplexity research")
+        await ctx.report_progress(progress=0.1, total=1.0, message="Starting deep research")
+    result = run_mcp_query(query, "deep", output_format)
+    if ctx is not None:
+        await ctx.report_progress(progress=1.0, total=1.0, message="Deep research complete")
+    return result
 
 
 def main() -> None:
