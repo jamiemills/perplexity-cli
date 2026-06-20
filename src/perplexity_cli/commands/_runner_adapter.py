@@ -51,7 +51,7 @@ def run_auth_command(ctx_obj: dict[str, object] | None, port: int) -> None:
     runners.run_auth_command(ctx_obj, port)
 
 
-def run_export_threads_command(ctx_obj: dict[str, object] | None, request: ExportRequest) -> None:
+def run_export_threads_command(ctx_obj: object, request: ExportRequest) -> None:
     """Delegate to :func:`perplexity_cli.runners.run_export_threads_command`."""
     runners = importlib.import_module("perplexity_cli.runners")
     runners.run_export_threads_command(

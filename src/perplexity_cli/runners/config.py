@@ -1,7 +1,10 @@
 """Configuration and style command runners."""
 
+from __future__ import annotations
+
 import os
 import sys
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 import click
 
@@ -10,19 +13,47 @@ from perplexity_cli.error_handler import handle_error
 from perplexity_cli.utils.exceptions import ConfigurationError
 from perplexity_cli.utils.logging import get_logger
 
+if TYPE_CHECKING:
+    from perplexity_cli.utils.style_manager import StyleManager
+
+
+def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
+    """Guard: value is a dictionary with string keys and arbitrary values."""
+    return isinstance(value, dict)
+
+
+class _HasFeatureToggles(Protocol):
+    """Protocol for objects that expose feature-config boolean fields."""
+
+    save_cookies: bool
+    debug_mode: bool
+
+
+def _get_ctx_obj_dict() -> object:
+    """Return the Click context object, or an empty dict if absent."""
+    ctx = click.get_current_context(silent=True)
+    if ctx is None:
+        return {}
+    obj: object = ctx.obj
+    return obj if obj is not None else {}
+
+
+def _read_ctx_bool(raw: object, attr: str) -> bool:
+    """Read a boolean flag from the context object via dict get or getattr."""
+    if _is_str_dict(raw):
+        val: object = raw.get(attr, False)
+        return bool(val)
+    return bool(getattr(raw, attr, False))
+
 
 def _get_include_schema() -> bool:
     """Read include_schema flag from Click context."""
-    ctx = click.get_current_context(silent=True)
-    ctx_obj = ctx.obj if ctx else {}
-    return ctx_obj.get("schema", False) if ctx_obj else False
+    return _read_ctx_bool(_get_ctx_obj_dict(), "schema")
 
 
 def _get_json_mode_from_ctx() -> bool:
     """Read json_mode flag from Click context."""
-    ctx = click.get_current_context(silent=True)
-    ctx_obj = ctx.obj if ctx else {}
-    return ctx_obj.get("json", False) if ctx_obj else False
+    return _read_ctx_bool(_get_ctx_obj_dict(), "json")
 
 
 def _handle_style_error(  # nosemgrep: boolean-flag-argument
@@ -42,7 +73,7 @@ def run_configure_command(style: str, *, json_mode: bool | None = None) -> None:
     if json_mode is None:
         json_mode = _get_json_mode_from_ctx()
 
-    sm = StyleManager()
+    sm: StyleManager = StyleManager()
 
     try:
         sm.save_style(style)
@@ -59,7 +90,7 @@ def run_configure_command(style: str, *, json_mode: bool | None = None) -> None:
         _handle_style_error(e, json_mode, "pxcli style set", msg)
 
 
-def _output_view_style(style) -> None:
+def _output_view_style(style: object) -> None:
     """Print style in human-readable format."""
     if style is None:
         click.echo("No style configured.")
@@ -79,7 +110,7 @@ def run_view_style_command(*, json_mode: bool | None = None) -> None:
     if json_mode is None:
         json_mode = _get_json_mode_from_ctx()
 
-    sm = StyleManager()
+    sm: StyleManager = StyleManager()
 
     try:
         style = sm.load_style()
@@ -92,7 +123,7 @@ def run_view_style_command(*, json_mode: bool | None = None) -> None:
         _handle_style_error(e, json_mode, "pxcli style show", "Error reading style")
 
 
-def _execute_clear_style(sm, json_mode) -> None:
+def _execute_clear_style(sm: StyleManager, json_mode: bool) -> None:
     """Perform the clear style operation and output results."""
     style = sm.load_style()
     had_style = style is not None
@@ -120,7 +151,7 @@ def run_clear_style_command(*, json_mode: bool | None = None) -> None:
     if json_mode is None:
         json_mode = _get_json_mode_from_ctx()
 
-    sm = StyleManager()
+    sm: StyleManager = StyleManager()
 
     try:
         _execute_clear_style(sm, json_mode)
@@ -203,7 +234,9 @@ def _collect_env_overrides(prefix: str = "") -> list[str]:
     return [f"{prefix}{key}={os.environ[key]}" for key in _ENV_OVERRIDE_KEYS if key in os.environ]
 
 
-def _output_config_text(config, config_path, env_overrides: list[str]) -> None:
+def _output_config_text(
+    config: _HasFeatureToggles, config_path: object, env_overrides: list[str]
+) -> None:
     """Print human-readable configuration output."""
     click.echo("Perplexity CLI Configuration")
     click.echo("=" * 40)
@@ -227,7 +260,11 @@ def _output_config_text(config, config_path, env_overrides: list[str]) -> None:
 
 def run_show_config_command(*, json_mode: bool | None = None) -> None:
     """Execute the show-config command."""
-    from perplexity_cli.utils.config import get_feature_config, get_feature_config_path
+    from perplexity_cli.utils.config import (
+        FeatureConfig,
+        get_feature_config,
+        get_feature_config_path,
+    )
 
     logger = get_logger()
 
@@ -235,7 +272,7 @@ def run_show_config_command(*, json_mode: bool | None = None) -> None:
         json_mode = _get_json_mode_from_ctx()
 
     try:
-        config = get_feature_config()
+        config: FeatureConfig = get_feature_config()
         config_path = get_feature_config_path()
 
         if json_mode:

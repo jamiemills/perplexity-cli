@@ -13,6 +13,9 @@ import click
 
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
+
+if TYPE_CHECKING:
+    from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.exceptions import (
     AuthenticationError,
@@ -104,7 +107,7 @@ class PreparedExport:
 class ExportResult:
     """Export output details for human and JSON presentation."""
 
-    threads: list[object]
+    threads: list[ThreadRecord]
     output_path: Path | None
     date_range: ExportDateRange
 
@@ -183,12 +186,11 @@ def _string_or_empty(value: object) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _write_threads_csv(records: list[object], output_path: Path | None) -> Path:
-    """Write thread rows to CSV through a callable boundary."""
+def _write_threads_csv(records: list[ThreadRecord], output_path: Path | None) -> Path:
+    """Write thread rows to CSV through a typed boundary."""
     from perplexity_cli.threads.exporter import write_threads_csv
 
-    writer: Callable[..., Path] = write_threads_csv
-    return writer(records, output_path)
+    return write_threads_csv(records, output_path)
 
 
 def _normalise_context(ctx_obj: object) -> ExportContext | None:
@@ -199,10 +201,14 @@ def _normalise_context(ctx_obj: object) -> ExportContext | None:
         raise TypeError("ctx_obj must be a mapping or None")
 
     ctx_mapping: Mapping[object, object] = ctx_obj
-    normalised: ExportContext = {}
+    normalised: dict[str, object] = {}
     for key in ("json", "schema", "debug"):
         _store_context_flag(normalised, ctx_mapping, key)
-    return normalised
+    return ExportContext(
+        json=bool(normalised.get("json")),
+        schema=bool(normalised.get("schema")),
+        debug=bool(normalised.get("debug")),
+    )
 
 
 def _build_export_request(
@@ -269,7 +275,7 @@ def _resolve_export_tail_from_kwargs(
 
 
 def _store_context_flag(
-    normalised: ExportContext,
+    normalised: dict[str, object],
     ctx_mapping: Mapping[object, object],
     key: str,
 ) -> None:
@@ -382,7 +388,7 @@ def _scrape_threads(  # nosemgrep: boolean-flag-argument
     from_date: str | None,
     to_date: str | None,
     json_mode: bool,
-) -> list[object]:
+) -> list[ThreadRecord]:
     """Run the thread scraper with a progress callback."""
 
     def update_progress(current: int, total: int) -> None:
@@ -396,15 +402,10 @@ def _scrape_threads(  # nosemgrep: boolean-flag-argument
             progress_callback=update_progress,
         )
 
-    threads = _to_object_list(run_async(run_scrape()))
+    threads = run_async(run_scrape())
     if not json_mode:
         click.echo()
     return threads
-
-
-def _to_object_list(threads: list[ThreadRecord]) -> list[object]:
-    """Widen a thread-record list to ``object`` for legacy helper behaviour."""
-    return list(threads)
 
 
 def _handle_no_threads(  # nosemgrep: boolean-flag-argument
@@ -454,7 +455,9 @@ def _output_json(result: ExportResult, include_schema: bool) -> None:
     write_envelope(env, include_schema=include_schema)
 
 
-def _output_export_results(result: ExportResult, output_mode: OutputMode, logger: logging.Logger) -> None:
+def _output_export_results(
+    result: ExportResult, output_mode: OutputMode, logger: logging.Logger
+) -> None:
     """Write CSV and output results in the appropriate format."""
     output_path = _write_threads_csv(result.threads, result.output_path)
     written_result = ExportResult(
@@ -604,7 +607,7 @@ def _execute_scrape_and_export(prepared: PreparedExport, request: ExportRequest)
 
 
 def run_export_threads_command(
-    ctx_obj: ExportContext | None,
+    ctx_obj: object,
     from_date: str | None,
     to_date: str | None,
     *args: object,
