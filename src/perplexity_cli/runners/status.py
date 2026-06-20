@@ -1,8 +1,12 @@
 """Status and diagnostics command runners."""
 
+from __future__ import annotations
+
+import logging
 import stat
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 import click
 
@@ -15,19 +19,39 @@ from perplexity_cli.utils.exceptions import (
 )
 from perplexity_cli.utils.logging import get_logger
 
+if TYPE_CHECKING:
+    from perplexity_cli.auth.token_manager import TokenManager
+    from perplexity_cli.envelope import Envelope
+
+
+def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
+    """TypeGuard: value is a dict with string keys."""
+    return isinstance(value, dict)
+
+
+def _ctx_to_dict() -> dict[str, object]:
+    """Extract the Click context object as a typed dict."""
+    ctx = click.get_current_context(silent=True)
+    if ctx is None:
+        return {}
+    raw: object = ctx.obj
+    if _is_str_dict(raw):
+        return raw
+    return {}
+
 
 def _get_include_schema() -> bool:
     """Read include_schema flag from Click context."""
-    ctx = click.get_current_context(silent=True)
-    ctx_obj = ctx.obj if ctx else {}
-    return ctx_obj.get("schema", False) if ctx_obj else False
+    ctx_dict = _ctx_to_dict()
+    val: object = ctx_dict.get("schema", False)
+    return bool(val)
 
 
 def _get_json_mode_from_ctx() -> bool:
     """Read json_mode flag from Click context."""
-    ctx = click.get_current_context(silent=True)
-    ctx_obj = ctx.obj if ctx else {}
-    return ctx_obj.get("json", False) if ctx_obj else False
+    ctx_dict = _ctx_to_dict()
+    val: object = ctx_dict.get("json", False)
+    return bool(val)
 
 
 def run_doctor_security_command(*, json_mode: bool | None = None) -> None:
@@ -39,8 +63,8 @@ def run_doctor_security_command(*, json_mode: bool | None = None) -> None:
     if json_mode is None:
         json_mode = _get_json_mode_from_ctx()
 
-    tm = TokenManager()
-    cache_manager = ThreadCacheManager()
+    tm: TokenManager = TokenManager()
+    cache_manager: ThreadCacheManager = ThreadCacheManager()
     feature_config = get_feature_config()
 
     def describe_permissions(path: Path | None, expected: int) -> str:
@@ -98,11 +122,11 @@ def run_doctor_security_command(*, json_mode: bool | None = None) -> None:
 
 def _build_status_envelope(  # nosemgrep: too-many-parameters, boolean-flag-argument
     authenticated: bool,
-    tm,
-    token_age_days=None,
-    cookies_stored=0,
-    verified=None,
-):
+    tm: TokenManager,
+    token_age_days: object = None,
+    cookies_stored: object = 0,
+    verified: object = None,
+) -> Envelope:
     """Build a status envelope dictionary."""
     return success_envelope(
         "pxcli auth status",
@@ -116,7 +140,11 @@ def _build_status_envelope(  # nosemgrep: too-many-parameters, boolean-flag-argu
     )
 
 
-def _verify_token(token, cookies, logger) -> bool | None:
+def _verify_token(
+    token: str,
+    cookies: dict[str, str] | None,
+    logger: logging.Logger,
+) -> bool | None:
     """Run token verification against the API."""
     from perplexity_cli.api.endpoints import PerplexityAPI
 
@@ -138,18 +166,23 @@ def _verify_token(token, cookies, logger) -> bool | None:
         return False
 
 
-def _get_token_age_days(token_path) -> int | None:
+def _get_token_age_days(token_path: Any) -> int | None:
     """Compute the age of the token file in days."""
     try:
-        stat_result = token_path.stat()
-        modified_time = datetime.fromtimestamp(stat_result.st_mtime)
+        stat_result: object = token_path.stat()
+        modified_time = datetime.fromtimestamp(int(getattr(stat_result, "st_mtime", 0)))
         return (datetime.now() - modified_time).days
-    except OSError:
+    except (OSError, AttributeError, TypeError, ValueError):
         return None
 
 
 def _output_status_text(  # nosemgrep: too-many-parameters
-    token, cookies, token_age_days, verified, verify, tm
+    token: str,
+    cookies: dict[str, str] | None,
+    token_age_days: object,
+    verified: object,
+    verify: object,
+    tm: TokenManager,
 ) -> None:
     """Print human-readable status output."""
     logger = get_logger()
@@ -171,19 +204,19 @@ def _output_status_text(  # nosemgrep: too-many-parameters
     _output_verification_result(verified, logger)
 
 
-def _output_token_modified_time(token_path, token_age_days) -> None:
+def _output_token_modified_time(token_path: Any, token_age_days: object) -> None:
     """Print token modification time if available."""
     if token_age_days is None:
         return
     try:
-        stat_result = token_path.stat()
-        modified_time = datetime.fromtimestamp(stat_result.st_mtime)
+        stat_result: object = token_path.stat()
+        modified_time = datetime.fromtimestamp(int(getattr(stat_result, "st_mtime", 0)))
         click.echo(f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    except OSError:
+    except (OSError, AttributeError):
         click.echo("Token last modified: unavailable")
 
 
-def _output_verification_result(verified, logger) -> None:
+def _output_verification_result(verified: object, logger: logging.Logger) -> None:
     """Print verification result."""
     if verified is True:
         click.echo("\n[OK] Token is valid and working")
@@ -196,7 +229,7 @@ def _output_verification_result(verified, logger) -> None:
 
 
 def _handle_no_token(  # nosemgrep: boolean-flag-argument
-    json_mode: bool, tm, show_auth_hint: bool = True
+    json_mode: bool, tm: TokenManager, show_auth_hint: bool = True
 ) -> None:
     """Handle the case where no valid token is available."""
     if json_mode:
@@ -210,7 +243,12 @@ def _handle_no_token(  # nosemgrep: boolean-flag-argument
 
 
 def _handle_authenticated_status(  # nosemgrep: too-many-parameters
-    token, cookies, verify, json_mode, tm, logger
+    token: str,
+    cookies: dict[str, str] | None,
+    verify: bool,
+    json_mode: bool,
+    tm: TokenManager,
+    logger: logging.Logger,
 ) -> None:
     """Handle status output when a valid token is present."""
     token_age_days = _get_token_age_days(tm.token_path)
@@ -237,7 +275,7 @@ def run_status_command(  # nosemgrep: boolean-flag-argument
         json_mode = _get_json_mode_from_ctx()
 
     logger = get_logger()
-    tm = TokenManager()
+    tm: TokenManager = TokenManager()
 
     if not tm.token_exists():
         _handle_no_token(json_mode, tm)
