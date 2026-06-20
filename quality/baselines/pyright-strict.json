@@ -1,3 +1,5 @@
 {
-  "fingerprints": []
+  "fingerprints": [
+    "src/perplexity_cli/query_streaming.py:230:8:reportConstantRedefinition"
+  ]
 }

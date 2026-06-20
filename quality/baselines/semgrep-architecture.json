@@ -44,7 +44,7 @@
     "src/perplexity_cli/query_streaming.py:212:click-echo-outside-presentation",
     "src/perplexity_cli/query_streaming.py:213:click-echo-outside-presentation",
     "src/perplexity_cli/query_streaming.py:214:sys-exit-outside-boundary",
-    "src/perplexity_cli/query_streaming.py:237:click-echo-outside-presentation",
+    "src/perplexity_cli/query_streaming.py:239:click-echo-outside-presentation",
     "src/perplexity_cli/query_streaming.py:73:click-echo-outside-presentation",
     "src/perplexity_cli/utils/http_errors.py:101:click-echo-outside-presentation",
     "src/perplexity_cli/utils/http_errors.py:103:click-echo-outside-presentation",
