@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.http_errors import raise_http_status_error
-from perplexity_cli.utils.http_headers import HeaderOptions, build_perplexity_headers
+from perplexity_cli.utils.http_headers import build_perplexity_headers
 from perplexity_cli.utils.logging import get_logger
 
 
@@ -54,7 +54,7 @@ class RestClient:
         return build_perplexity_headers(
             self.auth.token,
             self.auth.cookies,
-            options=HeaderOptions(accept="application/json"),
+            accept="application/json",
         )
 
     def _get_client(self) -> Session[Response]:

@@ -8,17 +8,6 @@ only need to be made in one place.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True, slots=True)
-class HeaderOptions:
-    """Optional keyword arguments for :func:`build_perplexity_headers`."""
-
-    content_type: str = "application/json"
-    accept: str | None = None
-    base_url: str | None = None
-
 
 def _resolve_base_url(base_url: str | None) -> str:
     """Resolve the base URL, loading from configuration if not provided.
@@ -36,11 +25,13 @@ def _resolve_base_url(base_url: str | None) -> str:
     return get_perplexity_base_url()
 
 
-def build_perplexity_headers(
+def build_perplexity_headers(  # nosemgrep: too-many-parameters
     token: str | None,
     cookies: dict[str, str] | None = None,
     *,
-    options: HeaderOptions | None = None,
+    content_type: str = "application/json",
+    accept: str | None = None,
+    base_url: str | None = None,
 ) -> dict[str, str]:
     """Build standard HTTP headers for Perplexity API requests.
 
@@ -51,22 +42,24 @@ def build_perplexity_headers(
     Args:
         token: Optional JWT authentication token.
         cookies: Optional browser cookies; used to extract the CSRF token.
-        options: Optional header configuration as :class:`HeaderOptions`.
+        content_type: Value for the ``Content-Type`` header.
+        accept: Optional value for the ``Accept`` header.
+        base_url: Perplexity base URL used for Origin/Referer headers.
+            When ``None`` the value is loaded from configuration.
 
     Returns:
         Dictionary of HTTP headers.
     """
-    opts = options or HeaderOptions()
-    resolved_url = _resolve_base_url(opts.base_url)
+    resolved_url = _resolve_base_url(base_url)
 
     headers: dict[str, str] = {
-        "Content-Type": opts.content_type,
+        "Content-Type": content_type,
         "Origin": resolved_url,
         "Referer": resolved_url.rstrip("/") + "/",
     }
 
-    if opts.accept:
-        headers["Accept"] = opts.accept
+    if accept:
+        headers["Accept"] = accept
 
     if token:
         headers["Authorization"] = f"Bearer {token}"
