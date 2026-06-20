@@ -217,7 +217,17 @@ def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorH
     ]
 
 
-_STREAM_ERROR_HANDLERS: list[tuple[type | tuple[type, ...], _ErrorHandler]] | None = None
+class _StreamErrorHandlers:
+    """Lazily-initialised cache for the stream error handler dispatch table."""
+
+    _cache: list[tuple[type | tuple[type, ...], _ErrorHandler]] | None = None
+
+    @classmethod
+    def get(cls) -> list[tuple[type | tuple[type, ...], _ErrorHandler]]:
+        """Return the error handler dispatch table, building it on first access."""
+        if cls._cache is None:
+            cls._cache = _init_stream_error_handlers()
+        return cls._cache
 
 
 def _handle_stream_error(error: Exception) -> None:
@@ -226,17 +236,12 @@ def _handle_stream_error(error: Exception) -> None:
     Args:
         error: The exception that was raised.
     """
-    global _STREAM_ERROR_HANDLERS
-    if _STREAM_ERROR_HANDLERS is None:
-        _STREAM_ERROR_HANDLERS = _init_stream_error_handlers()
-
     logger = get_logger()
-    for exc_types, handler in _STREAM_ERROR_HANDLERS:
+    for exc_types, handler in _StreamErrorHandlers.get():
         if isinstance(error, exc_types):
             handler(error, logger)
             return
 
-    click.echo()
     handle_unexpected_cli_error(
         error,
         logger,
