@@ -1,11 +1,8 @@
 """Authentication utilities for CLI commands."""
 
 import logging
-import sys
-
-import click
-
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.exit_codes import ActionResult
 from perplexity_cli.utils.exceptions import AuthenticationError
 from perplexity_cli.utils.session_token import extract_session_token
 
@@ -16,8 +13,7 @@ def load_or_prompt_token(
     tm: TokenManager,
     logger: logging.Logger,
     command_context: str = "operation",
-) -> tuple[str, dict[str, str] | None]:
-    """Load authentication token or prompt user to authenticate.
+) -> "tuple[str, dict[str, str] | None] | ActionResult":
 
     Attempts to load an existing token from disk. If not found or invalid,
     prompts the user to authenticate and exits with helpful message.
@@ -37,19 +33,12 @@ def load_or_prompt_token(
     try:
         token, cookies = tm.load_token()
     except AuthenticationError as e:
-        click.echo(f"[ERROR] Authentication error: {e}", err=True)
-        click.echo("\nPlease authenticate again with: pxcli auth login", err=True)
         logger.warning("Authentication state invalid during %s: %s", command_context, e)
-        sys.exit(1)
+        return ActionResult.error("\n".join([f"[ERROR] Authentication error: {e}","\nPlease authenticate again with: pxcli auth login"]), exit_code=1)
 
     if not token:
-        click.echo("[ERROR] Not authenticated.", err=True)
-        click.echo(
-            "\nPlease authenticate first with: pxcli auth login",
-            err=True,
-        )
         logger.warning("Attempted %s without authentication", command_context)
-        sys.exit(1)
+        return ActionResult.error("\n".join(["[ERROR] Not authenticated.","\nPlease authenticate first with: pxcli auth login"]), exit_code=1)
 
     return token, cookies
 

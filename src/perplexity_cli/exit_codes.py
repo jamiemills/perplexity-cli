@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import dataclass
 from typing import Final
 
 from perplexity_cli.utils.exceptions import (
@@ -24,6 +25,11 @@ CONFLICT = 5
 TRANSIENT = 6
 VALIDATION = 7
 INTERRUPTED = 130
+
+HTTP_STATUS_UNAUTHORIZED: Final[int] = 401
+HTTP_STATUS_FORBIDDEN: Final[int] = 403
+HTTP_STATUS_RATE_LIMITED: Final[int] = 429
+HTTP_STATUS_SERVER_ERROR_FLOOR: Final[int] = 500
 
 HTTP_STATUS_UNAUTHORIZED: Final[int] = 401
 HTTP_STATUS_FORBIDDEN: Final[int] = 403

@@ -11,10 +11,10 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-import click
 from click import ClickException
 
 from perplexity_cli.api.endpoints import PerplexityAPI
+from perplexity_cli.exit_codes import ActionResult
 from perplexity_cli.api.models import (
     Answer,
     QueryInput,
@@ -37,19 +37,10 @@ from perplexity_cli.utils.http_errors import (
 from perplexity_cli.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    import logging
-
     from perplexity_cli.ndjson import NDJSONWriter
 
-    #: Type for error handler callbacks in the dispatch table.
-    _ErrorHandler = Callable[[Any, logging.Logger], Any]
 
-
-def _process_stream_message(
-    message: SSEMessage,
-    accumulated_text: str,
-    ndjson_writer: NDJSONWriter | None,
-) -> str:
+def _process_stream_message(message: SSEMessage, accumulated_text: str, ndjson_writer: NDJSONWriter | None, output_fn: Callable[..., Any]) -> str:
     """Handle a single SSE message, emitting output and returning updated text.
 
     Args:
@@ -71,7 +62,7 @@ def _process_stream_message(
     if ndjson_writer:
         ndjson_writer.chunk(new_text)
     else:
-        click.echo(new_text, nl=False)
+        output_fn(new_text, nl=False)
     return text
 
 
@@ -110,11 +101,7 @@ def _write_ndjson_result(
     )
 
 
-def _render_stream_references(
-    render: RenderContext,
-    accumulated_text: str,
-    references: list[WebResult],
-) -> None:
+def _render_stream_references(render: RenderContext, accumulated_text: str, references: list[WebResult], output_fn: Callable[..., Any]) -> None:
     """Render references after streaming completes (non-JSON mode).
 
     Args:
@@ -122,11 +109,11 @@ def _render_stream_references(
         accumulated_text: The complete answer text.
         references: List of web references.
     """
-    click.echo()
+    output_fn()
     if not references or render.options.strip_references:
         return
 
-    click.echo()
+    output_fn()
     if render.options.output_format == "rich":
         render.formatter.render_complete(
             Answer(text=accumulated_text, references=references),
@@ -135,14 +122,10 @@ def _render_stream_references(
     else:
         formatted_refs = render.formatter.format_references(references)
         if formatted_refs:
-            click.echo(formatted_refs)
+            output_fn(formatted_refs)
 
 
-def _run_stream_loop(
-    api: PerplexityAPI,
-    query_input: QueryInput,
-    ndjson_writer: NDJSONWriter | None,
-) -> tuple[str, list[WebResult]]:
+def _run_stream_loop(api: PerplexityAPI, query_input: QueryInput, ndjson_writer: NDJSONWriter | None, output_fn: Callable[..., Any]) -> tuple[str, list[WebResult]]:
     """Execute the streaming loop, returning accumulated text and references.
 
     Args:
@@ -163,7 +146,7 @@ def _run_stream_loop(
             message.status,
             message.final_sse_message,
         )
-        accumulated_text = _process_stream_message(message, accumulated_text, ndjson_writer)
+        accumulated_text = _process_stream_message(message, accumulated_text, ndjson_writer, output_fn)
 
         if message.final_sse_message and message.web_results:
             references = message.web_results
@@ -172,48 +155,23 @@ def _run_stream_loop(
     return accumulated_text, references
 
 
-def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorHandler]]:
+def _build_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorHandler]]:
     """Build the error handler dispatch table (lazily initialised)."""
     return [
         (
-            PerplexityHTTPStatusError,
-            lambda e, log: (
-                click.echo(),
-                handle_http_error(e, log, debug_mode=False, context="during streaming"),
-            ),
+            PerplexityHTTPStatusError, lambda e, log: ActionResult(message="\n" + (handle_http_error(e, log, debug_mode=False, context="during streaming").message or ""), exit_code=1, is_error=True, stream_to_stderr=True),
         ),
         (
-            PerplexityRequestError,
-            lambda e, log: (
-                click.echo(),
-                handle_network_error(e, log, debug_mode=False, context="during streaming"),
-            ),
+            PerplexityRequestError, lambda e, log: ActionResult(message="\n" + (handle_network_error(e, log, debug_mode=False, context="during streaming").message or ""), exit_code=1, is_error=True, stream_to_stderr=True),
         ),
         (
-            UpstreamSchemaError,
-            lambda e, log: (
-                log.error("Malformed upstream response during streaming: %s", e),
-                click.echo(),
-                click.echo(f"[ERROR] Upstream response format changed: {e}", err=True),
-                sys.exit(1),
-            ),
+            UpstreamSchemaError, lambda e, log: (log.error("Malformed upstream response during streaming: %s", e), ActionResult.error(f"\n[ERROR] Upstream response format changed: {e}", exit_code=1))[-1],
         ),
         (
-            KeyboardInterrupt,
-            lambda e, log: (
-                log.info("Streaming interrupted by user"),
-                click.echo("\n[ERROR] Streaming interrupted.", err=True),
-                sys.exit(130),
-            ),
+            KeyboardInterrupt, lambda e, log: (log.info("Streaming interrupted by user"), ActionResult.error("\n[ERROR] Streaming interrupted.", exit_code=130))[-1],
         ),
         (
-            (ClickException, OSError),
-            lambda e, log: (
-                log.error("Streaming output failed: %s", e),
-                click.echo(),
-                click.echo(f"[ERROR] Failed to render streaming output: {e}", err=True),
-                sys.exit(1),
-            ),
+            (ClickException, OSError), lambda e, log: (log.error("Streaming output failed: %s", e), ActionResult.error(f"\n[ERROR] Failed to render streaming output: {e}", exit_code=1))[-1],
         ),
     ]
 
@@ -221,13 +179,13 @@ def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorH
 class _StreamErrorHandlers:
     """Lazily-initialised cache for the stream error handler dispatch table."""
 
-    _cache: list[tuple[type | tuple[type, ...], _ErrorHandler]] | None = None
+    _cache: list[tuple[type | tuple[type, ...], Any]] | None = None
 
     @classmethod
-    def get(cls) -> list[tuple[type | tuple[type, ...], _ErrorHandler]]:
+    def get(cls) -> list[tuple[type | tuple[type, ...], Any]]:
         """Return the error handler dispatch table, building it on first access."""
         if cls._cache is None:
-            cls._cache = _init_stream_error_handlers()
+            cls._cache = _build_stream_error_handlers()
         return cls._cache
 
 
@@ -254,12 +212,7 @@ def _handle_stream_error(error: Exception) -> None:
     )
 
 
-def stream_query_response(
-    api: PerplexityAPI,
-    query_input: QueryInput,
-    render: RenderContext,
-    trace: TraceContext,
-) -> None:
+def stream_query_response(api: PerplexityAPI, query_input: QueryInput, render: RenderContext, trace: TraceContext, *, output_fn: Callable[..., Any] | None = None) -> ActionResult | None:
     """Stream query response in real-time.
 
     Args:
@@ -276,14 +229,12 @@ def stream_query_response(
         ndjson_writer.start(command="pxcli query --json --stream")
 
     try:
-        accumulated_text, references = _run_stream_loop(
-            api,
-            query_input,
-            ndjson_writer,
-        )
+        accumulated_text, references = _run_stream_loop(api, query_input, ndjson_writer, output_fn=output_fn or (lambda *a: None))
         if ndjson_writer:
             _write_ndjson_result(ndjson_writer, accumulated_text, references, trace)
         else:
-            _render_stream_references(render, accumulated_text, references)
+            _render_stream_references(render, accumulated_text, references, output_fn=output_fn or (lambda *a: None))
     except Exception as e:
-        _handle_stream_error(e)
+        return _handle_stream_error(e)
+
+    return None

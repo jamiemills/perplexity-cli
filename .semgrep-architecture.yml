@@ -72,7 +72,7 @@ rules:
     paths:
       exclude:
         - "**/cli.py"
-        - "**/commands.py"
+        - "**/commands/**"
         - "**/completion_commands.py"
         - "**/error_handler.py"
         - "**/runners/**"
@@ -147,7 +147,7 @@ rules:
     paths:
       exclude:
         - "**/cli.py"
-        - "**/commands.py"
+        - "**/commands/**"
         - "**/completion_commands.py"
         - "**/formatting/**"
         - "**/runners/**"
