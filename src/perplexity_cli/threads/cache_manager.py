@@ -94,7 +94,7 @@ class ThreadCacheManager:
             self.logger.error("Failed to load cache: %s", e, exc_info=True)
             raise OSError(f"Failed to load cache from {self.cache_path}: {e}") from e
 
-    def _validate_outer_format(self, raw_data: dict) -> CacheFormat:
+    def _validate_outer_format(self, raw_data: dict[str, Any]) -> CacheFormat:
         """Validate and parse the outer cache file format.
 
         Args:

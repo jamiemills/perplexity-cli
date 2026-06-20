@@ -7,8 +7,9 @@ construction with the SSE streaming client.
 
 from __future__ import annotations
 
+from importlib import import_module
 from types import TracebackType
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
     from curl_cffi.requests import Response, Session
@@ -66,9 +67,11 @@ class RestClient:
             RuntimeError: If curl_cffi is not installed.
         """
         if self._client is None:
-            from perplexity_cli.utils.session_factory import create_sync_session
-
-            self._client = create_sync_session(timeout=self.timeout)
+            _sf = import_module("perplexity_cli.utils.session_factory")
+            self._client = cast(
+                "Session[Response]",
+                _sf.create_sync_session(timeout=self.timeout),
+            )
         return self._client
 
     def close(self) -> None:

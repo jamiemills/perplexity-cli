@@ -44,7 +44,7 @@ class StyleManager:
         Raises:
             ValueError: If style is empty, blank, or exceeds maximum length.
         """
-        if not style or not isinstance(style, str):
+        if type(style) is not str or not style:
             raise ValueError("Style must be a non-empty string")
         if not style.strip():
             raise ValueError("Style cannot be blank or whitespace only")
@@ -100,7 +100,7 @@ class StyleManager:
         Returns:
             True if valid, False otherwise.
         """
-        if not isinstance(style, str):
+        if type(style) is not str:
             return False
         if not style.strip():
             return False

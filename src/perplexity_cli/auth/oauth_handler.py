@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import urllib.error
 import urllib.request
-from typing import TYPE_CHECKING, Any, TypeGuard
+from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
 import websockets
 
@@ -81,7 +80,7 @@ class ChromeDevToolsClient:
         if not isinstance(targets, list):
             raise AuthenticationError("Chrome returned an invalid targets payload")
 
-        return targets
+        return cast(list[object], targets)
 
     @staticmethod
     def _find_page_target(targets: list[object]) -> dict[str, object]:

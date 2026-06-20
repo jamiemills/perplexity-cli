@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Literal, cast
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
@@ -57,10 +57,10 @@ class MCPQueryResult(BaseModel):
     rendered_response: str = Field(
         description="Answer rendered in the requested output format.",
     )
-    references: list[MCPReference] = Field(
+    references: Annotated[list[MCPReference], Field(
         default_factory=list,
         description="References returned by Perplexity.",
-    )
+    )]
     reference_count: int = Field(description="Number of references returned.")
 
 
@@ -278,6 +278,8 @@ def create_mcp_server(config: ServerConfig | None = None) -> FastMCP:
         if ctx is not None:
             await ctx.report_progress(progress=1.0, total=1.0, message="Deep research complete")
         return result
+
+    _ = (perplexity_quick_info, perplexity_deep_info)
 
     return server
 
