@@ -6,8 +6,6 @@ import json
 import sys
 from typing import NoReturn
 
-import click
-
 from perplexity_cli.envelope import ErrorCode, envelope_to_dict, error_envelope
 from perplexity_cli.exit_codes import exit_code_for_exception
 from perplexity_cli.utils.exceptions import (
@@ -79,7 +77,8 @@ def handle_error(  # nosemgrep: too-many-parameters
         sys.exit(exit_code)
     else:
         message = str(exc)
-        click.echo(f"Error: {message}", err=True)
+        from perplexity_cli.runners._utils import emit
+        emit(f"Error: {message}", err=True)
         if fix:
-            click.echo(f"Fix: {fix}", err=True)
+            emit(f"Fix: {fix}", err=True)
         sys.exit(exit_code)

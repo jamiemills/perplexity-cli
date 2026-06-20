@@ -12,8 +12,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Final
 
-import click
-
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
@@ -94,18 +92,19 @@ def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters
     """
     user_message, log_message, include_debug_hint = message_tuple
     logger.exception("%s: %s", log_message, error)
-    click.echo(user_message, err=True)
+    from perplexity_cli.runners._utils import emit
+    emit(user_message, err=True)
 
     if debug_mode:
         import traceback
 
         debug_output = traceback.format_exc()
         if include_debug_hint:
-            click.echo(f"Debug info:\n{debug_output}", err=True)
+            emit(f"Debug info:\n{debug_output}", err=True)
         else:
-            click.echo(debug_output, err=True)
+            emit(debug_output, err=True)
     elif include_debug_hint:
-        click.echo("Run with --debug for more information.", err=True)
+        emit("Run with --debug for more information.", err=True)
 
     raise SystemExit(1)
 
@@ -205,12 +204,13 @@ def handle_http_error(  # nosemgrep: boolean-flag-argument
     logger.error("HTTP error %s%s: %s", status, context_msg, error)
 
     message = _HTTP_ERROR_MESSAGES.get(status, f"[ERROR] HTTP error {status}.")
-    click.echo(message, err=True)
+    from perplexity_cli.runners._utils import emit
+    emit(message, err=True)
     if status in _HTTP_ERROR_EXTRAS:
-        click.echo(_HTTP_ERROR_EXTRAS[status], err=True)
+        emit(_HTTP_ERROR_EXTRAS[status], err=True)
 
     if debug_mode:
-        click.echo(f"Details: {error}", err=True)
+        emit(f"Details: {error}", err=True)
 
     raise SystemExit(1)
 
@@ -234,9 +234,10 @@ def handle_network_error(  # nosemgrep: boolean-flag-argument
     """
     context_msg = f" {context}" if context else ""
     logger.error("Network error%s: %s", context_msg, error)
-    click.echo("[ERROR] Network error. Please check your internet connection.", err=True)
+    from perplexity_cli.runners._utils import emit
+    emit("[ERROR] Network error. Please check your internet connection.", err=True)
 
     if debug_mode:
-        click.echo(f"Details: {error}", err=True)
+        emit(f"Details: {error}", err=True)
 
     raise SystemExit(1)

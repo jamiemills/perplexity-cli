@@ -2,9 +2,8 @@
 
 import logging
 
-import click
-
 from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.runners._utils import emit
 from perplexity_cli.utils.exceptions import AuthenticationError
 from perplexity_cli.utils.session_token import extract_session_token
 
@@ -36,14 +35,14 @@ def load_or_prompt_token(
     try:
         token, cookies = tm.load_token()
     except AuthenticationError as e:
-        click.echo(f"[ERROR] Authentication error: {e}", err=True)
-        click.echo("\nPlease authenticate again with: pxcli auth login", err=True)
+        emit(f"[ERROR] Authentication error: {e}", err=True)
+        emit("\nPlease authenticate again with: pxcli auth login", err=True)
         logger.warning("Authentication state invalid during %s: %s", command_context, e)
         raise SystemExit(1) from e
 
     if not token:
-        click.echo("[ERROR] Not authenticated.", err=True)
-        click.echo(
+        emit("[ERROR] Not authenticated.", err=True)
+        emit(
             "\nPlease authenticate first with: pxcli auth login",
             err=True,
         )
