@@ -1,15 +1,22 @@
 """Configuration and path management utilities."""
 
+from __future__ import annotations
+
 import json
 import logging
 import os
 from functools import lru_cache
 from importlib import resources  # nosemgrep: python37-compatibility-importlib2
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from perplexity_cli.config.models import FeatureConfig, RateLimitConfig, URLConfig
 from perplexity_cli.utils.exceptions import ConfigurationError
+
+
+def _is_str_dict(value: object) -> TypeGuard[dict[str, Any]]:
+    """Type guard that narrows an object to dict[str, Any]."""
+    return isinstance(value, dict)
 
 
 class ConfigPaths:
@@ -93,7 +100,7 @@ def get_config_dir() -> Path:
     return config_dir
 
 
-def _get_default_urls() -> dict:
+def _get_default_urls() -> dict[str, Any]:
     """Load default URLs from the package configuration.
 
     Returns:
@@ -122,7 +129,7 @@ def _ensure_user_urls_config() -> None:
             raise ConfigurationError(f"Failed to create URLs configuration file: {e}") from e
 
 
-def _apply_url_env_overrides(perplexity_config: dict) -> None:
+def _apply_url_env_overrides(perplexity_config: dict[str, Any]) -> None:
     """Apply environment variable overrides to URL configuration in place.
 
     Args:
@@ -177,7 +184,7 @@ def get_urls() -> URLConfig:
         raise ConfigurationError("URLs configuration missing 'perplexity' section")
 
     perplexity_config = urls_dict["perplexity"]
-    if not isinstance(perplexity_config, dict):
+    if not _is_str_dict(perplexity_config):
         raise ConfigurationError("'perplexity' section must be a dictionary")
 
     _apply_url_env_overrides(perplexity_config)
@@ -327,7 +334,7 @@ def _load_rate_limiting_from_file(config_dict: dict[str, Any]) -> None:
         logging.getLogger(__name__).debug("Could not load or parse urls configuration file")
 
 
-def _merge_rate_limiting_section(urls_data: dict, config_dict: dict[str, Any]) -> None:
+def _merge_rate_limiting_section(urls_data: dict[str, Any], config_dict: dict[str, Any]) -> None:
     """Merge the rate_limiting section from urls data into config_dict.
 
     Args:
@@ -340,7 +347,7 @@ def _merge_rate_limiting_section(urls_data: dict, config_dict: dict[str, Any]) -
     if "rate_limiting" not in urls_data:
         return
     user_config = urls_data["rate_limiting"]
-    if not isinstance(user_config, dict):
+    if not _is_str_dict(user_config):
         raise ConfigurationError("rate_limiting section must be a dictionary")
     config_dict.update(user_config)
 
@@ -470,7 +477,7 @@ def _load_feature_config_from_file() -> dict[str, Any]:
             user_config = json.load(f)
         if "features" in user_config:
             features = user_config["features"]
-            if not isinstance(features, dict):
+            if not _is_str_dict(features):
                 raise ConfigurationError(
                     "Feature configuration 'features' section must be a dictionary"
                 )
@@ -556,7 +563,7 @@ def get_debug_mode_enabled() -> bool:
     return config.debug_mode
 
 
-def set_feature(key: str, value: bool) -> None:  # nosemgrep: boolean-flag-argument
+def set_feature(key: str, value: object) -> None:  # nosemgrep: boolean-flag-argument
     """Set a feature configuration value.
 
     Args:
