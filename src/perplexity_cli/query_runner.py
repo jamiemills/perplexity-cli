@@ -357,7 +357,7 @@ def _build_json_envelope(  # nosemgrep: boolean-flag-argument
 
 
 def _handle_query_exception(  # nosemgrep: boolean-flag-argument
-    exc: Exception, ctx_obj: dict | None, json_mode: bool
+    exc: Exception, ctx_obj: dict[str, object] | None, json_mode: bool
 ) -> None:
     """Dispatch query exceptions to the appropriate error handler.
 
@@ -369,7 +369,7 @@ def _handle_query_exception(  # nosemgrep: boolean-flag-argument
     from perplexity_cli.error_handler import handle_error
 
     logger = get_logger()
-    debug_mode = (ctx_obj or {}).get("debug", False)
+    debug_mode: bool = bool((ctx_obj or {}).get("debug", False))
 
     if json_mode:
         handle_error(
@@ -474,7 +474,9 @@ def _fetch_and_render(
         render_complete_answer(answer_obj, render)
 
 
-def _read_ctx_options(ctx_obj: dict | None) -> tuple[bool, int | None, bool]:
+def _read_ctx_options(
+    ctx_obj: dict[str, object] | None,
+) -> tuple[bool, int | None, bool]:
     """Extract query options from the Click context object.
 
     Args:
@@ -483,8 +485,15 @@ def _read_ctx_options(ctx_obj: dict | None) -> tuple[bool, int | None, bool]:
     Returns:
         Tuple of (json_mode, timeout, include_schema).
     """
-    opts = ctx_obj or {}
-    return opts.get("json", False), opts.get("timeout"), opts.get("schema", False)
+    opts: dict[str, object] = ctx_obj or {}
+    json_val: object = opts.get("json", False)
+    timeout_val: object = opts.get("timeout")
+    schema_val: object = opts.get("schema", False)
+    return (
+        bool(json_val),
+        int(timeout_val) if isinstance(timeout_val, int) else None,
+        bool(schema_val),
+    )
 
 
 def parse_request_param_overrides(overrides: Iterable[str]) -> dict[str, str]:
@@ -522,7 +531,7 @@ def _check_for_duplicate_request_param(parsed: dict[str, str], key: str) -> None
 
 
 def run_query_command(  # nosemgrep: too-many-parameters, boolean-flag-argument
-    ctx_obj: dict | None,
+    ctx_obj: dict[str, object] | None,
     query_text: str,
     output_format: str | None,
     strip_references: bool,
