@@ -42,19 +42,29 @@ from perplexity_cli.utils.retry import (
     sleep_with_backoff,
 )
 
+_CurlRequestException: type[Exception] | None
 try:
-    from curl_cffi.requests.exceptions import RequestException as _CurlRequestException
-
-    _curl_cffi_available = True
+    from curl_cffi.requests.exceptions import RequestException as _ImportedCurlRequestException
 except ImportError:  # pragma: no cover
     _CurlRequestException = None
     _curl_cffi_available = False
+else:
+    _CurlRequestException = _ImportedCurlRequestException
+    _curl_cffi_available = True
 
 HTTP_STATUS_UNAUTHORISED: Final[int] = 401
 HTTP_STATUS_FORBIDDEN: Final[int] = 403
 HTTP_STATUS_TOO_MANY_REQUESTS: Final[int] = 429
 DEEP_RESEARCH_TIMEOUT_MODE: Final[str] = "multi_step"
 HEADER_PAIR_SIZE: Final[int] = 2
+DEEP_RESEARCH_MODE_KEYS: Final[tuple[str, ...]] = (
+    "searchModeOverride",
+    "search_mode",
+    "workflow_key",
+)
+DEEP_RESEARCH_MODE_VALUES: Final[frozenset[str]] = frozenset(
+    {"research", "deep_research", "RESEARCH"}
+)
 
 type JsonObject = dict[str, object]
 
@@ -94,6 +104,18 @@ def _require_json_object_or_none(value: object, context: str) -> JsonObject | No
     if _is_json_object(value):
         return value
     raise RuntimeError(f"Expected JSON object transport attribute for {context}")
+
+
+def _is_deep_research_value(value: object) -> bool:
+    """Return whether a query parameter selects deep research mode."""
+    return isinstance(value, str) and value in DEEP_RESEARCH_MODE_VALUES
+
+
+def _is_deep_research_request(params: JsonObject) -> bool:
+    """Return whether request parameters opt into deep research mode."""
+    if params.get("search_implementation_mode") == DEEP_RESEARCH_TIMEOUT_MODE:
+        return True
+    return any(_is_deep_research_value(params.get(key)) for key in DEEP_RESEARCH_MODE_KEYS)
 
 
 def _iter_object_values(value: object, context: str) -> Iterator[object]:
@@ -265,6 +287,7 @@ def _is_request_exception(error: Exception) -> bool:
     if not _curl_cffi_available or _CurlRequestException is None:
         return False
     return isinstance(error, _CurlRequestException)
+
 
 # ---------------------------------------------------------------------------
 # Extracted: SSE protocol parser (stateless)
@@ -636,11 +659,7 @@ class SSEClient:
         """
         params_value = json_data.get("params")
         params: JsonObject = params_value if _is_json_object(params_value) else {}
-        deep_research_values = {"research", "deep_research", "RESEARCH"}
-        is_deep_research = params.get("search_implementation_mode") == DEEP_RESEARCH_TIMEOUT_MODE or any(
-            isinstance(params.get(key), str) and params.get(key) in deep_research_values
-            for key in ("searchModeOverride", "search_mode", "workflow_key")
-        )
+        is_deep_research = _is_deep_research_request(params)
         if is_deep_research:
             from perplexity_cli.config.defaults import DEFAULT_DEEP_RESEARCH_TIMEOUT
 

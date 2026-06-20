@@ -7,7 +7,7 @@ import base64
 import logging
 import uuid
 from collections.abc import Coroutine, Mapping
-from typing import TYPE_CHECKING, Final, Protocol, TypedDict
+from typing import TYPE_CHECKING, Final, Protocol, TypedDict, TypeGuard
 
 import httpx
 
@@ -48,6 +48,11 @@ class UploadMetadataEntry(TypedDict):
 
 type UploadMetadata = dict[str, UploadMetadataEntry]
 type MultipartFormValue = tuple[None, str] | tuple[str, bytes, str]
+
+
+def _is_object_mapping(value: object) -> TypeGuard[dict[object, object]]:
+    """Narrow dynamic payload values to a fully-known dictionary type."""
+    return isinstance(value, dict)
 
 
 class _UploadUrlResponse(Protocol):
@@ -160,7 +165,7 @@ def _normalise_upload_fields(upload_data: Mapping[str, object]) -> dict[str, obj
     if not raw_fields:
         return {}
 
-    if not isinstance(raw_fields, dict):
+    if not _is_object_mapping(raw_fields):
         logger.warning(
             "Unexpected fields type from API: %s. Full upload_data: %s",
             type(raw_fields).__name__,

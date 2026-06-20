@@ -226,31 +226,44 @@ def _coerce_progress_callback(value: object) -> ProgressCallback | None:
     raise TypeError("progress_callback must be callable or None")
 
 
-def _build_batch_processing_context(*args: object) -> BatchProcessingContext:
-    """Normalise batch-processing arguments into a typed context object."""
-    if not args:
-        return BatchProcessingContext()
-    arg_count = len(args)
-    if arg_count == 1 and isinstance(args[0], BatchProcessingContext):
-        return args[0]
+def _validate_batch_processing_arg_count(arg_count: int) -> None:
+    """Validate the legacy batch-processing argument count."""
     if arg_count > _LEGACY_CONTEXT_ARG_LIMIT:
         raise TypeError("_process_thread_batch expected at most three context arguments")
 
-    from_date = _coerce_optional_str(args[0], "from_date")
+
+def _legacy_context_value(args: tuple[object, ...], index: int) -> object | None:
+    """Return one legacy batch-processing argument or ``None`` when absent."""
+    if len(args) > index:
+        return args[index]
+    return None
+
+
+def _build_legacy_batch_processing_context(args: tuple[object, ...]) -> BatchProcessingContext:
+    """Build a typed batch-processing context from the legacy call shape."""
+    from_date = _coerce_optional_str(_legacy_context_value(args, 0), "from_date")
     total_threads = _coerce_optional_int(
-        args[_TOTAL_THREADS_ARG_INDEX] if arg_count > _TOTAL_THREADS_ARG_INDEX else None,
+        _legacy_context_value(args, _TOTAL_THREADS_ARG_INDEX),
         "total_threads",
     )
     progress_callback = _coerce_progress_callback(
-        args[_PROGRESS_CALLBACK_ARG_INDEX]
-        if arg_count > _PROGRESS_CALLBACK_ARG_INDEX
-        else None
+        _legacy_context_value(args, _PROGRESS_CALLBACK_ARG_INDEX)
     )
     return BatchProcessingContext(
         from_date=from_date,
         total_threads=total_threads,
         progress_callback=progress_callback,
     )
+
+
+def _build_batch_processing_context(*args: object) -> BatchProcessingContext:
+    """Normalise batch-processing arguments into a typed context object."""
+    if not args:
+        return BatchProcessingContext()
+    if len(args) == 1 and isinstance(args[0], BatchProcessingContext):
+        return args[0]
+    _validate_batch_processing_arg_count(len(args))
+    return _build_legacy_batch_processing_context(args)
 
 
 def _require_response(response: object) -> ResponseProtocol:
@@ -322,9 +335,7 @@ def _extract_total_threads(thread_dict: ThreadPayload, total_threads: int | None
     return raw
 
 
-def _get_str_field(
-    thread_dict: ThreadPayload, field: str, default: str | None = None
-) -> str:
+def _get_str_field(thread_dict: ThreadPayload, field: str, default: str | None = None) -> str:
     """Extract a string field from a thread dict, raising on invalid type.
 
     Args:
@@ -802,9 +813,7 @@ class ThreadScraper:
         """
         context = _build_batch_processing_context(*context_args)
         for thread_dict in thread_data:
-            stopped = self._process_single_thread_entry(
-                thread_dict, threads, context.from_date
-            )
+            stopped = self._process_single_thread_entry(thread_dict, threads, context.from_date)
             if stopped:
                 return True
 
