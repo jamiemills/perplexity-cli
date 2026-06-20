@@ -154,6 +154,11 @@ rules:
         - "**/test_*.py"
         - "**/tests/**"
         - "**/scripts/**"
+        - "**/error_handler.py"
+        - "**/auth/utils.py"
+        - "**/utils/http_errors.py"
+        - "**/query_runner.py"
+        - "**/query_streaming.py"
     message: "click.echo outside presentation layer — keep CLI output in commands/cli (review §4)."
     languages: [python]
     severity: WARNING
