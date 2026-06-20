@@ -39,7 +39,7 @@ def load_or_prompt_token(
         click.echo(f"[ERROR] Authentication error: {e}", err=True)
         click.echo("\nPlease authenticate again with: pxcli auth login", err=True)
         logger.warning("Authentication state invalid during %s: %s", command_context, e)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
     if not token:
         click.echo("[ERROR] Not authenticated.", err=True)

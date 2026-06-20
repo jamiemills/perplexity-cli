@@ -147,7 +147,7 @@ def resolve_attachment_urls(
     except (FileNotFoundError, AttachmentError, ValueError) as e:
         click.echo(f"[ERROR] Failed to load attachments: {e}", err=True)
         logger.error("Attachment loading failed: %s", e)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 def _resolve_and_upload(
@@ -263,7 +263,7 @@ def _do_s3_upload(
     except AttachmentUploadError as e:
         click.echo(f"[ERROR] Failed to upload attachments: {e}", err=True)
         logger.error("Attachment upload failed: %s", e)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
     logger.debug("S3 upload complete: %s file(s) uploaded", len(attachment_urls))
     for i, url in enumerate(attachment_urls, 1):
@@ -284,7 +284,7 @@ def get_query_formatter(output_format: str | None) -> tuple[str, Formatter]:
         available = ", ".join(list_formatters())
         click.echo(f"Available formats: {available}", err=True)
         logger.error("Invalid formatter: %s", resolved_output_format)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
     return resolved_output_format, formatter
 
