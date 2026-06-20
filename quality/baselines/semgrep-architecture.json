@@ -1,7 +1,5 @@
 {
   "fingerprints": [
-    "src/perplexity_cli/api/client.py:494:retry-sleep-outside-canonical",
-    "src/perplexity_cli/attachments/upload_manager.py:406:http-client-outside-transport",
     "src/perplexity_cli/auth/oauth_handler.py:62:http-client-outside-transport",
     "src/perplexity_cli/auth/utils.py:40:click-echo-outside-presentation",
     "src/perplexity_cli/auth/utils.py:41:click-echo-outside-presentation",
@@ -48,8 +46,6 @@
     "src/perplexity_cli/query_streaming.py:217:sys-exit-outside-boundary",
     "src/perplexity_cli/query_streaming.py:239:click-echo-outside-presentation",
     "src/perplexity_cli/query_streaming.py:73:click-echo-outside-presentation",
-    "src/perplexity_cli/threads/scraper.py:169:ad-hoc-http-status-classification",
-    "src/perplexity_cli/threads/scraper.py:174:ad-hoc-http-status-classification",
     "src/perplexity_cli/utils/http_errors.py:101:click-echo-outside-presentation",
     "src/perplexity_cli/utils/http_errors.py:103:click-echo-outside-presentation",
     "src/perplexity_cli/utils/http_errors.py:105:sys-exit-outside-boundary",
