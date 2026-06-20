@@ -12,11 +12,12 @@ from tenacity import (
     wait_exponential,
 )
 
-from perplexity_cli.exit_codes import HTTP_STATUS_RATE_LIMITED, HTTP_STATUS_SERVER_ERROR_FLOOR
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
 )
+
+_HTTP_SERVER_ERROR_FLOOR = 500
 _RATE_LIMIT_STATUS: Final[int] = 429
 
 T = TypeVar("T")
@@ -96,7 +97,7 @@ def is_retryable_error(exception: Exception) -> bool:
 
     # HTTP 5xx errors are retryable
     if isinstance(exception, PerplexityHTTPStatusError):
-        if exception.response.status_code >= HTTP_STATUS_SERVER_ERROR_FLOOR:
+        if exception.response.status_code >= _HTTP_SERVER_ERROR_FLOOR:
             return True
         # Rate limiting (429) is retryable
         if exception.response.status_code == _RATE_LIMIT_STATUS:

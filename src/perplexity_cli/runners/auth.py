@@ -9,10 +9,9 @@ import click
 
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
-from perplexity_cli.exit_codes import ActionResult
 from perplexity_cli.runners._utils import resolve_json_flag
 from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationError
-from perplexity_cli.utils.http_errors import UnexpectedErrorContext, handle_unexpected_cli_error
+from perplexity_cli.utils.http_errors import handle_unexpected_cli_error
 from perplexity_cli.utils.logging import get_logger
 
 _AUTH_LOGIN_COMMAND = "pxcli auth login"
@@ -132,17 +131,13 @@ def _execute_auth(  # nosemgrep: too-many-parameters
     except (OSError, ConfigurationError) as e:
         if json_mode:
             handle_error(e, command=_AUTH_LOGIN_COMMAND, json_mode=True)
-        result: ActionResult = handle_unexpected_cli_error(
+        handle_unexpected_cli_error(
             e,
             logger,
-            ctx=UnexpectedErrorContext(
-                debug_mode=debug_mode,
-                user_message=f"[ERROR] Unexpected error: {e}",
-                log_message="Unexpected error during authentication",
-            ),
+            debug_mode=debug_mode,
+            user_message=f"[ERROR] Unexpected error: {e}",
+            log_message="Unexpected error during authentication",
         )
-        click.echo(result.message or "", err=True)
-        sys.exit(result.exit_code)
 
 
 def _resolve_logout_ctx(json_mode: bool | None) -> tuple[bool, bool]:
@@ -186,13 +181,9 @@ def run_logout_command(*, json_mode: bool | None = None) -> None:
         if resolved_json:
             handle_error(e, command="pxcli auth logout", json_mode=True)
         logger = get_logger()
-        result: ActionResult = handle_unexpected_cli_error(
+        handle_unexpected_cli_error(
             e,
             logger,
-            ctx=UnexpectedErrorContext(
-                user_message=f"[ERROR] Error during logout: {e}",
-                log_message="Error during logout",
-            ),
+            user_message=f"[ERROR] Error during logout: {e}",
+            log_message="Error during logout",
         )
-        click.echo(result.message or "", err=True)
-        sys.exit(result.exit_code)

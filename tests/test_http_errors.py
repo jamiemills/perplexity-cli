@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from perplexity_cli.utils.http_errors import UnexpectedErrorContext, handle_unexpected_cli_error
+from perplexity_cli.utils.http_errors import handle_unexpected_cli_error
 
 
 def test_handle_unexpected_cli_error_prints_debug_hint(capsys):
@@ -18,11 +18,9 @@ def test_handle_unexpected_cli_error_prints_debug_hint(capsys):
             handle_unexpected_cli_error(
                 error,
                 logger,
-                ctx=UnexpectedErrorContext(
-                    user_message="[ERROR] Failed.",
-                    log_message="Unexpected test error",
-                    include_debug_hint=True,
-                ),
+                user_message="[ERROR] Failed.",
+                log_message="Unexpected test error",
+                include_debug_hint=True,
             )
 
     captured = capsys.readouterr()
@@ -42,12 +40,10 @@ def test_handle_unexpected_cli_error_prints_traceback_in_debug_mode(capsys):
             handle_unexpected_cli_error(
                 error,
                 logger,
-                ctx=UnexpectedErrorContext(
-                    debug_mode=True,
-                    user_message="[ERROR] Failed.",
-                    log_message="Unexpected test error",
-                    include_debug_hint=True,
-                ),
+                debug_mode=True,
+                user_message="[ERROR] Failed.",
+                log_message="Unexpected test error",
+                include_debug_hint=True,
             )
 
     captured = capsys.readouterr()

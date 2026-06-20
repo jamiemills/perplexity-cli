@@ -13,7 +13,6 @@ import click
 
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
-from perplexity_cli.exit_codes import ActionResult
 
 if TYPE_CHECKING:
     from perplexity_cli.threads.exporter import ThreadRecord
@@ -25,11 +24,7 @@ from perplexity_cli.utils.exceptions import (
     RateLimitError,
     UpstreamSchemaError,
 )
-from perplexity_cli.utils.http_errors import (
-    UnexpectedErrorContext,
-    handle_http_error,
-    handle_unexpected_cli_error,
-)
+from perplexity_cli.utils.http_errors import handle_http_error, handle_unexpected_cli_error
 from perplexity_cli.utils.logging import get_logger
 
 _COMMAND = "pxcli threads export"
@@ -506,9 +501,7 @@ def _handle_http_status_error(  # nosemgrep: boolean-flag-argument
     if json_mode:
         handle_error(e, command=_COMMAND, json_mode=True)
     debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
-    result: ActionResult = handle_http_error(e, logger, debug_mode=debug_mode, context="during thread export")
-    click.echo(result.message or "", err=True)
-    sys.exit(result.exit_code)
+    handle_http_error(e, logger, debug_mode=debug_mode, context="during thread export")
 
 
 def _handle_unexpected_error(  # nosemgrep: boolean-flag-argument
@@ -521,17 +514,13 @@ def _handle_unexpected_error(  # nosemgrep: boolean-flag-argument
     if json_mode:
         handle_error(e, command=_COMMAND, json_mode=True)
     debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
-    result: ActionResult = handle_unexpected_cli_error(
+    handle_unexpected_cli_error(
         e,
         logger,
-        ctx=UnexpectedErrorContext(
-            debug_mode=debug_mode,
-            user_message=f"\n[ERROR] Unexpected error: {e}",
-            log_message="Unexpected error during export",
-        ),
+        debug_mode=debug_mode,
+        user_message=f"\n[ERROR] Unexpected error: {e}",
+        log_message="Unexpected error during export",
     )
-    click.echo(result.message or "", err=True)
-    sys.exit(result.exit_code)
 
 
 def _handle_auth_missing(  # nosemgrep: boolean-flag-argument
