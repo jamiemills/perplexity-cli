@@ -173,6 +173,9 @@ pre-push:
     - name: coupling-check
       run: make coupling-check
 
+    - name: quality-ratchets
+      run: make ratchets
+
     - name: mutate-diff
       run: make mutate-diff
 

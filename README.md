@@ -992,22 +992,41 @@ uv run lefthook install
 ### Testing
 
 ```bash
-uv run pytest                   # safe default test suite (1369 tests)
+uv run pytest                   # safe default test suite (1534 tests)
 uv run pytest -m security       # security tests only
-uv run pytest -m fuzz           # fuzz tests (17 atheris harnesses)
+uv run pytest -m fuzz           # fuzz tests (atheris harnesses)
 ```
 
 ### Makefile
 
 The `Makefile` is the single source of truth for all lint, test, and build commands.
 Both CI (GitHub Actions) and local git hooks (`lefthook`) delegate to it.
+The full catalogue of gates, what each defends against, and where it runs is
+documented in [`QUALITY_GATES.md`](QUALITY_GATES.md).
 
 ```bash
 make ci                         # run the full CI pipeline locally
-make lint                       # ruff + bandit + vulture + semgrep
-make test                       # pytest with coverage
+make check                      # all static checks (no tests): ruff, ty/pyright,
+                                #   bandit, vulture, radon, semgrep, arch/coupling,
+                                #   and the quality ratchets
+make lint                       # ruff check only
+make security                   # bandit + vulture
+make semgrep                    # custom clean-code + community rulesets
+make ratchets                   # baseline ratchets: block new/grown file-size,
+                                #   suppressions, complexity, strict-Any, structural findings
+make test                       # pytest (no coverage, fail-fast)
+make test-coverage              # pytest with per-module coverage enforcement (>=85%)
+make quality-plan OUT=...       # run every analyser, write a follow-up plan artefact
+make plan-check PLAN=...        # validate the latest plan against the prevention rules
 make build                      # build wheel and sdist
 ```
+
+Quality ratchets capture existing structural debt (documented in
+`.claude/thermo-nuclear-review.md`) as accepted baselines under
+`quality/baselines/`, then fail only on *new* or *grown* findings — so the
+failure modes cannot spread while the debt is paid down incrementally.
+`make quality-plan` runs the plan-compliance analyser on its own output, and
+`make plan-check` re-validates any plan before a build phase consumes it.
 
 ### Releasing
 

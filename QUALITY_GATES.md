@@ -96,6 +96,14 @@ The ordering matters:
 | Sonar reports | Pre-push, CI | Bandit JSON via custom script | `make sonar-reports` |
 | Architecture check | Pre-push, CI | custom AST analyser | `make arch-check` |
 | Coupling check | Pre-push, CI | custom AST analyser | `make coupling-check` |
+| Quality ratchets (file-size, suppressions, ruff-arch, pyright-strict, semgrep-arch) | Pre-push, CI | custom Python + baselines | `make ratchets`, `quality/baselines/` |
+| Schema-drift guard | Pre-push, CI (pytest) | custom AST test | `tests/test_schema_drift.py` |
+| Complexity trend tracking | On-demand | custom Python | `make metrics-track` |
+| Quality plan generator | On-demand | custom Python | `make quality-plan OUT=...` |
+| Plan compliance check | On-demand, OpenCode commit | custom Python | `make plan-check`, `PLAN=...` |
+| Plan compliance gate | OpenCode `git commit` | OpenCode plugin + subagent | `.opencode/plugins/plan-compliance-gate.ts` |
+| Real-time quality plugin | OpenCode session | OpenCode plugin | `.opencode/plugins/pxcli-quality.ts` |
+| Pre-push docs check | OpenCode `git push` | OpenCode plugin | `.opencode/plugins/pre-push-docs-check.ts` |
 | Diff mutation testing | Pre-push | `mutmut`, custom discovery | `make mutate-diff` |
 | Property tests | Pre-push, CI | `hypothesis` | `make test-property-push`, `make test-property-ci` |
 | Build, verify, smoke test | CI, release | `uv`, `twine`, custom scripts | `make build verify smoke-test` |
@@ -272,6 +280,27 @@ B or worse according to the Makefile target.
   review, test, and refactor.
 - **Why here:** MI is static and quick; it belongs next to cyclomatic complexity
   as a pre-commit design-health guard.
+
+### Complexity Trend Tracking
+
+**Summary:** `make metrics-track` records cyclomatic-complexity and
+maintainability-index trends over recent git revisions so architectural drift
+is visible over time.
+
+- **Tool used:** `scripts/track_metrics.py`, invoked by `make metrics-track`.
+- **What is analysed:** runs `radon cc` and `radon mi` across `src/` at each of
+  the recent commits and diffs the results.
+- **What it defends against:** gradual erosion that no single commit reveals —
+  a steadily rising CC or falling MI across a module signals accumulating
+  complexity even when every individual commit passed the radon gates.
+- **Why analyse this:** the radon gates are pass/fail at a point in time; trend
+  tracking adds the time dimension so regressions that stay just under the
+  threshold are still visible.
+- **Value provided:** a directional view of maintainability, complementing the
+  point-in-time `complexity-cc` / `complexity-mi` gates. It is informational
+  rather than blocking.
+- **Why here:** trend tracking needs git history and a full source scan, so it
+  is run on demand rather than in the pre-commit/pre-push fast paths.
 
 ### Semgrep Static Analysis
 
@@ -598,6 +627,121 @@ flags modules far from the main sequence.
 - **Why here:** the check needs whole-repository import context, so pre-push and
   CI are better than staged-file pre-commit.
 
+### Quality Ratchets
+
+**Summary:** Five baseline-ratchet gates capture the structural debt documented
+in `.claude/thermo-nuclear-review.md` as accepted, then fail only on *new* or
+*grown* findings — blocking the same failure modes from spreading without
+forcing a refactor of existing code.
+
+Each gate writes a JSON baseline under `quality/baselines/`. Refresh a baseline
+only after intentional fixes: `make <gate>` then `<gate> --update-baseline`.
+They run together via `make ratchets` and are prerequisites of `make check`,
+so they execute in pre-push (`lefthook.yml`) and CI (`make ci`).
+
+| Gate | Make target | Analyses | Defends against |
+|---|---|---|---|
+| File size | `make file-size` | `src/**/*.py` line counts vs a 1000-line cap | new or grown oversized files (review §1a) |
+| Suppressions | `make suppression-ratchet` | `# noqa` / `# nosemgrep` / `# nosec` / `# type: ignore` / `# pyright: ignore` counts | "just silence the linter" creep |
+| Ruff architecture | `make ruff-architecture` | `C901`, `PLR0913`, `PLR0904`, `PLR2004`, `ARG001/2` at CC<=5, max 4 params | god-functions and parameter explosions (review §5) |
+| Pyright strict | `make typecheck-strict-ratchet` | strict-mode `Any`/unknown diagnostics via a temp config | untyped-boundary erosion (review §3) |
+| Semgrep architecture | `make semgrep-architecture` | `.semgrep-architecture.yml` rules | TOCTOU, retry scatter, ad-hoc HTTP-status classification, function-local imports, `sys.exit`/`click.echo` outside canonical homes, getter side effects (review §2a/2c/4/6/7) |
+
+- **Why ratchets:** the existing debt is large (e.g. 682 strict diagnostics, 43
+  complexity findings). A hard gate would block all work until the debt is
+  cleared; a ratchet blocks growth and lets the baseline shrink only.
+- **Schema-drift guard:** `tests/test_schema_drift.py` complements the ratchets
+  by failing if a new hand-written command-result schema dict appears;
+  schemas must derive from Pydantic models via `model_json_schema()` (review §1b).
+
+### Quality Plan Generator
+
+**Summary:** `make quality-plan` runs every analyser in one pass and writes a
+deterministic Markdown plan to `.claude/plans/quality-plan.md` (override with
+`OUT=...`).
+
+- **Tool used:** `scripts/generate_quality_plan.py`.
+- **What it produces:** a summary of new regressions, an `Analyzer Compliance
+  Review` checklist (per-gate PASS/FAIL), a `Findings By Analyzer` section, a
+  `Proposed Build-Phase Work Items` list, and a `Generated Plan Self-Review`.
+- **What it defends against:** a later build phase rediscovering or
+  misinterpreting the architecture rules. The plan carries enough metadata to
+  act without rerunning discovery.
+- **Consumption rule:** a build phase must not consume the plan unless both the
+  `Analyzer Compliance Review` and the `Generated Plan Self-Review` are `PASS`.
+  Pass `--fail-on-violations` to exit non-zero when any gate reports a
+  regression.
+
+### Plan Compliance Check
+
+**Summary:** `make plan-check` is the post-plan analyser — it validates a
+produced plan against the prevention rules before any build phase consumes it.
+
+- **Tool used:** `scripts/check_plan_compliance.py` (default: the newest plan
+  under `.claude/plans/`; override with `PLAN=path` or `--plan PATH`).
+- **What is analysed:** the plan's `Analyzer Compliance Review` section. Every
+  required rule category (file-size, type boundaries, complexity/parameters,
+  layering/imports, structural patterns, suppressions) must be present and
+  marked `[PASS]`, with a consistent `Result:` line and a self-review section.
+- **What it defends against:** a plan that leaves a rule category unaddressed,
+  marks one `[FAIL]`, or is internally inconsistent proceeding to a build phase.
+- **Value provided:** the closing loop on the prevention pipeline. The
+  `quality-plan` generator runs this same analyser on its own output to produce
+  a real `Generated Plan Self-Review`; `make plan-check` re-runs it standalone,
+  and the `plan-compliance-gate` OpenCode plugin enforces it at `git commit`.
+- **Why here:** runs after a plan exists, on demand or at commit time.
+
+### Plan Compliance Gate
+
+**Summary:** the `plan-compliance-gate` OpenCode plugin guards `git commit` with
+the Analyzer Compliance Review.
+
+- **Tool used:** `.opencode/plugins/plan-compliance-gate.ts`, plus the
+  read-only `quality-plan-reviewer` subagent (`.opencode/agents/`).
+- **What it defends against:** a plan that violates the prevention rules
+  proceeding to implementation. If the latest plan under `.claude/plans/`
+  reports `Result: FAIL`, the commit is blocked until the
+  `quality-plan-reviewer` subagent re-reviews it.
+
+### Real-time Quality Plugin (pxcli-quality)
+
+**Summary:** the `pxcli-quality` OpenCode plugin gives immediate, in-editor
+feedback during development rather than only at commit/push time.
+
+- **Tool used:** `.opencode/plugins/pxcli-quality.ts`.
+- **What it does:** (1) injects the project Python coding conventions into the
+  agent system prompt on every interaction; (2) after each Python file
+  write/edit, runs `ruff`, `radon`, `bandit`, and `ty` on that file and appends
+  the findings to the tool output so they are visible immediately; (3) after a
+  `pyproject.toml`/requirements edit, runs a `safety` dependency scan; (4) on
+  session idle, runs `semgrep` and `pyright` across all files modified in the
+  session and logs the summary.
+- **What it defends against:** introducing a finding and compounding it with
+  further edits before the next gate runs. It shortens the feedback loop from
+  minutes (pre-commit) to seconds.
+- **Value provided:** real-time guardrails that mirror the pre-commit Stage 1
+  analysers, so issues are surfaced while the edit context is still loaded.
+- **Why here:** runs only inside an OpenCode session; it complements (does not
+  replace) the Makefile/lefthook gates.
+
+### Pre-push Docs Check Plugin
+
+**Summary:** the `pre-push-docs-check` OpenCode plugin reminds the contributor
+to keep CLI help text and `README.md` consistent with code changes before a
+push.
+
+- **Tool used:** `.opencode/plugins/pre-push-docs-check.ts`.
+- **What it does:** intercepts the first `git push` of a cycle and blocks it
+  with a checklist (CLI `--help` strings and README examples must reflect any
+  changed flags, commands, or behaviour). Retrying the push passes through.
+- **What it defends against:** documentation drift between the CLI surface and
+  the README/help text, which the static analysers cannot detect.
+- **Value provided:** a human-in-the-loop reminder at the natural checkpoint
+  (push), with a one-tap bypass so it never blocks an intentional push twice.
+- **Why here:** lives in the OpenCode session because it is a reminder, not a
+  deterministic gate; the deterministic push-time gates (gitleaks,
+  agent-check, coverage) remain in `lefthook.yml`.
+
 ### Diff-scoped Mutation Testing
 
 **Summary:** Mutation testing changes source code in small ways and expects tests
@@ -741,7 +885,9 @@ This prevents local hooks, manual commands, and GitHub Actions from silently
 diverging.
 
 - `make check` runs static checks: `format-check`, `lint`, `typecheck-all`,
-  `security`, `complexity`, `semgrep`, `arch-check`, and `coupling-check`.
+  `security`, `complexity`, `semgrep`, `arch-check`, `coupling-check`, and the
+  `ratchets` group (file-size, suppressions, ruff-architecture,
+  typecheck-strict-ratchet, semgrep-architecture).
 - `make ci` runs `check`, coverage, fuzzing, Safety, Sonar reports, CI-depth
   property tests, build, verify, and smoke test.
 - Stage-specific hooks remain inline in `lefthook.yml` only when they need Git

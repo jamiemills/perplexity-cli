@@ -23,6 +23,7 @@ coverage.xml
 htmlcov/
 .pytest_cache/
 .mutmut-cache
+.pyright.strict.tmp.json
 
 # Distribution / packaging
 dist/

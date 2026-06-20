@@ -233,8 +233,12 @@ safety:  ## Run safety dependency scan
 		echo "Set SAFETY_API_KEY or install infisical (brew install infisical)."; \
 	fi
 
-infisical-scan:  ## Scan uncommitted changes for secrets
-	infisical scan git-changes --verbose --exit-code 1
+infisical-scan:  ## Scan uncommitted changes for secrets (skips when infisical CLI is absent)
+	@if command -v infisical >/dev/null 2>&1; then \
+		infisical scan git-changes --verbose --exit-code 1; \
+	else \
+		echo "Infisical scan skipped: infisical CLI not installed (brew install infisical)."; \
+	fi
 
 # ---------------------------------------------------------------------------
 # Build and verify
@@ -284,7 +288,7 @@ endif
 
 .PHONY: check ci agent-check agent-check-push agent-check-no-tests
 
-check: format-check lint typecheck-all security complexity semgrep arch-check coupling-check  ## Run all static checks (no tests)
+check: format-check lint typecheck-all security complexity semgrep arch-check coupling-check ratchets  ## Run all static checks (no tests)
 
 agent-check:  ## Run all pre-commit analysers in parallel with unified output (for agents/CI)
 	uv run python scripts/agent_check.py pre-commit
@@ -305,6 +309,40 @@ ci:  ## Full CI pipeline
 	$(MAKE) build
 	$(MAKE) verify
 	$(MAKE) smoke-test
+
+# ---------------------------------------------------------------------------
+# Quality ratchets
+#
+# Each gate captures current debt in quality/baselines/*.json and fails only on
+# NEW or grown findings, blocking the failure modes in
+# .claude/thermo-nuclear-review.md without forcing a refactor now.  Refresh a
+# baseline only after intentional fixes: `<gate> --update-baseline`.
+# ---------------------------------------------------------------------------
+
+.PHONY: file-size suppression-ratchet ruff-architecture typecheck-strict-ratchet semgrep-architecture quality-plan
+
+file-size:  ## Ratchet: block new/grown oversized source files (cap 1000 lines)
+	uv run python scripts/check_file_size.py
+
+suppression-ratchet:  ## Ratchet: block new/grown inline suppressions
+	uv run python scripts/check_suppressions.py
+
+ruff-architecture:  ## Ratchet: block new complexity/parameter findings (C901/PLR091*/ARG)
+	uv run python scripts/check_ruff_architecture.py
+
+typecheck-strict-ratchet:  ## Ratchet: block new pyright strict (Any/unknown) diagnostics
+	uv run python scripts/check_pyright_strict.py
+
+semgrep-architecture:  ## Ratchet: block new structural findings (TOCTOU/retry/layering)
+	uv run python scripts/check_semgrep_architecture.py
+
+quality-plan:  ## Run every analyser and write a follow-up plan (OUT=.claude/plans/quality-plan.md)
+	uv run python scripts/generate_quality_plan.py --out "$${OUT:-.claude/plans/quality-plan.md}"
+
+plan-check:  ## Validate the latest produced plan against the prevention rules (PLAN=path)
+	uv run python scripts/check_plan_compliance.py $${PLAN:+--plan $$PLAN}
+
+ratchets: file-size suppression-ratchet ruff-architecture typecheck-strict-ratchet semgrep-architecture  ## Run all quality ratchets
 
 # ---------------------------------------------------------------------------
 # Architecture

@@ -1,0 +1,159 @@
+# =============================================================================
+# .semgrep-architecture.yml — structural / architectural prevention rules.
+#
+# These rules target the failure modes documented in
+# .claude/thermo-nuclear-review.md (sections 2a/2b/2c/4/6/7).  They are kept
+# separate from .semgrep.yml so the main `make semgrep` gate stays green;
+# they are run by scripts/check_semgrep_architecture.py in ratchet mode, which
+# baselines the current findings and blocks only NEW occurrences.  That lets
+# the repo record existing architectural debt as accepted while preventing the
+# same patterns from spreading.
+#
+# Existing matches are captured in quality/baselines/semgrep-architecture.json.
+# =============================================================================
+
+rules:
+  # ── §6: tangled dependency graph ────────────────────────────────────────
+  - id: function-local-import
+    patterns:
+      - pattern-inside: |
+          def $F(...):
+              ...
+      - pattern-either:
+          - pattern: import $M
+          - pattern: from $M import ...
+    paths:
+      exclude:
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+        - "**/conftest.py"
+    message: "Import inside function — move to module top level or behind TYPE_CHECKING (review §6)."
+    languages: [python]
+    severity: WARNING
+
+  # ── §2a: retry backoff scattered outside the canonical retry module ─────
+  - id: retry-sleep-outside-canonical
+    pattern: time.sleep(...)
+    paths:
+      exclude:
+        - "**/utils/retry.py"
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "time.sleep outside the canonical retry module — centralise backoff (review §2a)."
+    languages: [python]
+    severity: WARNING
+
+  # ── §4: divergent HTTP-status classification ────────────────────────────
+  - id: ad-hoc-http-status-classification
+    pattern-either:
+      - pattern: $STATUS == 401
+      - pattern: $STATUS == 403
+      - pattern: $STATUS == 429
+      - pattern: $STATUS == 500
+      - pattern: $STATUS == 502
+      - pattern: $STATUS == 503
+    paths:
+      exclude:
+        - "**/utils/http_errors.py"
+        - "**/utils/http_headers.py"
+        - "**/api/client.py"
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "Ad-hoc HTTP status classification — route through the canonical error policy (review §4)."
+    languages: [python]
+    severity: WARNING
+
+  # ── §2b: process control leaking out of the CLI/error boundary ──────────
+  - id: sys-exit-outside-boundary
+    pattern: sys.exit(...)
+    paths:
+      exclude:
+        - "**/cli.py"
+        - "**/commands.py"
+        - "**/completion_commands.py"
+        - "**/error_handler.py"
+        - "**/runners/**"
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "sys.exit outside an approved CLI/error boundary — centralise process control (review §2b)."
+    languages: [python]
+    severity: WARNING
+
+  # ── §6: HTTP-client construction outside the transport layer ────────────
+  - id: http-client-outside-transport
+    pattern-either:
+      - pattern: httpx.AsyncClient(...)
+      - pattern: httpx.Client(...)
+      - pattern: curl_cffi.requests.Session(...)
+      - pattern: urllib.request.urlopen(...)
+    paths:
+      exclude:
+        - "**/api/**"
+        - "**/utils/session_factory.py"
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "HTTP client construction outside transport layer — confine to api/ or session factory (review §6)."
+    languages: [python]
+    severity: WARNING
+
+  # ── §2c: TOCTOU — open(w) then os.chmod ────────────────────────────────
+  - id: write-then-chmod-toctou
+    patterns:
+      - pattern: os.chmod($PATH, ...)
+      - pattern-inside: |
+          def $F(...):
+              ...
+              open($PATH, "w", ...)
+              ...
+              os.chmod($PATH, ...)
+              ...
+    paths:
+      exclude:
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "TOCTOU: open(w) then os.chmod — use os.open with mode or temp+replace (review §2c)."
+    languages: [python]
+    severity: WARNING
+
+  # ── §7: getter with side effects ───────────────────────────────────────
+  - id: getter-with-side-effects
+    patterns:
+      - pattern-inside: |
+          def get_$NAME(...):
+              ...
+      - pattern-either:
+          - pattern: $PATH.mkdir(...)
+          - pattern: os.makedirs(...)
+          - pattern: $PATH.write_text(...)
+          - pattern: $PATH.touch()
+    paths:
+      exclude:
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "Getter with side effects — get_* must not create/write state (review §7)."
+    languages: [python]
+    severity: WARNING
+
+  # ── §4: presentation leaking into non-presentation layers ───────────────
+  - id: click-echo-outside-presentation
+    pattern: click.echo(...)
+    paths:
+      exclude:
+        - "**/cli.py"
+        - "**/commands.py"
+        - "**/completion_commands.py"
+        - "**/formatting/**"
+        - "**/runners/**"
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "click.echo outside presentation layer — keep CLI output in commands/cli (review §4)."
+    languages: [python]
+    severity: WARNING
