@@ -18,13 +18,8 @@ project's four-argument ceiling.
 from __future__ import annotations
 
 import importlib
-import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-import click
-
-from perplexity_cli.exit_codes import ActionResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,13 +64,20 @@ def run_export_threads_command(ctx_obj: object, request: ExportRequest) -> None:
     )
 
 
-def run_query_command(ctx_obj: dict[str, object] | None, query_text: str, options: QueryOptions) -> None:
+def run_query_command(
+    ctx_obj: dict[str, object] | None,
+    query_text: str,
+    options: QueryOptions,
+) -> None:
+    """Delegate to :func:`perplexity_cli.query_runner.run_query_command`."""
     query_runner = importlib.import_module("perplexity_cli.query_runner")
-    result: ActionResult = query_runner.run_query_command(ctx_obj, query_text, options.output_format, options.strip_references, options.stream, options.attachments, model_preference=options.model_preference, request_param_overrides=options.request_param_overrides, output_fn=click.echo)
-    if result.message:
-        if result.stream_to_stderr:
-            click.echo(result.message, err=True)
-        else:
-            click.echo(result.message)
-    if result.exit_code != 0:
-        sys.exit(result.exit_code)
+    query_runner.run_query_command(
+        ctx_obj,
+        query_text,
+        options.output_format,
+        options.strip_references,
+        options.stream,
+        options.attachments,
+        model_preference=options.model_preference,
+        request_param_overrides=options.request_param_overrides,
+    )

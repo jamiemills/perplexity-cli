@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from perplexity_cli.utils.attachment_models import FileAttachment
 
 from perplexity_cli.exit_codes import ActionResult
-from perplexity_cli.exit_codes import ActionResult
 from perplexity_cli.api.models import QueryInput, TraceContext
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.formatting.context import OutputOptions, RenderContext
@@ -564,10 +563,7 @@ def run_query_command(
     token, cookies = load_token_optional(tm, logger)
     auth = AuthContext(token=token, cookies=cookies)
     try:
-        try:
         attachment_urls = resolve_attachment_urls(query_text, attachments_str, auth)
-    except _FatalError as e:
-        return e.result
     except _FatalError as e:
         return e.result
 
