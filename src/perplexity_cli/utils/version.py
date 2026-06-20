@@ -1,9 +1,17 @@
 """Version management utilities."""
 
+from __future__ import annotations
+
 import tomllib
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import TypeGuard
+
+
+def _is_str_dict(obj: object) -> TypeGuard[dict[str, object]]:
+    """Narrow an object to ``dict[str, object]`` for pyright strict mode."""
+    return isinstance(obj, dict)
 
 
 def _get_pyproject_path() -> Path:
@@ -26,7 +34,7 @@ def _read_pyproject_version() -> str | None:
     return _extract_version_from_data(parsed_toml)
 
 
-def _extract_version_from_data(parsed_toml: dict) -> str | None:
+def _extract_version_from_data(parsed_toml: dict[str, object]) -> str | None:
     """Extract the version string from parsed pyproject data.
 
     Args:
@@ -36,7 +44,7 @@ def _extract_version_from_data(parsed_toml: dict) -> str | None:
         Version string if found and valid, None otherwise.
     """
     project = parsed_toml.get("project")
-    if not isinstance(project, dict):
+    if not _is_str_dict(project):
         return None
     package_version = project.get("version")
     if isinstance(package_version, str) and package_version:

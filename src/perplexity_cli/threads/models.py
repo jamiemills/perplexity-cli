@@ -1,7 +1,10 @@
 """Pydantic models for thread cache management."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypeGuard
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -71,11 +74,14 @@ class CacheFormat(BaseModel):
         return v
 
 
-def _validate_thread_dict(thread: object) -> None:
+def _validate_thread_dict(thread: object) -> TypeGuard[dict[str, object]]:
     """Validate that a single thread entry has the required structure.
 
     Args:
         thread: Item from the threads list to validate.
+
+    Returns:
+        True when the thread is a valid dictionary with required fields.
 
     Raises:
         ValueError: If the thread is not a dict or lacks required fields.
@@ -86,6 +92,7 @@ def _validate_thread_dict(thread: object) -> None:
         raise ValueError("Each thread must have a 'url' field")
     if "title" not in thread:
         raise ValueError("Each thread must have a 'title' field")
+    return True
 
 
 class CacheContent(BaseModel):
@@ -93,11 +100,11 @@ class CacheContent(BaseModel):
 
     version: int = Field(default=1, ge=1, le=1)
     metadata: CacheMetadata = Field(...)
-    threads: list[dict] = Field(default_factory=list)
+    threads: list[dict[str, object]] = Field(default_factory=lambda: [])
 
     @field_validator("threads")
     @classmethod
-    def validate_threads(cls, v: list) -> list:
+    def validate_threads(cls: type[CacheContent], v: list[dict[str, object]]) -> list[dict[str, object]]:
         """Validate threads list items have required structure."""
         for thread in v:
             _validate_thread_dict(thread)
