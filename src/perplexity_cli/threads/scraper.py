@@ -8,26 +8,12 @@ for efficient repeated exports.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, Protocol, TypedDict, TypeGuard, Unpack, runtime_checkable
 
 from dateutil import parser as dateutil_parser
 
-try:
-    from curl_cffi.requests.exceptions import RequestException
-
-    _CURL_CFFI_AVAILABLE = True
-except ImportError:  # pragma: no cover
-    RequestException = Exception  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
-    _CURL_CFFI_AVAILABLE = False
-
-if TYPE_CHECKING:
-    from curl_cffi.requests import AsyncSession
-
-from perplexity_cli.threads.cache_manager import ThreadCacheManager
-from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
-from perplexity_cli.threads.exporter import ThreadRecord
-from perplexity_cli.threads.utils import convert_cache_dicts_to_thread_records
 from perplexity_cli.utils.config import get_perplexity_base_url, get_thread_list_url
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
@@ -37,19 +23,244 @@ from perplexity_cli.utils.exceptions import (
     RateLimitError,
     UpstreamSchemaError,
 )
-from perplexity_cli.utils.http_errors import raise_http_status_error
+from perplexity_cli.utils.http_errors import classify_http_error, raise_http_status_error
 from perplexity_cli.utils.logging import get_logger
-from perplexity_cli.utils.rate_limiter import RateLimiter
 from perplexity_cli.utils.session_token import extract_session_token
-from perplexity_cli.utils.upstream_contracts import parse_thread_list_payload
+from perplexity_cli.utils.upstream_contracts import (
+    parse_thread_list_payload,
+    require_list,
+    require_mapping,
+)
 from perplexity_cli.utils.version import get_api_version
+
+if TYPE_CHECKING:
+    from curl_cffi.requests import AsyncSession
+    from curl_cffi.requests.models import Response
+
+    from perplexity_cli.threads.exporter import ThreadRecord
+
+
+def _load_request_exception_type() -> tuple[type[Exception], bool]:
+    """Load the curl_cffi network exception type when available."""
+    try:
+        from curl_cffi.requests.exceptions import RequestException
+
+        return RequestException, True
+    except ImportError:  # pragma: no cover
+        return Exception, False
+
+
+_curl_request_exception_type, _CURL_CFFI_AVAILABLE = _load_request_exception_type()
 
 # ---------------------------------------------------------------------------
 # Module-level utility functions (extracted from ThreadScraper)
 # ---------------------------------------------------------------------------
 
+_DEFAULT_TIMEOUT_SECONDS: Final = 30
+_THREAD_PAGE_SIZE: Final = 100
+_LEGACY_CONTEXT_ARG_LIMIT: Final = 3
+_TOTAL_THREADS_ARG_INDEX: Final = 1
+_PROGRESS_CALLBACK_ARG_INDEX: Final = 2
 
-def _create_async_session(timeout: int = 30) -> AsyncSession:
+
+class ProgressCallback(Protocol):
+    """Protocol for scrape progress notifications."""
+
+    def __call__(self, current: int, total: int) -> None:
+        """Report the current and total thread counts."""
+
+
+ThreadPayload = dict[str, object]
+
+
+class RateLimiterProtocol(Protocol):
+    """Minimal rate-limiter interface used by the scraper."""
+
+    async def acquire(self) -> float:
+        """Wait for permission to issue the next request."""
+        ...
+
+
+class ThreadCacheManagerProtocol(Protocol):
+    """Minimal cache-manager interface used by the scraper."""
+
+    def load_cache(self) -> dict[str, object] | None:
+        """Load cached thread data if available."""
+        ...
+
+    def requires_fresh_data(
+        self, from_date: str | None, to_date: str | None
+    ) -> tuple[bool, str | None, str | None]:
+        """Return whether the requested range requires fresh API data."""
+        ...
+
+    def save_cache(self, threads: list[ThreadRecord]) -> None:
+        """Persist the supplied thread records to cache."""
+        ...
+
+    def merge_threads(
+        self, cached_threads: list[ThreadRecord], fetched_threads: list[ThreadRecord]
+    ) -> list[ThreadRecord]:
+        """Merge cached and freshly fetched thread records."""
+        ...
+
+
+@runtime_checkable
+class ResponseProtocol(Protocol):
+    """Minimal response interface used by the scraper."""
+
+    ok: bool
+    url: object
+    status_code: int
+    headers: object
+    content: object
+
+    def json(self) -> object:
+        """Return the decoded JSON payload."""
+        ...
+
+
+def _is_response_protocol(response: object) -> TypeGuard[ResponseProtocol]:
+    """Return True when an object exposes the response attributes we rely on."""
+    ok_value = getattr(response, "ok", None)
+    json_method = getattr(response, "json", None)
+    if not isinstance(ok_value, bool) or not callable(json_method):
+        return False
+    if ok_value:
+        return True
+    return isinstance(getattr(response, "status_code", None), int)
+
+
+def _get_cache_str_field(thread_dict: dict[str, object], field: str) -> str:
+    """Extract a required string field from a cached thread entry."""
+    value = thread_dict.get(field)
+    if not isinstance(value, str):
+        raise UpstreamSchemaError(f"Malformed cached thread record: missing {field}")
+    return value
+
+
+def _convert_cache_thread_dicts(thread_dicts: list[dict[str, object]]) -> list[ThreadRecord]:
+    """Proxy cache conversion through the shared thread utility helper."""
+    from perplexity_cli.threads.exporter import ThreadRecord
+
+    records: list[ThreadRecord] = []
+    for thread_dict in thread_dicts:
+        records.append(
+            ThreadRecord(
+                title=_get_cache_str_field(thread_dict, "title"),
+                url=_get_cache_str_field(thread_dict, "url"),
+                created_at=_get_cache_str_field(thread_dict, "created_at"),
+            )
+        )
+    return records
+
+
+def _extract_cache_thread_dicts(raw_threads: object) -> list[dict[str, object]]:
+    """Validate and normalise cached thread entries to string-key dictionaries."""
+    raw_entries = require_list(raw_threads, "Malformed cached thread records")
+    validated_entries: list[dict[str, object]] = []
+    for entry_obj in raw_entries:
+        entry_mapping = require_mapping(entry_obj, "Malformed cached thread records")
+        validated_entry: dict[str, object] = {}
+        for key, value in entry_mapping.items():
+            validated_entry[key] = value
+        validated_entries.append(validated_entry)
+
+    return validated_entries
+
+
+class ThreadScraperOptions(TypedDict, total=False):
+    """Optional constructor keyword arguments for ``ThreadScraper``."""
+
+    cookies: dict[str, str] | None
+    rate_limiter: RateLimiterProtocol | None
+    cache_manager: ThreadCacheManagerProtocol | None
+    force_refresh: bool
+
+
+@dataclass(frozen=True, slots=True)
+class FetchMergeContext:
+    """Parameters required to fetch fresh threads and merge them into cache."""
+
+    from_date: str | None
+    to_date: str | None
+    fetch_from: str | None
+    cached_threads: list[ThreadRecord]
+    progress_callback: ProgressCallback | None
+
+
+@dataclass(frozen=True, slots=True)
+class BatchProcessingContext:
+    """Per-batch state for thread payload processing."""
+
+    from_date: str | None = None
+    total_threads: int | None = None
+    progress_callback: ProgressCallback | None = None
+
+
+def _is_progress_callback(value: object) -> TypeGuard[ProgressCallback]:
+    """Return True when a runtime object can be used as a progress callback."""
+    return callable(value)
+
+
+def _coerce_optional_str(value: object, field_name: str) -> str | None:
+    """Validate an optional string argument parsed from a legacy call shape."""
+    if value is None or isinstance(value, str):
+        return value
+    raise TypeError(f"{field_name} must be a string or None")
+
+
+def _coerce_optional_int(value: object, field_name: str) -> int | None:
+    """Validate an optional integer argument parsed from a legacy call shape."""
+    if value is None or isinstance(value, int):
+        return value
+    raise TypeError(f"{field_name} must be an integer or None")
+
+
+def _coerce_progress_callback(value: object) -> ProgressCallback | None:
+    """Validate an optional progress callback parsed from a legacy call shape."""
+    if value is None:
+        return None
+    if _is_progress_callback(value):
+        return value
+    raise TypeError("progress_callback must be callable or None")
+
+
+def _build_batch_processing_context(*args: object) -> BatchProcessingContext:
+    """Normalise batch-processing arguments into a typed context object."""
+    if not args:
+        return BatchProcessingContext()
+    arg_count = len(args)
+    if arg_count == 1 and isinstance(args[0], BatchProcessingContext):
+        return args[0]
+    if arg_count > _LEGACY_CONTEXT_ARG_LIMIT:
+        raise TypeError("_process_thread_batch expected at most three context arguments")
+
+    from_date = _coerce_optional_str(args[0], "from_date")
+    total_threads = _coerce_optional_int(
+        args[_TOTAL_THREADS_ARG_INDEX] if arg_count > _TOTAL_THREADS_ARG_INDEX else None,
+        "total_threads",
+    )
+    progress_callback = _coerce_progress_callback(
+        args[_PROGRESS_CALLBACK_ARG_INDEX]
+        if arg_count > _PROGRESS_CALLBACK_ARG_INDEX
+        else None
+    )
+    return BatchProcessingContext(
+        from_date=from_date,
+        total_threads=total_threads,
+        progress_callback=progress_callback,
+    )
+
+
+def _require_response(response: object) -> ResponseProtocol:
+    """Validate that an upstream response matches the scraper protocol."""
+    if isinstance(response, ResponseProtocol) or _is_response_protocol(response):
+        return response
+    raise UpstreamSchemaError("Malformed HTTP response object from upstream session")
+
+
+def _create_async_session(timeout: int = _DEFAULT_TIMEOUT_SECONDS) -> AsyncSession[Response]:
     """Create an AsyncSession with Chrome TLS impersonation.
 
     Args:
@@ -61,9 +272,26 @@ def _create_async_session(timeout: int = 30) -> AsyncSession:
     Raises:
         RuntimeError: If curl_cffi is not installed.
     """
-    from perplexity_cli.utils.session_factory import create_async_session
+    if not _CURL_CFFI_AVAILABLE:
+        raise RuntimeError("curl_cffi is required but could not be imported")
 
-    return create_async_session(timeout=timeout)
+    from perplexity_cli.utils.session_factory import AsyncSession
+
+    return AsyncSession(impersonate="chrome", timeout=timeout)
+
+
+def _is_in_date_range(dt: datetime, from_date: str | None, to_date: str | None) -> bool:
+    """Proxy the date-range check through the shared date parser."""
+    from perplexity_cli.threads.date_parser import is_in_date_range
+
+    return is_in_date_range(dt, from_date, to_date)
+
+
+def _to_iso8601(dt: datetime) -> str:
+    """Proxy ISO-8601 formatting through the shared date parser."""
+    from perplexity_cli.threads.date_parser import to_iso8601
+
+    return to_iso8601(dt)
 
 
 def _validate_date_params(from_date: str | None, to_date: str | None) -> None:
@@ -84,19 +312,8 @@ def _validate_date_params(from_date: str | None, to_date: str | None) -> None:
                 raise ValueError(f"Invalid {label} '{value}': expected YYYY-MM-DD format") from exc
 
 
-def _extract_total_threads(thread_dict: dict, total_threads: int | None) -> int:
-    """Extract the total_threads count from an API response entry.
-
-    Args:
-        thread_dict: A single thread dictionary from the API response.
-        total_threads: Previously known total, or None if not yet determined.
-
-    Returns:
-        The total_threads value (unchanged if already known).
-
-    Raises:
-        UpstreamSchemaError: If total_threads value is not an integer.
-    """
+def _extract_total_threads(thread_dict: ThreadPayload, total_threads: int | None) -> int:
+    """Extract the total thread count from an API response entry."""
     if total_threads is not None:
         return total_threads
     raw = thread_dict.get("total_threads", 0)
@@ -105,7 +322,9 @@ def _extract_total_threads(thread_dict: dict, total_threads: int | None) -> int:
     return raw
 
 
-def _get_str_field(thread_dict: dict, field: str, default: str | None = None) -> str:
+def _get_str_field(
+    thread_dict: ThreadPayload, field: str, default: str | None = None
+) -> str:
     """Extract a string field from a thread dict, raising on invalid type.
 
     Args:
@@ -126,7 +345,7 @@ def _get_str_field(thread_dict: dict, field: str, default: str | None = None) ->
 
 
 def _parse_single_thread(
-    thread_dict: dict, from_date: str | None
+    thread_dict: ThreadPayload, from_date: str | None
 ) -> tuple[ThreadRecord | None, bool]:
     """Parse a single thread dictionary into a ThreadRecord.
 
@@ -141,18 +360,24 @@ def _parse_single_thread(
     Raises:
         UpstreamSchemaError: If required fields are malformed.
     """
+    from perplexity_cli.threads.exporter import ThreadRecord
+
     timestamp_str = _get_str_field(thread_dict, "last_query_datetime")
     if not timestamp_str:
         raise UpstreamSchemaError("Malformed thread timestamp in upstream API response")
 
     dt = datetime.fromisoformat(timestamp_str)
-    if from_date and not is_in_date_range(dt, from_date, None):
+    if from_date and not _is_in_date_range(dt, from_date, None):
         return None, True
 
     slug = _get_str_field(thread_dict, "slug", "")
     title = _get_str_field(thread_dict, "title", "Untitled")
     url = f"{get_perplexity_base_url()}/search/{slug}"
-    return ThreadRecord(title=title, url=url, created_at=to_iso8601(dt)), False
+    return ThreadRecord(
+        title=title,
+        url=url,
+        created_at=_to_iso8601(dt),
+    ), False
 
 
 def _handle_http_error(e: PerplexityHTTPStatusError) -> None:
@@ -166,19 +391,22 @@ def _handle_http_error(e: PerplexityHTTPStatusError) -> None:
         RateLimitError: If status is 429.
         PerplexityHTTPStatusError: For all other statuses.
     """
-    if e.response.status_code == 401:
+    from perplexity_cli.envelope import ErrorCode
+
+    error_code, _, _ = classify_http_error(e)
+    if error_code == ErrorCode.authentication_required:
         raise AuthenticationError(
             "Authentication failed. Token may be expired. "
             "Please re-authenticate with: perplexity-cli auth"
         ) from e
-    if e.response.status_code == 429:
+    if error_code == ErrorCode.rate_limited:
         raise RateLimitError(
             "Rate limit exceeded while fetching threads. Please try again later."
         ) from e
     raise
 
 
-def _has_more_pages(thread_data: list[dict]) -> bool:
+def _has_more_pages(thread_data: list[ThreadPayload]) -> bool:
     """Check whether the API response indicates more pages are available.
 
     Args:
@@ -215,23 +443,22 @@ class ThreadScraper:
     thread metadata including creation timestamps using the stored auth token.
     """
 
-    def __init__(  # nosemgrep: boolean-flag-argument
+    def __init__(
         self,
         token: str,
-        cookies: dict[str, str] | None = None,
-        rate_limiter: RateLimiter | None = None,
-        cache_manager: ThreadCacheManager | None = None,
-        force_refresh: bool = False,
+        **options: Unpack[ThreadScraperOptions],
     ) -> None:
         """Initialise thread scraper.
 
         Args:
             token: Authentication token (from TokenManager)
-            cookies: Optional browser cookies for Cloudflare/session reuse
-            rate_limiter: Optional RateLimiter instance for request throttling
-            cache_manager: Optional ThreadCacheManager for caching threads
-            force_refresh: If True, ignore cache and fetch fresh data from API
+            **options: Optional browser cookies, rate limiter, cache manager,
+                and force-refresh flag.
         """
+        cookies = options.get("cookies")
+        rate_limiter = options.get("rate_limiter")
+        cache_manager = options.get("cache_manager")
+        force_refresh = options.get("force_refresh", False)
         self.token = token
         self.cookies = cookies
         self.rate_limiter = rate_limiter
@@ -245,7 +472,7 @@ class ThreadScraper:
         self,
         from_date: str | None = None,
         to_date: str | None = None,
-        progress_callback: Callable[[int, int], None] | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> list[ThreadRecord]:
         """Scrape all threads from library using cache-aware strategy.
 
@@ -283,7 +510,13 @@ class ThreadScraper:
 
         # Fetch from API and merge
         return await self._fetch_and_merge(
-            from_date, to_date, fetch_from, threads, progress_callback
+            FetchMergeContext(
+                from_date=from_date,
+                to_date=to_date,
+                fetch_from=fetch_from,
+                cached_threads=threads,
+                progress_callback=progress_callback,
+            )
         )
 
     def _load_cached_threads(self) -> list[ThreadRecord]:
@@ -295,7 +528,8 @@ class ThreadScraper:
         cache_data = self.cache_manager.load_cache() if self.cache_manager else None
         if not cache_data:
             return []
-        return convert_cache_dicts_to_thread_records(cache_data.get("threads", []))
+        thread_dicts = _extract_cache_thread_dicts(cache_data.get("threads", []))
+        return _convert_cache_thread_dicts(thread_dicts)
 
     def _try_cache_only(
         self, from_date: str | None, to_date: str | None
@@ -381,14 +615,7 @@ class ThreadScraper:
         self.logger.info("Merged to %s unique threads", len(merged))
         return merged
 
-    async def _fetch_and_merge(  # nosemgrep: too-many-parameters
-        self,
-        from_date: str | None,
-        to_date: str | None,
-        fetch_from: str | None,
-        cached_threads: list[ThreadRecord],
-        progress_callback: Callable[[int, int], None] | None = None,
-    ) -> list[ThreadRecord]:
+    async def _fetch_and_merge(self, context: FetchMergeContext) -> list[ThreadRecord]:
         """Fetch threads from API, merge with cached, filter, and save.
 
         Returns:
@@ -396,15 +623,24 @@ class ThreadScraper:
         """
         session_token = extract_session_token(self.token)
         fetched_threads = await self._fetch_all_threads_from_api(
-            session_token, progress_callback, from_date=fetch_from
+            session_token, context.progress_callback, from_date=context.fetch_from
         )
         self.logger.info("Fetched %s threads from API", len(fetched_threads))
 
-        return self._merge_and_save(from_date, to_date, cached_threads, fetched_threads)
+        return self._merge_and_save(
+            context.from_date,
+            context.to_date,
+            context.cached_threads,
+            fetched_threads,
+        )
 
     async def _make_api_request(
-        self, client: AsyncSession, headers: dict, cookies: dict, request_body: dict
-    ) -> list[dict]:
+        self,
+        client: AsyncSession[Response],
+        headers: dict[str, str],
+        cookies: dict[str, str],
+        request_body: ThreadPayload,
+    ) -> list[ThreadPayload]:
         """Make a single paginated API request and return thread data.
 
         Args:
@@ -427,12 +663,16 @@ class ThreadScraper:
         except PerplexityHTTPStatusError as e:
             _handle_http_error(e)
             return []  # unreachable, satisfies type checker
-        except RequestException as e:
+        except _curl_request_exception_type as e:
             raise PerplexityRequestError(f"Network error while fetching threads: {e}") from e
 
     async def _execute_api_post(
-        self, client: AsyncSession, headers: dict, cookies: dict, request_body: dict
-    ) -> list[dict]:
+        self,
+        client: AsyncSession[Response],
+        headers: dict[str, str],
+        cookies: dict[str, str],
+        request_body: ThreadPayload,
+    ) -> list[ThreadPayload]:
         """Execute the HTTP POST and parse the response.
 
         Args:
@@ -453,11 +693,13 @@ class ThreadScraper:
             if wait_time > 0:
                 self.logger.debug("Rate limited: waited %ss", round(wait_time, 2))
 
-        response = await client.post(
-            f"{self.api_url}?version={self.api_version}&source=default",
-            headers=headers,
-            cookies=to_curl_cffi_cookies(cookies),
-            json=request_body,
+        response = _require_response(
+            await client.post(
+                f"{self.api_url}?version={self.api_version}&source=default",
+                headers=headers,
+                cookies=to_curl_cffi_cookies(cookies),
+                json=dict(request_body),
+            )
         )
 
         if not response.ok:
@@ -468,7 +710,7 @@ class ThreadScraper:
         except ValueError as e:
             raise UpstreamSchemaError("Malformed thread list response from upstream API") from e
 
-    def _build_auth_context(self, session_token: str) -> tuple[dict, dict]:
+    def _build_auth_context(self, session_token: str) -> tuple[dict[str, str], dict[str, str]]:
         """Build headers and cookies for API requests.
 
         Args:
@@ -485,7 +727,7 @@ class ThreadScraper:
     async def _fetch_all_threads_from_api(
         self,
         session_token: str,
-        progress_callback: Callable[[int, int], None] | None = None,
+        progress_callback: ProgressCallback | None = None,
         from_date: str | None = None,
     ) -> list[ThreadRecord]:
         """Fetch all threads by paginating through the API endpoint.
@@ -509,12 +751,12 @@ class ThreadScraper:
         """
         threads: list[ThreadRecord] = []
         offset = 0
-        limit = 100
+        limit = _THREAD_PAGE_SIZE
         headers, cookies = self._build_auth_context(session_token)
 
-        async with _create_async_session(timeout=30) as client:
+        async with _create_async_session(timeout=_DEFAULT_TIMEOUT_SECONDS) as client:
             while True:
-                request_body = {
+                request_body: ThreadPayload = {
                     "limit": limit,
                     "ascending": False,
                     "offset": offset,
@@ -526,9 +768,12 @@ class ThreadScraper:
                 if not thread_data:
                     break
 
-                if self._process_thread_batch(
-                    thread_data, threads, from_date, None, progress_callback
-                ):
+                batch_context = BatchProcessingContext(
+                    from_date=from_date,
+                    total_threads=None,
+                    progress_callback=progress_callback,
+                )
+                if self._process_thread_batch(thread_data, threads, batch_context):
                     break
 
                 if not _has_more_pages(thread_data):
@@ -538,37 +783,40 @@ class ThreadScraper:
 
         return threads
 
-    def _process_thread_batch(  # nosemgrep: too-many-parameters
+    def _process_thread_batch(
         self,
-        thread_data: list[dict],
+        thread_data: list[ThreadPayload],
         threads: list[ThreadRecord],
-        from_date: str | None,
-        total_threads: int | None,
-        progress_callback: Callable[[int, int], None] | None,
+        *context_args: object,
     ) -> bool:
         """Process a batch of thread dicts, appending records to threads list.
 
         Args:
             thread_data: Raw thread dictionaries from API.
             threads: Accumulator list to append parsed records to.
-            from_date: Optional lower date bound for early stopping.
-            total_threads: Known total thread count (for progress reporting).
-            progress_callback: Optional progress callback.
+            *context_args: Either a single ``BatchProcessingContext`` or the
+                legacy ``from_date``, ``total_threads``, ``progress_callback`` trio.
 
         Returns:
             True if fetching should stop (from_date cutoff reached).
         """
+        context = _build_batch_processing_context(*context_args)
         for thread_dict in thread_data:
-            stopped = self._process_single_thread_entry(thread_dict, threads, from_date)
+            stopped = self._process_single_thread_entry(
+                thread_dict, threads, context.from_date
+            )
             if stopped:
                 return True
 
-        _report_progress(progress_callback, len(threads), total_threads)
+        total_threads = context.total_threads
+        if total_threads is not None and thread_data:
+            total_threads = _extract_total_threads(thread_data[0], total_threads)
+        _report_progress(context.progress_callback, len(threads), total_threads)
         return False
 
     def _process_single_thread_entry(
         self,
-        thread_dict: dict,
+        thread_dict: ThreadPayload,
         threads: list[ThreadRecord],
         from_date: str | None,
     ) -> bool:
@@ -611,12 +859,12 @@ class ThreadScraper:
         if not from_date and not to_date:
             return threads
 
-        filtered = []
+        filtered: list[ThreadRecord] = []
         for thread in threads:
             # Parse ISO 8601 timestamp back to datetime
             dt = datetime.fromisoformat(thread.created_at.replace("Z", "+00:00"))
 
-            if is_in_date_range(dt, from_date, to_date):
+            if _is_in_date_range(dt, from_date, to_date):
                 filtered.append(thread)
 
         return filtered
