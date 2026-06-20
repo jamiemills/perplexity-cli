@@ -183,7 +183,7 @@ def _handle_stream_upstream_schema_error(
 
 
 def _handle_stream_keyboard_interrupt(
-    error: Any, logger: logging.Logger
+    _error: Any, logger: logging.Logger
 ) -> None:
     logger.info("Streaming interrupted by user")
     click.echo("\n[ERROR] Streaming interrupted.", err=True)
