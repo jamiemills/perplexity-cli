@@ -1,8 +1,11 @@
 """Token storage and management with secure file permissions and encryption."""
 
+from __future__ import annotations
+
 import json
 import os
 from datetime import datetime
+from typing import Final
 
 from perplexity_cli.utils.config import get_config_paths
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
@@ -12,6 +15,32 @@ from perplexity_cli.utils.logging import get_logger, redact_mapping_keys, redact
 
 TOKEN_AGE_WARNING_DAYS = 30
 _MALFORMED_COOKIES_ERROR = "Token file contains malformed cookies data"
+_TOKEN_FORMAT_VERSION: Final[int] = 2
+_DEFAULT_TOKEN_VERSION = 1
+
+
+def _extract_created_at(record: dict[str, object]) -> str | None:
+    """Return the ``created_at`` field if it is a string, else None."""
+    value = record.get("created_at")
+    return value if isinstance(value, str) else None
+
+
+def _extract_token_string(record: dict[str, object]) -> str:
+    """Return the ``token`` field narrowed to ``str``.
+
+    Raises:
+        AuthenticationError: If the field is absent or not a string.
+    """
+    value = record.get("token")
+    if not isinstance(value, str) or not value:
+        raise AuthenticationError("Token file is missing encrypted token data")
+    return value
+
+
+def _extract_version(record: dict[str, object]) -> int:
+    """Return the ``version`` field narrowed to ``int`` (default ``_DEFAULT_TOKEN_VERSION``)."""
+    value = record.get("version", _TOKEN_FORMAT_VERSION)
+    return value if isinstance(value, int) else _DEFAULT_TOKEN_VERSION
 
 
 class TokenManager:
@@ -69,7 +98,9 @@ class TokenManager:
                 f"Failed to save or set permissions on token file {self.token_path}: {e}"
             ) from e
 
-    def _prepare_token_data(self, encrypted_token: str, cookies: dict[str, str] | None) -> dict:
+    def _prepare_token_data(
+        self, encrypted_token: str, cookies: dict[str, str] | None
+    ) -> dict[str, object]:
         """Build the token data structure for persistence.
 
         Args:
@@ -79,8 +110,8 @@ class TokenManager:
         Returns:
             Dictionary ready to be serialised to JSON.
         """
-        token_record = {
-            "version": 2,
+        token_record: dict[str, object] = {
+            "version": _TOKEN_FORMAT_VERSION,
             "encrypted": True,
             "token": encrypted_token,
             "created_at": datetime.now().isoformat(),
@@ -122,11 +153,10 @@ class TokenManager:
 
         try:
             token_record = self._read_and_validate_token_file()
-            self._check_token_age(token_record.get("created_at"))
+            self._check_token_age(_extract_created_at(token_record))
 
-            token = decrypt_token(token_record["token"])
-            version = token_record.get("version", 1)
-            cookies = self._decrypt_cookies(token_record, version)
+            token = decrypt_token(_extract_token_string(token_record))
+            cookies = self._decrypt_cookies(token_record, _extract_version(token_record))
 
             cookie_msg = f" and {len(cookies)} cookies" if cookies else ""
             self.logger.info(  # nosemgrep: python-logger-credential-disclosure
@@ -141,7 +171,7 @@ class TokenManager:
             )
             raise OSError(f"Failed to load token from {self.token_path}: {e}") from e
 
-    def _read_and_validate_token_file(self) -> dict:
+    def _read_and_validate_token_file(self) -> dict[str, object]:
         """Read and validate the token file structure.
 
         Returns:
@@ -151,7 +181,7 @@ class TokenManager:
             AuthenticationError: If the file is not encrypted or missing token data.
         """
         with open(self.token_path, encoding="utf-8") as f:
-            token_record = json.load(f)
+            token_record: dict[str, object] = json.load(f)
 
         if not token_record.get("encrypted", False):
             self.logger.warning("Token file is not encrypted")
@@ -187,7 +217,9 @@ class TokenManager:
         except (ValueError, TypeError):
             self.logger.debug("Could not parse token creation timestamp")
 
-    def _decrypt_cookies(self, token_record: dict, version: int) -> dict[str, str] | None:
+    def _decrypt_cookies(
+        self, token_record: dict[str, object], version: int
+    ) -> dict[str, str] | None:
         """Decrypt and validate cookies from the token data.
 
         Args:
@@ -200,22 +232,42 @@ class TokenManager:
         Raises:
             AuthenticationError: If cookie data is malformed.
         """
-        if version != 2 or "cookies" not in token_record:
-            if version == 2:
-                self.logger.debug("Token is v2 format but no cookies stored")
-            else:
-                self.logger.debug(  # nosemgrep: python-logger-credential-disclosure
-                    "Token is v%s format (no cookies)", version
-                )
-            return None
-
-        encrypted_cookies = token_record.get("cookies")
-        if not encrypted_cookies:
+        encrypted_cookies = self._extract_encrypted_cookies(token_record, version)
+        if encrypted_cookies is None:
             return None
 
         cookies = self._parse_and_validate_cookies(decrypt_token(encrypted_cookies))
         self._log_cookie_details(cookies)
         return cookies
+
+    def _extract_encrypted_cookies(
+        self, token_record: dict[str, object], version: int
+    ) -> str | None:
+        """Return the encrypted cookies string for a v2 record, else None.
+
+        Args:
+            token_record: The parsed token file data.
+            version: The token file format version.
+
+        Returns:
+            Encrypted cookies string, or None when not present.
+        """
+        if version != _TOKEN_FORMAT_VERSION or "cookies" not in token_record:
+            self._log_version_without_cookies(version)
+            return None
+        encrypted_cookies = token_record.get("cookies")
+        if not isinstance(encrypted_cookies, str) or not encrypted_cookies:
+            return None
+        return encrypted_cookies
+
+    def _log_version_without_cookies(self, version: int) -> None:
+        """Emit a debug note explaining why cookies were skipped for this version."""
+        if version == _TOKEN_FORMAT_VERSION:
+            self.logger.debug("Token is v2 format but no cookies stored")
+        else:
+            self.logger.debug(  # nosemgrep: python-logger-credential-disclosure
+                "Token is v%s format (no cookies)", version
+            )
 
     def _parse_and_validate_cookies(self, cookies_json: str) -> dict[str, str]:
         """Parse and validate decrypted cookie JSON.
@@ -241,19 +293,23 @@ class TokenManager:
     def _validate_cookie_types(cookies: object) -> None:
         """Validate that cookies is a dict of str to str.
 
+        Uses duck-typing on the ``items`` attribute so any mapping-like
+        object with string-only keys and values is accepted. The parsed
+        JSON produced by ``json.loads`` only yields a dict here, so the
+        practical effect is equivalent to ``isinstance(cookies, dict)``.
+
         Args:
             cookies: The parsed cookies object.
 
         Raises:
             AuthenticationError: If cookie data is malformed.
         """
-        if not isinstance(cookies, dict):
+        items_getter = getattr(cookies, "items", None)
+        if items_getter is None:
             raise AuthenticationError(_MALFORMED_COOKIES_ERROR)
-
-        if not all(
-            isinstance(key, str) and isinstance(value, str) for key, value in cookies.items()
-        ):
-            raise AuthenticationError(_MALFORMED_COOKIES_ERROR)
+        for key, value in items_getter():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise AuthenticationError(_MALFORMED_COOKIES_ERROR)
 
     def _log_cookie_details(self, cookies: dict[str, str]) -> None:
         """Log debug details about loaded cookies.
