@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Final
 
 from rich.console import Console
 from rich.syntax import Syntax
@@ -14,8 +13,6 @@ from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting.base import Formatter
 
 _SECTION_HEADER_STYLE = "bold cyan"
-_H1_HEADER_LEVEL: Final[int] = 1
-_H2_HEADER_LEVEL: Final[int] = 2
 
 
 class RichFormatter(Formatter):
@@ -165,6 +162,8 @@ class RichFormatter(Formatter):
         Args:
             text: Text possibly containing markdown syntax.
         """
+        import re
+
         lines = text.split("\n")
         for line in lines:
             # Check for headers (###, ##, #)
@@ -174,9 +173,9 @@ class RichFormatter(Formatter):
                 content = header_match.group(2)
                 level = len(hashes)
                 # Style based on header level
-                if level == _H1_HEADER_LEVEL:
+                if level == 1:
                     style = "bold bright_cyan"
-                elif level == _H2_HEADER_LEVEL:
+                elif level == 2:
                     style = _SECTION_HEADER_STYLE
                 else:
                     style = "bold white"
