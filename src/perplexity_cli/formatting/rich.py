@@ -1,5 +1,7 @@
 """Advanced terminal formatter using Rich library with colours and tables."""
 
+from __future__ import annotations
+
 import re
 
 from rich.console import Console
@@ -214,7 +216,7 @@ class RichFormatter(Formatter):
         Returns:
             Processed text with syntax highlighting applied.
         """
-        result_parts = []
+        result_parts: list[str] = []
         pattern = r"```(\w*)\n(.*?)\n```"
         last_end = 0
 

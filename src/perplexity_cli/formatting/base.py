@@ -1,5 +1,7 @@
 """Base formatter interface for output formatting."""
 
+from __future__ import annotations
+
 import re
 from abc import ABC, abstractmethod
 
@@ -230,7 +232,7 @@ class Formatter(ABC):
         Returns:
             Complete formatted output.
         """
-        output_parts = []
+        output_parts: list[str] = []
 
         # Add formatted answer
         formatted_answer = self.format_answer(answer.text, strip_references=strip_references)

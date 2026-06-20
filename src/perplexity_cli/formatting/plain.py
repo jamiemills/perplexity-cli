@@ -1,5 +1,7 @@
 """Plain text formatter for simple, unformatted output."""
 
+from __future__ import annotations
+
 import re
 
 from perplexity_cli.api.models import Answer, WebResult
@@ -118,7 +120,7 @@ class PlainTextFormatter(Formatter):
         text = self.unwrap_paragraph_lines(text)
 
         lines = text.split("\n")
-        result = []
+        result: list[str] = []
         skip_next_blank = False
         blank_count = 0
 
@@ -139,7 +141,7 @@ class PlainTextFormatter(Formatter):
         Returns:
             Complete formatted output with proper spacing.
         """
-        output_parts = []
+        output_parts: list[str] = []
 
         # Add formatted answer
         formatted_answer = self.format_answer(answer.text, strip_references=strip_references)
@@ -167,7 +169,7 @@ class PlainTextFormatter(Formatter):
         if not references:
             return ""
 
-        lines = []
+        lines: list[str] = []
         # Add ruler above references (at least 30 characters)
         lines.append("─" * 50)
         # Add References header with underline

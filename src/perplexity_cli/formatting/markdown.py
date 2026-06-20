@@ -1,5 +1,7 @@
 """GitHub-flavoured Markdown formatter for structured output."""
 
+from __future__ import annotations
+
 from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting.base import Formatter
 
@@ -58,7 +60,7 @@ class MarkdownFormatter(Formatter):
         Returns:
             Complete Markdown document.
         """
-        lines = []
+        lines: list[str] = []
 
         # Answer section
         formatted_answer = self.format_answer(answer.text, strip_references=strip_references)
