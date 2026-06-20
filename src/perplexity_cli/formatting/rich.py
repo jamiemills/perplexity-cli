@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Final
 
 from rich.console import Console
 from rich.syntax import Syntax
@@ -13,6 +14,7 @@ from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting.base import Formatter
 
 _SECTION_HEADER_STYLE = "bold cyan"
+_HEADER_LEVEL_2: Final[int] = 2
 
 
 class RichFormatter(Formatter):
@@ -175,7 +177,7 @@ class RichFormatter(Formatter):
                 # Style based on header level
                 if level == 1:
                     style = "bold bright_cyan"
-                elif level == 2:
+                elif level == _HEADER_LEVEL_2:
                     style = _SECTION_HEADER_STYLE
                 else:
                     style = "bold white"

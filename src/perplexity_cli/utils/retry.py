@@ -3,7 +3,7 @@
 import random
 import time
 from collections.abc import Callable
-from typing import TypeVar
+from typing import Final, TypeVar
 
 from tenacity import (
     retry,
@@ -17,7 +17,8 @@ from perplexity_cli.utils.exceptions import (
     PerplexityRequestError,
 )
 
-_HTTP_SERVER_ERROR_FLOOR = 500
+_HTTP_STATUS_TOO_MANY_REQUESTS: Final[int] = 429
+_HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
 
 T = TypeVar("T")
 
@@ -99,7 +100,7 @@ def is_retryable_error(exception: Exception) -> bool:
         if exception.response.status_code >= _HTTP_SERVER_ERROR_FLOOR:
             return True
         # Rate limiting (429) is retryable
-        if exception.response.status_code == 429:
+        if exception.response.status_code == _HTTP_STATUS_TOO_MANY_REQUESTS:
             return True
 
     return False

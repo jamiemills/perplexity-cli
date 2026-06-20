@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import click
 
@@ -22,7 +22,10 @@ from perplexity_cli.utils.exceptions import (
     SimpleResponse,
 )
 
-_HTTP_SERVER_ERROR_FLOOR = 500
+_HTTP_STATUS_UNAUTHORISED: Final[int] = 401
+_HTTP_STATUS_FORBIDDEN: Final[int] = 403
+_HTTP_STATUS_TOO_MANY_REQUESTS: Final[int] = 429
+_HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
 
 if TYPE_CHECKING:
     from perplexity_cli.envelope import ErrorCode
@@ -116,19 +119,19 @@ def classify_http_error(
     from perplexity_cli.envelope import ErrorCode
 
     status = error.response.status_code
-    if status == 401:
+    if status == _HTTP_STATUS_UNAUTHORISED:
         return (
             ErrorCode.authentication_required,
             "Authentication failed. Token may be expired.",
             "Run `pxcli auth login` to re-authenticate.",
         )
-    if status == 403:
+    if status == _HTTP_STATUS_FORBIDDEN:
         return (
             ErrorCode.permission_denied,
             "Access forbidden. Check your permissions.",
             None,
         )
-    if status == 429:
+    if status == _HTTP_STATUS_TOO_MANY_REQUESTS:
         return (
             ErrorCode.rate_limited,
             "Rate limit exceeded. Please wait and try again.",
