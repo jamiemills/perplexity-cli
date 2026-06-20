@@ -2,16 +2,85 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.upstream_contracts import require_list, require_mapping
 from perplexity_cli.utils.version import get_api_version
 
 __all__ = ["FileAttachment"]
+
+# Module-level ``TypeAdapter`` instances used to narrow arbitrary
+# upstream payloads into fully-typed containers without resorting to
+# ``typing.Any`` or ``typing.cast``.  Validation against ``object``
+# keys/values is a no-op at runtime (every Python value is an object),
+# so behaviour is preserved while satisfying ``pyright --strict``.
+_OBJECT_DICT_ADAPTER: TypeAdapter[dict[object, object]] = TypeAdapter(dict[object, object])
+_OBJECT_LIST_ADAPTER: TypeAdapter[list[object]] = TypeAdapter(list[object])
+
+
+def _as_object_dict(value: object) -> dict[object, object] | None:
+    """Narrow ``value`` to ``dict[object, object]`` when it is a mapping.
+
+    Args:
+        value: An arbitrary value pulled from an upstream payload.
+
+    Returns:
+        A typed dict view, or ``None`` if ``value`` is not a dict.
+    """
+    if not isinstance(value, dict):
+        return None
+    return _OBJECT_DICT_ADAPTER.validate_python(value)
+
+
+def _as_object_list(value: object) -> list[object] | None:
+    """Narrow ``value`` to ``list[object]`` when it is a list.
+
+    Args:
+        value: An arbitrary value pulled from an upstream payload.
+
+    Returns:
+        A typed list view, or ``None`` if ``value`` is not a list.
+    """
+    if not isinstance(value, list):
+        return None
+    return _OBJECT_LIST_ADAPTER.validate_python(value)
+
+
+# ---------------------------------------------------------------------------
+# Typed default factories (named functions keep pyright strict happy;
+# ``field(default_factory=list)`` would widen to ``list[Unknown]``).
+# ---------------------------------------------------------------------------
+
+
+def _new_mentions() -> list[object]:
+    """Default factory for ``QueryParams.mentions``."""
+    return []
+
+
+def _new_block_content() -> dict[str, object]:
+    """Default factory for ``Block.content``."""
+    return {}
+
+
+def _new_blocks() -> list[Block]:
+    """Default factory for ``SSEMessage.blocks``."""
+    return []
+
+
+def _new_references() -> list[WebResult]:
+    """Default factory for ``Answer.references``."""
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -38,18 +107,46 @@ class HttpRequestContext:
 
     url: str
     headers: dict[str, str]
-    json_data: dict[str, Any] | None = None
+    json_data: dict[str, object] | None = None
     effective_timeout: int = 30
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class QueryInput:
-    """User query text, file attachments, and optional model selection."""
+    """User query text, file attachments, and optional model selection.
+
+    The custom ``__init__`` accepts a covariant ``Mapping`` for
+    ``request_params`` so callers can pass ``dict[str, str]`` (from CLI
+    overrides) or ``dict[str, object]`` (programmatic) interchangeably;
+    values are stored as a concrete ``dict`` for downstream consumers.
+    """
 
     query: str
-    attachment_urls: list[str] = field(default_factory=list)
-    model_preference: str | None = None
-    request_params: dict[str, Any] = field(default_factory=dict)
+    attachment_urls: list[str]
+    model_preference: str | None
+    request_params: dict[str, object]
+
+    def __init__(
+        self,
+        query: str,
+        attachment_urls: Iterable[str] | None = None,
+        model_preference: str | None = None,
+        request_params: Mapping[str, object] | None = None,
+    ) -> None:
+        """Initialise ``QueryInput``, copying mutable inputs defensively.
+
+        Args:
+            query: The user's query text.
+            attachment_urls: Optional S3 attachment URLs; copied into a
+                fresh ``list`` to keep the dataclass immutable.
+            model_preference: Optional model override (e.g. ``pplx_pro``).
+            request_params: Optional extra fields merged into the
+                outbound request; copied into a fresh ``dict``.
+        """
+        object.__setattr__(self, "query", query)
+        object.__setattr__(self, "attachment_urls", list(attachment_urls or []))
+        object.__setattr__(self, "model_preference", model_preference)
+        object.__setattr__(self, "request_params", dict(request_params or {}))
 
 
 class QueryParams(BaseModel):
@@ -79,8 +176,8 @@ class QueryParams(BaseModel):
     local_search_enabled: bool = Field(default=False)
     use_schematized_api: bool = Field(default=True)
     send_back_text_in_streaming_api: bool = Field(default=False)
-    client_coordinates: Any | None = Field(default=None)
-    mentions: list[Any] = Field(default_factory=list)
+    client_coordinates: object | None = Field(default=None)
+    mentions: list[object] = Field(default_factory=_new_mentions)
     skip_search_enabled: bool = Field(default=True)
     is_nav_suggestions_disabled: bool = Field(default=False)
     always_search_override: bool = Field(default=False)
@@ -110,7 +207,7 @@ class QueryParams(BaseModel):
             raise ValueError('search_implementation_mode must be "standard" or "multi_step"')
         return v
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """Convert to dictionary for API request."""
         return self.model_dump(mode="json")
 
@@ -121,7 +218,7 @@ class QueryRequest(BaseModel):
     query_str: str
     params: QueryParams
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """Convert to dictionary for API request."""
         return {
             "query_str": self.query_str,
@@ -145,7 +242,7 @@ class WebResult(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_upstream_shape(cls, raw_result: Any) -> Any:
+    def _validate_upstream_shape(cls, raw_result: object) -> object:
         """Ensure the raw input is a mapping before field validation."""
         return require_mapping(raw_result, "Malformed web result block in upstream response")
 
@@ -164,23 +261,23 @@ class Block(BaseModel):
     """
 
     intended_usage: str = Field(default="")
-    content: dict[str, Any] = Field(default_factory=dict)
+    content: dict[str, object] = Field(default_factory=_new_block_content)
 
     @model_validator(mode="before")
     @classmethod
-    def _split_flat_payload(cls, raw_block: Any) -> Any:
+    def _split_flat_payload(cls, raw_block: object) -> object:
         """Transform a flat upstream block dict into {intended_usage, content}.
 
         If the payload already contains a ``content`` key (e.g. from direct
         construction or a ``model_dump`` round-trip), it is passed through
         unchanged.
         """
-        raw_block = require_mapping(raw_block, "Malformed block in upstream response")
-        if "content" not in raw_block:
-            intended_usage = raw_block.get("intended_usage", "")
-            content = {k: v for k, v in raw_block.items() if k != "intended_usage"}
+        mapping = require_mapping(raw_block, "Malformed block in upstream response")
+        if "content" not in mapping:
+            intended_usage = mapping.get("intended_usage", "")
+            content = {k: v for k, v in mapping.items() if k != "intended_usage"}
             return {"intended_usage": intended_usage, "content": content}
-        return raw_block
+        return mapping
 
     def extract_text(self) -> str | None:
         """Extract answer text from a private API block shape."""
@@ -200,57 +297,69 @@ class Block(BaseModel):
 
     def _extract_from_markdown_block(self) -> str | None:
         """Extract text from a markdown block with chunks."""
-        markdown_block = self.content.get("markdown_block")
-        if not isinstance(markdown_block, dict):
+        markdown_block = _as_object_dict(self.content.get("markdown_block"))
+        if markdown_block is None:
             return None
-        chunks = markdown_block.get("chunks")
-        if not isinstance(chunks, list):
+        chunks = _as_object_list(markdown_block.get("chunks"))
+        if chunks is None:
             return None
         return "".join(str(chunk) for chunk in chunks)
 
     def _extract_from_text_field(self) -> str | None:
         """Extract text from a direct text field."""
-        if "text" in self.content:
-            return self.content["text"]
+        text = self.content.get("text")
+        if isinstance(text, str):
+            return text
         return None
 
     def _extract_from_diff_block(self) -> str | None:
         """Extract text from a diff block with patches."""
-        diff_block = self.content.get("diff_block")
-        if not isinstance(diff_block, dict):
+        diff_block = _as_object_dict(self.content.get("diff_block"))
+        if diff_block is None:
             return None
-        for patch in diff_block.get("patches", []):
+        patches = _as_object_list(diff_block.get("patches"))
+        if patches is None:
+            return None
+        for patch in patches:
             result = self._extract_patch_value(patch)
             if result is not None:
                 return result
         return None
 
     @staticmethod
-    def _extract_patch_value(patch: Any) -> str | None:
+    def _extract_patch_value(patch: object) -> str | None:
         """Extract text value from a single diff patch entry."""
-        if not isinstance(patch, dict):
+        patch_dict = _as_object_dict(patch)
+        if patch_dict is None:
             return None
-        value = patch.get("value")
+        value = patch_dict.get("value")
         if isinstance(value, str):
             return value
-        if isinstance(value, dict):
-            return value.get("text")
+        value_dict = _as_object_dict(value)
+        if value_dict is None:
+            return None
+        text = value_dict.get("text")
+        if isinstance(text, str):
+            return text
         return None
 
     def _extract_from_answer_block(self) -> str | None:
         """Extract text from an answer block."""
-        answer_block = self.content.get("answer_block")
-        if isinstance(answer_block, dict) and "text" in answer_block:
-            return answer_block["text"]
+        answer_block = _as_object_dict(self.content.get("answer_block"))
+        if answer_block is None:
+            return None
+        text = answer_block.get("text")
+        if isinstance(text, str):
+            return text
         return None
 
-    def extract_plan_info(self) -> dict[str, Any] | None:
+    def extract_plan_info(self) -> dict[str, object] | None:
         """Extract progress details from a plan-oriented block."""
         if self.intended_usage not in ["pro_search_steps", "plan"]:
             return None
 
-        plan_block = self.content.get("plan_block", {})
-        if not plan_block:
+        plan_block = _as_object_dict(self.content.get("plan_block"))
+        if plan_block is None or not plan_block:
             return None
 
         return {
@@ -265,12 +374,12 @@ class Block(BaseModel):
         if self.intended_usage != "web_results":
             return None
 
-        web_result_block = self.content.get("web_result_block")
-        if not isinstance(web_result_block, dict):
+        web_result_block = _as_object_dict(self.content.get("web_result_block"))
+        if web_result_block is None:
             return None
 
-        results = web_result_block.get("web_results")
-        if not isinstance(results, list):
+        results = _as_object_list(web_result_block.get("web_results"))
+        if results is None:
             return None
 
         return [WebResult.model_validate(result) for result in results]
@@ -294,7 +403,7 @@ class SSEMessage(BaseModel):
     thread_url_slug: str | None = Field(default=None)
     status: str = Field(default="")
     text_completed: bool = Field(default=False)
-    blocks: list[Block] = Field(default_factory=list)
+    blocks: list[Block] = Field(default_factory=_new_blocks)
     final_sse_message: bool = Field(default=False)
     cursor: str | None = Field(default=None)
     read_write_token: str | None = Field(default=None)
@@ -303,7 +412,7 @@ class SSEMessage(BaseModel):
 
     @model_validator(mode="before")  # nosemgrep: meaningless-name
     @classmethod
-    def _validate_upstream_shape(cls, data: Any) -> Any:
+    def _validate_upstream_shape(cls, data: object) -> object:
         """Enforce upstream contract: top-level mapping with list-shaped blocks."""
         data = require_mapping(  # nosemgrep: meaningless-name
             data, "Malformed SSE message in upstream response"
@@ -344,4 +453,4 @@ class Answer(BaseModel):
     """Complete answer with text and references."""
 
     text: str
-    references: list[WebResult] = Field(default_factory=list)
+    references: list[WebResult] = Field(default_factory=_new_references)
