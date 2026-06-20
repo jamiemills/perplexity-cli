@@ -1,6 +1,6 @@
 {
   "fingerprints": [
-    "src/perplexity_cli/auth/oauth_handler.py:62:http-client-outside-transport",
+    "src/perplexity_cli/auth/oauth_handler.py:72:http-client-outside-transport",
     "src/perplexity_cli/auth/utils.py:40:click-echo-outside-presentation",
     "src/perplexity_cli/auth/utils.py:41:click-echo-outside-presentation",
     "src/perplexity_cli/auth/utils.py:43:sys-exit-outside-boundary",
@@ -29,8 +29,8 @@
     "src/perplexity_cli/query_runner.py:411:sys-exit-outside-boundary",
     "src/perplexity_cli/query_runner.py:414:click-echo-outside-presentation",
     "src/perplexity_cli/query_runner.py:415:sys-exit-outside-boundary",
-    "src/perplexity_cli/query_runner.py:605:click-echo-outside-presentation",
-    "src/perplexity_cli/query_runner.py:606:sys-exit-outside-boundary",
+    "src/perplexity_cli/query_runner.py:614:click-echo-outside-presentation",
+    "src/perplexity_cli/query_runner.py:615:sys-exit-outside-boundary",
     "src/perplexity_cli/query_streaming.py:124:click-echo-outside-presentation",
     "src/perplexity_cli/query_streaming.py:128:click-echo-outside-presentation",
     "src/perplexity_cli/query_streaming.py:137:click-echo-outside-presentation",
