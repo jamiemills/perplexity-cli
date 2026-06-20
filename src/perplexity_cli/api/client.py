@@ -12,22 +12,12 @@ PerplexityRequestError types defined in utils/exceptions.py.
 
 from __future__ import annotations
 
+import importlib
 import json
 import logging
-import time
+import threading
 from collections.abc import Iterator
-from typing import TYPE_CHECKING
-
-try:
-    from curl_cffi.requests.exceptions import RequestException
-
-    _CURL_CFFI_AVAILABLE = True
-except ImportError:  # pragma: no cover
-    RequestException = Exception  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
-    _CURL_CFFI_AVAILABLE = False
-
-if TYPE_CHECKING:
-    from curl_cffi.requests import Session
+from typing import Final, TypeGuard
 
 from perplexity_cli.api.models import HttpRequestContext
 from perplexity_cli.auth.models import AuthContext
@@ -45,7 +35,236 @@ from perplexity_cli.utils.logging import (
     redact_response_text,
     redact_url,
 )
-from perplexity_cli.utils.retry import get_backoff_delay, get_retry_after_delay, is_retryable_error
+from perplexity_cli.utils.retry import (
+    get_backoff_delay,
+    get_retry_after_delay,
+    is_retryable_error,
+    sleep_with_backoff,
+)
+
+try:
+    from curl_cffi.requests.exceptions import RequestException as _CurlRequestException
+
+    _curl_cffi_available = True
+except ImportError:  # pragma: no cover
+    _CurlRequestException = None
+    _curl_cffi_available = False
+
+HTTP_STATUS_UNAUTHORISED: Final[int] = 401
+HTTP_STATUS_FORBIDDEN: Final[int] = 403
+HTTP_STATUS_TOO_MANY_REQUESTS: Final[int] = 429
+DEEP_RESEARCH_TIMEOUT_MODE: Final[str] = "multi_step"
+HEADER_PAIR_SIZE: Final[int] = 2
+
+type JsonObject = dict[str, object]
+
+
+def _require_str(value: object, context: str) -> str:
+    """Return *value* as a string or raise for an invalid transport shape."""
+    if isinstance(value, str):
+        return value
+    raise RuntimeError(f"Expected string transport attribute for {context}")
+
+
+def _require_int(value: object, context: str) -> int:
+    """Return *value* as an integer or raise for an invalid transport shape."""
+    if isinstance(value, int):
+        return value
+    raise RuntimeError(f"Expected integer transport attribute for {context}")
+
+
+def _require_bool(value: object, context: str) -> bool:
+    """Return *value* as a boolean or raise for an invalid transport shape."""
+    if isinstance(value, bool):
+        return value
+    raise RuntimeError(f"Expected boolean transport attribute for {context}")
+
+
+def _require_bytes_or_str(value: object, context: str) -> bytes | str:
+    """Return *value* as bytes or string or raise for an invalid shape."""
+    if isinstance(value, bytes | str):
+        return value
+    raise RuntimeError(f"Expected bytes-or-string transport attribute for {context}")
+
+
+def _require_json_object_or_none(value: object, context: str) -> JsonObject | None:
+    """Return *value* as a JSON object or ``None``."""
+    if value is None:
+        return None
+    if _is_json_object(value):
+        return value
+    raise RuntimeError(f"Expected JSON object transport attribute for {context}")
+
+
+def _iter_object_values(value: object, context: str) -> Iterator[object]:
+    """Yield objects from an untyped iterable transport value."""
+    iter_attr = getattr(value, "__iter__", None)
+    if not callable(iter_attr):
+        raise RuntimeError(f"Expected iterable transport value for {context}")
+
+    iterator = iter_attr()
+    next_attr = getattr(iterator, "__next__", None)
+    if not callable(next_attr):
+        raise RuntimeError(f"Expected iterator transport value for {context}")
+
+    while True:
+        try:
+            yield next_attr()
+        except StopIteration:
+            return
+
+
+def _coerce_header_pair(item: object, context: str) -> tuple[str, str]:
+    """Coerce one header item into a string pair."""
+    len_attr = getattr(item, "__len__", None)
+    getitem_attr = getattr(item, "__getitem__", None)
+    if not callable(len_attr) or not callable(getitem_attr):
+        raise RuntimeError(f"Expected header pair items for {context}")
+    size = len_attr()
+    if not isinstance(size, int) or size != HEADER_PAIR_SIZE:
+        raise RuntimeError(f"Expected header pair items for {context}")
+    return str(getitem_attr(0)), str(getitem_attr(1))
+
+
+def _coerce_header_mapping(value: object, context: str) -> dict[str, str]:
+    """Coerce header-like items into a standard string dictionary."""
+    items_attr = getattr(value, "items", None)
+    if not callable(items_attr):
+        raise RuntimeError(f"Expected mapping-like transport attribute for {context}")
+
+    items_result_object = items_attr()
+
+    headers: dict[str, str] = {}
+    for raw_item in _iter_object_values(items_result_object, context):
+        key, header_value = _coerce_header_pair(raw_item, context)
+        headers[key] = header_value
+    return headers
+
+
+class _ResponseAdapter:
+    """Typed wrapper around an untyped curl_cffi response object."""
+
+    def __init__(self, response: object) -> None:
+        self._response = response
+
+    @property
+    def status_code(self) -> int:
+        return _require_int(getattr(self._response, "status_code", None), "response.status_code")
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return _coerce_header_mapping(getattr(self._response, "headers", None), "response.headers")
+
+    @property
+    def text(self) -> str:
+        return _require_str(getattr(self._response, "text", None), "response.text")
+
+    @property
+    def ok(self) -> bool:
+        return _require_bool(getattr(self._response, "ok", None), "response.ok")
+
+    @property
+    def reason(self) -> str:
+        return _require_str(getattr(self._response, "reason", None), "response.reason")
+
+    @property
+    def url(self) -> object:
+        return getattr(self._response, "url", None)
+
+    @property
+    def content(self) -> bytes | str:
+        return _require_bytes_or_str(getattr(self._response, "content", None), "response.content")
+
+    def iter_lines(self) -> Iterator[bytes | str]:
+        iter_lines_attr = getattr(self._response, "iter_lines", None)
+        if not callable(iter_lines_attr):
+            raise RuntimeError("Expected callable response.iter_lines transport method")
+
+        lines_result_object = iter_lines_attr()
+        for raw_line in _iter_object_values(lines_result_object, "response.iter_lines"):
+            if not isinstance(raw_line, bytes | str):
+                raise RuntimeError("Expected bytes or string lines from response.iter_lines")
+            yield raw_line
+
+
+class _StreamContextAdapter:
+    """Typed wrapper around the ``Session.stream`` context manager."""
+
+    def __init__(self, context: object) -> None:
+        self._context = context
+
+    def __enter__(self) -> _ResponseAdapter:
+        enter_attr = getattr(self._context, "__enter__", None)
+        if not callable(enter_attr):
+            raise RuntimeError("Expected __enter__ on stream context manager")
+        return _ResponseAdapter(enter_attr())
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: object,
+    ) -> bool | None:
+        exit_attr = getattr(self._context, "__exit__", None)
+        if not callable(exit_attr):
+            raise RuntimeError("Expected __exit__ on stream context manager")
+        result = exit_attr(exc_type, exc_value, traceback)
+        if result is None or isinstance(result, bool):
+            return result
+        raise RuntimeError("Expected bool-or-None return from stream context manager")
+
+
+def _create_transport_session(timeout: int) -> object:
+    """Create the underlying curl_cffi session as an untyped transport object."""
+    session_factory_module = importlib.import_module("perplexity_cli.utils.session_factory")
+    create_sync_session = getattr(session_factory_module, "create_sync_session", None)
+    if not callable(create_sync_session):
+        raise RuntimeError("Expected callable create_sync_session transport factory")
+
+    session = create_sync_session(timeout=timeout)
+    return session
+
+
+def _close_transport_session(session: object) -> None:
+    """Close the underlying transport session."""
+    close_attr = getattr(session, "close", None)
+    if not callable(close_attr):
+        raise RuntimeError("Expected callable session.close transport method")
+    close_attr()
+
+
+def _open_stream_context(
+    session: object,
+    ctx: HttpRequestContext,
+    cookies: object,
+) -> _StreamContextAdapter:
+    """Open a typed stream context from the untyped transport session."""
+    stream_attr = getattr(session, "stream", None)
+    if not callable(stream_attr):
+        raise RuntimeError("Expected callable session.stream transport method")
+
+    return _StreamContextAdapter(
+        stream_attr(
+            "POST",
+            ctx.url,
+            headers=ctx.headers,
+            json=_require_json_object_or_none(ctx.json_data, "stream.json"),
+            cookies=cookies,
+            timeout=ctx.effective_timeout,
+        )
+    )
+
+
+def _is_json_object(value: object) -> TypeGuard[JsonObject]:
+    """Return whether *value* is a JSON-like object with string keys."""
+    return isinstance(value, dict)
+
+
+def _is_request_exception(error: Exception) -> bool:
+    """Return whether *error* is the transport-layer request exception type."""
+    if not _curl_cffi_available or _CurlRequestException is None:
+        return False
+    return isinstance(error, _CurlRequestException)
 
 # ---------------------------------------------------------------------------
 # Extracted: SSE protocol parser (stateless)
@@ -60,7 +279,7 @@ class SSEParser:
     """
 
     @staticmethod
-    def parse(response, logger: logging.Logger) -> Iterator[dict]:
+    def parse(response: _ResponseAdapter, logger: logging.Logger) -> Iterator[JsonObject]:
         """Parse an SSE stream from *response* into JSON events.
 
         Args:
@@ -87,7 +306,7 @@ class SSEParser:
             yield SSEParser._yield_event(data_lines)
 
     @staticmethod
-    def _decode_line(raw_line) -> str:
+    def _decode_line(raw_line: bytes | str) -> str:
         """Decode a raw SSE line from bytes to string if necessary."""
         return raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
 
@@ -96,7 +315,7 @@ class SSEParser:
         line: str,
         event_type: str | None,
         data_lines: list[str],
-    ) -> tuple[str | None, list[str], dict | None]:
+    ) -> tuple[str | None, list[str], JsonObject | None]:
         """Process a single decoded SSE line, potentially yielding an event.
 
         Args:
@@ -115,7 +334,7 @@ class SSEParser:
         return updated_type, updated_lines, None
 
     @staticmethod
-    def _yield_event(data_lines: list[str]) -> dict:
+    def _yield_event(data_lines: list[str]) -> JsonObject:
         """Parse accumulated SSE data lines into a JSON object.
 
         Args:
@@ -129,9 +348,13 @@ class SSEParser:
         """
         data_str = "\n".join(data_lines)
         try:
-            return json.loads(data_str)
+            parsed = json.loads(data_str)
         except json.JSONDecodeError as e:
             raise UpstreamSchemaError(f"Failed to parse SSE data as JSON: {data_str[:100]}") from e
+
+        if not _is_json_object(parsed):
+            raise UpstreamSchemaError("SSE data must decode to a JSON object")
+        return parsed
 
     @staticmethod
     def _parse_line(
@@ -175,6 +398,7 @@ class RetryHandler:
         """
         self.logger = logger
         self.max_retries = max_retries
+        self._sleep_attempt: int | None = None
 
     def handle_http_error(self, error: PerplexityHTTPStatusError, attempt: int) -> float:
         """Classify an HTTP error and decide whether to retry.
@@ -194,11 +418,12 @@ class RetryHandler:
             PerplexityHTTPStatusError: When not retryable or exhausted.
         """
         self._log_http_error_context(error)
+        self._sleep_attempt = None
         status = error.response.status_code
 
-        if status == 401:
+        if status == HTTP_STATUS_UNAUTHORISED:
             return self._handle_401_error(error)
-        if status == 403:
+        if status == HTTP_STATUS_FORBIDDEN:
             return self._handle_403_error(error, attempt)
         return self._handle_retryable_error(error, attempt)
 
@@ -222,6 +447,7 @@ class RetryHandler:
                 next_attempt + 1,
                 self.max_retries,
             )
+            self._sleep_attempt = next_attempt
             return wait_time
         self.logger.error(
             "HTTP 403 error (not retryable after %s attempts): %s",
@@ -234,7 +460,11 @@ class RetryHandler:
             response=error.response,
         ) from error
 
-    def _handle_retryable_error(self, error: PerplexityHTTPStatusError, attempt: int) -> float:
+    def _handle_retryable_error(
+        self,
+        error: PerplexityHTTPStatusError,
+        attempt: int,
+    ) -> float:
         """Handle 429/5xx errors with backoff and Retry-After support."""
         status = error.response.status_code
         if is_retryable_error(error) and attempt < self.max_retries - 1:
@@ -242,6 +472,7 @@ class RetryHandler:
             wait_time = get_retry_after_delay(error)
             if wait_time is None:
                 wait_time = get_backoff_delay(next_attempt)
+                self._sleep_attempt = next_attempt
             self.logger.warning(
                 "HTTP %s error, retrying in %ss (attempt %s/%s)",
                 status,
@@ -251,13 +482,19 @@ class RetryHandler:
             )
             return wait_time
 
-        if status == 429:
+        if status == HTTP_STATUS_TOO_MANY_REQUESTS:
             raise PerplexityHTTPStatusError(
                 "Rate limit exceeded. Please wait and try again.",
                 request=error.request,
                 response=error.response,
             ) from error
         raise error
+
+    def consume_sleep_attempt(self) -> int | None:
+        """Return and clear the backoff attempt for the next retry sleep."""
+        sleep_attempt = self._sleep_attempt
+        self._sleep_attempt = None
+        return sleep_attempt
 
     def handle_network_error(self, error: Exception, attempt: int) -> int:
         """Handle network errors, retrying if possible.
@@ -272,7 +509,7 @@ class RetryHandler:
         Raises:
             PerplexityRequestError: When retries are exhausted.
         """
-        if isinstance(error, RequestException):
+        if _is_request_exception(error):
             self.logger.error("Network error after %s attempts: %s", attempt + 1, error)
             raise PerplexityRequestError(str(error)) from error
 
@@ -348,7 +585,7 @@ class SSEClient:
         self.max_retries = max_retries if max_retries is not None else DEFAULT_MAX_RETRIES
         self.logger = get_logger()
         self._retry = RetryHandler(self.logger, self.max_retries)
-        self._client: Session | None = None
+        self._client: object | None = None
 
     def get_headers(self) -> dict[str, str]:
         """Get HTTP headers for API requests.
@@ -366,7 +603,7 @@ class SSEClient:
             accept="text/event-stream",
         )
 
-    def _get_client(self) -> Session:
+    def _get_client(self) -> object:
         """Get or create the persistent curl_cffi session.
 
         Returns:
@@ -376,18 +613,16 @@ class SSEClient:
             RuntimeError: If curl_cffi is not installed.
         """
         if self._client is None:
-            from perplexity_cli.utils.session_factory import create_sync_session
-
-            self._client = create_sync_session(timeout=self.timeout)
+            self._client = _create_transport_session(timeout=self.timeout)
         return self._client
 
     def close(self) -> None:
         """Close the persistent session if open."""
         if self._client is not None:
-            self._client.close()
+            _close_transport_session(self._client)
             self._client = None
 
-    def _resolve_effective_timeout(self, json_data: dict) -> tuple[bool, int]:
+    def _resolve_effective_timeout(self, json_data: JsonObject) -> tuple[bool, int]:
         """Determine the effective timeout based on query parameters.
 
         Deep research requests use a longer timeout (360s) to accommodate
@@ -399,9 +634,10 @@ class SSEClient:
         Returns:
             Tuple of (is_deep_research, effective_timeout_seconds).
         """
-        params = json_data.get("params", {})
+        params_value = json_data.get("params")
+        params: JsonObject = params_value if _is_json_object(params_value) else {}
         deep_research_values = {"research", "deep_research", "RESEARCH"}
-        is_deep_research = params.get("search_implementation_mode") == "multi_step" or any(
+        is_deep_research = params.get("search_implementation_mode") == DEEP_RESEARCH_TIMEOUT_MODE or any(
             isinstance(params.get(key), str) and params.get(key) in deep_research_values
             for key in ("searchModeOverride", "search_mode", "workflow_key")
         )
@@ -458,7 +694,28 @@ class SSEClient:
         )
         self.logger.debug("Cloudflare cookies present: %s", redact_mapping_keys(cookies))
 
-    def stream_post(self, url: str, json_data: dict) -> Iterator[dict]:
+    def _sleep_for_retry(self, wait_time: float) -> None:
+        """Sleep using the canonical backoff helper or an exact upstream delay."""
+        sleep_attempt = self._retry.consume_sleep_attempt()
+        if sleep_attempt is not None:
+            sleep_with_backoff(sleep_attempt)
+            return
+
+        threading.Event().wait(wait_time)
+
+    def _retry_stream_error(self, error: Exception, attempt: int) -> int:
+        """Translate a stream error into the next retry attempt number."""
+        if isinstance(error, PerplexityHTTPStatusError):
+            wait_time = self._retry.handle_http_error(error, attempt)
+            self._sleep_for_retry(wait_time)
+            return attempt + 1
+
+        if isinstance(error, PerplexityRequestError) or _is_request_exception(error):
+            return self._retry.handle_network_error(error, attempt)
+
+        raise error
+
+    def stream_post(self, url: str, json_data: JsonObject) -> Iterator[JsonObject]:
         """POST request with SSE streaming response.
 
         Args:
@@ -488,18 +745,14 @@ class SSEClient:
             try:
                 yield from self._execute_stream_request(ctx, attempt)
                 return
-            except PerplexityHTTPStatusError as e:
-                wait_time = self._retry.handle_http_error(e, attempt)
-                attempt += 1
-                time.sleep(wait_time)
-            except (PerplexityRequestError, RequestException) as e:
-                attempt = self._retry.handle_network_error(e, attempt)
+            except Exception as e:
+                attempt = self._retry_stream_error(e, attempt)
 
     def _execute_stream_request(
         self,
         ctx: HttpRequestContext,
         attempt: int,
-    ) -> Iterator[dict]:
+    ) -> Iterator[JsonObject]:
         """Execute a single streaming POST request and yield parsed SSE events.
 
         Args:
@@ -518,13 +771,10 @@ class SSEClient:
             )
 
         client = self._get_client()
-        with client.stream(
-            "POST",
-            ctx.url,
-            headers=ctx.headers,
-            json=ctx.json_data,
+        with _open_stream_context(
+            client,
+            ctx,
             cookies=to_curl_cffi_cookies(self.auth.cookies),
-            timeout=ctx.effective_timeout,
         ) as response:
             self._log_response_headers(response)
 
@@ -539,7 +789,7 @@ class SSEClient:
             if self.logger.isEnabledFor(logging.DEBUG):
                 self.logger.debug("SSE stream completed successfully")
 
-    def _log_response_headers(self, response) -> None:
+    def _log_response_headers(self, response: _ResponseAdapter) -> None:
         """Log response status and Cloudflare headers at DEBUG level."""
         if not self.logger.isEnabledFor(logging.DEBUG):
             return
