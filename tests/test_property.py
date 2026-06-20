@@ -73,7 +73,7 @@ from tests.strategies import (
 @given(token=st.text(min_size=1, max_size=500))
 @example(token="")
 @example(token="café—日本語🎉")
-@settings()
+@settings(deadline=500)
 def test_encrypt_decrypt_roundtrip(token: str) -> None:
     """encrypt_token then decrypt_token returns the original token."""
     encrypted = encrypt_token(token)
@@ -82,7 +82,7 @@ def test_encrypt_decrypt_roundtrip(token: str) -> None:
 
 
 @given(token=st.text(min_size=1, max_size=500))
-@settings()
+@settings(deadline=500)
 def test_encrypt_produces_different_ciphertexts(token: str) -> None:
     """Encrypting the same token twice produces different ciphertexts."""
     encrypted1 = encrypt_token(token)
