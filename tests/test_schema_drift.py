@@ -23,7 +23,7 @@ SRC = PROJECT_ROOT / "src"
 # replaced by model_json_schema() derivation.
 _ACCEPTED_DEBT = frozenset(
     {
-        "src/perplexity_cli/commands.py:_COMMAND_RESULT_SCHEMAS",
+        "src/perplexity_cli/commands/_schemas.py:COMMAND_RESULT_SCHEMAS",
     }
 )
 
