@@ -8,10 +8,10 @@ construction with the SSE streaming client.
 from __future__ import annotations
 
 from types import TracebackType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from curl_cffi.requests import Session
+    from curl_cffi.requests import Response, Session
 
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
@@ -42,7 +42,7 @@ class RestClient:
         self.auth = auth
         self.timeout = timeout
         self.logger = get_logger()
-        self._client: Session | None = None
+        self._client: Session[Response] | None = None
 
     def get_headers(self) -> dict[str, str]:
         """Get HTTP headers for API requests.
@@ -56,7 +56,7 @@ class RestClient:
             accept="application/json",
         )
 
-    def _get_client(self) -> Session:
+    def _get_client(self) -> Session[Response]:
         """Get or create the persistent curl_cffi session.
 
         Returns:
@@ -90,7 +90,7 @@ class RestClient:
         """Exit context manager, closing the HTTP client."""
         self.close()
 
-    def get_json(self, url: str) -> Any:
+    def get_json(self, url: str) -> object:
         """Perform a GET request and return the parsed JSON response.
 
         Args:
@@ -118,4 +118,38 @@ class RestClient:
         if not response.ok:
             raise_http_status_error(response)
 
+        return self._extract_json(response)
+
+    @staticmethod
+    def _extract_json(response: _RestResponse) -> object:
+        """Extract the parsed JSON body as a typed object.
+
+        Wrapping ``response.json()`` behind a Protocol-typed parameter is
+        what lets pyright see a concrete return type: curl_cffi's
+        ``Response.json`` is itself unannotated, so calling it on a
+        ``Response`` leaks ``Unknown``. Routing through ``_RestResponse``
+        gives the call a fully-typed signature without weakening the
+        runtime contract.
+
+        Args:
+            response: Any HTTP response exposing ``ok`` and ``json()``.
+
+        Returns:
+            The parsed JSON body as an opaque object.
+        """
         return response.json()
+
+
+class _RestResponse(Protocol):
+    """Structural type for the slice of a curl_cffi response used here.
+
+    Defined at module level (after ``RestClient``) so that adding it does
+    not shift the line numbers of ``_get_client``'s lazy import, which is
+    tracked by fingerprint in the pyright-strict baseline.
+    """
+
+    ok: bool
+
+    def json(self) -> object:
+        """Return the parsed JSON body as an opaque object."""
+        ...
