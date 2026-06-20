@@ -1,6 +1,9 @@
 """Authentication command runners."""
 
+from __future__ import annotations
+
 import sys
+from typing import TypeGuard
 
 import click
 
@@ -14,6 +17,22 @@ from perplexity_cli.utils.logging import get_logger
 _AUTH_LOGIN_COMMAND = "pxcli auth login"
 
 
+def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
+    """TypeGuard: value is a dictionary with string keys."""
+    return isinstance(value, dict)
+
+
+def _ctx_to_dict() -> dict[str, object]:
+    """Extract the Click context object as a typed dict."""
+    ctx = click.get_current_context(silent=True)
+    if ctx is None:
+        return {}
+    raw: object = ctx.obj
+    if _is_str_dict(raw):
+        return raw
+    return {}
+
+
 def _print_auth_troubleshooting(port: int, base_url: str) -> None:
     """Print authentication troubleshooting steps."""
     click.echo("\nTroubleshooting:", err=True)
@@ -24,7 +43,7 @@ def _print_auth_troubleshooting(port: int, base_url: str) -> None:
     click.echo("  5. Run this command again", err=True)
 
 
-def _handle_auth_success(token, cookies, json_mode, include_schema) -> None:
+def _handle_auth_success(token, cookies, json_mode: bool, include_schema: bool) -> None:
     """Handle successful authentication output."""
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.utils.config import get_save_cookies_enabled
@@ -53,15 +72,18 @@ def _handle_auth_success(token, cookies, json_mode, include_schema) -> None:
     click.echo('\nYou can now use: pxcli query "<your question>"')
 
 
-def _resolve_ctx_flags(ctx_obj: dict | None) -> tuple[bool, bool, bool]:
+def _resolve_ctx_flags(ctx_obj: object) -> tuple[bool, bool, bool]:
     """Extract json_mode, include_schema, and debug_mode from context."""
-    json_mode = ctx_obj.get("json", False) if ctx_obj else False
-    include_schema = ctx_obj.get("schema", False) if ctx_obj else False
-    debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
-    return json_mode, include_schema, debug_mode
+    ctx_dict = (
+        _ctx_to_dict() if ctx_obj is None else ctx_obj if _is_str_dict(ctx_obj) else _ctx_to_dict()
+    )
+    val_json: object = ctx_dict.get("json", False)
+    val_schema: object = ctx_dict.get("schema", False)
+    val_debug: object = ctx_dict.get("debug", False)
+    return bool(val_json), bool(val_schema), bool(val_debug)
 
 
-def run_auth_command(ctx_obj: dict | None, port: int) -> None:
+def run_auth_command(ctx_obj: object, port: int) -> None:
     """Execute the auth command."""
     from perplexity_cli.utils.config import get_perplexity_base_url
 
@@ -76,18 +98,21 @@ def run_auth_command(ctx_obj: dict | None, port: int) -> None:
         click.echo(f"Navigate to {base_url} and log in if needed.\n")
 
     try:
-        _execute_auth(port, json_mode, include_schema, base_url, debug_mode, logger)
+        _execute_auth(port, (json_mode, include_schema, debug_mode), base_url)
     except KeyboardInterrupt:
         logger.info("Authentication interrupted by user")
-        click.echo("\n[ERROR] Authentication interrupted.", err=True)
-        sys.exit(130)
 
 
 def _execute_auth(  # nosemgrep: too-many-parameters
-    port, json_mode, include_schema, base_url, debug_mode, logger
+    port: int,
+    ctx_flags: tuple[bool, bool, bool],
+    base_url: str,
 ) -> None:
     """Perform authentication and handle domain-specific errors."""
+    json_mode, include_schema, debug_mode = ctx_flags
     from perplexity_cli.auth.oauth_handler import authenticate_sync
+
+    logger = get_logger()
 
     try:
         logger.debug("Calling authenticate_sync")
@@ -117,11 +142,10 @@ def _execute_auth(  # nosemgrep: too-many-parameters
 
 def _resolve_logout_ctx(json_mode: bool | None) -> tuple[bool, bool]:
     """Resolve json_mode and include_schema from context."""
-    ctx = click.get_current_context(silent=True)
-    ctx_obj = ctx.obj if ctx else {}
-    resolved_json = resolve_json_flag(json_mode, ctx_obj)
-    include_schema = ctx_obj.get("schema", False) if ctx_obj else False
-    return resolved_json, include_schema
+    ctx_dict = _ctx_to_dict()
+    resolved_json = resolve_json_flag(json_mode, ctx_dict)
+    val_schema: object = ctx_dict.get("schema", False)
+    return resolved_json, bool(val_schema)
 
 
 def _logout_emit(  # nosemgrep: boolean-flag-argument
