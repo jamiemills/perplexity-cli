@@ -217,9 +217,7 @@ def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorH
     ]
 
 
-_STREAM_ERROR_HANDLERS: list[tuple[type | tuple[type, ...], _ErrorHandler]] = (
-    _init_stream_error_handlers()
-)
+_STREAM_ERROR_HANDLERS: list[tuple[type | tuple[type, ...], _ErrorHandler]] = []
 
 
 def _handle_stream_error(error: Exception) -> None:
@@ -228,6 +226,10 @@ def _handle_stream_error(error: Exception) -> None:
     Args:
         error: The exception that was raised.
     """
+    global _STREAM_ERROR_HANDLERS
+    if not _STREAM_ERROR_HANDLERS:
+        _STREAM_ERROR_HANDLERS = _init_stream_error_handlers()
+
     logger = get_logger()
     for exc_types, handler in _STREAM_ERROR_HANDLERS:
         if isinstance(error, exc_types):

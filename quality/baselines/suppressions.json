@@ -26,5 +26,5 @@
   "src/perplexity_cli/utils/http_headers.py": 1,
   "src/perplexity_cli/utils/logging.py": 2,
   "src/perplexity_cli/utils/retry.py": 1,
-  "src/perplexity_cli/utils/session_factory.py": 5
+  "src/perplexity_cli/utils/session_factory.py": 6
 }

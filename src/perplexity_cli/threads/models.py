@@ -95,16 +95,23 @@ def _validate_thread_dict(thread: object) -> TypeGuard[dict[str, object]]:
     return True
 
 
+def _new_threads_list() -> list[dict[str, object]]:
+    """Return a new empty list for Field default_factory."""
+    return []
+
+
 class CacheContent(BaseModel):
     """Inner cache content (decrypted)."""
 
     version: int = Field(default=1, ge=1, le=1)
     metadata: CacheMetadata = Field(...)
-    threads: list[dict[str, object]] = Field(default_factory=lambda: [])
+    threads: list[dict[str, object]] = Field(default_factory=_new_threads_list)
 
     @field_validator("threads")
     @classmethod
-    def validate_threads(cls: type[CacheContent], v: list[dict[str, object]]) -> list[dict[str, object]]:
+    def validate_threads(
+        cls: type[CacheContent], v: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
         """Validate threads list items have required structure."""
         for thread in v:
             _validate_thread_dict(thread)

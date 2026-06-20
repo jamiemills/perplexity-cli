@@ -149,12 +149,12 @@ def _build_table_rows(
     """
     rows: list[tuple[str, str, str, str]] = []
     for entry in entries:
-        model_id: str = entry.model_id or "(none)"  # pyright: ignore[reportUnknownMemberType]
-        label: str = entry.label  # pyright: ignore[reportUnknownMemberType]
-        if entry.is_default:  # pyright: ignore[reportUnknownMemberType]
+        model_id: str = entry.model_id or "(none)"
+        label: str = entry.label
+        if entry.is_default:
             label = f"{label} (default)"
-        tier: str = entry.subscription_tier.capitalize()  # pyright: ignore[reportUnknownMemberType]
-        description: str = entry.description or ""  # pyright: ignore[reportUnknownMemberType]
+        tier: str = entry.subscription_tier.capitalize()
+        description: str = entry.description or ""
         rows.append((model_id, label, tier, description))
     return rows
 
