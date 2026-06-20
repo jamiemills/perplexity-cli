@@ -55,8 +55,12 @@ def _parse_args() -> argparse.Namespace:
 
 def _fingerprint(diag: dict) -> str:
     start = diag.get("range", {}).get("start", {})
+    file_path = diag.get("file", "?")
+    root_prefix = str(PROJECT_ROOT) + "/"
+    if isinstance(file_path, str) and file_path.startswith(root_prefix):
+        file_path = file_path[len(root_prefix) :]
     return "{}:{}:{}:{}".format(
-        diag.get("file", "?"),
+        file_path,
         start.get("line", 0),
         start.get("character", 0),
         diag.get("rule") or diag.get("message", "?")[:40],
