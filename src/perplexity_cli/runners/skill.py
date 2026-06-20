@@ -1,6 +1,9 @@
 """Skill display command runner."""
 
+from __future__ import annotations
+
 from importlib.resources import files  # nosemgrep: python37-compatibility-importlib2
+from typing import Any, cast
 
 import click
 
@@ -21,10 +24,10 @@ def _load_skill_content() -> str:
 
 def _resolve_ctx_flags(json_mode: bool | None) -> tuple[bool, bool]:
     """Resolve json_mode and include_schema from the click context."""
-    ctx = click.get_current_context(silent=True)
-    ctx_obj = ctx.obj if ctx else {}
-    resolved_json = resolve_json_flag(json_mode, ctx_obj)
-    include_schema = ctx_obj.get("schema", False) if ctx_obj else False
+    ctx: click.Context | None = click.get_current_context(silent=True)
+    ctx_obj: dict[str, Any] = cast(dict[str, Any], ctx.obj if ctx is not None and ctx.obj else {})
+    resolved_json: bool = resolve_json_flag(json_mode, ctx_obj)
+    include_schema: bool = bool(ctx_obj.get("schema", False))
     return resolved_json, include_schema
 
 

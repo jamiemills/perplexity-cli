@@ -43,7 +43,7 @@ def _print_auth_troubleshooting(port: int, base_url: str) -> None:
     click.echo("  5. Run this command again", err=True)
 
 
-def _handle_auth_success(token, cookies, json_mode: bool, include_schema: bool) -> None:
+def _handle_auth_success(token: str, cookies: dict[str, str], json_mode: bool, include_schema: bool) -> None:
     """Handle successful authentication output."""
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.utils.config import get_save_cookies_enabled

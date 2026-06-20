@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-def resolve_json_flag(json_mode: bool | None, ctx_obj: dict | None) -> bool:
+def resolve_json_flag(json_mode: bool | None, ctx_obj: dict[str, object] | None) -> bool:
     """Resolve the effective JSON mode flag from explicit arg or Click context.
 
     Args:
@@ -17,4 +17,4 @@ def resolve_json_flag(json_mode: bool | None, ctx_obj: dict | None) -> bool:
         return json_mode
     if not ctx_obj:
         return False
-    return ctx_obj.get("json", False)
+    return bool(ctx_obj.get("json", False))
