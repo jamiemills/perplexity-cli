@@ -147,7 +147,7 @@ def resolve_attachment_urls(
     except (FileNotFoundError, AttachmentError, ValueError) as e:
         click.echo(f"[ERROR] Failed to load attachments: {e}", err=True)
         logger.error("Attachment loading failed: %s", e)
-        sys.exit(1)
+        raise SystemExit(1)
 
 
 def _resolve_and_upload(
@@ -199,7 +199,7 @@ def _require_auth_for_attachments(token: str | None, logger: logging.Logger) -> 
     click.echo("[ERROR] File attachments require authentication.", err=True)
     click.echo("\nPlease authenticate first with: pxcli auth login", err=True)
     logger.error("Attachment upload attempted without authentication")
-    sys.exit(1)
+    raise SystemExit(1)
 
 
 def _load_and_upload_attachments(
@@ -263,7 +263,7 @@ def _do_s3_upload(
     except AttachmentUploadError as e:
         click.echo(f"[ERROR] Failed to upload attachments: {e}", err=True)
         logger.error("Attachment upload failed: %s", e)
-        sys.exit(1)
+        raise SystemExit(1)
 
     logger.debug("S3 upload complete: %s file(s) uploaded", len(attachment_urls))
     for i, url in enumerate(attachment_urls, 1):
@@ -284,7 +284,7 @@ def get_query_formatter(output_format: str | None) -> tuple[str, Formatter]:
         available = ", ".join(list_formatters())
         click.echo(f"Available formats: {available}", err=True)
         logger.error("Invalid formatter: %s", resolved_output_format)
-        sys.exit(1)
+        raise SystemExit(1)
 
     return resolved_output_format, formatter
 
@@ -331,11 +331,11 @@ def _read_query_from_stdin(query_text: str) -> str:
         return query_text
     if sys.stdin.isatty():
         click.echo("Error: stdin is a terminal; pipe input or provide a query.", err=True)
-        sys.exit(2)
+        raise SystemExit(2)
     text = sys.stdin.read().strip()
     if not text:
         click.echo("Error: empty input from stdin.", err=True)
-        sys.exit(2)
+        raise SystemExit(2)
     return text
 
 
@@ -424,11 +424,11 @@ def _try_dispatch_known_error(  # nosemgrep: boolean-flag-argument
     if isinstance(exc, UpstreamSchemaError):
         logger.error("Upstream schema error: %s", exc)
         click.echo(f"[ERROR] Upstream response format changed: {exc}", err=True)
-        sys.exit(1)
+        raise SystemExit(1)
     if isinstance(exc, (ConfigurationError, AttachmentError, AttachmentUploadError, ValueError)):
         logger.error("Value error: %s", exc)
         click.echo(f"[ERROR] Error: {exc}", err=True)
-        sys.exit(1)
+        raise SystemExit(1)
     return False
 
 
@@ -625,4 +625,4 @@ def _handle_keyboard_interrupt(  # nosemgrep: boolean-flag-argument
         )
     logger.info("Query interrupted by user")
     click.echo("\n[ERROR] Query interrupted.", err=True)
-    sys.exit(130)
+    raise SystemExit(130)

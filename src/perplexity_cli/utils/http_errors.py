@@ -10,7 +10,6 @@ Shared policy:
 from __future__ import annotations
 
 import logging
-import sys
 from typing import TYPE_CHECKING, Any, Final
 
 import click
@@ -108,7 +107,7 @@ def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters
     elif include_debug_hint:
         click.echo("Run with --debug for more information.", err=True)
 
-    sys.exit(1)
+    raise SystemExit(1)
 
 
 def classify_http_error(
@@ -213,7 +212,7 @@ def handle_http_error(  # nosemgrep: boolean-flag-argument
     if debug_mode:
         click.echo(f"Details: {error}", err=True)
 
-    sys.exit(1)
+    raise SystemExit(1)
 
 
 def handle_network_error(  # nosemgrep: boolean-flag-argument
@@ -240,4 +239,4 @@ def handle_network_error(  # nosemgrep: boolean-flag-argument
     if debug_mode:
         click.echo(f"Details: {error}", err=True)
 
-    sys.exit(1)
+    raise SystemExit(1)

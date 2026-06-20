@@ -1,7 +1,6 @@
 """Authentication utilities for CLI commands."""
 
 import logging
-import sys
 
 import click
 
@@ -40,7 +39,7 @@ def load_or_prompt_token(
         click.echo(f"[ERROR] Authentication error: {e}", err=True)
         click.echo("\nPlease authenticate again with: pxcli auth login", err=True)
         logger.warning("Authentication state invalid during %s: %s", command_context, e)
-        sys.exit(1)
+        raise SystemExit(1)
 
     if not token:
         click.echo("[ERROR] Not authenticated.", err=True)
@@ -49,7 +48,7 @@ def load_or_prompt_token(
             err=True,
         )
         logger.warning("Attempted %s without authentication", command_context)
-        sys.exit(1)
+        raise SystemExit(1)
 
     return token, cookies
 

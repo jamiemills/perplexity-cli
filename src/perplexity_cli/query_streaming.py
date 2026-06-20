@@ -171,6 +171,36 @@ def _run_stream_loop(
     return accumulated_text, references
 
 
+def _handle_stream_upstream_schema_error(
+    error: Any, logger: logging.Logger
+) -> None:
+    logger.error("Malformed upstream response during streaming: %s", error)
+    click.echo()
+    click.echo(
+        f"[ERROR] Upstream response format changed: {error}", err=True
+    )
+    raise SystemExit(1)
+
+
+def _handle_stream_keyboard_interrupt(
+    error: Any, logger: logging.Logger
+) -> None:
+    logger.info("Streaming interrupted by user")
+    click.echo("\n[ERROR] Streaming interrupted.", err=True)
+    raise SystemExit(130)
+
+
+def _handle_stream_output_error(
+    error: Any, logger: logging.Logger
+) -> None:
+    logger.error("Streaming output failed: %s", error)
+    click.echo()
+    click.echo(
+        f"[ERROR] Failed to render streaming output: {error}", err=True
+    )
+    raise SystemExit(1)
+
+
 def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorHandler]]:
     """Build the error handler dispatch table (lazily initialised)."""
     return [
@@ -190,29 +220,15 @@ def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorH
         ),
         (
             UpstreamSchemaError,
-            lambda e, log: (
-                log.error("Malformed upstream response during streaming: %s", e),
-                click.echo(),
-                click.echo(f"[ERROR] Upstream response format changed: {e}", err=True),
-                sys.exit(1),
-            ),
+            _handle_stream_upstream_schema_error,
         ),
         (
             KeyboardInterrupt,
-            lambda e, log: (
-                log.info("Streaming interrupted by user"),
-                click.echo("\n[ERROR] Streaming interrupted.", err=True),
-                sys.exit(130),
-            ),
+            _handle_stream_keyboard_interrupt,
         ),
         (
             (ClickException, OSError),
-            lambda e, log: (
-                log.error("Streaming output failed: %s", e),
-                click.echo(),
-                click.echo(f"[ERROR] Failed to render streaming output: {e}", err=True),
-                sys.exit(1),
-            ),
+            _handle_stream_output_error,
         ),
     ]
 
