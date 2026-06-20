@@ -38,7 +38,7 @@ class TokenFormat(BaseModel):
     @classmethod
     def validate_token(cls, v: str) -> str:
         """Validate token is not empty."""
-        if not v or not isinstance(v, str):
+        if not v:
             raise ValueError("Token must be a non-empty string")
         if not v.strip():
             raise ValueError("Token cannot be whitespace-only")

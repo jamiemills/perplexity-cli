@@ -18,9 +18,12 @@ from typing import TYPE_CHECKING
 import click
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from perplexity_cli.api.endpoints import PerplexityAPI
     from perplexity_cli.api.models import Answer
     from perplexity_cli.formatting.base import Formatter
+    from perplexity_cli.utils.attachment_models import FileAttachment
 
 from perplexity_cli.api.models import QueryInput, TraceContext
 from perplexity_cli.auth.models import AuthContext
@@ -187,7 +190,7 @@ def _require_auth_for_attachments(token: str | None, logger: logging.Logger) -> 
 
 
 def _load_and_upload_attachments(
-    file_paths: list,
+    file_paths: list[Path],
     token: str,
     cookies: dict[str, str] | None,
     logger: logging.Logger,
@@ -222,7 +225,7 @@ def _load_and_upload_attachments(
 
 
 def _do_s3_upload(
-    file_attachments: list,
+    file_attachments: list[FileAttachment],
     token: str,
     cookies: dict[str, str] | None,
     logger: logging.Logger,

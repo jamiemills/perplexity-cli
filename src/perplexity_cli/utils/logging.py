@@ -6,11 +6,12 @@ import sys
 from collections.abc import Mapping
 from datetime import UTC
 from pathlib import Path
+from typing import TextIO
 
 from perplexity_cli.utils.config import get_config_paths
 
 
-class DynamicStderrHandler(logging.StreamHandler):
+class DynamicStderrHandler(logging.StreamHandler[TextIO]):
     """Stream handler that always writes to the current stderr stream."""
 
     def emit(self, record: logging.LogRecord) -> None:

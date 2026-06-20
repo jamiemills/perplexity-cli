@@ -9,6 +9,7 @@ current user based on their subscription level.
 from __future__ import annotations
 
 import enum
+from typing import cast
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -128,9 +129,12 @@ class ModelConfigResponse(BaseModel):
         default_factory=dict,
         description="Flat map of model ID to metadata",
     )
-    config: list[ModelConfigEntry] = Field(
-        default_factory=list,
-        description="UI-visible model entries with subscription tiers",
+    config: list[ModelConfigEntry] = cast(
+        list[ModelConfigEntry],
+        Field(
+            default_factory=list,
+            description="UI-visible model entries with subscription tiers",
+        ),
     )
     default_models: dict[str, str] = Field(
         default_factory=dict,
