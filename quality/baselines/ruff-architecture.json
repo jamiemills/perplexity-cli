@@ -10,7 +10,6 @@
     "src/perplexity_cli/mcp_server.py:223:C901",
     "src/perplexity_cli/ndjson.py:87:PLR0913",
     "src/perplexity_cli/query_runner.py:524:PLR0913",
-    "src/perplexity_cli/runners/auth.py:86:PLR0913",
     "src/perplexity_cli/runners/status.py:151:PLR0913",
     "src/perplexity_cli/runners/status.py:212:PLR0913",
     "src/perplexity_cli/runners/status.py:33:C901",
