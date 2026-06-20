@@ -6,20 +6,19 @@ import asyncio
 import base64
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any
+from collections.abc import Coroutine, Mapping
+from typing import TYPE_CHECKING, Final, Protocol, TypedDict
 
 import httpx
 
 try:
     from curl_cffi.requests.exceptions import RequestException
-
-    _CURL_CFFI_AVAILABLE = True
 except ImportError:  # pragma: no cover
     RequestException = Exception  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
-    _CURL_CFFI_AVAILABLE = False
 
 if TYPE_CHECKING:
     from curl_cffi.requests import AsyncSession
+    from curl_cffi.requests.models import Response as CurlResponse
 
 from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
@@ -32,10 +31,82 @@ from perplexity_cli.utils.http_headers import build_perplexity_headers
 from perplexity_cli.utils.logging import get_logger, redact_path, redact_response_text
 from perplexity_cli.utils.upstream_contracts import parse_upload_url_response, require_mapping
 
-logger = get_logger()
+logger: logging.Logger = get_logger()
+_S3_UPLOAD_SUCCESS_STATUS: Final = 204
 
 
-def _diagnose_upload_entry_error(upload_data: dict[str, Any]) -> str:
+class UploadMetadataEntry(TypedDict):
+    """Metadata payload for a single upload URL request entry."""
+
+    filename: str
+    content_type: str
+    source: str
+    file_size: int
+    force_image: bool
+    search_mode: str
+
+
+type UploadMetadata = dict[str, UploadMetadataEntry]
+type MultipartFormValue = tuple[None, str] | tuple[str, bytes, str]
+
+
+class _UploadUrlResponse(Protocol):
+    """Typed subset of the curl_cffi response used here."""
+
+    @property
+    def ok(self) -> bool: ...
+
+    @property
+    def status_code(self) -> int: ...
+
+    @property
+    def url(self) -> object: ...
+
+    @property
+    def headers(self) -> object: ...
+
+    @property
+    def content(self) -> object: ...
+
+    def json(self) -> object: ...
+
+
+def _require_upload_mapping(
+    value: object, context: str, detail: str | None = None
+) -> dict[str, object]:
+    """Require a string-keyed mapping for upload payloads."""
+    return require_mapping(value, context, detail=detail)
+
+
+def _extract_upload_results(response_json: Mapping[str, object]) -> dict[str, dict[str, object]]:
+    """Extract validated upload results keyed by file UUID."""
+    results = _require_upload_mapping(
+        response_json.get("results"),
+        "Malformed upload results payload from upstream API",
+        detail="missing or invalid 'results' field",
+    )
+
+    return {
+        file_uuid: _require_upload_mapping(
+            upload_data,
+            "Malformed upload result entry from upstream API",
+            detail=f"file_uuid={file_uuid}",
+        )
+        for file_uuid, upload_data in results.items()
+    }
+
+
+def _load_response_json(response: _UploadUrlResponse) -> object:
+    """Load the JSON payload from an upload URL response."""
+    return response.json()
+
+
+def _get_httpx_async_client_factory() -> type[httpx.AsyncClient]:
+    """Return the async HTTP client factory used for S3 uploads."""
+    return httpx.AsyncClient
+
+
+def _diagnose_upload_entry_error(upload_data: Mapping[str, object]) -> str:
     """Determine the appropriate error message for a failed upload entry.
 
     Args:
@@ -76,7 +147,7 @@ def _extract_error_response_text(response: httpx.Response) -> str:
         return ""
 
 
-def _normalise_upload_fields(upload_data: dict[str, Any]) -> dict:
+def _normalise_upload_fields(upload_data: Mapping[str, object]) -> dict[str, object]:
     """Extract and normalise the fields dictionary from upload data.
 
     Args:
@@ -85,18 +156,21 @@ def _normalise_upload_fields(upload_data: dict[str, Any]) -> dict:
     Returns:
         A dictionary of upload fields, or an empty dict if invalid.
     """
-    fields = upload_data.get("fields") or {}
-    if not isinstance(fields, dict):
+    raw_fields = upload_data.get("fields")
+    if not raw_fields:
+        return {}
+
+    if not isinstance(raw_fields, dict):
         logger.warning(
             "Unexpected fields type from API: %s. Full upload_data: %s",
-            type(fields).__name__,
+            type(raw_fields).__name__,
             redact_response_text(str(upload_data)),
         )
         return {}
-    return fields
+    return require_mapping(raw_fields, "Malformed upload fields payload")
 
 
-def _validate_s3_object_url(upload_data: dict[str, Any]) -> None:
+def _validate_s3_object_url(upload_data: Mapping[str, object]) -> None:
     """Validate the s3_object_url field in upload data.
 
     Args:
@@ -142,21 +216,16 @@ class AttachmentUploader:
         self.base_url = base_url
 
     @staticmethod
-    def _create_async_session(timeout: int | None = None) -> AsyncSession:
-        """Create an AsyncSession with Chrome TLS impersonation.
+    def _create_async_session(timeout: int | None = None) -> AsyncSession[CurlResponse]:
+        """Create an AsyncSession with Chrome TLS impersonation."""
+        from curl_cffi.requests import AsyncSession as CurlAsyncSession
 
-        Args:
-            timeout: Request timeout in seconds (default from config/defaults).
+        if timeout is None:
+            from perplexity_cli.config.defaults import DEFAULT_REQUEST_TIMEOUT
 
-        Returns:
-            An AsyncSession configured for Chrome impersonation.
+            timeout = DEFAULT_REQUEST_TIMEOUT
 
-        Raises:
-            RuntimeError: If curl_cffi is not installed.
-        """
-        from perplexity_cli.utils.session_factory import create_async_session
-
-        return create_async_session(timeout=timeout)
+        return CurlAsyncSession(impersonate="chrome", timeout=timeout)
 
     async def upload_files(self, attachments: list[FileAttachment]) -> list[str]:
         """Upload files to S3 and return final S3 URLs.
@@ -186,39 +255,38 @@ class AttachmentUploader:
         # Use a single session for both the presigned URL request and S3 uploads
         from perplexity_cli.config.defaults import DEFAULT_UPLOAD_TIMEOUT
 
-        async with self._create_async_session(timeout=DEFAULT_UPLOAD_TIMEOUT) as session:
+        upload_timeout: int = DEFAULT_UPLOAD_TIMEOUT
+
+        session_manager: AsyncSession[CurlResponse] = self._create_async_session(
+            timeout=upload_timeout
+        )
+        async with session_manager as session:
             upload_urls_response, uuid_to_attachment = await self._request_upload_urls(
                 attachments, session
             )
 
             # Step 2: Upload files to S3 in parallel
-            tasks = []
-            uuid_list = []
+            results = _extract_upload_results(upload_urls_response)
+            tasks: list[Coroutine[object, object, str]] = []
             for file_uuid, attachment in uuid_to_attachment.items():
-                results = require_mapping(
-                    upload_urls_response.get("results"),
-                    "Malformed upload results payload from upstream API",
-                    detail="missing or invalid 'results' field",
-                )
                 upload_data = results.get(file_uuid)
-                upload_data = require_mapping(
+                validated_upload_data = _require_upload_mapping(
                     upload_data,
                     "Malformed upload result entry from upstream API",
                     detail=f"file_uuid={file_uuid}",
                 )
-                task = self._upload_to_s3(attachment, upload_data)
+                task = self._upload_to_s3(attachment, validated_upload_data)
                 tasks.append(task)
-                uuid_list.append(file_uuid)
 
             # Execute all uploads in parallel
-            s3_urls = await asyncio.gather(*tasks)
+            s3_urls = list(await asyncio.gather(*tasks))
 
         logger.info("Successfully uploaded %s file(s)", len(s3_urls))
         return s3_urls
 
     async def _request_upload_urls(
-        self, attachments: list[FileAttachment], session: AsyncSession
-    ) -> tuple[dict[str, Any], dict[str, FileAttachment]]:
+        self, attachments: list[FileAttachment], session: AsyncSession[CurlResponse]
+    ) -> tuple[dict[str, object], dict[str, FileAttachment]]:
         """Request presigned S3 upload URLs from Perplexity API.
 
         Args:
@@ -232,14 +300,15 @@ class AttachmentUploader:
             PerplexityHTTPStatusError: If API request fails.
         """
         files_metadata, uuid_to_attachment = self._build_upload_metadata(attachments)
-        request_body = {"files": files_metadata}
+        request_body: dict[str, UploadMetadata] = {"files": files_metadata}
         headers = build_perplexity_headers(self.token, self.cookies)
 
         try:
             from perplexity_cli.utils.config import get_upload_url_endpoint
 
-            response = await session.post(
-                get_upload_url_endpoint(),
+            upload_url_endpoint: str = get_upload_url_endpoint()
+            response: _UploadUrlResponse = await session.post(
+                upload_url_endpoint,
                 json=request_body,
                 headers=headers,
                 cookies=to_curl_cffi_cookies(self.cookies),
@@ -257,7 +326,11 @@ class AttachmentUploader:
             raise_http_status_error(response)
 
         try:
-            response_json = parse_upload_url_response(response.json())
+            response_payload: object = _load_response_json(response)
+            response_json = _require_upload_mapping(
+                parse_upload_url_response(response_payload),
+                "Malformed upload URL response from upstream API",
+            )
         except ValueError as e:
             raise UpstreamSchemaError("Malformed upload URL response from upstream API") from e
 
@@ -275,7 +348,7 @@ class AttachmentUploader:
     @staticmethod
     def _build_upload_metadata(
         attachments: list[FileAttachment],
-    ) -> tuple[dict[str, dict[str, Any]], dict[str, FileAttachment]]:
+    ) -> tuple[UploadMetadata, dict[str, FileAttachment]]:
         """Build file metadata and UUID mapping for upload URL requests.
 
         Args:
@@ -284,7 +357,7 @@ class AttachmentUploader:
         Returns:
             Tuple of (files_metadata dict, uuid_to_attachment mapping).
         """
-        files_metadata: dict[str, dict[str, Any]] = {}
+        files_metadata: UploadMetadata = {}
         uuid_to_attachment: dict[str, FileAttachment] = {}
 
         for attachment in attachments:
@@ -303,7 +376,7 @@ class AttachmentUploader:
         return files_metadata, uuid_to_attachment
 
     @staticmethod
-    def _validate_upload_response(response_json: dict[str, Any]) -> None:
+    def _validate_upload_response(response_json: Mapping[str, object]) -> None:
         """Validate that the upload URL response contains usable presigned URLs.
 
         Args:
@@ -313,11 +386,7 @@ class AttachmentUploader:
             AttachmentUploadError: If any upload entry is missing fields or rate limited.
             UpstreamSchemaError: If the results payload is malformed.
         """
-        results = require_mapping(
-            response_json.get("results"),
-            "Malformed upload results payload from upstream API",
-            detail="missing or invalid 'results' field",
-        )
+        results = _extract_upload_results(response_json)
         if not results:
             return
         for _file_uuid, upload_data in results.items():
@@ -330,8 +399,8 @@ class AttachmentUploader:
     async def _upload_to_s3(
         self,
         attachment: FileAttachment,
-        upload_data: dict[str, Any],
-        _session: AsyncSession | None = None,
+        upload_data: dict[str, object],
+        _session: AsyncSession[CurlResponse] | None = None,
     ) -> str:
         """Upload file to S3 using presigned URL.
 
@@ -359,7 +428,7 @@ class AttachmentUploader:
         return self._handle_s3_response(response, upload_data, attachment)
 
     @staticmethod
-    def _build_s3_form_data(upload_data: dict[str, Any]) -> dict[str, str]:
+    def _build_s3_form_data(upload_data: Mapping[str, object]) -> dict[str, str]:
         """Build the form data dictionary for an S3 presigned upload.
 
         Args:
@@ -394,7 +463,7 @@ class AttachmentUploader:
         Raises:
             AttachmentUploadError: If the upload request fails.
         """
-        files_dict: dict[str, tuple] = {}
+        files_dict: dict[str, MultipartFormValue] = {}
         for key, value in form_data.items():
             files_dict[key] = (None, value)
         files_dict["file"] = (attachment.filename, file_content, attachment.content_type)
@@ -403,8 +472,11 @@ class AttachmentUploader:
             from perplexity_cli.config.defaults import DEFAULT_UPLOAD_TIMEOUT
             from perplexity_cli.utils.config import get_s3_bucket_url
 
-            async with httpx.AsyncClient(timeout=DEFAULT_UPLOAD_TIMEOUT) as client:
-                return await client.post(get_s3_bucket_url(), files=files_dict)
+            upload_timeout: int = DEFAULT_UPLOAD_TIMEOUT
+            s3_bucket_url: str = get_s3_bucket_url()
+            async_client_factory = _get_httpx_async_client_factory()
+            async with async_client_factory(timeout=upload_timeout) as client:
+                return await client.post(s3_bucket_url, files=files_dict)
         except Exception as e:
             logger.error("S3 upload error: %s", e)
             raise AttachmentUploadError(f"Failed to upload {attachment.filename} to S3: {e}") from e
@@ -412,7 +484,7 @@ class AttachmentUploader:
     @staticmethod
     def _handle_s3_response(
         response: httpx.Response,
-        upload_data: dict[str, Any],
+        upload_data: Mapping[str, object],
         attachment: FileAttachment,
     ) -> str:
         """Process the S3 upload response and return the final URL.
@@ -429,7 +501,7 @@ class AttachmentUploader:
             UpstreamSchemaError: If the S3 object URL is malformed.
             AttachmentUploadError: If the upload was not successful.
         """
-        if response.status_code == 204:
+        if response.status_code == _S3_UPLOAD_SUCCESS_STATUS:
             s3_url = upload_data.get("s3_object_url", "")
             if not isinstance(s3_url, str):
                 raise UpstreamSchemaError("Malformed S3 object URL in upload response")
