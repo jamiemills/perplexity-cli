@@ -6,7 +6,6 @@
   "src/perplexity_cli/auth/oauth_handler.py": 3,
   "src/perplexity_cli/auth/token_manager.py": 9,
   "src/perplexity_cli/auth/utils.py": 1,
-  "src/perplexity_cli/commands.py": 3,
   "src/perplexity_cli/envelope.py": 4,
   "src/perplexity_cli/error_handler.py": 1,
   "src/perplexity_cli/formatting/rich.py": 1,
