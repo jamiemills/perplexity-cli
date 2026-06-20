@@ -11,6 +11,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+import click
 from click import ClickException
 
 from perplexity_cli.api.endpoints import PerplexityAPI
@@ -22,7 +23,6 @@ from perplexity_cli.api.models import (
     WebResult,
 )
 from perplexity_cli.formatting.context import RenderContext
-from perplexity_cli.runners._utils import emit
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
@@ -70,7 +70,7 @@ def _process_stream_message(
     if ndjson_writer:
         ndjson_writer.chunk(new_text)
     else:
-        emit(new_text, nl=False)
+        click.echo(new_text, nl=False)
     return text
 
 
@@ -121,11 +121,11 @@ def _render_stream_references(
         accumulated_text: The complete answer text.
         references: List of web references.
     """
-    emit("")
+    click.echo()
     if not references or render.options.strip_references:
         return
 
-    emit("")
+    click.echo()
     if render.options.output_format == "rich":
         render.formatter.render_complete(
             Answer(text=accumulated_text, references=references),
@@ -134,7 +134,7 @@ def _render_stream_references(
     else:
         formatted_refs = render.formatter.format_references(references)
         if formatted_refs:
-            emit(formatted_refs)
+            click.echo(formatted_refs)
 
 
 def _run_stream_loop(
@@ -175,8 +175,10 @@ def _handle_stream_upstream_schema_error(
     error: Any, logger: logging.Logger
 ) -> None:
     logger.error("Malformed upstream response during streaming: %s", error)
-    emit("")
-    emit(f"[ERROR] Upstream response format changed: {error}", err=True)
+    click.echo()
+    click.echo(
+        f"[ERROR] Upstream response format changed: {error}", err=True
+    )
     raise SystemExit(1)
 
 
@@ -184,7 +186,7 @@ def _handle_stream_keyboard_interrupt(
     _error: Any, logger: logging.Logger
 ) -> None:
     logger.info("Streaming interrupted by user")
-    emit("\n[ERROR] Streaming interrupted.", err=True)
+    click.echo("\n[ERROR] Streaming interrupted.", err=True)
     raise SystemExit(130)
 
 
@@ -192,8 +194,10 @@ def _handle_stream_output_error(
     error: Any, logger: logging.Logger
 ) -> None:
     logger.error("Streaming output failed: %s", error)
-    emit("")
-    emit(f"[ERROR] Failed to render streaming output: {error}", err=True)
+    click.echo()
+    click.echo(
+        f"[ERROR] Failed to render streaming output: {error}", err=True
+    )
     raise SystemExit(1)
 
 
@@ -203,14 +207,14 @@ def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorH
         (
             PerplexityHTTPStatusError,
             lambda e, log: (
-                emit(""),
+                click.echo(),
                 handle_http_error(e, log, debug_mode=False, context="during streaming"),
             ),
         ),
         (
             PerplexityRequestError,
             lambda e, log: (
-                emit(""),
+                click.echo(),
                 handle_network_error(e, log, debug_mode=False, context="during streaming"),
             ),
         ),

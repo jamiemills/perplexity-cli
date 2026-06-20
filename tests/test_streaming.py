@@ -123,7 +123,7 @@ def test_stream_query_response_surfaces_output_failure():
     query_input = QueryInput(query="test query")
     trace = TraceContext()
 
-    with patch("perplexity_cli.query_streaming.emit") as mock_echo:
+    with patch("perplexity_cli.query_streaming.click.echo") as mock_echo:
         mock_echo.side_effect = [None, None, None, None, None]
 
         with pytest.raises(SystemExit) as exc_info:
@@ -162,7 +162,7 @@ def test_stream_query_response_maps_click_exception_to_render_failure():
     query_input = QueryInput(query="test query")
     trace = TraceContext()
 
-    with patch("perplexity_cli.query_streaming.emit") as mock_echo:
+    with patch("perplexity_cli.query_streaming.click.echo") as mock_echo:
         mock_echo.side_effect = [ClickException("bad tty"), None, None]
 
         with pytest.raises(SystemExit) as exc_info:
@@ -274,7 +274,7 @@ class TestHandleStreamError:
         error = PerplexityHTTPStatusError("test", request=Mock(), response=mock_response)
 
         with patch("perplexity_cli.query_streaming.handle_http_error"):
-            with patch("perplexity_cli.query_streaming.emit"):
+            with patch("perplexity_cli.query_streaming.click.echo"):
                 # Should return without calling handle_unexpected_cli_error
                 with patch(
                     "perplexity_cli.query_streaming.handle_unexpected_cli_error"

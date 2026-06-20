@@ -16,9 +16,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import click
+
 from perplexity_cli.api.models import QueryInput, TraceContext
 from perplexity_cli.auth.models import AuthContext
-from perplexity_cli.runners._utils import emit
 from perplexity_cli.formatting.context import OutputOptions, RenderContext
 from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.exceptions import (
@@ -144,7 +145,7 @@ def resolve_attachment_urls(
     try:
         return _resolve_and_upload(query_text, attachment_list, auth, logger)
     except (FileNotFoundError, AttachmentError, ValueError) as e:
-        emit(f"[ERROR] Failed to load attachments: {e}", err=True)
+        click.echo(f"[ERROR] Failed to load attachments: {e}", err=True)
         logger.error("Attachment loading failed: %s", e)
         raise SystemExit(1) from e
 
@@ -195,8 +196,8 @@ def _require_auth_for_attachments(token: str | None, logger: logging.Logger) -> 
     """
     if token:
         return token
-    emit("[ERROR] File attachments require authentication.", err=True)
-    emit("\nPlease authenticate first with: pxcli auth login", err=True)
+    click.echo("[ERROR] File attachments require authentication.", err=True)
+    click.echo("\nPlease authenticate first with: pxcli auth login", err=True)
     logger.error("Attachment upload attempted without authentication")
     raise SystemExit(1)
 
@@ -260,7 +261,7 @@ def _do_s3_upload(
     try:
         attachment_urls = run_async(uploader.upload_files(file_attachments))
     except AttachmentUploadError as e:
-        emit(f"[ERROR] Failed to upload attachments: {e}", err=True)
+        click.echo(f"[ERROR] Failed to upload attachments: {e}", err=True)
         logger.error("Attachment upload failed: %s", e)
         raise SystemExit(1) from e
 
@@ -279,9 +280,9 @@ def get_query_formatter(output_format: str | None) -> tuple[str, Formatter]:
     try:
         formatter = get_formatter(resolved_output_format)
     except ValueError as e:
-        emit(f"[ERROR] {e}", err=True)
+        click.echo(f"[ERROR] {e}", err=True)
         available = ", ".join(list_formatters())
-        emit(f"Available formats: {available}", err=True)
+        click.echo(f"Available formats: {available}", err=True)
         logger.error("Invalid formatter: %s", resolved_output_format)
         raise SystemExit(1) from e
 
@@ -314,7 +315,7 @@ def render_complete_answer(answer_obj: Answer, render: RenderContext) -> None:
         answer_obj,
         strip_references=render.options.strip_references,
     )
-    emit(formatted_output)
+    click.echo(formatted_output)
 
 
 def _read_query_from_stdin(query_text: str) -> str:
@@ -329,11 +330,11 @@ def _read_query_from_stdin(query_text: str) -> str:
     if query_text != "-":
         return query_text
     if sys.stdin.isatty():
-        emit("Error: stdin is a terminal; pipe input or provide a query.", err=True)
+        click.echo("Error: stdin is a terminal; pipe input or provide a query.", err=True)
         raise SystemExit(2)
     text = sys.stdin.read().strip()
     if not text:
-        emit("Error: empty input from stdin.", err=True)
+        click.echo("Error: empty input from stdin.", err=True)
         raise SystemExit(2)
     return text
 
@@ -422,11 +423,11 @@ def _try_dispatch_known_error(  # nosemgrep: boolean-flag-argument
         return True
     if isinstance(exc, UpstreamSchemaError):
         logger.error("Upstream schema error: %s", exc)
-        emit(f"[ERROR] Upstream response format changed: {exc}", err=True)
+        click.echo(f"[ERROR] Upstream response format changed: {exc}", err=True)
         raise SystemExit(1)
     if isinstance(exc, (ConfigurationError, AttachmentError, AttachmentUploadError, ValueError)):
         logger.error("Value error: %s", exc)
-        emit(f"[ERROR] Error: {exc}", err=True)
+        click.echo(f"[ERROR] Error: {exc}", err=True)
         raise SystemExit(1)
     return False
 
@@ -623,5 +624,5 @@ def _handle_keyboard_interrupt(  # nosemgrep: boolean-flag-argument
             json_mode=True,
         )
     logger.info("Query interrupted by user")
-    emit("\n[ERROR] Query interrupted.", err=True)
+    click.echo("\n[ERROR] Query interrupted.", err=True)
     raise SystemExit(130)

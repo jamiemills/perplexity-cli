@@ -12,6 +12,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Final
 
+import click
+
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
@@ -92,19 +94,18 @@ def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters
     """
     user_message, log_message, include_debug_hint = message_tuple
     logger.exception("%s: %s", log_message, error)
-    from perplexity_cli.runners._utils import emit
-    emit(user_message, err=True)
+    click.echo(user_message, err=True)
 
     if debug_mode:
         import traceback
 
         debug_output = traceback.format_exc()
         if include_debug_hint:
-            emit(f"Debug info:\n{debug_output}", err=True)
+            click.echo(f"Debug info:\n{debug_output}", err=True)
         else:
-            emit(debug_output, err=True)
+            click.echo(debug_output, err=True)
     elif include_debug_hint:
-        emit("Run with --debug for more information.", err=True)
+        click.echo("Run with --debug for more information.", err=True)
 
     raise SystemExit(1)
 
@@ -204,13 +205,12 @@ def handle_http_error(  # nosemgrep: boolean-flag-argument
     logger.error("HTTP error %s%s: %s", status, context_msg, error)
 
     message = _HTTP_ERROR_MESSAGES.get(status, f"[ERROR] HTTP error {status}.")
-    from perplexity_cli.runners._utils import emit
-    emit(message, err=True)
+    click.echo(message, err=True)
     if status in _HTTP_ERROR_EXTRAS:
-        emit(_HTTP_ERROR_EXTRAS[status], err=True)
+        click.echo(_HTTP_ERROR_EXTRAS[status], err=True)
 
     if debug_mode:
-        emit(f"Details: {error}", err=True)
+        click.echo(f"Details: {error}", err=True)
 
     raise SystemExit(1)
 
@@ -234,10 +234,9 @@ def handle_network_error(  # nosemgrep: boolean-flag-argument
     """
     context_msg = f" {context}" if context else ""
     logger.error("Network error%s: %s", context_msg, error)
-    from perplexity_cli.runners._utils import emit
-    emit("[ERROR] Network error. Please check your internet connection.", err=True)
+    click.echo("[ERROR] Network error. Please check your internet connection.", err=True)
 
     if debug_mode:
-        emit(f"Details: {error}", err=True)
+        click.echo(f"Details: {error}", err=True)
 
     raise SystemExit(1)
