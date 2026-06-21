@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeGuard
 import click
 
 from perplexity_cli._types import OutputFormat, SchemaInclusion
+from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.utils.exceptions import (
     AuthenticationError,
@@ -21,7 +22,6 @@ from perplexity_cli.utils.exceptions import (
 from perplexity_cli.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.config.models import FeatureConfig
     from perplexity_cli.envelope import Envelope
     from perplexity_cli.threads.cache_manager import ThreadCacheManager
@@ -125,8 +125,6 @@ def _output_doctor_security_text(
 
 def run_doctor_security_command(*, output_format: OutputFormat | None = None) -> None:
     """Execute the doctor security command."""
-    from perplexity_cli.auth.token_manager import TokenManager
-    from perplexity_cli.config.models import FeatureConfig
     from perplexity_cli.threads.cache_manager import ThreadCacheManager
     from perplexity_cli.utils.config import get_feature_config
 
