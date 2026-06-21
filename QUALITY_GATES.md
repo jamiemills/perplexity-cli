@@ -8,10 +8,12 @@ what value it provides, and why it runs at its current point in the workflow.
 
 This is a description of the gates currently configured in the repository, not
 a wish list. The canonical sources of truth are `lefthook.yml` for local Git
-hook placement, `Makefile` for runnable targets, `pyproject.toml` for Python
-tool configuration, `.semgrep.yml` for custom Semgrep rules, `tests/conftest.py`
-for Hypothesis profiles, `scripts/` for custom checks, and `.github/workflows/`
-for CI and publishing. When a gate changes, update the command in the canonical
+hook placement, `Makefile` for runnable targets (including `make setup` and
+`make configure-opencode` for development environment setup), `pyproject.toml`
+for Python tool configuration, `.semgrep.yml` for custom Semgrep rules,
+`tests/conftest.py` for Hypothesis profiles, `scripts/` for custom checks,
+`opencode.jsonc` for OpenCode plugin and agent wiring, and
+`.github/workflows/` for CI and publishing. When a gate changes, update the command in the canonical
 config first, then update this document. This document does not describe GitHub
 branch protection settings, PyPI project settings, local IDE checks, operating
 system keychain policy, or any external scanner that is not visible in this
@@ -153,8 +155,9 @@ The ordering matters:
 | Complexity trend tracking | On-demand | custom Python | `make metrics-track` |
 | Quality plan generator | On-demand | custom Python | `make quality-plan OUT=...` |
 | Plan compliance check | On-demand, OpenCode commit | custom Python | `make plan-check`, `PLAN=...` |
-| Plan compliance gate | OpenCode `git commit` | OpenCode plugin + subagent | `.opencode/plugins/plan-compliance-gate.ts` |
+| Plan compliance gate | OpenCode `git commit` | OpenCode plugin + subagent | `.opencode/plugins/plan-compliance-gate.ts` (auto-invokes reviewer) |
 | Real-time quality plugin | OpenCode session | OpenCode plugin | `.opencode/plugins/pxcli-quality.ts` |
+| OpenCode environment setup | On-demand | `make configure-opencode` | installs `.opencode/` npm deps, verifies all plugin/agent files |
 | Pre-push docs check | OpenCode `git push` | OpenCode plugin | `.opencode/plugins/pre-push-docs-check.ts` |
 | Diff mutation testing | Pre-push | `mutmut`, custom discovery | `make mutate-diff` |
 | Property tests | Pre-push, CI | `hypothesis` | `make test-property-push`, `make test-property-ci` |
@@ -728,14 +731,21 @@ produced plan against the prevention rules before any build phase consumes it.
 ### Plan Compliance Gate
 
 **Summary:** the `plan-compliance-gate` OpenCode plugin guards `git commit` with
-the Analyzer Compliance Review.
+the Analyzer Compliance Review. When it blocks, it automatically invokes the
+`quality-plan-reviewer` subagent to analyse failures.
 
 - **Tool used:** `.opencode/plugins/plan-compliance-gate.ts`, plus the
   read-only `quality-plan-reviewer` subagent (`.opencode/agents/`).
+  Both are registered in `opencode.jsonc` and installed via
+  `make configure-opencode` (runs `npm install` in `.opencode/`).
 - **What it defends against:** a plan that violates the prevention rules
   proceeding to implementation. If the latest plan under `.claude/plans/`
-  reports `Result: FAIL`, the commit is blocked until the
-  `quality-plan-reviewer` subagent re-reviews it.
+  reports `Result: FAIL`, the commit is blocked and the reviewer subagent
+  is automatically invoked via `client.tasks()` to categorise failures and
+  suggest fixes. The developer retries the commit after addressing them.
+- **First-block / retry pattern:** the plugin tracks a `commitBlocked`
+  flag per session cycle. The first commit attempt blocks; the retry after
+  fixes is allowed through and resets the flag.
 
 ### Real-time Quality Plugin (pxcli-quality)
 
@@ -926,9 +936,13 @@ runs CI, commits, tags, and pushes.
 
 The `Makefile` is the command source of truth. `lefthook.yml` delegates most
 checks to Make targets, while CI delegates to the composite `make ci` target.
-This prevents local hooks, manual commands, and GitHub Actions from silently
-diverging.
+`opencode.jsonc` registers OpenCode plugins and agents.  This prevents local
+hooks, manual commands, and GitHub Actions from silently diverging.
 
+- `make setup` creates the Python virtualenv, syncs locked dependencies,
+  installs lefthook git hooks, and verifies the CLI builds.
+- `make configure-opencode` installs `.opencode/` npm dependencies and
+  verifies that all plugin files, agent files, and `opencode.jsonc` exist.
 - `make check` runs static checks: `format-check`, `lint`, `typecheck-all`,
   `security`, `complexity`, `semgrep`, `arch-check`, `coupling-check`, and the
   `ratchets` group (file-size, suppressions, ruff-architecture,
