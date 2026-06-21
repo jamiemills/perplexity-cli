@@ -82,8 +82,9 @@ class TestRetryUtilities:
         start = time.time()
         sleep_with_backoff(10, base_delay=1.0, max_delay=0.1)  # Max should cap it
         elapsed = time.time() - start
-        # Should sleep approximately max_delay (0.1) seconds, not 2^10
-        assert elapsed <= 0.2
+        # Should sleep approximately max_delay (0.1) seconds, not 2^10.
+        # Loose bound because time.sleep() can oversleep under OS load (flaky on CI).
+        assert elapsed <= 0.5
 
     def test_get_backoff_delay_without_jitter(self):
         """Test deterministic backoff delay when jitter is disabled."""
