@@ -93,7 +93,7 @@ class TestRetryUtilities:
 
     def test_get_backoff_delay_with_jitter_is_bounded(self):
         """Test jittered backoff stays within expected bounds."""
-        with mock.patch("perplexity_cli.utils.retry.random.uniform", return_value=0.25):
+        with mock.patch("perplexity_cli.utils.retry._rng.uniform", return_value=0.25):
             delay = get_backoff_delay(1, base_delay=2.0, max_delay=10.0, jitter_factor=0.1)
 
         assert 0.0 <= delay <= 4.4

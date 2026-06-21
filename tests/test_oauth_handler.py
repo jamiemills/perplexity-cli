@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import urllib.error
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from perplexity_cli.auth.oauth_handler import (
@@ -53,13 +53,12 @@ class TestFetchTargets:
         """Returns parsed JSON list from Chrome endpoint."""
         targets = [{"type": "page", "webSocketDebuggerUrl": "ws://localhost:9222/x"}]
         mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps(targets).encode()
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.json.return_value = targets
+        mock_resp.raise_for_status = MagicMock()
 
         client = ChromeDevToolsClient(9222)
         with patch(
-            "perplexity_cli.auth.oauth_handler.urllib.request.urlopen", return_value=mock_resp
+            "httpx.get", return_value=mock_resp
         ):
             result = client._fetch_targets()
         assert result == targets
@@ -68,8 +67,8 @@ class TestFetchTargets:
         """Raises AuthenticationError when Chrome is unreachable."""
         client = ChromeDevToolsClient(9222)
         with patch(
-            "perplexity_cli.auth.oauth_handler.urllib.request.urlopen",
-            side_effect=urllib.error.URLError("Connection refused"),
+            "httpx.get",
+            side_effect=httpx.ConnectError("Connection refused"),
         ):
             with pytest.raises(AuthenticationError, match="Failed to connect"):
                 client._fetch_targets()
@@ -77,13 +76,12 @@ class TestFetchTargets:
     def test_raises_on_non_list_response(self):
         """Raises AuthenticationError when Chrome returns a non-list payload."""
         mock_resp = MagicMock()
-        mock_resp.read.return_value = b'{"not": "a list"}'
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.json.return_value = {"not": "a list"}
+        mock_resp.raise_for_status = MagicMock()
 
         client = ChromeDevToolsClient(9222)
         with patch(
-            "perplexity_cli.auth.oauth_handler.urllib.request.urlopen", return_value=mock_resp
+            "httpx.get", return_value=mock_resp
         ):
             with pytest.raises(AuthenticationError, match="invalid targets payload"):
                 client._fetch_targets()
@@ -91,13 +89,12 @@ class TestFetchTargets:
     def test_raises_on_invalid_json(self):
         """Raises AuthenticationError when Chrome returns invalid JSON."""
         mock_resp = MagicMock()
-        mock_resp.read.return_value = b"not json at all"
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.json.side_effect = json.JSONDecodeError("bad", "doc", 0)
+        mock_resp.raise_for_status = MagicMock()
 
         client = ChromeDevToolsClient(9222)
         with patch(
-            "perplexity_cli.auth.oauth_handler.urllib.request.urlopen", return_value=mock_resp
+            "httpx.get", return_value=mock_resp
         ):
             with pytest.raises(AuthenticationError, match="Failed to connect"):
                 client._fetch_targets()
@@ -106,8 +103,8 @@ class TestFetchTargets:
         """Raises AuthenticationError on timeout."""
         client = ChromeDevToolsClient(9222)
         with patch(
-            "perplexity_cli.auth.oauth_handler.urllib.request.urlopen",
-            side_effect=TimeoutError("timed out"),
+            "httpx.get",
+            side_effect=httpx.ConnectTimeout("timed out"),
         ):
             with pytest.raises(AuthenticationError, match="Failed to connect"):
                 client._fetch_targets()
@@ -145,9 +142,8 @@ class TestConnect:
         """Connects via websocket to the page target's debugger URL."""
         targets = [{"type": "page", "webSocketDebuggerUrl": "ws://localhost:9222/devtools/page/1"}]
         mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps(targets).encode()
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.json.return_value = targets
+        mock_resp.raise_for_status = MagicMock()
 
         mock_ws = AsyncMock()
 
@@ -157,7 +153,7 @@ class TestConnect:
         client = ChromeDevToolsClient(9222)
         with (
             patch(
-                "perplexity_cli.auth.oauth_handler.urllib.request.urlopen", return_value=mock_resp
+                "httpx.get", return_value=mock_resp
             ),
             patch(
                 "perplexity_cli.auth.oauth_handler.websockets.connect", side_effect=fake_connect
@@ -172,13 +168,12 @@ class TestConnect:
         """Raises AuthenticationError when target has no webSocketDebuggerUrl."""
         targets = [{"type": "page", "title": "no-ws"}]
         mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps(targets).encode()
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.json.return_value = targets
+        mock_resp.raise_for_status = MagicMock()
 
         client = ChromeDevToolsClient(9222)
         with patch(
-            "perplexity_cli.auth.oauth_handler.urllib.request.urlopen", return_value=mock_resp
+            "httpx.get", return_value=mock_resp
         ):
             with pytest.raises(AuthenticationError, match="WebSocket debugger URL"):
                 await client.connect()
@@ -579,9 +574,8 @@ class TestAuthenticateWithBrowser:
         """Exercises the complete authentication flow with mocks."""
         targets = [{"type": "page", "webSocketDebuggerUrl": "ws://localhost:9222/devtools/page/1"}]
         mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps(targets).encode()
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.json.return_value = targets
+        mock_resp.raise_for_status = MagicMock()
 
         mock_ws = AsyncMock()
         # connect sends no commands, but send_command calls will follow
@@ -611,7 +605,7 @@ class TestAuthenticateWithBrowser:
 
         with (
             patch(
-                "perplexity_cli.auth.oauth_handler.urllib.request.urlopen", return_value=mock_resp
+                "httpx.get", return_value=mock_resp
             ),
             patch("perplexity_cli.auth.oauth_handler.websockets.connect", side_effect=fake_connect),
             patch("perplexity_cli.auth.oauth_handler.asyncio.sleep", new_callable=AsyncMock),
@@ -629,9 +623,8 @@ class TestAuthenticateWithBrowser:
         """Ensures client.close is called even when an error occurs."""
         targets = [{"type": "page", "webSocketDebuggerUrl": "ws://localhost:9222/devtools/page/1"}]
         mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps(targets).encode()
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.json.return_value = targets
+        mock_resp.raise_for_status = MagicMock()
 
         mock_ws = AsyncMock()
         mock_ws.recv.side_effect = [
@@ -645,7 +638,7 @@ class TestAuthenticateWithBrowser:
 
         with (
             patch(
-                "perplexity_cli.auth.oauth_handler.urllib.request.urlopen", return_value=mock_resp
+                "httpx.get", return_value=mock_resp
             ),
             patch("perplexity_cli.auth.oauth_handler.websockets.connect", side_effect=fake_connect),
         ):

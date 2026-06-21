@@ -11,15 +11,6 @@ from typing import TYPE_CHECKING, Final, Protocol, TypedDict, TypeGuard
 
 import httpx
 
-try:
-    from curl_cffi.requests.exceptions import RequestException
-except ImportError:  # pragma: no cover
-    RequestException = Exception  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
-
-if TYPE_CHECKING:
-    from curl_cffi.requests import AsyncSession
-    from curl_cffi.requests.models import Response as CurlResponse
-
 from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
@@ -30,6 +21,19 @@ from perplexity_cli.utils.http_errors import raise_http_status_error
 from perplexity_cli.utils.http_headers import build_perplexity_headers
 from perplexity_cli.utils.logging import get_logger, redact_path, redact_response_text
 from perplexity_cli.utils.upstream_contracts import parse_upload_url_response, require_mapping
+
+RequestException: type[Exception] = Exception
+
+try:
+    from curl_cffi.requests.exceptions import RequestException as _ReqExc
+
+    RequestException = _ReqExc
+except ImportError:  # pragma: no cover
+    pass
+
+if TYPE_CHECKING:
+    from curl_cffi.requests import AsyncSession
+    from curl_cffi.requests.models import Response as CurlResponse
 
 logger: logging.Logger = get_logger()
 _S3_UPLOAD_SUCCESS_STATUS: Final = 204

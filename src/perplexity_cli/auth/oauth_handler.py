@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import urllib.request
 from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
+import httpx
 import websockets
 
 from perplexity_cli.utils.async_bridge import run_async
@@ -67,10 +67,10 @@ class ChromeDevToolsClient:
         """
         url = f"http://localhost:{self.port}/json"
         try:
-            # Scheme and host are hardcoded literals; only port varies.
-            with urllib.request.urlopen(url, timeout=5) as response:  # nosec B310
-                targets = json.loads(response.read())
-        except (json.JSONDecodeError, OSError) as e:
+            response = httpx.get(url, timeout=5)
+            response.raise_for_status()
+            targets = response.json()
+        except (json.JSONDecodeError, httpx.HTTPError) as e:
             raise AuthenticationError(
                 f"Failed to connect to Chrome on port {self.port}. "
                 f"Ensure Chrome is running with --remote-debugging-port={self.port}. "

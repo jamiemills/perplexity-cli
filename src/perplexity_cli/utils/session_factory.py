@@ -10,15 +10,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-try:
-    from curl_cffi.requests import AsyncSession, Session
+Session: type | None = None
+AsyncSession: type | None = None
+_curl_cffi_available = False
+_curl_cffi_import_error: str | None = None
 
+try:
+    from curl_cffi.requests import AsyncSession as _AsyncSessionCls
+    from curl_cffi.requests import Session as _SessionCls
+
+    Session = _SessionCls
+    AsyncSession = _AsyncSessionCls
     _curl_cffi_available = True
-    _curl_cffi_import_error: str | None = None
+    _curl_cffi_import_error = None  # pragma: no cover
 except ImportError as _exc:  # pragma: no cover
-    AsyncSession = None  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
-    Session = None  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
-    _curl_cffi_available = False
     _curl_cffi_import_error = (
         f"curl_cffi is required but could not be imported: {_exc}. "
         "Install it with: uv pip install 'curl-cffi>=0.14.0'"
@@ -43,7 +48,7 @@ def _guard_curl_cffi() -> None:
         raise RuntimeError(_curl_cffi_import_error)
 
 
-def create_sync_session(timeout: int | None = None) -> SessionType:  # type: ignore[reportMissingTypeArgument]
+def create_sync_session(timeout: int | None = None) -> SessionType:
     """Create a synchronous curl_cffi Session with Chrome TLS impersonation.
 
     Args:
@@ -61,10 +66,13 @@ def create_sync_session(timeout: int | None = None) -> SessionType:  # type: ign
         timeout = DEFAULT_REQUEST_TIMEOUT
 
     _guard_curl_cffi()
-    return Session(impersonate=IMPERSONATE_PROFILE, timeout=timeout)  # type: ignore[misc]
+    session_cls = Session
+    if session_cls is None:  # pragma: no cover
+        raise RuntimeError(_curl_cffi_import_error)
+    return session_cls(impersonate=IMPERSONATE_PROFILE, timeout=timeout)
 
 
-def create_async_session(timeout: int | None = None) -> AsyncSessionType:  # type: ignore[reportMissingTypeArgument]
+def create_async_session(timeout: int | None = None) -> AsyncSessionType:
     """Create an asynchronous curl_cffi AsyncSession with Chrome TLS impersonation.
 
     Args:
@@ -82,4 +90,7 @@ def create_async_session(timeout: int | None = None) -> AsyncSessionType:  # typ
         timeout = DEFAULT_REQUEST_TIMEOUT
 
     _guard_curl_cffi()
-    return AsyncSession(impersonate=IMPERSONATE_PROFILE, timeout=timeout)  # type: ignore[misc]
+    async_session_cls = AsyncSession
+    if async_session_cls is None:  # pragma: no cover
+        raise RuntimeError(_curl_cffi_import_error)
+    return async_session_cls(impersonate=IMPERSONATE_PROFILE, timeout=timeout)
