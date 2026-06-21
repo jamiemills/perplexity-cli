@@ -25,7 +25,7 @@
   // pre-push-docs:  reminds to update CLI help text and README before push.
   // plan-compliance: blocks git commit when the quality plan reports FAIL.
   // -----------------------------------------------------------------------
-  "plugins": [
+  "plugin": [
     ".opencode/plugins/quality-gate.ts",
     ".opencode/plugins/pxcli-quality.ts",
     ".opencode/plugins/pre-push-docs-check.ts",
@@ -39,7 +39,7 @@
   //   'make plan-check', categorises failures, and suggests fixes.
   //   Invoke when the plan-compliance-gate blocks a commit.
   // -----------------------------------------------------------------------
-  "agents": {
+  "agent": {
     "quality-plan-reviewer": {
       "path": ".opencode/agents/quality-plan-reviewer.md",
       "permission": {
