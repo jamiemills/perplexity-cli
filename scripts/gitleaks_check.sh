@@ -7,18 +7,19 @@
 # pre-push and `make gitleaks`.
 #
 # Exit codes:
-#   0 — no secrets found
+#   0 — no secrets found, or gitleaks not installed (skip)
 #   1 — secrets detected, push blocked
-#   2 — gitleaks not installed
 #   3 — not a git repository
 # =============================================================================
 set -euo pipefail
 
 # --- pre-flight -----------------------------------------------------------
 if ! command -v gitleaks &>/dev/null; then
-    echo "gitleaks is not installed."
+    echo "gitleaks is not installed — skipping pre-push secret scan."
     echo "Install: brew install gitleaks"
-    exit 2
+    echo "Or see: https://github.com/gitleaks/gitleaks#installing"
+    echo "CI gitleaks + infisical pre-commit will still catch secrets."
+    exit 0
 fi
 
 if ! git rev-parse --git-dir &>/dev/null; then

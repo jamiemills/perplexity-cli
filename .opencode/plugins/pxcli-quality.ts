@@ -73,8 +73,8 @@ const SKIPPED_PATHS = [
 
 const DEPENDENCY_FILES = ["pyproject.toml", "requirements.txt", "requirements-dev.txt"];
 
-// Semgrep is installed outside the project venv
-const SEMGREP_BIN = "/Users/jamie.mills/.local/bin/semgrep";
+// Semgrep is resolved from PATH; falls back gracefully if absent
+const SEMGREP_BIN = "semgrep";
 
 // ---------------------------------------------------------------------------
 // File classification helpers

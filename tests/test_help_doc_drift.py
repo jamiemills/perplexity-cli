@@ -382,16 +382,21 @@ class TestQualityGatesMatchesRepo:
         assert "skip" in text.lower()
         assert "make safety" in text
 
-    def test_fail_under_duplication_clarified(self) -> None:
-        """FAIL_UNDER must be flagged as a mirror of pyproject.toml."""
+    def test_gitleaks_graceful_skip_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "pyproject.toml" in text
-        assert "FAIL_UNDER" in text
+        assert "Gitleaks" in text
+        assert "prints a skip notice and exits 0" in text
+
+    def test_thresholds_wired_or_documented(self) -> None:
+        """FAIL_UNDER is a reference mirror; SEMGREP_SEVERITY is wired into Makefile."""
+        text = QUALITY_GATES.read_text(encoding="utf-8")
+        assert "reference mirror" in text  # FAIL_UNDER
+        assert "`make semgrep` target via `$(SEMGREP_SEVERITY)`" in text  # SEMGREP_SEVERITY wired
 
     def test_opencode_plugin_caveats_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "/Users/jamie.mills/.local/bin/semgrep" in text
-        assert "commands.py" in text
+        assert "semgrep from `PATH`" in text
+        assert "src/perplexity_cli/commands/" in text
 
     def test_auxiliary_make_targets_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")

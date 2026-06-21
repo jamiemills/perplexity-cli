@@ -173,7 +173,7 @@ semgrep:  ## Run semgrep static analysis
 		--config p/python \
 		--config p/comment \
 		--config p/r2c-best-practices \
-		--severity ERROR --severity WARNING \
+		$(SEMGREP_SEVERITY) \
 		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
 		--exclude tests/ \
 		--error --metrics=off .

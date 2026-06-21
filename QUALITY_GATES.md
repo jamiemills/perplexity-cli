@@ -111,11 +111,10 @@ runtime through `scripts/_gates.py`.
 Two entries currently duplicate a value whose active source lives elsewhere
 (documented here so the duplication is not "fixed" by mistake):
 
-- `FAIL_UNDER = 85` mirrors `pyproject.toml [tool.coverage.report] fail_under`
-  (consumed by pytest-cov directly). `gates.conf` holds the reference value.
-- `SEMGREP_SEVERITY = ERROR WARNING` is the intended severity set, but the
-  `make semgrep` invocation currently hard-codes `--severity ERROR --severity
-  WARNING` in the `Makefile` rather than reading `gates.conf`.
+- `FAIL_UNDER = 85` is a reference mirror — pytest-cov reads
+  `pyproject.toml` directly. This value is for documentation only.
+- `SEMGREP_SEVERITY = --severity ERROR --severity WARNING` is consumed
+  by the `make semgrep` target via `$(SEMGREP_SEVERITY)`.
 
 ### Quantitative Thresholds
 
@@ -304,6 +303,13 @@ it via `infisical run --env dev`.  When neither is available, `make safety`
 is performed, so vulnerabilities are not detected until CI (which provides
 the key via Infisical).  Treat the local skip as informational, not a pass.
 
+### Gitleaks
+
+Scan pushed commit ranges for secrets using Gitleaks.  When gitleaks is not
+installed, `scripts/gitleaks_check.sh` prints a skip notice and exits 0,
+matching the safety skip behaviour.  CI gitleaks + the infisical pre-commit
+scan still catch secrets regardless of local tool availability.
+
 ### Architecture Check
 
 `scripts/check_architecture.py` enforces ports-and-adapters layer rules:
@@ -420,16 +426,12 @@ remote publish workflow.
 
 All registered in `opencode.jsonc`. Installed via `make configure-opencode`.
 
-Known caveats (current plugin code, tracked for a follow-up cleanup):
+Known caveats (current plugin code):
 
-- `pxcli-quality.ts` hard-codes the Semgrep binary path to
-  `/Users/jamie.mills/.local/bin/semgrep`. On any other machine it falls back
-  to whatever `semgrep` resolves to on `PATH`, or no-ops if absent.
-- `pre-push-docs-check.ts` references the legacy monolithic path
-  `src/perplexity_cli/commands.py` in its doc-review checklist. That file no
-  longer exists (commands now live under `src/perplexity_cli/commands/`),
-  so the checklist item points at a path the developer will not find. The
-  reminder still surfaces, but the suggested location is stale.
+- `pxcli-quality.ts` resolves semgrep from `PATH`. If semgrep is not
+  installed, the session-idle analysis gracefully skips semgrep.
+- `pre-push-docs-check.ts` references `src/perplexity_cli/commands/` in its
+  doc-review checklist, reflecting the current package layout.
 
 | Plugin | File | Intercepts | Behaviour |
 |--------|------|-----------|-----------|
@@ -529,7 +531,7 @@ and CI from silently diverging.
 | Ruff lint/fix | Pre-commit, CI | ruff | `ruff check` |
 | Whitespace/EOF fixers | Pre-commit | pre-commit-hooks | `lefthook.yml` |
 | Unit tests (parallel) | Pre-commit, CI | pytest, pytest-xdist | `make test` |
-| Gitleaks commit-range scan | Pre-push | gitleaks | `make gitleaks` |
+| Gitleaks commit-range scan | Pre-push (graceful skip when not installed) | gitleaks | `make gitleaks` |
 | Agent unified check (pre-commit linters, no tests) | Pre-push (wired via `lefthook.yml`) | `scripts/agent_check.py` | `make agent-check-no-tests` |
 | Agent unified check (full pre-push set: safety, coverage, property) | On-demand (not wired into `lefthook.yml` or `make ci`) | `scripts/agent_check.py` | `make agent-check-push` |
 | Coverage + per-module (parallel) | Pre-push, CI | pytest-cov, pytest-xdist | `make test-coverage` |

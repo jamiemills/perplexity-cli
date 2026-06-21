@@ -31,7 +31,7 @@ const DOCS_CHECK_MESSAGE = `Before pushing, verify that documentation is up to d
 
 Check the following:
 
-1. CLI --help text (src/perplexity_cli/commands.py)
+1. CLI --help text (src/perplexity_cli/commands/)
    - Option help strings, command docstrings, and example output
      must reflect any new or changed flags, commands, or behaviour.
 
