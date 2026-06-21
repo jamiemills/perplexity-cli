@@ -14,10 +14,11 @@ import time
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import click
 
+from perplexity_cli._types import DebugMode, OutputFormat, SchemaInclusion
 from perplexity_cli.api.models import QueryInput, TraceContext
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.formatting.context import OutputOptions, RenderContext
@@ -75,10 +76,10 @@ def _detect_execution_environment() -> str:
     return "unknown"
 
 
-def log_query_debug_context(  # nosemgrep: boolean-flag-argument
+def log_query_debug_context(
     query_text: str,
     output_format: str | None,
-    stream: bool,
+    stream_mode: Literal["stream", "batch"],
 ) -> None:
     """Log environment and invocation details for debug runs."""
     logger = get_logger()
@@ -101,10 +102,10 @@ def log_query_debug_context(  # nosemgrep: boolean-flag-argument
     logger.debug("Execution environment: %s", _detect_execution_environment())
 
     token_path = get_config_paths().token_path
-    logger.debug(  # nosemgrep: python-logger-credential-disclosure
+    logger.debug(
         "Token path: %s", redact_path(token_path)
     )
-    logger.debug(  # nosemgrep: python-logger-credential-disclosure
+    logger.debug(
         "Token exists: %s", token_path.exists()
     )
     logger.debug("Cookie storage enabled: %s", get_save_cookies_enabled())
@@ -112,7 +113,7 @@ def log_query_debug_context(  # nosemgrep: boolean-flag-argument
         "Query command invoked: query=%s, format=%s, stream=%s",
         redact_text(query_text),
         output_format,
-        stream,
+        stream_mode,
     )
 
 
@@ -339,8 +340,8 @@ def _read_query_from_stdin(query_text: str) -> str:
     return text
 
 
-def _build_json_envelope(  # nosemgrep: boolean-flag-argument
-    answer_obj: Answer, trace: TraceContext, include_schema: bool
+def _build_json_envelope(
+    answer_obj: Answer, trace: TraceContext, include_schema: SchemaInclusion
 ) -> str:
     """Build the JSON envelope output for --json mode.
 
@@ -372,26 +373,26 @@ def _build_json_envelope(  # nosemgrep: boolean-flag-argument
     return json.dumps(envelope_dict, default=str) + "\n"
 
 
-def _handle_query_exception(  # nosemgrep: boolean-flag-argument
-    exc: Exception, ctx_obj: dict[str, object] | None, json_mode: bool
+def _handle_query_exception(
+    exc: Exception, ctx_obj: dict[str, object] | None, output_format: OutputFormat
 ) -> None:
     """Dispatch query exceptions to the appropriate error handler.
 
     Args:
         exc: The exception to handle.
         ctx_obj: The Click context object dictionary.
-        json_mode: Whether JSON output mode is active.
+        output_format: Either ``"json"`` or ``"human"``.
     """
     from perplexity_cli.error_handler import handle_error
 
     logger = get_logger()
-    debug_mode: bool = bool((ctx_obj or {}).get("debug", False))
+    debug_mode: DebugMode = "debug" if bool((ctx_obj or {}).get("debug", False)) else "normal"
 
-    if json_mode:
+    if output_format == "json":
         handle_error(
             exc,
-            command=_QUERY_JSON_COMMAND,
-            json_mode=True,
+            _QUERY_JSON_COMMAND,
+            output_format="json",
         )
 
     if _try_dispatch_known_error(exc, logger, debug_mode):
@@ -400,8 +401,8 @@ def _handle_query_exception(  # nosemgrep: boolean-flag-argument
     _handle_fallback_error(exc, logger, debug_mode)
 
 
-def _try_dispatch_known_error(  # nosemgrep: boolean-flag-argument
-    exc: Exception, logger: logging.Logger, debug_mode: bool
+def _try_dispatch_known_error(
+    exc: Exception, logger: logging.Logger, debug_mode: DebugMode
 ) -> bool:
     """Attempt to handle a known error type.
 
@@ -432,8 +433,8 @@ def _try_dispatch_known_error(  # nosemgrep: boolean-flag-argument
     return False
 
 
-def _handle_fallback_error(  # nosemgrep: boolean-flag-argument
-    exc: Exception, logger: logging.Logger, debug_mode: bool
+def _handle_fallback_error(
+    exc: Exception, logger: logging.Logger, debug_mode: DebugMode
 ) -> None:
     """Handle an unexpected error type.
 
@@ -480,7 +481,11 @@ def _fetch_and_render(
 
     if render.options.json_mode:
         sys.stdout.write(
-            _build_json_envelope(answer_obj, trace, render.options.include_schema),
+            _build_json_envelope(
+                answer_obj,
+                trace,
+                "with_schema" if render.options.include_schema else "no_schema",
+            ),
         )
     else:
         render_complete_answer(answer_obj, render)
@@ -566,7 +571,7 @@ def run_query_command(
 
     trace = TraceContext(trace_id=str(uuid.uuid4()), start_time=time.monotonic())
 
-    log_query_debug_context(query_text, output_format, stream)
+    log_query_debug_context(query_text, output_format, "stream" if stream else "batch")
 
     tm = TokenManager()
     token, cookies = load_token_optional(tm, logger)
@@ -600,28 +605,28 @@ def run_query_command(
                 _fetch_and_render(api, query_input, render, trace)
 
     except KeyboardInterrupt:
-        _handle_keyboard_interrupt(json_mode, logger)
+        _handle_keyboard_interrupt("json" if json_mode else "human", logger)
 
     except Exception as exc:
-        _handle_query_exception(exc, ctx_obj, json_mode)
+        _handle_query_exception(exc, ctx_obj, "json" if json_mode else "human")
 
 
-def _handle_keyboard_interrupt(  # nosemgrep: boolean-flag-argument
-    json_mode: bool, logger: logging.Logger
+def _handle_keyboard_interrupt(
+    output_format: OutputFormat, logger: logging.Logger
 ) -> None:
     """Handle a keyboard interrupt during query execution.
 
     Args:
-        json_mode: Whether JSON output mode is active.
+        output_format: Either ``"json"`` or ``"human"``.
         logger: Logger instance.
     """
-    if json_mode:
+    if output_format == "json":
         from perplexity_cli.error_handler import handle_error
 
         handle_error(
             KeyboardInterrupt(),
-            command=_QUERY_JSON_COMMAND,
-            json_mode=True,
+            _QUERY_JSON_COMMAND,
+            output_format="json",
         )
     logger.info("Query interrupted by user")
     click.echo("\n[ERROR] Query interrupted.", err=True)

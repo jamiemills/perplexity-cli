@@ -169,23 +169,23 @@ class TestValidateExportDates:
     """Tests for _validate_export_dates."""
 
     def test_passes_with_none_dates(self) -> None:
-        _validate_export_dates(None, None, json_mode=False)
+        _validate_export_dates(None, None, output_format="human")
 
     def test_passes_with_valid_dates(self) -> None:
-        _validate_export_dates("2025-01-01", "2025-12-31", json_mode=False)
+        _validate_export_dates("2025-01-01", "2025-12-31", output_format="human")
 
     def test_exits_on_invalid_from_date(self) -> None:
         with pytest.raises(SystemExit):
-            _validate_export_dates("not-a-date", None, json_mode=False)
+            _validate_export_dates("not-a-date", None, output_format="human")
 
     def test_exits_on_invalid_to_date(self) -> None:
         with pytest.raises(SystemExit):
-            _validate_export_dates(None, "not-a-date", json_mode=False)
+            _validate_export_dates(None, "not-a-date", output_format="human")
 
     def test_json_mode_routes_through_handler(self) -> None:
         with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
             with pytest.raises(SystemExit):
-                _validate_export_dates("bad", None, json_mode=True)
+                _validate_export_dates("bad", None, output_format="json")
             mock_handle.assert_called_once()
 
 
@@ -196,13 +196,13 @@ class TestExitWithDateError:
         """In JSON mode, handle_error is called before exit."""
         with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
             with pytest.raises(SystemExit):
-                _exit_with_date_error(ValueError("bad date"), json_mode=True)
+                _exit_with_date_error(ValueError("bad date"), output_format="json")
             mock_handle.assert_called_once()
 
     def test_human_mode_shows_date_in_message(self, capsys):
         """In human mode, the specific invalid date value appears in the error."""
         with pytest.raises(SystemExit) as exc_info:
-            _exit_with_date_error(ValueError("bad date 2025-13-45"), json_mode=False)
+            _exit_with_date_error(ValueError("bad date 2025-13-45"), output_format="human")
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "bad date 2025-13-45" in captured.err
@@ -234,7 +234,7 @@ class TestHandleCacheClear:
         """When no cache file exists, info message is shown."""
         cm = Mock()
         cm.cache_exists.return_value = False
-        _handle_cache_clear(cm, clear_cache=True, json_mode=False, logger=Mock())
+        _handle_cache_clear(cm, clear_cache=True, output_format="human", logger=Mock())
         captured = capsys.readouterr()
         assert "No cache file to clear" in captured.out
         cm.clear_cache.assert_not_called()
@@ -243,28 +243,28 @@ class TestHandleCacheClear:
         """When cache exists, it is cleared and confirmed."""
         cm = Mock()
         cm.cache_exists.return_value = True
-        _handle_cache_clear(cm, clear_cache=True, json_mode=False, logger=Mock())
+        _handle_cache_clear(cm, clear_cache=True, output_format="human", logger=Mock())
         cm.clear_cache.assert_called_once()
         assert "Cache cleared" in capsys.readouterr().out
 
     def test_no_clear_requested(self):
         """When clear_cache is False, nothing happens."""
         cm = Mock()
-        _handle_cache_clear(cm, clear_cache=False, json_mode=False, logger=Mock())
+        _handle_cache_clear(cm, clear_cache=False, output_format="human", logger=Mock())
         cm.cache_exists.assert_not_called()
 
     def test_json_mode_silent_no_cache(self, capsys):
         """In JSON mode, no output is written when cache doesn't exist."""
         cm = Mock()
         cm.cache_exists.return_value = False
-        _handle_cache_clear(cm, clear_cache=True, json_mode=True, logger=Mock())
+        _handle_cache_clear(cm, clear_cache=True, output_format="json", logger=Mock())
         assert capsys.readouterr().out == ""
 
     def test_json_mode_silent_cleared(self, capsys):
         """In JSON mode, no output is written when cache is cleared."""
         cm = Mock()
         cm.cache_exists.return_value = True
-        _handle_cache_clear(cm, clear_cache=True, json_mode=True, logger=Mock())
+        _handle_cache_clear(cm, clear_cache=True, output_format="json", logger=Mock())
         assert capsys.readouterr().out == ""
 
 
@@ -276,7 +276,7 @@ class TestScrapeThreads:
         """Progress callback prints extraction progress in human mode."""
         mock_run_async.side_effect = _close_run_async_return([{"title": "T1"}])
         scraper = Mock()
-        result = _scrape_threads(scraper, None, None, json_mode=False)
+        result = _scrape_threads(scraper, None, None, output_format="human")
         assert result == [{"title": "T1"}]
 
         # Verify run_async was called (progress callback tested implicitly)
@@ -290,13 +290,13 @@ class TestHandleNoThreads:
         """In JSON mode, handle_error is invoked."""
         with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
             with pytest.raises(SystemExit):
-                _handle_no_threads(None, None, json_mode=True)
+                _handle_no_threads(None, None, output_format="json")
             mock_handle.assert_called_once()
 
     def test_human_mode_exits(self, capsys):
         """In human mode, error is printed and process exits."""
         with pytest.raises(SystemExit) as exc_info:
-            _handle_no_threads(None, None, json_mode=False)
+            _handle_no_threads(None, None, output_format="human")
         assert exc_info.value.code == 1
         assert "No threads found" in capsys.readouterr().err
 
@@ -308,7 +308,7 @@ class TestHandleKnownError:
         """In JSON mode, handle_error is called before exit."""
         with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
             with pytest.raises(SystemExit):
-                _handle_known_error(ValueError("fail"), json_mode=True, logger=Mock())
+                _handle_known_error(ValueError("fail"), output_format="json", logger=Mock())
             mock_handle.assert_called_once()
 
     def test_auth_error_shows_reauth_hint(self, capsys):
@@ -316,7 +316,7 @@ class TestHandleKnownError:
         from perplexity_cli.utils.exceptions import AuthenticationError
 
         with pytest.raises(SystemExit):
-            _handle_known_error(AuthenticationError("expired"), json_mode=False, logger=Mock())
+            _handle_known_error(AuthenticationError("expired"), output_format="human", logger=Mock())
         err = capsys.readouterr().err
         assert "re-authenticate" in err
 
@@ -334,7 +334,7 @@ class TestHandleHttpStatusError:
 
         with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
             with patch("perplexity_cli.runners.export.handle_http_error"):
-                _handle_http_status_error(error, json_mode=True, ctx_obj={}, logger=Mock())
+                _handle_http_status_error(error, output_format="json", ctx_obj={}, logger=Mock())
             mock_handle.assert_called_once()
 
     def test_human_mode_calls_handle_http_error(self):
@@ -342,7 +342,7 @@ class TestHandleHttpStatusError:
         error = Mock()
         with patch("perplexity_cli.runners.export.handle_http_error") as mock_handle:
             _handle_http_status_error(
-                error, json_mode=False, ctx_obj={"debug": False}, logger=Mock()
+                error, output_format="human", ctx_obj={"debug": False}, logger=Mock()
             )
         mock_handle.assert_called_once()
 
@@ -355,7 +355,7 @@ class TestHandleUnexpectedError:
         with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
             with patch("perplexity_cli.runners.export.handle_unexpected_cli_error"):
                 _handle_unexpected_error(
-                    RuntimeError("boom"), json_mode=True, ctx_obj={}, logger=Mock()
+                    RuntimeError("boom"), output_format="json", ctx_obj={}, logger=Mock()
                 )
             mock_handle.assert_called_once()
 
@@ -363,7 +363,7 @@ class TestHandleUnexpectedError:
         """In human mode, handle_unexpected_cli_error is called."""
         with patch("perplexity_cli.runners.export.handle_unexpected_cli_error") as mock_handle:
             _handle_unexpected_error(
-                RuntimeError("boom"), json_mode=False, ctx_obj={}, logger=Mock()
+                RuntimeError("boom"), output_format="human", ctx_obj={}, logger=Mock()
             )
         mock_handle.assert_called_once()
 
@@ -371,7 +371,7 @@ class TestHandleUnexpectedError:
 class TestRunExportErrorHandlers:
     """Tests for run_export_threads_command error handler branches."""
 
-    def _prepare_mocks(self, json_mode=False):
+    def _prepare_mocks(self, output_format="human"):
         """Set up common mocks for authenticated export."""
         patches = {
             "tm": patch("perplexity_cli.auth.token_manager.TokenManager"),
@@ -384,7 +384,7 @@ class TestRunExportErrorHandlers:
         tm.load_token.return_value = ("token", {})
         mocks["tm"].return_value = tm
         mocks["rate"].return_value = Mock(enabled=False)
-        ctx = {"json": json_mode} if json_mode else {}
+        ctx = {"json": True} if output_format == "json" else {}
         return patches, mocks, ctx
 
     def _stop_patches(self, patches):

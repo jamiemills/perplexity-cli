@@ -7,6 +7,7 @@ from typing import TypeGuard
 
 import click
 
+from perplexity_cli._types import DebugMode, OutputFormat, SchemaInclusion
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
 from perplexity_cli.runners._utils import resolve_json_flag
@@ -43,7 +44,12 @@ def _print_auth_troubleshooting(port: int, base_url: str) -> None:
     click.echo("  5. Run this command again", err=True)
 
 
-def _handle_auth_success(token: str, cookies: dict[str, str], json_mode: bool, include_schema: bool) -> None:
+def _handle_auth_success(
+    token: str,
+    cookies: dict[str, str],
+    output_format: OutputFormat,
+    include_schema: SchemaInclusion,
+) -> None:
     """Handle successful authentication output."""
     from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.utils.config import get_save_cookies_enabled
@@ -52,7 +58,7 @@ def _handle_auth_success(token: str, cookies: dict[str, str], json_mode: bool, i
     tm.save_token(token, cookies=cookies)
     get_logger().info("Token and cookies saved to %s", tm.token_path)
 
-    if json_mode:
+    if output_format == "json":
         env = success_envelope(
             _AUTH_LOGIN_COMMAND,
             {"token_path": str(tm.token_path), "cookies_stored": len(cookies)},
@@ -103,13 +109,16 @@ def run_auth_command(ctx_obj: object, port: int) -> None:
         logger.info("Authentication interrupted by user")
 
 
-def _execute_auth(  # nosemgrep: too-many-parameters
+def _execute_auth(
     port: int,
     ctx_flags: tuple[bool, bool, bool],
     base_url: str,
 ) -> None:
     """Perform authentication and handle domain-specific errors."""
     json_mode, include_schema, debug_mode = ctx_flags
+    output_format: OutputFormat = "json" if json_mode else "human"
+    schema_inclusion: SchemaInclusion = "with_schema" if include_schema else "no_schema"
+    debug_level: DebugMode = "debug" if debug_mode else "normal"
     from perplexity_cli.auth.oauth_handler import authenticate_sync
 
     logger = get_logger()
@@ -117,41 +126,48 @@ def _execute_auth(  # nosemgrep: too-many-parameters
     try:
         logger.debug("Calling authenticate_sync")
         token, cookies = authenticate_sync(port=port)
-        logger.info(  # nosemgrep: python-logger-credential-disclosure
+        logger.info(
             "Token and %s cookies extracted successfully", len(cookies)
         )
-        _handle_auth_success(token, cookies, json_mode, include_schema)
+        _handle_auth_success(token, cookies, output_format, schema_inclusion)
     except (TimeoutError, AuthenticationError) as e:
-        if json_mode:
-            handle_error(e, command=_AUTH_LOGIN_COMMAND, json_mode=True)
+        if output_format == "json":
+            handle_error(e, _AUTH_LOGIN_COMMAND, output_format="json")
         logger.debug("Authentication failed: %s", e, exc_info=True)
         click.echo(f"[ERROR] Authentication failed: {e}", err=True)
         _print_auth_troubleshooting(port, base_url)
         sys.exit(1)
     except (OSError, ConfigurationError) as e:
-        if json_mode:
-            handle_error(e, command=_AUTH_LOGIN_COMMAND, json_mode=True)
+        if output_format == "json":
+            handle_error(e, _AUTH_LOGIN_COMMAND, output_format="json")
         handle_unexpected_cli_error(
             e,
             logger,
-            debug_mode=debug_mode,
+            debug_mode=debug_level,
             message_tuple=(f"[ERROR] Unexpected error: {e}", "Unexpected error during authentication", False),
         )
 
 
-def _resolve_logout_ctx(json_mode: bool | None) -> tuple[bool, bool]:
+def _resolve_logout_ctx(
+    json_mode: bool | None,
+) -> tuple[OutputFormat, SchemaInclusion]:
     """Resolve json_mode and include_schema from context."""
     ctx_dict = _ctx_to_dict()
     resolved_json = resolve_json_flag(json_mode, ctx_dict)
     val_schema: object = ctx_dict.get("schema", False)
-    return resolved_json, bool(val_schema)
+    return (
+        "json" if resolved_json else "human",
+        "with_schema" if bool(val_schema) else "no_schema",
+    )
 
 
-def _logout_emit(  # nosemgrep: boolean-flag-argument
-    json_mode: bool, include_schema: bool, existed: bool
+def _logout_emit(
+    output_format: OutputFormat,
+    include_schema: SchemaInclusion,
+    existed: bool,
 ) -> None:
     """Emit logout result in the appropriate format."""
-    if json_mode:
+    if output_format == "json":
         env = success_envelope("pxcli auth logout", {"credentials_existed": existed})
         write_envelope(env, include_schema=include_schema)
         return
@@ -177,8 +193,8 @@ def run_logout_command(*, json_mode: bool | None = None) -> None:
         tm.clear_token()
         _logout_emit(resolved_json, include_schema, existed=True)
     except OSError as e:
-        if resolved_json:
-            handle_error(e, command="pxcli auth logout", json_mode=True)
+        if resolved_json == "json":
+            handle_error(e, "pxcli auth logout", output_format="json")
         logger = get_logger()
         handle_unexpected_cli_error(
             e,

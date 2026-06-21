@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, Final
 
 import click
 
+from perplexity_cli._types import DebugMode
+
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
@@ -71,11 +73,10 @@ def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
     )
 
 
-def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters
+def handle_unexpected_cli_error(
     error: Exception,
     logger: logging.Logger,
-    *,
-    debug_mode: bool = False,
+    debug_mode: DebugMode = "normal",
     message_tuple: tuple[str, str, bool] = (
         "[ERROR] An unexpected error occurred.",
         "Unexpected error",
@@ -87,7 +88,7 @@ def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters
     Policy:
     - always log the original exception once at exception level
     - always print the provided user-facing error message to stderr
-    - if ``debug_mode`` is enabled, print the traceback
+    - if ``debug_mode`` is ``"debug"``, print the traceback
     - otherwise, optionally print the standard debug hint
 
     Exits with status code 1.
@@ -96,7 +97,7 @@ def handle_unexpected_cli_error(  # nosemgrep: too-many-parameters
     logger.exception("%s: %s", log_message, error)
     click.echo(user_message, err=True)
 
-    if debug_mode:
+    if debug_mode == "debug":
         import traceback
 
         debug_output = traceback.format_exc()
@@ -180,10 +181,10 @@ _HTTP_ERROR_EXTRAS: dict[int, str] = {
 }
 
 
-def handle_http_error(  # nosemgrep: boolean-flag-argument
+def handle_http_error(
     error: PerplexityHTTPStatusError,
     logger: logging.Logger,
-    debug_mode: bool = False,
+    debug_mode: DebugMode = "normal",
     context: str | None = None,
 ) -> None:
     """Handle HTTP status errors with user-friendly messages.
@@ -194,7 +195,7 @@ def handle_http_error(  # nosemgrep: boolean-flag-argument
     Args:
         error: The PerplexityHTTPStatusError exception to handle.
         logger: Logger instance for error logging.
-        debug_mode: If True, include detailed error information in output.
+        debug_mode: If ``"debug"``, include detailed error information in output.
         context: Optional context string for more specific error messages
                 (e.g., "during streaming").
 
@@ -209,16 +210,16 @@ def handle_http_error(  # nosemgrep: boolean-flag-argument
     if status in _HTTP_ERROR_EXTRAS:
         click.echo(_HTTP_ERROR_EXTRAS[status], err=True)
 
-    if debug_mode:
+    if debug_mode == "debug":
         click.echo(f"Details: {error}", err=True)
 
     raise SystemExit(1)
 
 
-def handle_network_error(  # nosemgrep: boolean-flag-argument
+def handle_network_error(
     error: PerplexityRequestError,
     logger: logging.Logger,
-    debug_mode: bool = False,
+    debug_mode: DebugMode = "normal",
     context: str | None = None,
 ) -> None:
     """Handle network request errors with user-friendly messages.
@@ -226,7 +227,7 @@ def handle_network_error(  # nosemgrep: boolean-flag-argument
     Args:
         error: The PerplexityRequestError exception to handle.
         logger: Logger instance for error logging.
-        debug_mode: If True, include detailed error information in output.
+        debug_mode: If ``"debug"``, include detailed error information in output.
         context: Optional context string for more specific error messages
                 (e.g., "during streaming").
 
@@ -236,7 +237,7 @@ def handle_network_error(  # nosemgrep: boolean-flag-argument
     logger.error("Network error%s: %s", context_msg, error)
     click.echo("[ERROR] Network error. Please check your internet connection.", err=True)
 
-    if debug_mode:
+    if debug_mode == "debug":
         click.echo(f"Details: {error}", err=True)
 
     raise SystemExit(1)

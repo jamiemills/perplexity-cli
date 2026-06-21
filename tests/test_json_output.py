@@ -102,7 +102,7 @@ class TestAuthStatusJson:
         mock_tm.token_path = mock_token_path
         mock_tm_class.return_value = mock_tm
 
-        run_status_command(verify=False, json_mode=True)
+        run_status_command("skip", output_format="json")
 
         envelope = _parse_json_stdout(capsys.readouterr())
         assert envelope["ok"] is True
@@ -127,7 +127,7 @@ class TestConfigShowJson:
         mock_get_config.return_value = mock_config
         mock_get_path.return_value = Path("/home/user/.config/pxcli/config.json")
 
-        run_show_config_command(json_mode=True)
+        run_show_config_command(output_format="json")
 
         envelope = _parse_json_stdout(capsys.readouterr())
         assert envelope["ok"] is True
@@ -143,7 +143,7 @@ class TestConfigSetJson:
     @patch("perplexity_cli.utils.config.set_feature")
     def test_json_output_has_key_value(self, mock_set, mock_clear, capsys):
         """Envelope contains key and value."""
-        run_set_config_command("save_cookies", "true", json_mode=True)
+        run_set_config_command("save_cookies", "true", output_format="json")
 
         envelope = _parse_json_stdout(capsys.readouterr())
         assert envelope["ok"] is True
@@ -161,7 +161,7 @@ class TestStyleSetJson:
         mock_sm = Mock()
         mock_sm_class.return_value = mock_sm
 
-        run_configure_command("Be concise", json_mode=True)
+        run_configure_command("Be concise", output_format="json")
 
         envelope = _parse_json_stdout(capsys.readouterr())
         assert envelope["ok"] is True
@@ -179,7 +179,7 @@ class TestStyleShowJson:
         mock_sm.load_style.return_value = "Be formal"
         mock_sm_class.return_value = mock_sm
 
-        run_view_style_command(json_mode=True)
+        run_view_style_command(output_format="json")
 
         envelope = _parse_json_stdout(capsys.readouterr())
         assert envelope["ok"] is True
@@ -197,7 +197,7 @@ class TestStyleClearJson:
         mock_sm.load_style.return_value = "old style"
         mock_sm_class.return_value = mock_sm
 
-        run_clear_style_command(json_mode=True)
+        run_clear_style_command(output_format="json")
 
         envelope = _parse_json_stdout(capsys.readouterr())
         assert envelope["ok"] is True
@@ -235,7 +235,7 @@ class TestDoctorSecurityJson:
         mock_config.save_cookies = False
         mock_get_config.return_value = mock_config
 
-        run_doctor_security_command(json_mode=True)
+        run_doctor_security_command(output_format="json")
 
         envelope = _parse_json_stdout(capsys.readouterr())
         assert envelope["ok"] is True

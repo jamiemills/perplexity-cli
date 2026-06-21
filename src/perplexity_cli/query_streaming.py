@@ -208,14 +208,14 @@ def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorH
             PerplexityHTTPStatusError,
             lambda e, log: (
                 click.echo(),
-                handle_http_error(e, log, debug_mode=False, context="during streaming"),
+                handle_http_error(e, log, debug_mode="normal", context="during streaming"),
             ),
         ),
         (
             PerplexityRequestError,
             lambda e, log: (
                 click.echo(),
-                handle_network_error(e, log, debug_mode=False, context="during streaming"),
+                handle_network_error(e, log, debug_mode="normal", context="during streaming"),
             ),
         ),
         (

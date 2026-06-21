@@ -11,6 +11,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from perplexity_cli._types import SchemaInclusion
+
 
 class ErrorCode(StrEnum):
     """Standardised error codes for structured error responses."""
@@ -73,10 +75,9 @@ class ErrorEnvelope(BaseModel):
     next_actions: list[NextAction] = []
 
 
-def success_envelope(  # nosemgrep: too-many-parameters
+def success_envelope(
     command: str,
     result: dict[str, Any],
-    *,
     meta: Meta | None = None,
     next_actions: list[NextAction] | None = None,
 ) -> Envelope:
@@ -105,28 +106,28 @@ def error_envelope(
     )
 
 
-def envelope_to_dict(  # nosemgrep: boolean-flag-argument
+def envelope_to_dict(
     env: Envelope | ErrorEnvelope,
     *,
-    include_schema: bool = False,
+    include_schema: SchemaInclusion = "no_schema",
 ) -> dict[str, Any]:
     """Serialise an envelope to a dict, optionally embedding a ``$schema`` key.
 
-    When *include_schema* is ``True`` the Pydantic-generated JSON Schema for
+    When *include_schema* is ``"with_schema"`` the Pydantic-generated JSON Schema for
     the envelope's concrete type is prepended as ``$schema``, making the
     output self-describing.
     """
     envelope_dict = env.model_dump(mode="json")
-    if include_schema:
+    if include_schema == "with_schema":
         schema = type(env).model_json_schema()
         envelope_dict = {"$schema": schema, **envelope_dict}
     return envelope_dict
 
 
-def write_envelope(  # nosemgrep: boolean-flag-argument
+def write_envelope(
     env: Envelope | ErrorEnvelope,
     *,
-    include_schema: bool = False,
+    include_schema: SchemaInclusion = "no_schema",
     output: Any | None = None,
 ) -> None:
     """Serialise an envelope as JSON and write it as a single line.
@@ -136,7 +137,7 @@ def write_envelope(  # nosemgrep: boolean-flag-argument
     env:
         The envelope model to serialise.
     include_schema:
-        When ``True``, embed the JSON Schema under a ``$schema`` key.
+        When ``"with_schema"``, embed the JSON Schema under a ``$schema`` key.
     output:
         Writable file-like object.  Defaults to ``sys.stdout``.
     """

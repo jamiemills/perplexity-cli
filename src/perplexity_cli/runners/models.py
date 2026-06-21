@@ -15,6 +15,7 @@ import click
 if TYPE_CHECKING:
     from perplexity_cli.services.model_service import ModelService
 
+from perplexity_cli._types import OutputFormat, SchemaInclusion
 from perplexity_cli.models.model_config import ModelConfigEntry, SubscriptionLevel
 from perplexity_cli.utils.logging import get_logger
 
@@ -286,18 +287,18 @@ def run_models_list_command(
         service = _create_model_service(client, level)
         entries = service.list_available_models()
     except Exception as exc:
-        _handle_list_error(exc, json_mode, logger)
+        _handle_list_error(exc, "json" if json_mode else "human", logger)
         return  # unreachable; _handle_list_error always exits
 
     if json_mode:
-        _output_json(entries, include_schema)
+        _output_json(entries, "with_schema" if include_schema else "no_schema")
     else:
         click.echo(format_model_table(entries))
 
 
-def _output_json(  # nosemgrep: boolean-flag-argument
+def _output_json(
     entries: list[ModelConfigEntry],
-    include_schema: bool,
+    include_schema: SchemaInclusion,
 ) -> None:
     """Write models list as a JSON envelope to stdout.
 
@@ -312,16 +313,16 @@ def _output_json(  # nosemgrep: boolean-flag-argument
     write_envelope(envelope, include_schema=include_schema)
 
 
-def _handle_list_error(  # nosemgrep: boolean-flag-argument
+def _handle_list_error(
     exc: Exception,
-    json_mode: bool,
+    output_format: OutputFormat,
     logger: Any,
 ) -> None:
     """Handle errors from the model listing operation.
 
     Args:
         exc: The exception raised.
-        json_mode: Whether JSON output mode is active.
+        output_format: Either ``"json"`` or ``"human"``.
         logger: Logger instance.
     """
     from perplexity_cli.utils.exceptions import (
@@ -329,10 +330,10 @@ def _handle_list_error(  # nosemgrep: boolean-flag-argument
         PerplexityRequestError,
     )
 
-    if json_mode:
+    if output_format == "json":
         from perplexity_cli.error_handler import handle_error
 
-        handle_error(exc, command="pxcli models list", json_mode=True)
+        handle_error(exc, "pxcli models list", output_format="json")
 
     if isinstance(exc, PerplexityHTTPStatusError):
         logger.error("HTTP error fetching models: %s", exc)

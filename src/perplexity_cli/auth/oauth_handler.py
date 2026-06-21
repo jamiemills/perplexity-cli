@@ -283,13 +283,13 @@ async def _poll_for_auth_data(
         session_token, cookie_dict = _extract_token(cookies, local_storage_data)
 
         if session_token:
-            logger.info(  # nosemgrep: python-logger-credential-disclosure
+            logger.info(
                 "Successfully extracted authentication token and %s cookies",
                 len(cookie_dict),
             )
             return (session_token, cookie_dict)
 
-        logger.debug(  # nosemgrep: python-logger-credential-disclosure
+        logger.debug(
             "No token found yet, waiting %ss... (elapsed: %ss)",
             poll_interval,
             f"{elapsed:.1f}",

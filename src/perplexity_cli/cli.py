@@ -120,7 +120,13 @@ def main(
 
         effective_debug = get_debug_mode_enabled()
 
-    setup_logging(verbose=verbose, debug=effective_debug, log_file=log_file)
+    if effective_debug:
+        verbosity = "debug"
+    elif verbose:
+        verbosity = "info"
+    else:
+        verbosity = "warning"
+    setup_logging(verbosity=verbosity, log_file=log_file)
 
     # Store context for subcommands
     ctx.ensure_object(dict)

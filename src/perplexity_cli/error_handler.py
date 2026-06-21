@@ -8,6 +8,7 @@ from typing import NoReturn
 
 import click
 
+from perplexity_cli._types import OutputFormat, SchemaInclusion
 from perplexity_cli.envelope import ErrorCode, envelope_to_dict, error_envelope
 from perplexity_cli.exit_codes import exit_code_for_exception
 from perplexity_cli.utils.exceptions import (
@@ -61,18 +62,17 @@ def _classify_exception(exc: BaseException) -> tuple[ErrorCode, str | None]:
     return ErrorCode.internal_error, None
 
 
-def handle_error(  # nosemgrep: too-many-parameters
+def handle_error(
     exc: BaseException,
-    *,
     command: str,
-    json_mode: bool = False,
-    include_schema: bool = False,
+    output_format: OutputFormat = "human",
+    include_schema: SchemaInclusion = "no_schema",
 ) -> NoReturn:
     """Handle an exception, outputting either JSON or human-readable error, then exit."""
     code, fix = _classify_exception(exc)
     exit_code = exit_code_for_exception(exc)
 
-    if json_mode:
+    if output_format == "json":
         env = error_envelope(command, code, str(exc), (fix, None, None))
         envelope_dict = envelope_to_dict(env, include_schema=include_schema)
         sys.stdout.write(json.dumps(envelope_dict, default=str) + "\n")

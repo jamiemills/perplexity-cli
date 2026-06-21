@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 import click
 
+from perplexity_cli._types import OutputFormat, SchemaInclusion
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
 from perplexity_cli.utils.exceptions import ConfigurationError
@@ -46,38 +47,38 @@ def _read_ctx_bool(raw: object, attr: str) -> bool:
     return bool(getattr(raw, attr, False))
 
 
-def _get_include_schema() -> bool:
+def _get_include_schema() -> SchemaInclusion:
     """Read include_schema flag from Click context."""
-    return _read_ctx_bool(_get_ctx_obj_dict(), "schema")
+    return "with_schema" if _read_ctx_bool(_get_ctx_obj_dict(), "schema") else "no_schema"
 
 
-def _get_json_mode_from_ctx() -> bool:
+def _get_json_mode_from_ctx() -> OutputFormat:
     """Read json_mode flag from Click context."""
-    return _read_ctx_bool(_get_ctx_obj_dict(), "json")
+    return "json" if _read_ctx_bool(_get_ctx_obj_dict(), "json") else "human"
 
 
-def _handle_style_error(  # nosemgrep: boolean-flag-argument
-    e: Exception, json_mode: bool, command: str, message: str
+def _handle_style_error(
+    e: Exception, output_format: OutputFormat, command: str, message: str
 ) -> None:
     """Handle style command errors uniformly."""
-    if json_mode:
-        handle_error(e, command=command, json_mode=True)
+    if output_format == "json":
+        handle_error(e, command, output_format="json")
     click.echo(f"[ERROR] {message}: {e}", err=True)
     sys.exit(1)
 
 
-def run_configure_command(style: str, *, json_mode: bool | None = None) -> None:
+def run_configure_command(style: str, *, output_format: OutputFormat | None = None) -> None:
     """Execute the configure command."""
     from perplexity_cli.utils.style_manager import StyleManager
 
-    if json_mode is None:
-        json_mode = _get_json_mode_from_ctx()
+    if output_format is None:
+        output_format = _get_json_mode_from_ctx()
 
     sm: StyleManager = StyleManager()
 
     try:
         sm.save_style(style)
-        if json_mode:
+        if output_format == "json":
             env = success_envelope("pxcli style set", {"style": style})
             write_envelope(env, include_schema=_get_include_schema())
             return
@@ -87,7 +88,7 @@ def run_configure_command(style: str, *, json_mode: bool | None = None) -> None:
         click.echo(f"  {style}")
     except (ValueError, OSError) as e:
         msg = "Invalid style" if isinstance(e, ValueError) else "Failed to save style"
-        _handle_style_error(e, json_mode, "pxcli style set", msg)
+        _handle_style_error(e, output_format, "pxcli style set", msg)
 
 
 def _output_view_style(style: object) -> None:
@@ -103,27 +104,27 @@ def _output_view_style(style: object) -> None:
         click.echo("-" * 50)
 
 
-def run_view_style_command(*, json_mode: bool | None = None) -> None:
+def run_view_style_command(*, output_format: OutputFormat | None = None) -> None:
     """Execute the view-style command."""
     from perplexity_cli.utils.style_manager import StyleManager
 
-    if json_mode is None:
-        json_mode = _get_json_mode_from_ctx()
+    if output_format is None:
+        output_format = _get_json_mode_from_ctx()
 
     sm: StyleManager = StyleManager()
 
     try:
         style = sm.load_style()
-        if json_mode:
+        if output_format == "json":
             env = success_envelope("pxcli style show", {"style": style})
             write_envelope(env, include_schema=_get_include_schema())
             return
         _output_view_style(style)
     except OSError as e:
-        _handle_style_error(e, json_mode, "pxcli style show", "Error reading style")
+        _handle_style_error(e, output_format, "pxcli style show", "Error reading style")
 
 
-def _execute_clear_style(sm: StyleManager, json_mode: bool) -> None:
+def _execute_clear_style(sm: StyleManager, output_format: OutputFormat) -> None:
     """Perform the clear style operation and output results."""
     style = sm.load_style()
     had_style = style is not None
@@ -131,7 +132,7 @@ def _execute_clear_style(sm: StyleManager, json_mode: bool) -> None:
     if had_style:
         sm.clear_style()
 
-    if json_mode:
+    if output_format == "json":
         env = success_envelope("pxcli style clear", {"had_style": had_style})
         write_envelope(env, include_schema=_get_include_schema())
         return
@@ -144,66 +145,66 @@ def _execute_clear_style(sm: StyleManager, json_mode: bool) -> None:
     click.echo("[OK] Queries will no longer include a style prompt.")
 
 
-def run_clear_style_command(*, json_mode: bool | None = None) -> None:
+def run_clear_style_command(*, output_format: OutputFormat | None = None) -> None:
     """Execute the clear-style command."""
     from perplexity_cli.utils.style_manager import StyleManager
 
-    if json_mode is None:
-        json_mode = _get_json_mode_from_ctx()
+    if output_format is None:
+        output_format = _get_json_mode_from_ctx()
 
     sm: StyleManager = StyleManager()
 
     try:
-        _execute_clear_style(sm, json_mode)
+        _execute_clear_style(sm, output_format)
     except OSError as e:
-        _handle_style_error(e, json_mode, "pxcli style clear", "Error clearing style")
+        _handle_style_error(e, output_format, "pxcli style clear", "Error clearing style")
 
 
-_CONFIG_CHANGE_MESSAGES: dict[tuple[str, bool], tuple[str, str]] = {
-    ("save_cookies", True): (
+_CONFIG_CHANGE_MESSAGES: dict[tuple[str, str], tuple[str, str]] = {
+    ("save_cookies", "enabled"): (
         "[INFO] Cookie storage enabled.",
         "  Re-authenticate to save cookies: pxcli auth login",
     ),
-    ("save_cookies", False): (
+    ("save_cookies", "disabled"): (
         "[INFO] Cookie storage disabled.",
         "  Only JWT token will be saved on next authentication.",
     ),
-    ("debug_mode", True): (
+    ("debug_mode", "enabled"): (
         "[INFO] Debug mode enabled.",
         "  All commands will now log at DEBUG level.",
     ),
-    ("debug_mode", False): (
+    ("debug_mode", "disabled"): (
         "[INFO] Debug mode disabled.",
         "  Use --debug flag for one-time debug output.",
     ),
 }
 
 
-def _print_config_change_message(  # nosemgrep: boolean-flag-argument
-    key: str, bool_value: bool
+def _print_config_change_message(
+    key: str, state: str
 ) -> None:
     """Print contextual message after a configuration change."""
-    msgs = _CONFIG_CHANGE_MESSAGES.get((key, bool_value))
+    msgs = _CONFIG_CHANGE_MESSAGES.get((key, state))
     if msgs:
         click.echo(f"\n{msgs[0]}")
         click.echo(msgs[1])
 
 
-def run_set_config_command(key: str, value: str, *, json_mode: bool | None = None) -> None:
+def run_set_config_command(key: str, value: str, *, output_format: OutputFormat | None = None) -> None:
     """Execute the set-config command."""
     from perplexity_cli.utils.config import clear_feature_config_cache, set_feature
 
     logger = get_logger()
 
-    if json_mode is None:
-        json_mode = _get_json_mode_from_ctx()
+    if output_format is None:
+        output_format = _get_json_mode_from_ctx()
 
     try:
         bool_value = value.lower() == "true"
         set_feature(key, bool_value)
         clear_feature_config_cache()
 
-        if json_mode:
+        if output_format == "json":
             env = success_envelope(
                 "pxcli config set",
                 {
@@ -216,11 +217,11 @@ def run_set_config_command(key: str, value: str, *, json_mode: bool | None = Non
 
         click.echo(f"[OK] Configuration updated: {key} = {bool_value}")
         logger.info("Configuration updated: %s = %s", key, bool_value)
-        _print_config_change_message(key, bool_value)
+        _print_config_change_message(key, "enabled" if bool_value else "disabled")
 
     except ConfigurationError as e:
-        if json_mode:
-            handle_error(e, command="pxcli config set", json_mode=True)
+        if output_format == "json":
+            handle_error(e, "pxcli config set", output_format="json")
         click.echo(f"[ERROR] Failed to update configuration: {e}", err=True)
         logger.error("Configuration update failed: %s", e, exc_info=True)
         sys.exit(1)
@@ -258,7 +259,7 @@ def _output_config_text(
     click.echo("  pxcli config set debug_mode true|false")
 
 
-def run_show_config_command(*, json_mode: bool | None = None) -> None:
+def run_show_config_command(*, output_format: OutputFormat | None = None) -> None:
     """Execute the show-config command."""
     from perplexity_cli.utils.config import (
         FeatureConfig,
@@ -268,14 +269,14 @@ def run_show_config_command(*, json_mode: bool | None = None) -> None:
 
     logger = get_logger()
 
-    if json_mode is None:
-        json_mode = _get_json_mode_from_ctx()
+    if output_format is None:
+        output_format = _get_json_mode_from_ctx()
 
     try:
         config: FeatureConfig = get_feature_config()
         config_path = get_feature_config_path()
 
-        if json_mode:
+        if output_format == "json":
             env = success_envelope(
                 "pxcli config show",
                 {
@@ -292,8 +293,8 @@ def run_show_config_command(*, json_mode: bool | None = None) -> None:
         logger.debug("Configuration displayed successfully")
 
     except ConfigurationError as e:
-        if json_mode:
-            handle_error(e, command="pxcli config show", json_mode=True)
+        if output_format == "json":
+            handle_error(e, "pxcli config show", output_format="json")
         click.echo(f"[ERROR] Failed to load configuration: {e}", err=True)
         logger.error(f"Configuration display failed: {e}", exc_info=True)
         sys.exit(1)

@@ -25,10 +25,9 @@ def _resolve_base_url(base_url: str | None) -> str:
     return get_perplexity_base_url()
 
 
-def build_perplexity_headers(  # nosemgrep: too-many-parameters
+def build_perplexity_headers(
     token: str | None,
     cookies: dict[str, str] | None = None,
-    *,
     content_type: str = "application/json",
     header_extras: tuple[str | None, str | None] = (None, None),
 ) -> dict[str, str]:

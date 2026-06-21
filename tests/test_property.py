@@ -522,7 +522,7 @@ def test_envelope_to_dict_schema_toggle_excludes_schema(
 ) -> None:
     envelope = success_envelope(command, result)
 
-    data = envelope_to_dict(envelope, include_schema=False)
+    data = envelope_to_dict(envelope, include_schema="no_schema")
 
     assert "$schema" not in data
     assert data["ok"] is True
@@ -537,7 +537,7 @@ def test_envelope_to_dict_schema_toggle_excludes_schema(
 def test_envelope_to_dict_schema_toggle_includes_schema(command: str, message: str) -> None:
     envelope = error_envelope(command, ErrorCode.validation_error, message)
 
-    data = envelope_to_dict(envelope, include_schema=True)
+    data = envelope_to_dict(envelope, include_schema="with_schema")
 
     assert "$schema" in data
     assert data["$schema"] == type(envelope).model_json_schema()

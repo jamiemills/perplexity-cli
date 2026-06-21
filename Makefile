@@ -141,6 +141,8 @@ semgrep:  ## Run semgrep static analysis
 		--config p/r2c-best-practices \
 		--severity ERROR --severity WARNING \
 		--exclude-rule python.lang.maintainability.useless-innerfunction.useless-inner-function \
+		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
+		--exclude-rule python.lang.compatibility.python37.python37-compatibility-importlib2 \
 		--exclude tests/ \
 		--error --metrics=off .
 

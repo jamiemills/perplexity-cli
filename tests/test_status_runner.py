@@ -28,7 +28,7 @@ class TestGetJsonModeFromCtx:
 
     def test_returns_false_when_no_context(self) -> None:
         with patch("perplexity_cli.runners.status.click.get_current_context", return_value=None):
-            assert _get_json_mode_from_ctx() is False
+            assert _get_json_mode_from_ctx() == "human"
 
     def test_returns_true_from_ctx_obj(self) -> None:
         mock_ctx = Mock()
@@ -36,7 +36,7 @@ class TestGetJsonModeFromCtx:
         with patch(
             "perplexity_cli.runners.status.click.get_current_context", return_value=mock_ctx
         ):
-            assert _get_json_mode_from_ctx() is True
+            assert _get_json_mode_from_ctx() == "json"
 
     def test_returns_false_when_key_missing(self) -> None:
         mock_ctx = Mock()
@@ -44,7 +44,7 @@ class TestGetJsonModeFromCtx:
         with patch(
             "perplexity_cli.runners.status.click.get_current_context", return_value=mock_ctx
         ):
-            assert _get_json_mode_from_ctx() is False
+            assert _get_json_mode_from_ctx() == "human"
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +192,7 @@ class TestHandleNoToken:
     def test_human_mode_with_hint(self, capsys) -> None:
         tm = Mock()
         tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
-        _handle_no_token(json_mode=False, tm=tm, show_auth_hint=True)
+        _handle_no_token(output_format="human", tm=tm, show_auth_hint="show")
         captured = capsys.readouterr()
         assert "Not authenticated" in captured.out
         assert "pxcli auth login" in captured.out
@@ -200,7 +200,7 @@ class TestHandleNoToken:
     def test_human_mode_without_hint(self, capsys) -> None:
         tm = Mock()
         tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
-        _handle_no_token(json_mode=False, tm=tm, show_auth_hint=False)
+        _handle_no_token(output_format="human", tm=tm, show_auth_hint="hide")
         captured = capsys.readouterr()
         assert "Not authenticated" in captured.out
         assert "pxcli auth login" not in captured.out
@@ -208,7 +208,7 @@ class TestHandleNoToken:
     def test_json_mode_writes_envelope(self, capsys) -> None:
         tm = Mock()
         tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
-        _handle_no_token(json_mode=True, tm=tm)
+        _handle_no_token(output_format="json", tm=tm)
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True
         assert envelope["result"]["authenticated"] is False
@@ -256,7 +256,7 @@ class TestHandleAuthenticatedStatus:
         tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
 
         _handle_authenticated_status(
-            ("tok", {"c": "v"}, False, True),
+            ("tok", {"c": "v"}, "skip", "json"),
             tm=tm,
             logger=Mock(),
         )
@@ -270,7 +270,7 @@ class TestHandleAuthenticatedStatus:
         tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
 
         _handle_authenticated_status(
-            ("tok", {}, False, False),
+            ("tok", {}, "skip", "human"),
             tm=tm,
             logger=Mock(),
         )
@@ -313,7 +313,7 @@ class TestRunDoctorSecurity:
 
         mock_feature_config.return_value = Mock(save_cookies=False)
 
-        run_doctor_security_command(json_mode=True)
+        run_doctor_security_command(output_format="json")
 
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True
@@ -348,7 +348,7 @@ class TestRunDoctorSecurity:
 
         mock_feature_config.return_value = Mock(save_cookies=True)
 
-        run_doctor_security_command(json_mode=False)
+        run_doctor_security_command(output_format="human")
 
         captured = capsys.readouterr()
         assert "Perplexity CLI Security" in captured.out
@@ -370,7 +370,7 @@ class TestRunStatusCommand:
         mock_tm.token_exists.return_value = False
         mock_tm_class.return_value = mock_tm
 
-        run_status_command(verify=False)
+        run_status_command(verify="skip")
 
         captured = capsys.readouterr()
         assert "Not authenticated" in captured.out
@@ -387,7 +387,7 @@ class TestRunStatusCommand:
         mock_tm.token_path = mock_token_path
         mock_tm_class.return_value = mock_tm
 
-        run_status_command(verify=False)
+        run_status_command(verify="skip")
 
         captured = capsys.readouterr()
         assert "Authenticated" in captured.out
@@ -400,7 +400,7 @@ class TestRunStatusCommand:
         mock_tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
         mock_tm_class.return_value = mock_tm
 
-        run_status_command(verify=False, json_mode=True)
+        run_status_command(verify="skip", output_format="json")
 
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True
@@ -418,7 +418,7 @@ class TestRunStatusCommand:
         mock_tm.token_path = mock_token_path
         mock_tm_class.return_value = mock_tm
 
-        run_status_command(verify=False, json_mode=True)
+        run_status_command(verify="skip", output_format="json")
 
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True

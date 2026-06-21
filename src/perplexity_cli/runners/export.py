@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Protocol, TypedDict, TypeGuard
 
 import click
 
+from perplexity_cli._types import OutputFormat, SchemaInclusion
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
 
@@ -77,8 +78,8 @@ class ExportDateRange:
 class OutputMode:
     """Output formatting flags for the export command."""
 
-    json_mode: bool
-    include_schema: bool
+    json_mode: OutputFormat
+    include_schema: SchemaInclusion
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,12 +314,12 @@ def _require_bool_value(value: object, field_name: str) -> bool:
     return value
 
 
-def _exit_with_date_error(  # nosemgrep: boolean-flag-argument
-    e: ValueError, json_mode: bool
+def _exit_with_date_error(
+    e: ValueError, output_format: OutputFormat
 ) -> None:
     """Report a date validation error and exit."""
-    if json_mode:
-        handle_error(e, command=_COMMAND, json_mode=True)
+    if output_format == "json":
+        handle_error(e, _COMMAND, output_format="json")
     click.echo(f"[ERROR] Invalid date format: {e}", err=True)
     click.echo("Please use YYYY-MM-DD format (e.g., 2025-12-23)", err=True)
     sys.exit(1)
@@ -332,8 +333,8 @@ def _parse_date(date_str: str | None) -> None:
         dateutil_parser.parse(date_str)
 
 
-def _validate_export_dates(  # nosemgrep: boolean-flag-argument
-    from_date: str | None, to_date: str | None, json_mode: bool
+def _validate_export_dates(
+    from_date: str | None, to_date: str | None, output_format: OutputFormat
 ) -> None:
     """Validate date arguments, exiting on failure."""
     if not (from_date or to_date):
@@ -342,7 +343,7 @@ def _validate_export_dates(  # nosemgrep: boolean-flag-argument
         _parse_date(from_date)
         _parse_date(to_date)
     except ValueError as e:
-        _exit_with_date_error(e, json_mode)
+        _exit_with_date_error(e, output_format)
 
 
 def _setup_rate_limiter(logger: logging.Logger) -> ExportRateLimiterProtocol | None:
@@ -364,35 +365,35 @@ def _setup_rate_limiter(logger: logging.Logger) -> ExportRateLimiterProtocol | N
     )
 
 
-def _handle_cache_clear(  # nosemgrep: boolean-flag-argument
+def _handle_cache_clear(
     cache_manager: ThreadCacheManager,
     clear_cache: bool,
-    json_mode: bool,
+    output_format: OutputFormat,
     logger: logging.Logger,
 ) -> None:
     """Clear the thread cache if requested."""
     if not clear_cache:
         return
     if not cache_manager.cache_exists():
-        if not json_mode:
+        if output_format != "json":
             click.echo("[INFO] No cache file to clear")
         return
     cache_manager.clear_cache()
-    if not json_mode:
+    if output_format != "json":
         click.echo("[OK] Cache cleared")
     logger.info("Cache cleared by user")
 
 
-def _scrape_threads(  # nosemgrep: boolean-flag-argument
+def _scrape_threads(
     scraper: ThreadScraper,
     from_date: str | None,
     to_date: str | None,
-    json_mode: bool,
+    output_format: OutputFormat,
 ) -> list[ThreadRecord]:
     """Run the thread scraper with a progress callback."""
 
     def update_progress(current: int, total: int) -> None:
-        if not json_mode:
+        if output_format != "json":
             click.echo(f"\rExtracting {current}/{total} threads...", nl=False)
 
     async def run_scrape() -> list[ThreadRecord]:
@@ -403,22 +404,22 @@ def _scrape_threads(  # nosemgrep: boolean-flag-argument
         )
 
     threads = run_async(run_scrape())
-    if not json_mode:
+    if output_format != "json":
         click.echo()
     return threads
 
 
-def _handle_no_threads(  # nosemgrep: boolean-flag-argument
+def _handle_no_threads(
     from_date: str | None,
     to_date: str | None,
-    json_mode: bool,
+    output_format: OutputFormat,
 ) -> None:
     """Handle the case where no threads were found, exiting the process."""
-    if json_mode:
+    if output_format == "json":
         handle_error(
             ValueError("No threads found matching criteria"),
-            command=_COMMAND,
-            json_mode=True,
+            _COMMAND,
+            output_format="json",
         )
     click.echo("\n[ERROR] No threads found matching criteria.", err=True)
     _echo_date_range(from_date, to_date, prefix="Date range")
@@ -436,7 +437,7 @@ def _echo_date_range(
         )
 
 
-def _output_json(result: ExportResult, include_schema: bool) -> None:
+def _output_json(result: ExportResult, include_schema: SchemaInclusion) -> None:
     """Write JSON envelope output for export results."""
     output_path = _require_output_path(result.output_path)
     thread_items = [_thread_payload(thread) for thread in result.threads]
@@ -467,7 +468,7 @@ def _output_export_results(
     )
     logger.info("Exported %s threads to %s", len(result.threads), output_path)
 
-    if output_mode.json_mode:
+    if output_mode.json_mode == "json":
         _output_json(written_result, output_mode.include_schema)
         return
 
@@ -477,12 +478,12 @@ def _output_export_results(
     click.echo(f"[OK] Saved to: {output_path.resolve()}")
 
 
-def _handle_known_error(  # nosemgrep: boolean-flag-argument
-    e: Exception, json_mode: bool, logger: logging.Logger
+def _handle_known_error(
+    e: Exception, output_format: OutputFormat, logger: logging.Logger
 ) -> None:
     """Handle AuthenticationError, PerplexityRequestError, UpstreamSchemaError, ValueError, and RateLimitError."""
-    if json_mode:
-        handle_error(e, command=_COMMAND, json_mode=True)
+    if output_format == "json":
+        handle_error(e, _COMMAND, output_format="json")
     logger.error("Export failed: %s", e, exc_info=True)
     click.echo(f"\n[ERROR] Export failed: {e}", err=True)
     if isinstance(e, AuthenticationError):
@@ -491,47 +492,47 @@ def _handle_known_error(  # nosemgrep: boolean-flag-argument
     sys.exit(1)
 
 
-def _handle_http_status_error(  # nosemgrep: boolean-flag-argument
+def _handle_http_status_error(
     e: PerplexityHTTPStatusError,
-    json_mode: bool,
+    output_format: OutputFormat,
     ctx_obj: ExportContext | None,
     logger: logging.Logger,
 ) -> None:
     """Handle HTTP status errors from the Perplexity API."""
-    if json_mode:
-        handle_error(e, command=_COMMAND, json_mode=True)
+    if output_format == "json":
+        handle_error(e, _COMMAND, output_format="json")
     debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
-    handle_http_error(e, logger, debug_mode=debug_mode, context="during thread export")
+    handle_http_error(e, logger, debug_mode="debug" if debug_mode else "normal", context="during thread export")
 
 
-def _handle_unexpected_error(  # nosemgrep: boolean-flag-argument
+def _handle_unexpected_error(
     e: Exception,
-    json_mode: bool,
+    output_format: OutputFormat,
     ctx_obj: ExportContext | None,
     logger: logging.Logger,
 ) -> None:
     """Handle unexpected errors during export."""
-    if json_mode:
-        handle_error(e, command=_COMMAND, json_mode=True)
+    if output_format == "json":
+        handle_error(e, _COMMAND, output_format="json")
     debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
     handle_unexpected_cli_error(
         e,
         logger,
-        debug_mode=debug_mode,
+        debug_mode="debug" if debug_mode else "normal",
         message_tuple=(f"\n[ERROR] Unexpected error: {e}", "Unexpected error during export", False),
     )
 
 
-def _handle_auth_missing(  # nosemgrep: boolean-flag-argument
-    json_mode: bool,
+def _handle_auth_missing(
+    output_format: OutputFormat,
     logger: logging.Logger,
 ) -> None:
     """Handle missing authentication, exiting the process."""
-    if json_mode:
+    if output_format == "json":
         handle_error(
             AuthenticationError("Not authenticated"),
-            command=_COMMAND,
-            json_mode=True,
+            _COMMAND,
+            output_format="json",
         )
     click.echo("[ERROR] Not authenticated.", err=True)
     click.echo("\nPlease authenticate first with: pxcli auth login", err=True)
@@ -543,10 +544,13 @@ def _resolve_ctx_flags(ctx_obj: ExportContext | None) -> OutputMode:
     """Extract json_mode and include_schema from the context object."""
     json_mode = ctx_obj.get("json", False) if ctx_obj else False
     include_schema = ctx_obj.get("schema", False) if ctx_obj else False
-    return OutputMode(json_mode=json_mode, include_schema=include_schema)
+    return OutputMode(
+        json_mode="json" if json_mode else "human",
+        include_schema="with_schema" if include_schema else "no_schema",
+    )
 
 
-def _prepare_export(  # nosemgrep: boolean-flag-argument
+def _prepare_export(
     ctx_obj: ExportContext | None,
     request: ExportRequest,
 ) -> PreparedExport:
@@ -555,7 +559,7 @@ def _prepare_export(  # nosemgrep: boolean-flag-argument
     output_mode = _resolve_ctx_flags(ctx_obj)
     logger.info("Starting thread export")
 
-    if not output_mode.json_mode:
+    if output_mode.json_mode != "json":
         click.echo("Exporting threads from Perplexity.ai library...")
 
     tm = _create_token_manager()

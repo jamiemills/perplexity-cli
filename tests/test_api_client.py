@@ -444,7 +444,7 @@ class TestSSEClient:
         mock_session.stream.return_value = mock_stream_context
         client._client = mock_session
 
-        setup_logging(debug=True)
+        setup_logging(verbosity="debug")
 
         with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
             with pytest.raises(PerplexityHTTPStatusError, match="Access forbidden"):
@@ -575,7 +575,7 @@ class TestLogRequestContext:
 
     def test_deep_research_debug_log(self, caplog):
         """Deep research mode emits a specific debug log line."""
-        setup_logging(debug=True)
+        setup_logging(verbosity="debug")
         client = SSEClient(auth=AuthContext(token="test-token"))
 
         from perplexity_cli.api.models import HttpRequestContext
@@ -586,7 +586,7 @@ class TestLogRequestContext:
             effective_timeout=360,
         )
         with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
-            client._log_request_context(ctx, is_deep_research=True)
+            client._log_request_context(ctx, query_mode="deep_research")
 
         assert any("Deep research mode" in r.getMessage() for r in caplog.records)
 

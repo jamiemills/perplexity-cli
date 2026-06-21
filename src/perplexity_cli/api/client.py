@@ -668,10 +668,10 @@ class SSEClient:
             effective_timeout = self.timeout
         return is_deep_research, effective_timeout
 
-    def _log_request_context(  # nosemgrep: boolean-flag-argument
+    def _log_request_context(
         self,
         ctx: HttpRequestContext,
-        is_deep_research: bool,
+        query_mode: str = "default",
     ) -> None:
         """Log debug context for an outbound request.
 
@@ -679,20 +679,20 @@ class SSEClient:
 
         Args:
             ctx: HTTP request metadata (URL, headers, timeout).
-            is_deep_research: Whether deep research mode is active.
+            query_mode: ``"deep_research"`` or ``"default"``.
         """
         if not self.logger.isEnabledFor(logging.DEBUG):
             return
 
         self.logger.debug("API Request to: %s", redact_url(ctx.url))
         self.logger.debug("Request headers: Content-Type=%s", ctx.headers.get("Content-Type"))
-        if is_deep_research:
+        if query_mode == "deep_research":
             self.logger.debug(
                 "Deep research mode detected, timeout set to %ss",
                 ctx.effective_timeout,
             )
 
-        self.logger.debug(  # nosemgrep: python-logger-credential-disclosure
+        self.logger.debug(
             "Authentication: Bearer token present=%s", bool(self.auth.token)
         )
         self._log_cookie_context()
@@ -757,7 +757,7 @@ class SSEClient:
             json_data=json_data,
             effective_timeout=effective_timeout,
         )
-        self._log_request_context(ctx, is_deep_research)
+        self._log_request_context(ctx, "deep_research" if is_deep_research else "default")
 
         attempt = 0
         while attempt < self.max_retries:

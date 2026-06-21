@@ -77,7 +77,7 @@ def load_token_optional(
     try:
         token, cookies = tm.load_token()
     except AuthenticationError as e:
-        logger.warning(  # nosemgrep: python-logger-credential-disclosure
+        logger.warning(
             "Stored authentication is unusable; proceeding without token: %s", e
         )
         return None, None

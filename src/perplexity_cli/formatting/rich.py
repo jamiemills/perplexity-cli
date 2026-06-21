@@ -197,7 +197,7 @@ class RichFormatter(Formatter):
         Returns:
             Highlighted code string, or the original fenced block on failure.
         """
-        try:  # nosemgrep: except-broad-exception
+        try:
             syntax = Syntax(code_content, language, theme="monokai", line_numbers=False)
             from io import StringIO
 
@@ -205,8 +205,7 @@ class RichFormatter(Formatter):
             code_console = Console(file=code_buffer, legacy_windows=False)
             code_console.print(syntax)
             return code_buffer.getvalue().rstrip()
-        except Exception:
-            # Intentionally broad: Rich and lexer failures should not block answer rendering.
+        except (ValueError, TypeError, LookupError):
             return f"```{language}\n{code_content}\n```"
 
     def _process_answer_text(self, text: str) -> str:

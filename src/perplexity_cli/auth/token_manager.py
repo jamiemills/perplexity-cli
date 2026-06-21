@@ -86,12 +86,12 @@ class TokenManager:
             saved_cookies = "cookies" in token_record
             cookie_count = len(cookies) if cookies else 0
             cookie_msg = f" and {cookie_count} cookies" if saved_cookies else ""
-            self.logger.info(  # nosemgrep: python-logger-credential-disclosure
+            self.logger.info(
                 "Token%s saved to %s", cookie_msg, redact_path(self.token_path)
             )
 
         except OSError as e:
-            self.logger.error(  # nosemgrep: python-logger-credential-disclosure
+            self.logger.error(
                 "Failed to save token: %s", e, exc_info=True
             )
             raise OSError(
@@ -159,14 +159,14 @@ class TokenManager:
             cookies = self._decrypt_cookies(token_record, _extract_version(token_record))
 
             cookie_msg = f" and {len(cookies)} cookies" if cookies else ""
-            self.logger.info(  # nosemgrep: python-logger-credential-disclosure
+            self.logger.info(
                 "Token%s loaded from %s", cookie_msg, redact_path(self.token_path)
             )
 
             return (token, cookies)
 
         except (OSError, json.JSONDecodeError) as e:
-            self.logger.error(  # nosemgrep: python-logger-credential-disclosure
+            self.logger.error(
                 "Failed to load token: %s", e, exc_info=True
             )
             raise OSError(f"Failed to load token from {self.token_path}: {e}") from e
@@ -207,11 +207,11 @@ class TokenManager:
             created_at = datetime.fromisoformat(created_at_str)
             age_days = (datetime.now() - created_at).days
             if age_days > TOKEN_AGE_WARNING_DAYS:
-                self.logger.warning(  # nosemgrep: python-logger-credential-disclosure
+                self.logger.warning(
                     "Token is %s days old, may be expired", age_days
                 )
             else:
-                self.logger.debug(  # nosemgrep: python-logger-credential-disclosure
+                self.logger.debug(
                     "Token age: %s days", age_days
                 )
         except (ValueError, TypeError):
@@ -265,7 +265,7 @@ class TokenManager:
         if version == _TOKEN_FORMAT_VERSION:
             self.logger.debug("Token is v2 format but no cookies stored")
         else:
-            self.logger.debug(  # nosemgrep: python-logger-credential-disclosure
+            self.logger.debug(
                 "Token is v%s format (no cookies)", version
             )
 
@@ -335,11 +335,11 @@ class TokenManager:
             try:
                 self.token_path.unlink()
                 # Audit log: token cleared
-                self.logger.info(  # nosemgrep: python-logger-credential-disclosure
+                self.logger.info(
                     "Token cleared from %s", redact_path(self.token_path)
                 )
             except OSError as e:
-                self.logger.error(  # nosemgrep: python-logger-credential-disclosure
+                self.logger.error(
                     "Failed to delete token file: %s", e, exc_info=True
                 )
                 raise OSError(f"Failed to delete token file: {e}") from e

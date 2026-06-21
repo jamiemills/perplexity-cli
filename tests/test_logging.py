@@ -31,12 +31,12 @@ class TestLoggingSetup:
 
     def test_setup_logging_verbose(self):
         """Test logging setup with verbose flag."""
-        logger = setup_logging(verbose=True)
+        logger = setup_logging(verbosity="info")
         assert logger.level == logging.INFO
 
     def test_setup_logging_debug(self):
         """Test logging setup with debug flag."""
-        logger = setup_logging(debug=True)
+        logger = setup_logging(verbosity="debug")
         assert logger.level == logging.DEBUG
 
     def test_setup_logging_with_file(self):

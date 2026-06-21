@@ -18,6 +18,12 @@ from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.upstream_contracts import require_list, require_mapping
 from perplexity_cli.utils.version import get_api_version
 
+
+def _web_sources_default() -> list[str]:
+    """Default value for the sources field."""
+    return ["web"]
+
+
 __all__ = ["FileAttachment"]
 
 # Module-level ``TypeAdapter`` instances used to narrow arbitrary
@@ -161,7 +167,7 @@ class QueryParams(BaseModel):
     frontend_uuid: str = Field(default="")
     frontend_context_uuid: str = Field(default="")
     version: str = Field(default_factory=get_api_version)
-    sources: list[str] = Field(default_factory=lambda: ["web"])  # nosemgrep: return-not-in-function
+    sources: list[str] = Field(default_factory=_web_sources_default)
     attachments: list[str] = Field(
         default_factory=list,
         description="S3 URLs of attached files",
@@ -410,15 +416,15 @@ class SSEMessage(BaseModel):
     web_results: list[WebResult] | None = Field(default=None)
     attachments: list[str] = Field(default_factory=list, description="S3 URLs of attached files")
 
-    @model_validator(mode="before")  # nosemgrep: meaningless-name
+    @model_validator(mode="before")
     @classmethod
-    def _validate_upstream_shape(cls, data: object) -> object:
+    def _validate_upstream_shape(cls, raw_input: object) -> object:
         """Enforce upstream contract: top-level mapping with list-shaped blocks."""
-        data = require_mapping(  # nosemgrep: meaningless-name
-            data, "Malformed SSE message in upstream response"
+        parsed = require_mapping(
+            raw_input, "Malformed SSE message in upstream response"
         )
-        require_list(data.get("blocks", []), "Malformed SSE blocks in upstream response")
-        return data
+        require_list(parsed.get("blocks", []), "Malformed SSE blocks in upstream response")
+        return parsed
 
     @model_validator(mode="after")
     def _derive_web_results(self) -> SSEMessage:

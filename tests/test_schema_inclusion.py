@@ -43,13 +43,13 @@ class TestEnvelopeToDict:
         assert result == expected
 
     def test_with_schema_adds_dollar_schema_key(self) -> None:
-        """With include_schema=True, the dict gains a $schema key."""
+        """With include_schema="with_schema", the dict gains a $schema key."""
         env = success_envelope("test", {"key": "value"})
-        result = envelope_to_dict(env, include_schema=True)
+        result = envelope_to_dict(env, include_schema="with_schema")
         assert "$schema" in result
 
     def test_without_schema_omits_dollar_schema_key(self) -> None:
-        """With include_schema=False (default), no $schema key is present."""
+        """With include_schema="no_schema" (default), no $schema key is present."""
         env = success_envelope("test", {"key": "value"})
         result = envelope_to_dict(env)
         assert "$schema" not in result
@@ -57,14 +57,14 @@ class TestEnvelopeToDict:
     def test_schema_is_first_key(self) -> None:
         """$schema should be the first key in the dict (convention)."""
         env = success_envelope("test", {"key": "value"})
-        result = envelope_to_dict(env, include_schema=True)
+        result = envelope_to_dict(env, include_schema="with_schema")
         keys = list(result.keys())
         assert keys[0] == "$schema"
 
     def test_schema_content_is_valid_json_schema(self) -> None:
         """The $schema value should be a valid JSON Schema object."""
         env = success_envelope("test", {"answer": "42"})
-        result = envelope_to_dict(env, include_schema=True)
+        result = envelope_to_dict(env, include_schema="with_schema")
         schema = result["$schema"]
         assert isinstance(schema, dict)
         assert "properties" in schema
@@ -75,14 +75,14 @@ class TestEnvelopeToDict:
     def test_schema_matches_envelope_model_json_schema(self) -> None:
         """$schema value should match Envelope.model_json_schema()."""
         env = success_envelope("test", {"key": "value"})
-        result = envelope_to_dict(env, include_schema=True)
+        result = envelope_to_dict(env, include_schema="with_schema")
         expected_schema = Envelope.model_json_schema()
         assert result["$schema"] == expected_schema
 
     def test_error_envelope_schema_matches_error_model(self) -> None:
         """For ErrorEnvelope, $schema should match ErrorEnvelope.model_json_schema()."""
         env = error_envelope("test", ErrorCode.internal_error, "Something broke")
-        result = envelope_to_dict(env, include_schema=True)
+        result = envelope_to_dict(env, include_schema="with_schema")
         expected_schema = ErrorEnvelope.model_json_schema()
         assert result["$schema"] == expected_schema
 
@@ -99,8 +99,8 @@ class TestEnvelopeToDict:
         action = NextAction(command="retry", description="Try again")
         env = success_envelope("test", {"answer": "42"}, meta=meta, next_actions=[action])
 
-        without = envelope_to_dict(env, include_schema=False)
-        with_schema = envelope_to_dict(env, include_schema=True)
+        without = envelope_to_dict(env, include_schema="no_schema")
+        with_schema = envelope_to_dict(env, include_schema="with_schema")
 
         # Remove $schema and compare
         with_schema_copy = {k: v for k, v in with_schema.items() if k != "$schema"}
@@ -109,7 +109,7 @@ class TestEnvelopeToDict:
     def test_schema_is_json_serialisable(self) -> None:
         """The entire output including $schema should be JSON-serialisable."""
         env = success_envelope("test", {"answer": "42"})
-        result = envelope_to_dict(env, include_schema=True)
+        result = envelope_to_dict(env, include_schema="with_schema")
         serialised = json.dumps(result)
         restored = json.loads(serialised)
         assert restored == result
@@ -144,10 +144,10 @@ class TestWriteEnvelope:
         assert data["command"] == "test"
 
     def test_writes_with_schema_when_requested(self) -> None:
-        """write_envelope with include_schema=True should include $schema."""
+        """write_envelope with include_schema="with_schema" should include $schema."""
         env = success_envelope("test", {"key": "value"})
         buf = StringIO()
-        write_envelope(env, include_schema=True, output=buf)
+        write_envelope(env, include_schema="with_schema", output=buf)
         data = json.loads(buf.getvalue())
         assert "$schema" in data
 
@@ -163,7 +163,7 @@ class TestWriteEnvelope:
         """write_envelope handles ErrorEnvelope correctly."""
         env = error_envelope("test", ErrorCode.rate_limited, "Too many requests")
         buf = StringIO()
-        write_envelope(env, include_schema=True, output=buf)
+        write_envelope(env, include_schema="with_schema", output=buf)
         data = json.loads(buf.getvalue())
         assert data["ok"] is False
         assert "$schema" in data

@@ -6,10 +6,11 @@ import logging
 import stat
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeGuard
+from typing import TYPE_CHECKING, Any, Literal, TypeGuard
 
 import click
 
+from perplexity_cli._types import OutputFormat, SchemaInclusion
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.utils.exceptions import (
     AuthenticationError,
@@ -42,18 +43,18 @@ def _ctx_to_dict() -> dict[str, object]:
     return {}
 
 
-def _get_include_schema() -> bool:
+def _get_include_schema() -> SchemaInclusion:
     """Read include_schema flag from Click context."""
     ctx_dict = _ctx_to_dict()
     val: object = ctx_dict.get("schema", False)
-    return bool(val)
+    return "with_schema" if bool(val) else "no_schema"
 
 
-def _get_json_mode_from_ctx() -> bool:
+def _get_json_mode_from_ctx() -> OutputFormat:
     """Read json_mode flag from Click context."""
     ctx_dict = _ctx_to_dict()
     val: object = ctx_dict.get("json", False)
-    return bool(val)
+    return "json" if bool(val) else "human"
 
 
 def _describe_file_permissions(path: Path | None, expected: int) -> str:
@@ -122,20 +123,21 @@ def _output_doctor_security_text(
         )
 
 
-def run_doctor_security_command(*, json_mode: bool | None = None) -> None:
+def run_doctor_security_command(*, output_format: OutputFormat | None = None) -> None:
     """Execute the doctor security command."""
     from perplexity_cli.auth.token_manager import TokenManager
+    from perplexity_cli.config.models import FeatureConfig
     from perplexity_cli.threads.cache_manager import ThreadCacheManager
     from perplexity_cli.utils.config import get_feature_config
 
-    if json_mode is None:
-        json_mode = _get_json_mode_from_ctx()
+    if output_format is None:
+        output_format = _get_json_mode_from_ctx()
 
     tm: TokenManager = TokenManager()
     cache_manager: ThreadCacheManager = ThreadCacheManager()
     feature_config = get_feature_config()
 
-    if json_mode:
+    if output_format == "json":
         _output_doctor_security_json(tm, cache_manager, feature_config)
         return
 
@@ -248,69 +250,71 @@ def _output_verification_result(verified: object, logger: logging.Logger) -> Non
         logger.warning("Token verification returned empty response")
 
 
-def _handle_no_token(  # nosemgrep: boolean-flag-argument
-    json_mode: bool, tm: TokenManager, show_auth_hint: bool = True
+def _handle_no_token(
+    output_format: OutputFormat,
+    tm: TokenManager,
+    show_auth_hint: Literal["show", "hide"] = "show",
 ) -> None:
     """Handle the case where no valid token is available."""
-    if json_mode:
+    if output_format == "json":
         write_envelope(_build_status_envelope(False, tm), include_schema=_get_include_schema())
         return
     click.echo("Perplexity CLI Status")
     click.echo("=" * 40)
     click.echo("Status: [ERROR] Not authenticated")
-    if show_auth_hint:
+    if show_auth_hint == "show":
         click.echo("\nAuthenticate with: pxcli auth login")
 
 
 def _handle_authenticated_status(
-    status_data: tuple[str, dict[str, str] | None, bool, bool],
+    status_data: tuple[str, dict[str, str] | None, Literal["verify", "skip"], OutputFormat],
     tm: TokenManager,
     logger: logging.Logger,
 ) -> None:
     """Handle status output when a valid token is present."""
-    token, cookies, verify, json_mode = status_data
+    token, cookies, verify, output_format = status_data
     token_age_days = _get_token_age_days(tm.token_path)
     cookies_stored = len(cookies) if cookies else 0
-    verified = _verify_token(token, cookies, logger) if verify else None
+    verified = _verify_token(token, cookies, logger) if verify == "verify" else None
 
-    if json_mode:
+    if output_format == "json":
         write_envelope(
             _build_status_envelope(True, tm, (token_age_days, cookies_stored, verified)),
             include_schema=_get_include_schema(),
         )
         return
 
-    _output_status_text(token, cookies, (token_age_days, verified, verify), tm)
+    _output_status_text(token, cookies, (token_age_days, verified, verify == "verify"), tm)
 
 
-def run_status_command(  # nosemgrep: boolean-flag-argument
-    verify: bool, *, json_mode: bool | None = None
+def run_status_command(
+    verify: Literal["verify", "skip"], *, output_format: OutputFormat | None = None
 ) -> None:
     """Execute the status command."""
     from perplexity_cli.auth.token_manager import TokenManager
 
-    if json_mode is None:
-        json_mode = _get_json_mode_from_ctx()
+    if output_format is None:
+        output_format = _get_json_mode_from_ctx()
 
     logger = get_logger()
     tm: TokenManager = TokenManager()
 
     if not tm.token_exists():
-        _handle_no_token(json_mode, tm)
+        _handle_no_token(output_format, tm)
         return
 
     try:
         token, cookies = tm.load_token()
         if not token:
-            _handle_no_token(json_mode, tm, show_auth_hint=False)
+            _handle_no_token(output_format, tm, show_auth_hint="hide")
             return
 
-        _handle_authenticated_status((token, cookies, verify, json_mode), tm, logger)
+        _handle_authenticated_status((token, cookies, verify, output_format), tm, logger)
 
     except AuthenticationError as e:
         click.echo("Status: [INFO] Token file has insecure permissions")
         click.echo(f"Error: {e}")
         click.echo(f"\nFix with: chmod 0600 {tm.token_path}")
-        logger.error(  # nosemgrep: python-logger-credential-disclosure
+        logger.error(
             "Token file has insecure permissions: %s", e
         )

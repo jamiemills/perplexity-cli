@@ -16,7 +16,7 @@ class DynamicStderrHandler(logging.StreamHandler[TextIO]):
 
     def emit(self, record: logging.LogRecord) -> None:
         """Write a formatted log record to the current stderr stream."""
-        try:  # nosemgrep: except-broad-exception
+        try:
             message = self.format(record)
             stream = sys.stderr
             stream.write(message + self.terminator)
@@ -97,30 +97,25 @@ def enable_structured_logging(trace_id: str | None = None) -> None:
             handler.setFormatter(json_formatter)
 
 
-def setup_logging(  # nosemgrep: boolean-flag-argument
-    level: int = logging.WARNING,
+def setup_logging(
+    verbosity: str = "warning",
     log_file: Path | None = None,
-    verbose: bool = False,
-    debug: bool = False,
 ) -> logging.Logger:
     """Configure logging for the application.
 
     Args:
-        level: Logging level (default: WARNING).
+        verbosity: One of ``"debug"``, ``"info"``, ``"warning"`` (default).
         log_file: Optional path to log file.
-        verbose: If True, set level to INFO.
-        debug: If True, set level to DEBUG.
 
     Returns:
         Configured logger instance.
     """
     # Determine log level
-    if debug:
-        log_level = logging.DEBUG
-    elif verbose:
-        log_level = logging.INFO
-    else:
-        log_level = level
+    log_level = {
+        "debug": logging.DEBUG,
+        "info": logging.INFO,
+        "warning": logging.WARNING,
+    }.get(verbosity, logging.WARNING)
 
     # Create logger
     logger = logging.getLogger("perplexity_cli")

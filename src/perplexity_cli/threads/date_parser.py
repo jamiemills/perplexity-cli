@@ -83,28 +83,40 @@ def to_iso8601(dt: datetime) -> str:
     return iso_str
 
 
-def _parse_range_bound(  # nosemgrep: boolean-flag-argument
-    date_str: str, dt_tzinfo: tzinfo | None, is_end_of_day: bool
-) -> datetime:
-    """Parse a date string to a datetime at start or end of day.
+def _parse_day_start(date_str: str, dt_tzinfo: tzinfo | None) -> datetime:
+    """Parse a date string to a datetime at 00:00:00.
 
     Args:
         date_str: Date string in YYYY-MM-DD format.
         dt_tzinfo: Timezone info to apply to the parsed datetime.
-        is_end_of_day: If True, set time to 23:59:59.999999; otherwise 00:00:00.
 
     Returns:
-        Datetime at the specified boundary of the day.
+        Datetime at the start of the day.
 
     Raises:
         ValueError: If date string cannot be parsed.
     """
-    time_parts = (
-        {"hour": 23, "minute": 59, "second": 59, "microsecond": 999999}
-        if is_end_of_day
-        else {"hour": 0, "minute": 0, "second": 0, "microsecond": 0}
+    return dateutil_parser.parse(date_str).replace(
+        hour=0, minute=0, second=0, microsecond=0, tzinfo=dt_tzinfo
     )
-    return dateutil_parser.parse(date_str).replace(**time_parts, tzinfo=dt_tzinfo)
+
+
+def _parse_day_end(date_str: str, dt_tzinfo: tzinfo | None) -> datetime:
+    """Parse a date string to a datetime at 23:59:59.999999.
+
+    Args:
+        date_str: Date string in YYYY-MM-DD format.
+        dt_tzinfo: Timezone info to apply to the parsed datetime.
+
+    Returns:
+        Datetime at the end of the day.
+
+    Raises:
+        ValueError: If date string cannot be parsed.
+    """
+    return dateutil_parser.parse(date_str).replace(
+        hour=23, minute=59, second=59, microsecond=999999, tzinfo=dt_tzinfo
+    )
 
 
 def _check_after_start(dt: datetime, from_date: str | None) -> bool:
@@ -119,7 +131,7 @@ def _check_after_start(dt: datetime, from_date: str | None) -> bool:
     """
     if from_date is None:
         return True
-    return dt >= _parse_range_bound(from_date, dt.tzinfo, False)
+    return dt >= _parse_day_start(from_date, dt.tzinfo)
 
 
 def _check_before_end(dt: datetime, to_date: str | None) -> bool:
@@ -134,7 +146,7 @@ def _check_before_end(dt: datetime, to_date: str | None) -> bool:
     """
     if to_date is None:
         return True
-    return dt <= _parse_range_bound(to_date, dt.tzinfo, True)
+    return dt <= _parse_day_end(to_date, dt.tzinfo)
 
 
 def is_in_date_range(dt: datetime, from_date: str | None, to_date: str | None) -> bool:

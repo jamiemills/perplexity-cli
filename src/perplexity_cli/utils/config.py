@@ -6,7 +6,7 @@ import json
 import logging
 import os
 from functools import lru_cache
-from importlib import resources  # nosemgrep: python37-compatibility-importlib2
+from importlib import resources
 from pathlib import Path
 from typing import Any, TypeGuard
 
@@ -563,7 +563,7 @@ def get_debug_mode_enabled() -> bool:
     return config.debug_mode
 
 
-def set_feature(key: str, value: object) -> None:  # nosemgrep: boolean-flag-argument
+def set_feature(key: str, value: object) -> None:
     """Set a feature configuration value.
 
     Args:

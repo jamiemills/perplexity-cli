@@ -38,7 +38,7 @@ def test_handle_unexpected_cli_error_prints_traceback_in_debug_mode(capsys):
             handle_unexpected_cli_error(
                 error,
                 logger,
-                debug_mode=True,
+                debug_mode="debug",
                 message_tuple=("[ERROR] Failed.", "Unexpected test error", True),
             )
 

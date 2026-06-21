@@ -19,17 +19,17 @@ class SessionLogger:
     The logger is a no-op if session logging is not enabled.
     """
 
-    def __init__(  # nosemgrep: boolean-flag-argument
-        self, session_id: str, *, enabled: bool = False
+    def __init__(
+        self, session_id: str, *, enabled: str = "disabled"
     ) -> None:
         """Initialise the session logger.
 
         Args:
             session_id: Unique identifier for this session (typically a UUID4).
-            enabled: Whether logging is active. When False, all methods are no-ops.
+            enabled: ``"enabled"`` or ``"disabled"``. When ``"disabled"``, all methods are no-ops.
         """
         self._session_id = session_id
-        self._enabled = enabled
+        self._enabled = enabled == "enabled" == "enabled"
 
     @staticmethod
     def get_sessions_dir() -> Path:
@@ -55,7 +55,7 @@ class SessionLogger:
         """Factory method: create a SessionLogger, auto-detecting enabled state."""
         return cls(
             session_id=str(uuid.uuid4()),
-            enabled=cls.is_enabled(),
+            enabled="enabled" if cls.is_enabled() else "disabled",
         )
 
     def log_invocation(self, command: str, args: dict[str, Any] | None = None) -> None:
@@ -71,9 +71,9 @@ class SessionLogger:
         }
         self._write_event(event)
 
-    def log_response(  # nosemgrep: boolean-flag-argument
+    def log_response(
         self,
-        ok: bool,
+        success: str,
         duration_ms: int,
         result_summary: str | None = None,
     ) -> None:
@@ -84,7 +84,7 @@ class SessionLogger:
             "type": "response",
             "ts": datetime.now(UTC).isoformat(),
             "session_id": self._session_id,
-            "ok": ok,
+            "ok": success == "ok",
             "duration_ms": duration_ms,
             "result_summary": result_summary,
         }

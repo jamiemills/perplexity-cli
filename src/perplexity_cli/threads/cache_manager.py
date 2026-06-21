@@ -125,13 +125,13 @@ class ThreadCacheManager:
 
         return cache_format
 
-    def _decrypt_and_validate_cache(  # nosemgrep: meaningless-name
-        self, data: CacheFormat
+    def _decrypt_and_validate_cache(
+        self, outer_cache: CacheFormat
     ) -> CacheContent:
         """Decrypt and validate the inner cache content.
 
         Args:
-            data: Validated outer cache format containing encrypted payload.
+            outer_cache: Validated outer cache format containing encrypted payload.
 
         Returns:
             Validated CacheContent instance.
@@ -139,11 +139,11 @@ class ThreadCacheManager:
         Raises:
             ConfigurationError: If decrypted content has invalid format.
         """
-        decrypted_json = decrypt_token(data.cache)
-        decrypted_data = json.loads(decrypted_json)
+        decrypted_json = decrypt_token(outer_cache.cache)
+        decrypted_content = json.loads(decrypted_json)
 
         try:
-            return CacheContent.model_validate(decrypted_data)
+            return CacheContent.model_validate(decrypted_content)
         except ValidationError as e:
             self.logger.error("Cache content has invalid format: %s", e)
             raise ConfigurationError("Cache content has invalid format") from e

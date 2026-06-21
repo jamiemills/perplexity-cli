@@ -140,3 +140,4 @@ sleep_with_backoff
 is_curl_cffi_available
 get_version_from_pyproject
 _.extract_plan_info
+_web_sources_default

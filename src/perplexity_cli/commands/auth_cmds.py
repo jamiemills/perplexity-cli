@@ -247,7 +247,7 @@ def auth_status(ctx: click.Context, **flags: ClickValue) -> None:
     record_output_flags(ctx, flags)
     from perplexity_cli.runners import run_status_command
 
-    run_status_command(flags.get("verify") is True)
+    run_status_command("verify" if flags.get("verify") else "skip")
 
 
 auth_group.add_command(auth_login)

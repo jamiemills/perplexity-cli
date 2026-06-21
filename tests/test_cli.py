@@ -262,7 +262,7 @@ class TestCLICommands:
         mock_api.get_complete_answer.return_value = Answer(text="Test answer", references=[])
         mock_api_class.return_value = mock_api
 
-        setup_logging(debug=True)
+        setup_logging(verbosity="debug")
 
         with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
             result = runner.invoke(
