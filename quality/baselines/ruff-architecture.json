@@ -1,5 +1,3 @@
 {
-  "fingerprints": [
-    "src/perplexity_cli/query_streaming.py:186:ARG001"
-  ]
+  "fingerprints": []
 }

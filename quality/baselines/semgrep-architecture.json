@@ -1,5 +1,3 @@
 {
-  "fingerprints": [
-    "src/perplexity_cli/auth/oauth_handler.py:71:http-client-outside-transport"
-  ]
+  "fingerprints": []
 }
