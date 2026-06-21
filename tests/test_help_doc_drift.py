@@ -79,23 +79,27 @@ class TestQueryNDJSONEvents:
 
 
 # ---------------------------------------------------------------------------
-# Plan §50: skill show documents result.content, not skill_md
+# Plan §50: skill show documents result.skill_md (renamed from content)
 # ---------------------------------------------------------------------------
 
 
-class TestSkillShowContentField:
-    """``skill show --help`` must match the implementation's ``result.content``."""
+class TestSkillShowSkillMdField:
+    """``skill show --help`` must match the implementation's ``result.skill_md``."""
 
-    def test_help_documents_content_not_skill_md(self, runner: CliRunner) -> None:
+    def test_help_documents_skill_md_not_content(self, runner: CliRunner) -> None:
         output = _help(runner, "skill", "show")
-        assert "result.content" in output
-        assert "content  - The full SKILL.md content" in output
-        assert "skill_md" not in output
+        assert "result.skill_md" in output
+        assert "skill_md  - The full SKILL.md content" in output
+        assert '"content":' not in output
 
-    def test_help_jq_example_uses_content(self, runner: CliRunner) -> None:
+    def test_help_jq_example_uses_skill_md(self, runner: CliRunner) -> None:
         output = _help(runner, "skill", "show")
-        assert "jq -r '.result.content'" in output
-        assert ".result.skill_md" not in output
+        assert "jq -r '.result.skill_md'" in output
+
+    def test_schema_command_includes_skill_show(self) -> None:
+        """``pxcli schema`` must include the skill-show result definition."""
+        assert "skill show" in COMMAND_RESULT_SCHEMAS
+        assert "skill_md" in COMMAND_RESULT_SCHEMAS["skill show"]
 
 
 # ---------------------------------------------------------------------------
@@ -188,23 +192,26 @@ class TestDoctorSecurityHelpMatchesImplementation:
 
 
 class TestThreadsExportJsonSideEffect:
-    """``threads export --json`` must not claim CSV is skipped."""
+    """``threads export --json`` must skip the CSV write unless --output is given."""
 
-    def test_help_documents_csv_side_effect(self) -> None:
+    def test_help_clarifies_no_csv_without_output(self) -> None:
         source = (PROJECT_ROOT / "src/perplexity_cli/commands/threads_cmds.py").read_text(
             encoding="utf-8"
         )
-        # The new --json help explains that CSV is always written alongside JSON.
-        assert "in addition to" in source
-        assert "CSV is always written" in source
-        # The old help claimed --json emitted JSON *instead of* writing CSV.
-        assert 'instead of "writing a CSV file' not in source
+        assert "instead of" in source
+        assert "no CSV is written" in source
+        assert "result.output_path is null" in source
 
-    def test_result_fields_document_always_written_output_path(self) -> None:
-        source = (PROJECT_ROOT / "src/perplexity_cli/commands/threads_cmds.py").read_text(
-            encoding="utf-8"
-        )
-        assert "always written," in source
+    def test_runner_skips_csv_in_json_only_mode(self) -> None:
+        """The runner must not call write_threads_csv when json mode and no --output."""
+        source = (PROJECT_ROOT / "src/perplexity_cli/runners/export.py").read_text(encoding="utf-8")
+        assert "if json_mode and not explicit_output:" in source
+
+    def test_schema_marks_output_path_nullable(self) -> None:
+        """The output_path field schema must accept null (JSON-only mode)."""
+        assert COMMAND_RESULT_SCHEMAS["threads export"]["output_path"] == {
+            "type": ["string", "null"]
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +280,12 @@ class TestReadmeCommandReferenceClaim:
         assert '"index": 1' not in text
         assert '"title": "Python.org"' not in text
         assert '"name": "Python.org"' in text
+
+    def test_readme_skill_show_uses_skill_md(self) -> None:
+        """README result-shapes table must use skill_md, not content."""
+        text = README.read_text(encoding="utf-8")
+        assert "`skill show` | `{skill_md}`" in text
+        assert "`skill show` | `{content}`" not in text
 
 
 # ---------------------------------------------------------------------------
@@ -417,9 +430,9 @@ class TestExampleJsonIsValid:
         [
             (("query",), '"ok": true'),
             (("models", "list"), '"models":'),
-            (("skill", "show"), '"content":'),
+            (("skill", "show"), '"skill_md":'),
             (("doctor", "security"), '"storage_backend":'),
-            (("threads", "export"), '"threads":'),
+            (("threads", "export"), '"output_path": null'),
         ],
     )
     def test_example_block_is_valid_json(

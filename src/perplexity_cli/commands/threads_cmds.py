@@ -107,10 +107,10 @@ def threads_group(ctx: click.Context) -> None:
     "json_flag",
     is_flag=True,
     help=(
-        "Emit output as a structured JSON envelope to stdout in addition to "
-        "writing the CSV file.  The CSV is always written (its absolute path "
-        "is returned in result.output_path); --json adds the structured "
-        "envelope (with the full thread list in result.threads) to stdout.  "
+        "Emit output as a structured JSON envelope to stdout instead of "
+        "writing a CSV file.  When --output is also given, the CSV is "
+        "written to that path and result.output_path reflects it; without "
+        "--output, no CSV is written and result.output_path is null.  "
         "Intended for programmatic consumption."
     ),
 )
@@ -147,8 +147,8 @@ def threads_export(ctx: click.Context, **params: ClickValue) -> None:
     Result fields (--json):
       threads      - Array of thread objects {title, created_at, url}
       total        - Total number of exported threads (integer)
-      output_path  - Absolute path to the CSV file written (always written,
-                     even with --json)
+      output_path  - CSV file path when --output was given, otherwise null
+                     (no CSV written in JSON-only mode)
       date_range   - Applied date filter {from, to} (null values if unfiltered)
 
     \b

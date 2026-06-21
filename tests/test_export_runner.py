@@ -162,6 +162,9 @@ class TestRunExportThreadsCommand:
         assert envelope["command"] == "pxcli threads export"
         assert envelope["result"]["total"] == 1
         assert len(envelope["result"]["threads"]) == 1
+        # JSON mode without --output must not write CSV and must emit null.
+        mock_write_csv.assert_not_called()
+        assert envelope["result"]["output_path"] is None
 
 
 class TestValidateExportDates:

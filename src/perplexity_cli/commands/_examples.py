@@ -287,7 +287,7 @@ THREADS_EXPORT_JSON_EXAMPLE = _versioned(
           }
         ],
         "total": 2,
-        "output_path": "/abs/path/to/threads-20250509-100000.csv",
+        "output_path": null,
         "date_range": {
           "from": null,
           "to": null
@@ -309,7 +309,7 @@ SKILL_SHOW_JSON_EXAMPLE = _versioned(
       "ok": true,
       "command": "pxcli skill show",
       "result": {
-        "content": "# perplexity-cli Agent Skill\\n\\nUse perplexity-cli ..."
+        "skill_md": "# perplexity-cli Agent Skill\\n\\nUse perplexity-cli ..."
       },
       "meta": {
         "duration_ms": 2,

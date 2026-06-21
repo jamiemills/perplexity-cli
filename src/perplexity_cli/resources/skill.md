@@ -211,6 +211,8 @@ fi
 | `style show` | `{style}` |
 | `style clear` | `{had_style}` |
 | `threads export` | `{threads, total, output_path, date_range}` |
+| `models list` | `{models}` |
+| `skill show` | `{skill_md}` |
 | `doctor security` | `{storage_backend, token_path, token_permissions, cache_path, cache_permissions, cookies_enabled}` |
 
 ## Parsing JSON in Scripts

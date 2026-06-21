@@ -248,8 +248,8 @@ class TestDoctorSecurityJson:
 class TestSkillShowJson:
     """JSON output from run_show_skill_command()."""
 
-    def test_json_output_has_content(self, capsys):
-        """Envelope contains skill content."""
+    def test_json_output_has_skill_md(self, capsys):
+        """Envelope contains skill content under the skill_md field."""
         with patch("perplexity_cli.runners.skill.files") as mock_files:
             mock_files.return_value.joinpath.return_value.read_text.return_value = (
                 "# Skill\nContent here"
@@ -259,4 +259,4 @@ class TestSkillShowJson:
         envelope = _parse_json_stdout(capsys.readouterr())
         assert envelope["ok"] is True
         assert envelope["command"] == "pxcli skill show"
-        assert envelope["result"]["content"] == "# Skill\nContent here"
+        assert envelope["result"]["skill_md"] == "# Skill\nContent here"

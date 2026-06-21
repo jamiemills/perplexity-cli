@@ -65,7 +65,7 @@ COMMAND_RESULT_SCHEMAS: dict[str, dict[str, Any]] = {
     "threads export": {
         "threads": {"type": "array"},
         "total": {"type": "integer"},
-        "output_path": {"type": "string"},
+        "output_path": {"type": ["string", "null"]},
         "date_range": {"type": "object"},
     },
     "models list": {
@@ -83,6 +83,9 @@ COMMAND_RESULT_SCHEMAS: dict[str, dict[str, Any]] = {
                 },
             },
         },
+    },
+    "skill show": {
+        "skill_md": {"type": "string"},
     },
     "doctor security": {
         "storage_backend": {"type": "string"},

@@ -42,7 +42,7 @@ def run_show_skill_command(*, json_mode: bool | None = None) -> None:
     output_format, include_schema = _resolve_ctx_flags(json_mode)
 
     if output_format == "json":
-        env = success_envelope("pxcli skill show", {"content": skill_content})
+        env = success_envelope("pxcli skill show", {"skill_md": skill_content})
         write_envelope(env, include_schema=include_schema)
         return
 

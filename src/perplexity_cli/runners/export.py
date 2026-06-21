@@ -369,17 +369,20 @@ def _echo_date_range(
 
 
 def _output_json(result: ExportResult, include_schema: SchemaInclusion) -> None:
-    """Write JSON envelope output for export results."""
-    output_path = result.output_path
-    if output_path is None:
-        raise RuntimeError("Output path should be available after export")
+    """Write JSON envelope output for export results.
+
+    ``output_path`` is ``None`` when the export ran in JSON-only mode (no
+    explicit ``--output``).  When ``--output`` was provided, or the command
+    ran in human mode before reaching here, it holds the CSV path.
+    """
     thread_items = [_thread_payload(thread) for thread in result.threads]
+    output_path_str = str(result.output_path.resolve()) if result.output_path else None
     env = success_envelope(
         _COMMAND,
         {
             "threads": thread_items,
             "total": len(result.threads),
-            "output_path": str(output_path.resolve()),
+            "output_path": output_path_str,
             "date_range": {
                 "from": result.date_range.from_date,
                 "to": result.date_range.to_date,
@@ -392,7 +395,21 @@ def _output_json(result: ExportResult, include_schema: SchemaInclusion) -> None:
 def _output_export_results(
     result: ExportResult, output_mode: OutputMode, logger: logging.Logger
 ) -> None:
-    """Write CSV and output results in the appropriate format."""
+    """Write CSV and output results in the appropriate format.
+
+    In JSON mode without an explicit ``--output`` path, the CSV side-effect
+    is skipped entirely and ``output_path`` is emitted as ``null``.  In
+    human mode, or when ``--output`` is provided, the CSV is written as
+    before.
+    """
+    json_mode = output_mode.json_mode == "json"
+    explicit_output = result.output_path is not None
+
+    if json_mode and not explicit_output:
+        _output_json(result, output_mode.include_schema)
+        logger.info("Exported %s threads (JSON only, no CSV written)", len(result.threads))
+        return
+
     from perplexity_cli.threads.exporter import write_threads_csv
 
     output_path = write_threads_csv(result.threads, result.output_path)
@@ -403,7 +420,7 @@ def _output_export_results(
     )
     logger.info("Exported %s threads to %s", len(result.threads), output_path)
 
-    if output_mode.json_mode == "json":
+    if json_mode:
         _output_json(written_result, output_mode.include_schema)
         return
 

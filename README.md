@@ -484,7 +484,7 @@ Error codes: `authentication_required`, `permission_denied`, `rate_limited`, `ne
 | `threads export` | `{threads, total, output_path, date_range}` |
 | `models list` | `{models}` |
 | `doctor security` | `{storage_backend, token_path, token_permissions, cache_path, cache_permissions, cookies_enabled}` |
-| `skill show` | `{content}` |
+| `skill show` | `{skill_md}` |
 
 ### Working with jq
 
@@ -735,9 +735,10 @@ pxcli threads export --force-refresh
 # Clear cache before export
 pxcli threads export --clear-cache
 
-# JSON envelope output
+# JSON envelope output (no CSV is written unless --output is also given)
 pxcli threads export --json
 pxcli threads export --json | jq '.result.threads[] | .title'
+pxcli threads export --json --output my-threads.csv  # emit JSON AND write CSV
 ```
 
 ### CSV format
@@ -763,7 +764,7 @@ Thread exports are cached locally in encrypted form at `~/.config/perplexity-cli
 | `--output` | `-o` | Output CSV path (default: `threads-TIMESTAMP.csv`) |
 | `--force-refresh` | | Bypass local cache |
 | `--clear-cache` | | Delete cache before export |
-| `--json` | | JSON envelope output instead of CSV |
+| `--json` | | JSON envelope output; CSV skipped unless `--output` is given |
 | `--schema` | | Embed JSON Schema in envelope (with `--json`) |
 
 ## Configuration
