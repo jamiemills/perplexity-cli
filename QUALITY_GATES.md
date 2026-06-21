@@ -17,6 +17,52 @@ branch protection settings, PyPI project settings, local IDE checks, operating
 system keychain policy, or any external scanner that is not visible in this
 repository.
 
+### Central Threshold Configuration
+
+The file `quality/gates.conf` is the single source of truth for numeric
+thresholds and boolean check toggles. Every analyser reads its floor values from
+this file at runtime through the `scripts/_gates.py` loader module.
+
+**Quantitative thresholds:**
+
+| Key | Default | Controls |
+|-----|---------|----------|
+| MAX_FLAGGED | 10 | Coupling: maximum allowed flagged modules |
+| DISTANCE_THRESHOLD | 0.3 | Coupling: Martin distance-from-main-sequence flagging threshold |
+| MIN_COVERAGE | 85 | Coverage: minimum per-module coverage percentage |
+| FAIL_UNDER | 85 | Coverage: pyproject.toml fail_under |
+| MIN_CONFIDENCE | 80 | Vulture: minimum confidence score for dead-code reporting |
+| RADON_CC_GRADE | B | Radon: worst-allowed cyclomatic-complexity grade |
+| RADON_MI_GRADE | B | Radon: worst-allowed maintainability-index grade |
+| FILE_SIZE_CAP | 1000 | File-size ratchet: maximum source lines per file |
+| SEMGREP_SEVERITY | ERROR WARNING | Semgrep: minimum severity levels scanned |
+
+**Check toggles — control which analysers run in `make check`:**
+
+| Key | Default | Gate |
+|-----|---------|------|
+| CHECK_FORMAT | true | Ruff format check |
+| CHECK_LINT | true | Ruff lint check |
+| CHECK_TYPECHECK_ALL | true | ty + pyright type checkers |
+| CHECK_SECURITY | true | Bandit + Vulture |
+| CHECK_COMPLEXITY | true | Radon CC + MI |
+| CHECK_SEMGREP | true | Semgrep static analysis |
+| CHECK_ARCH | true | Architecture layer check |
+| CHECK_COUPLING | true | Coupling and stability metrics |
+| CHECK_RATCHETS | true | All baseline ratchet gates |
+
+The file is locked from agent edits by a `deny` rule in `opencode.jsonc`. Agents may
+tighten thresholds in the Makefile (e.g. set a lower `MAX_FLAGGED`) but may not
+loosen them below these floors. To change these values as a human: temporarily
+remove the deny rule in `opencode.jsonc`, edit `quality/gates.conf`, and restore
+the rule.
+
+The `scripts/_gates.py` module provides a typed accessor (a `load_gates()`
+function) that scripts call to read values at runtime. The config file is re-read
+on every call so a baseline refresh takes effect immediately. Scripts that read
+gate values include: `agent_check.py`, `check_coupling.py`, `check_file_size.py`,
+`check_module_coverage.py`, and `generate_quality_plan.py`.
+
 ## Big Picture
 
 The repository uses a layered defence model. Cheap and deterministic checks run
