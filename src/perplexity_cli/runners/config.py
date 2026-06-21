@@ -180,10 +180,9 @@ _CONFIG_CHANGE_MESSAGES: dict[tuple[str, str], tuple[str, str]] = {
 }
 
 
-def _print_config_change_message(
-    key: str, state: str
-) -> None:
+def _print_config_change_message(key: str, bool_value: bool) -> None:
     """Print contextual message after a configuration change."""
+    state = "enabled" if bool_value else "disabled"
     msgs = _CONFIG_CHANGE_MESSAGES.get((key, state))
     if msgs:
         click.echo(f"\n{msgs[0]}")
@@ -217,7 +216,7 @@ def run_set_config_command(key: str, value: str, *, output_format: OutputFormat 
 
         click.echo(f"[OK] Configuration updated: {key} = {bool_value}")
         logger.info("Configuration updated: %s = %s", key, bool_value)
-        _print_config_change_message(key, "enabled" if bool_value else "disabled")
+        _print_config_change_message(key, bool_value)
 
     except ConfigurationError as e:
         if output_format == "json":
