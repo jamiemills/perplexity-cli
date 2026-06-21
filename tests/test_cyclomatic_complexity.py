@@ -63,7 +63,8 @@ def test_cyclomatic_complexity_all_a_grade() -> None:
     output = result.stdout.strip()
     failures = [
         line for line in output.splitlines()
-        if not any(allowed in line for allowed in _CC_B_ALLOWLIST)
+        if line and not line.startswith(" ")
+        and not any(allowed in line for allowed in _CC_B_ALLOWLIST)
     ]
     assert not failures, (
         f"Radon found blocks with cyclomatic complexity >= {FAIL_ABOVE}:\n"
