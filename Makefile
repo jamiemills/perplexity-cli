@@ -212,7 +212,14 @@ mutate-diff:  ## Run mutation testing on files changed vs base branch (for pre-p
 	fi; \
 	echo "Mutating $${#files[@]} changed file(s):"; \
 	printf '  %s\n' "$${files[@]}"; \
-	uv run mutmut run "$${files[@]}"
+	patterns=(); \
+	for f in "$${files[@]}"; do \
+		p="$${f#src/}"; \
+		p="$${p%.py}"; \
+		p="$${p//\//.}"; \
+		patterns+=("$${p}*"); \
+	done; \
+	uv run mutmut run "$${patterns[@]}"
 
 mutate-results:  ## Show mutation testing results from last run
 	uv run mutmut results
