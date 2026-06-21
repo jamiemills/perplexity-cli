@@ -168,7 +168,7 @@ PRE_COMMIT_LINTERS: tuple[Analyser, ...] = (
 )
 
 PRE_COMMIT_TESTS: tuple[Analyser, ...] = (
-    Analyser("test", ["uv", "run", "pytest", "tests/", "-v", "--tb=long"]),
+    Analyser("test", ["uv", "run", "pytest", "tests/", "-n", "auto", "-v", "--tb=long"]),
 )
 
 # Pre-push analysers: all independent, all parallel.

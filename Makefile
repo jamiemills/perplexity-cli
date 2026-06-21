@@ -199,7 +199,7 @@ mutate-browse:  ## Browse mutation results in interactive TUI
 .PHONY: test test-coverage test-fuzz test-property test-property-push test-property-ci
 
 test:  ## Run tests without coverage (fail-fast)
-	uv run pytest tests/ -q --tb=line -x
+	uv run pytest tests/ -q --tb=line -x -n auto
 
 test-coverage:  ## Run tests with coverage enforcement
 	uv run pytest tests/ -q --tb=line -x -n auto \
