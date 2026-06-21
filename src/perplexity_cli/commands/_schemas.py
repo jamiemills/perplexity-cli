@@ -22,8 +22,7 @@ COMMAND_RESULT_SCHEMAS: dict[str, dict[str, Any]] = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "index": {"type": "integer"},
-                    "title": {"type": "string"},
+                    "name": {"type": "string"},
                     "url": {"type": "string"},
                     "snippet": {"type": "string"},
                 },
@@ -68,6 +67,22 @@ COMMAND_RESULT_SCHEMAS: dict[str, dict[str, Any]] = {
         "total": {"type": "integer"},
         "output_path": {"type": "string"},
         "date_range": {"type": "object"},
+    },
+    "models list": {
+        "models": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "model_id": {"type": "string"},
+                    "label": {"type": "string"},
+                    "tier": {"type": "string"},
+                    "description": {"type": "string"},
+                    "reasoning_model": {"type": ["string", "null"]},
+                    "is_default": {"type": "boolean"},
+                },
+            },
+        },
     },
     "doctor security": {
         "storage_backend": {"type": "string"},

@@ -98,7 +98,7 @@ def threads_group(ctx: click.Context) -> None:
     help=(
         "Delete the local thread cache file before performing the export.  "
         "This forces a full re-fetch from the API.  The cache file is located "
-        "at ~/.config/perplexity-cli/threads_cache.json.  Use this to recover "
+        "at ~/.config/perplexity-cli/threads-cache.json.  Use this to recover "
         "from a corrupted cache."
     ),
 )
@@ -107,9 +107,11 @@ def threads_group(ctx: click.Context) -> None:
     "json_flag",
     is_flag=True,
     help=(
-        "Emit output as a structured JSON envelope to stdout instead of "
-        "writing a CSV file.  The envelope contains the full thread list in "
-        "the result.threads array.  Intended for programmatic consumption."
+        "Emit output as a structured JSON envelope to stdout in addition to "
+        "writing the CSV file.  The CSV is always written (its absolute path "
+        "is returned in result.output_path); --json adds the structured "
+        "envelope (with the full thread list in result.threads) to stdout.  "
+        "Intended for programmatic consumption."
     ),
 )
 @click.option(
@@ -145,7 +147,8 @@ def threads_export(ctx: click.Context, **params: ClickValue) -> None:
     Result fields (--json):
       threads      - Array of thread objects {title, created_at, url}
       total        - Total number of exported threads (integer)
-      output_path  - Path to the CSV file written (or "stdout" for --json)
+      output_path  - Absolute path to the CSV file written (always written,
+                     even with --json)
       date_range   - Applied date filter {from, to} (null values if unfiltered)
 
     \b

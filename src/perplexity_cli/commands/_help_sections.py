@@ -65,7 +65,7 @@ def _write_ndjson_example(formatter: click.HelpFormatter, example: str) -> None:
     formatter.write("NDJSON Streaming Output (--json --stream):\n")
     formatter.write(
         "  Each line is a self-contained JSON object.  Event types:\n"
-        "  start, progress, chunk, result (final line).\n\n"
+        "  start, chunk, result (final line).\n\n"
     )
     for line in example.strip().splitlines():
         formatter.write("  " + line + "\n")

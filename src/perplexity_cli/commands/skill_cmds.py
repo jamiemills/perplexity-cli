@@ -39,7 +39,7 @@ def skill_group(ctx: click.Context) -> None:
     help=(
         "Emit output as a structured JSON envelope to stdout instead of "
         "rendering the SKILL.md as human-readable text.  The skill content "
-        "is returned in result.skill_md as a string.  Intended for "
+        "is returned in result.content as a string.  Intended for "
         "programmatic consumption by agent frameworks."
     ),
 )
@@ -72,7 +72,7 @@ def skill_show(ctx: click.Context, **flags: ClickValue) -> None:
 
     \b
     Result fields (--json):
-      skill_md  - The full SKILL.md content as a string.
+      content  - The full SKILL.md content as a string.
 
     \b
     Examples:
@@ -80,7 +80,7 @@ def skill_show(ctx: click.Context, **flags: ClickValue) -> None:
         pxcli skill show | less
         pxcli skill show > skill-definition.md
         pxcli skill show --json
-        pxcli skill show --json | jq -r '.result.skill_md'
+        pxcli skill show --json | jq -r '.result.content'
 
     \b
     Example Output (human, truncated):

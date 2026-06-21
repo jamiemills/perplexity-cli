@@ -53,6 +53,18 @@ release: version validation, CI, publish
 
 ## How to Set Up
 
+`make setup` requires three external tools to be installed first; the
+`check-uv`, `check-gitleaks`, and `check-infisical` prerequisites fail fast
+with install hints if any are missing.
+
+| Tool | Check target | Purpose | Install |
+|---|---|---|---|
+| `uv` | `make check-uv` | Python package manager (venv, locked deps) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| `gitleaks` | `make check-gitleaks` | Pre-push commit-range secret scan | `brew install gitleaks` ([alternatives](https://github.com/gitleaks/gitleaks#installing)) |
+| `infisical` | `make check-infisical` | Pre-commit uncommitted-change secret scan | `brew install infisical` ([docs](https://infisical.com/docs/cli/overview)) |
+
+Then:
+
 ```bash
 make setup               # Python venv, deps, lefthook hooks, CLI verification
 make configure-opencode  # npm install in .opencode/, verify plugin/agent wiring
@@ -60,7 +72,8 @@ make test                # verify everything works
 ```
 
 - `make setup` creates the virtualenv, syncs locked dependencies, installs
-  lefthook git hooks, and verifies the CLI builds.
+  lefthook git hooks, and verifies the CLI builds.  It refuses to proceed
+  until `uv`, `gitleaks`, and `infisical` are on `PATH`.
 - `make configure-opencode` installs node dependencies for the OpenCode
   quality-gate plugins and verifies all plugin files, agent definitions, and
   `opencode.jsonc` are present.
@@ -82,15 +95,27 @@ make test                # verify everything works
 | OpenCode wiring | `opencode.jsonc` | Plugin and agent registration, permissions |
 | CI workflows | `.github/workflows/ci.yml` | Ubuntu matrix, macOS, property profile selection |
 | Publish workflow | `.github/workflows/publish-to-pypi.yml` | Version validation, CI, OIDC publish |
+| Release Drafter workflow | `.github/workflows/release-drafter.yml` | Draft GitHub Release notes on push/PR |
+| Release Drafter config | `.github/release-drafter.yml` | Label → category mapping, version resolver |
 
 ---
 
 ## Central Threshold Configuration
 
-The file `quality/gates.conf` is the single source of truth for numeric
-thresholds and boolean check toggles. It is locked from agent edits by a
-`deny` rule in `opencode.jsonc`. Every analyser reads its floor values at
+The file `quality/gates.conf` is the single source of truth for the
+boolean check toggles and most numeric thresholds. It is locked from agent
+edits by a `deny` rule in `opencode.jsonc`. The boolean `CHECK_*` toggles
+and the coupling / vulture / radon / file-size floors are consumed at
 runtime through `scripts/_gates.py`.
+
+Two entries currently duplicate a value whose active source lives elsewhere
+(documented here so the duplication is not "fixed" by mistake):
+
+- `FAIL_UNDER = 85` mirrors `pyproject.toml [tool.coverage.report] fail_under`
+  (consumed by pytest-cov directly). `gates.conf` holds the reference value.
+- `SEMGREP_SEVERITY = ERROR WARNING` is the intended severity set, but the
+  `make semgrep` invocation currently hard-codes `--severity ERROR --severity
+  WARNING` in the `Makefile` rather than reading `gates.conf`.
 
 ### Quantitative Thresholds
 
@@ -245,8 +270,8 @@ need whole-project context, or are too slow/noisy per commit.
 | Gate | Command | Tool(s) |
 |------|---------|---------|
 | Gitleaks secret scan | `make gitleaks` | gitleaks via `scripts/gitleaks_check.sh` |
-| Agent unified check (pre-commit linters) | `make agent-check-no-tests` | `scripts/agent_check.py` (all stage-1 linters, excludes tests) |
-| Agent unified check (pre-push full set) | `make agent-check-push` | `scripts/agent_check.py` pre-push (linters + coverage + safety + property) |
+| Agent unified check (pre-commit linters, no tests) | `make agent-check-no-tests` | `scripts/agent_check.py` (all stage-1 linters, excludes tests); the only `agent-check*` target wired into `lefthook.yml` pre-push |
+| Agent unified check (full pre-push set) | `make agent-check-push` | `scripts/agent_check.py pre-push` (linters + coverage + safety + property); **not currently wired into `lefthook.yml` or `make ci`** — callable on demand for parity with CI |
 | Coverage (parallel) | `make test-coverage` | pytest-cov + pytest-xdist (`-n auto`) + `scripts/check_module_coverage.py` |
 | Safety dependency scan | `make safety` | safety via `scripts/agent_check.py safety` |
 | Fuzz tests | `make test-fuzz` | pytest (atheris fuzz harnesses, `-m fuzz`) |
@@ -274,7 +299,10 @@ Runs with `-n auto` (pytest-xdist) for parallel execution.
 
 Checks the resolved dependency set for known vulnerabilities using the Safety
 API. Requires `SAFETY_API_KEY` environment variable or Infisical to provide
-it via `infisical run --env dev`.
+it via `infisical run --env dev`.  When neither is available, `make safety`
+**prints a skip notice and exits 0** — the gate does not fail, but no scan
+is performed, so vulnerabilities are not detected until CI (which provides
+the key via Infisical).  Treat the local skip as informational, not a pass.
 
 ### Architecture Check
 
@@ -369,6 +397,15 @@ that the tag, `pyproject.toml` version, and runtime `__version__` agree. Runs
 the full CI pipeline, then publishes via OIDC (no long-lived token) and
 creates a GitHub Release.
 
+### Draft Release Notes
+
+The Release Drafter workflow (`.github/workflows/release-drafter.yml`) runs on
+every push to `main`/`master`/`deep-research` and on pull-request activity.
+It uses `.github/release-drafter.yml` to map PR labels onto changelog
+categories and maintains a running draft GitHub Release for the next tag.
+It does not block merges or publish anything; it only prepares the notes
+that the publish workflow later promotes when a tag is cut.
+
 ### Local Release
 
 `make release V=0.7.2` bumps the version in `pyproject.toml`, updates the
@@ -382,6 +419,17 @@ remote publish workflow.
 ### Plugins (4)
 
 All registered in `opencode.jsonc`. Installed via `make configure-opencode`.
+
+Known caveats (current plugin code, tracked for a follow-up cleanup):
+
+- `pxcli-quality.ts` hard-codes the Semgrep binary path to
+  `/Users/jamie.mills/.local/bin/semgrep`. On any other machine it falls back
+  to whatever `semgrep` resolves to on `PATH`, or no-ops if absent.
+- `pre-push-docs-check.ts` references the legacy monolithic path
+  `src/perplexity_cli/commands.py` in its doc-review checklist. That file no
+  longer exists (commands now live under `src/perplexity_cli/commands/`),
+  so the checklist item points at a path the developer will not find. The
+  reminder still surfaces, but the suggested location is stale.
 
 | Plugin | File | Intercepts | Behaviour |
 |--------|------|-----------|-----------|
@@ -482,8 +530,8 @@ and CI from silently diverging.
 | Whitespace/EOF fixers | Pre-commit | pre-commit-hooks | `lefthook.yml` |
 | Unit tests (parallel) | Pre-commit, CI | pytest, pytest-xdist | `make test` |
 | Gitleaks commit-range scan | Pre-push | gitleaks | `make gitleaks` |
-| Agent unified check (pre-commit linters, no tests) | Pre-push | `scripts/agent_check.py` | `make agent-check-no-tests` |
-| Agent unified check (pre-push full set: safety, coverage, property) | Pre-push, CI | `scripts/agent_check.py` | `make agent-check-push` |
+| Agent unified check (pre-commit linters, no tests) | Pre-push (wired via `lefthook.yml`) | `scripts/agent_check.py` | `make agent-check-no-tests` |
+| Agent unified check (full pre-push set: safety, coverage, property) | On-demand (not wired into `lefthook.yml` or `make ci`) | `scripts/agent_check.py` | `make agent-check-push` |
 | Coverage + per-module (parallel) | Pre-push, CI | pytest-cov, pytest-xdist | `make test-coverage` |
 | Safety dependency scan | Pre-push, CI | safety | `make safety` |
 | Fuzz tests | Pre-push, CI | pytest, atheris | `make test-fuzz` |
@@ -501,6 +549,11 @@ and CI from silently diverging.
 | Plan compliance check | On-demand | `scripts/check_plan_compliance.py` | `make plan-check` |
 | Build, verify, smoke | CI, release | uv, twine, custom | `make build verify smoke-test` |
 | Release publish | Release | GitHub Actions, OIDC | `.github/workflows/publish-to-pypi.yml` |
+| Release Drafter (draft notes) | Push/PR (continuous) | release-drafter@v6 | `.github/workflows/release-drafter.yml` |
+| Setup prerequisite checks | On-demand | shell | `make check-uv`, `make check-gitleaks`, `make check-infisical` |
+| Architecture layer explainer | On-demand | `scripts/check_architecture.py` | `make arch-explain` |
+| Format + lint auto-fix | On-demand | ruff | `make format-fix` |
+| Build artefact cleanup | On-demand | shell | `make clean` |
 | OpenCode quality gate | Session | `.opencode/plugins/quality-gate.ts` | `make configure-opencode` |
 | OpenCode real-time quality | Session | `.opencode/plugins/pxcli-quality.ts` | `make configure-opencode` |
 | OpenCode pre-push docs | Session | `.opencode/plugins/pre-push-docs-check.ts` | `make configure-opencode` |

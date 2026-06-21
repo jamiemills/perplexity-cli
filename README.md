@@ -27,10 +27,20 @@ Both `pxcli` and `perplexity-cli` work as command names after installation.
 <details>
 <summary>Install from source</summary>
 
+`make setup` requires three external tools to be installed first:
+
+| Tool | Purpose | Install |
+|---|---|---|
+| `uv` | Python package manager (creates venv, syncs locked deps) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` (see [docs](https://docs.astral.sh/uv/getting-started/installation/)) |
+| `gitleaks` | Pre-push secret scanning | `brew install gitleaks` ([alternatives](https://github.com/gitleaks/gitleaks#installing)) |
+| `infisical` | Pre-commit secret scanning of uncommitted changes | `brew install infisical` ([docs](https://infisical.com/docs/cli/overview)) |
+
+Then:
+
 ```bash
 git clone https://github.com/jamiemills/perplexity-cli.git
 cd perplexity-cli
-make setup               # venv, deps, lefthook git hooks
+make setup               # venv, deps, lefthook git hooks (requires uv, gitleaks, infisical)
 make configure-opencode  # OpenCode plugin/agent npm deps + wiring verification
 make test                # verify everything works
 ```
@@ -97,7 +107,9 @@ pxj "what is the capital of France?"
 - `perplexity_quick_info`: Fast lookups, short explanations, fact checks, and recent info.
 - `perplexity_deep_info`: Multi-step research, comparisons, timelines, and broader synthesis.
 
-Both tools support `output_format` values `json`, `markdown`, and `plain`.
+Both tools accept `output_format` values `json`, `markdown` (alias: `md`), and `plain` (alias: `text`).
+
+Each tool returns a structured result with: `mode` (quick or deep), `output_format` (the normalised value), `answer` (plain text), `rendered_response` (answer rendered in the requested format), `references` (array of `{title, url, snippet}`), and `reference_count`.
 
 ### What the tools are for
 
@@ -145,7 +157,12 @@ Run it over Streamable HTTP:
 uv run pxcli-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
-This serves the MCP endpoint at `http://127.0.0.1:8000/mcp` by default.
+This serves the MCP endpoint at `http://127.0.0.1:8000/mcp` by default. Override the mount path with `--mount-path`:
+
+```bash
+uv run pxcli-mcp --transport streamable-http --mount-path /pxcli/mcp
+# serves http://127.0.0.1:8000/pxcli/mcp
+```
 
 ### Claude Code
 
@@ -336,7 +353,24 @@ pxcli query -a file1.txt -a file2.txt "Compare these files"
 
 # Entire directory (recursive)
 pxcli query --attach ./docs "Summarise all documentation"
+
+# Inline file path in the query text (auto-detected)
+pxcli query "Summarise /path/to/report.md and /tmp/notes.txt"
 ```
+
+### Attachment limits and safety exclusions
+
+Attachments are scanned and validated before upload:
+
+- **Per-file limit:** 10 MiB. Larger files are rejected before upload.
+- **Total limit:** 25 MiB across all attachments for a single query.
+- **Count limit:** 25 files per query (including files discovered via directory recursion).
+- **Inline path detection:** absolute Unix paths (`/path/to/file.ext`), tilde paths (`~/...`), and Windows paths (`C:\\...`) mentioned directly in the query text are auto-attached.
+- **Skipped directories:** `.git`, `.hg`, `.svn`, `.venv`, `venv`, `node_modules`, `__pycache__`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, and any hidden directory (starting with `.`).
+- **Sensitive files excluded:** dotfiles starting with `.env` and credential/certificate suffixes (`.key`, `.pem`, `.p12`, `.pfx`, `.crt`, `.cer`, `.der`, `.jks`, `.p8`) are skipped during directory recursion.
+- **Symlinks:** always skipped to avoid escaping the directory tree.
+
+These limits protect against accidentally uploading large volumes of source or secret material when attaching a directory. Explicit `--attach file` paths bypass the suffix/directory filters (the per-file size and count limits still apply).
 
 ### Model selection
 
@@ -391,8 +425,7 @@ Every command that accepts `--json` produces a structured envelope on stdout. Th
     "answer": "Python is a high-level programming language...",
     "references": [
       {
-        "index": 1,
-        "title": "Python.org",
+        "name": "Python.org",
         "url": "https://www.python.org",
         "snippet": "Python is a programming language..."
       }
@@ -565,7 +598,7 @@ if not envelope["ok"]:
 
 print(envelope["result"]["answer"])
 for ref in envelope["result"]["references"]:
-    print(f"  [{ref['index']}] {ref['title']}: {ref['url']}")
+    print(f"  {ref['name']}: {ref['url']}")
 ```
 
 **Python (NDJSON streaming):**
@@ -782,7 +815,9 @@ API endpoints are configured in `~/.config/perplexity-cli/urls.json` (created au
     "query_endpoint": "https://www.perplexity.ai/rest/sse/perplexity_ask",
     "thread_list_endpoint": "https://www.perplexity.ai/rest/thread/list_ask_threads",
     "upload_url_endpoint": "https://www.perplexity.ai/rest/uploads/batch_create_upload_urls",
-    "s3_bucket_url": "https://ppl-ai-file-upload.s3.amazonaws.com/"
+    "s3_bucket_url": "https://ppl-ai-file-upload.s3.amazonaws.com/",
+    "model_config_endpoint": "https://www.perplexity.ai/rest/models/config",
+    "user_settings_endpoint": "https://www.perplexity.ai/rest/user/settings"
   },
   "rate_limiting": {
     "enabled": true,
@@ -817,7 +852,12 @@ Environment variables override configuration file settings. Precedence: CLI flag
 | Variable | Description |
 |---|---|
 | `PERPLEXITY_BASE_URL` | API base URL |
-| `PERPLEXITY_QUERY_ENDPOINT` | Query endpoint path |
+| `PERPLEXITY_QUERY_ENDPOINT` | Query endpoint URL |
+| `PERPLEXITY_THREAD_LIST_ENDPOINT` | Thread list endpoint URL |
+| `PERPLEXITY_UPLOAD_URL_ENDPOINT` | Upload-URL endpoint URL |
+| `PERPLEXITY_S3_BUCKET_URL` | S3 bucket URL for uploads |
+| `PERPLEXITY_MODEL_CONFIG_ENDPOINT` | Model config endpoint URL |
+| `PERPLEXITY_USER_SETTINGS_ENDPOINT` | User settings endpoint URL |
 | `PERPLEXITY_CONFIG_DIR` | Override config directory location |
 | `PERPLEXITY_SAVE_COOKIES` | `true` / `false` -- override cookie storage |
 | `PERPLEXITY_DEBUG_MODE` | `true` / `false` -- override debug mode |
@@ -826,7 +866,8 @@ Environment variables override configuration file settings. Precedence: CLI flag
 | `PERPLEXITY_RATE_LIMITING_PERIOD` | Period in seconds (integer) |
 | `XDG_CONFIG_HOME` | XDG base directory for config (default: `~/.config`) |
 | `NO_COLOR` | Disable coloured output (any value) |
-| `PXCLI_SESSION_LOG` | Set to `true` to enable NDJSON session logging |
+| `PXCLI_SESSION_LOG` | Set to `true` to enable NDJSON session logging to `$XDG_DATA_HOME/pxcli/sessions/` (or `~/.local/share/pxcli/sessions/` when `XDG_DATA_HOME` is unset). One file per session, named `<session-id>.ndjson`. |
+| `XDG_DATA_HOME` | XDG base directory for session data (default: `~/.local/share`) |
 
 ## Shell completion
 
@@ -933,7 +974,7 @@ pxcli
     +-- fish                       Generate Fish completion script
 ```
 
-All subcommands under `auth`, `config`, `models`, `style`, `threads`, `skill`, `doctor`, and `completion` accept `--json` and `--schema` for structured output (where applicable).
+The `auth`, `config`, `models`, `style`, `threads`, `skill`, and `doctor` subcommands accept `--json` and `--schema` for structured envelope output. `completion`, `schema`, and `--help` do not.
 
 ## Exit codes
 
@@ -987,9 +1028,18 @@ This is machine-bound obfuscation rather than OS keychain-backed secret storage.
 
 ### Setup
 
+Prerequisites: [`uv`](https://docs.astral.sh/uv/getting-started/installation/), [`gitleaks`](https://github.com/gitleaks/gitleaks#installing), and [`infisical`](https://infisical.com/docs/cli/overview). All three are verified by `make setup`.
+
 ```bash
 git clone https://github.com/jamiemills/perplexity-cli.git
 cd perplexity-cli
+make setup               # creates venv, syncs deps, installs lefthook hooks
+make configure-opencode  # installs OpenCode plugin npm deps, verifies wiring
+```
+
+The equivalent manual setup (skipping the prerequisite checks) is:
+
+```bash
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
 uv run lefthook install

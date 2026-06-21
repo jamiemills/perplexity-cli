@@ -54,22 +54,24 @@ def doctor_security(ctx: click.Context, **flags: ClickValue) -> None:
     Inspects the local file system to report the storage backend in use,
     file locations, file permissions, and whether cookie storage is enabled.
     This command helps you verify that credentials are stored securely and
-    that file permissions are appropriately restricted (e.g. 600).
+    that file permissions are appropriately restricted (owner-only, e.g.
+    secure (0o600)).
 
     \b
     Checks performed:
-      - Storage backend type (encrypted_file, plaintext, etc.)
+      - Storage backend description (machine-bound encrypted file storage)
       - Token file path and Unix permission mode
       - Cache file path and Unix permission mode
       - Whether cookie storage is enabled in configuration
 
     \b
     Result fields (--json):
-      storage_backend    - The storage backend in use (e.g. "encrypted_file")
+      storage_backend    - Storage backend label (e.g. "machine-bound encrypted file storage")
       token_path         - Absolute path to the token file
-      token_permissions  - Unix permission string (e.g. "600")
+      token_permissions  - Permission state such as "secure (0o600)",
+                           "insecure (0o644; expected 0o600)", or "not present"
       cache_path         - Absolute path to the thread cache file
-      cache_permissions  - Unix permission string (e.g. "600")
+      cache_permissions  - Permission state string (same shape as token_permissions)
       cookies_enabled    - Whether cookie storage is turned on (boolean)
 
     \b
@@ -79,13 +81,16 @@ def doctor_security(ctx: click.Context, **flags: ClickValue) -> None:
         pxcli doctor security --json | jq '.result.token_permissions'
 
     \b
-    Example Output (human):
-        Storage backend: encrypted_file
-        Token path:      /Users/you/.config/perplexity-cli/token.json
-        Token perms:     600
-        Cache path:      /Users/you/.config/perplexity-cli/threads_cache.json
-        Cache perms:     600
-        Cookies:         enabled
+    Example Output (human, truncated):
+        Perplexity CLI Security
+        ========================================
+        Storage backend: machine-bound encrypted file storage
+        Threat model: protects against casual file copying between machines, ...
+        Token file: /Users/you/.config/perplexity-cli/token.json
+        Token file permissions: secure (0o600)
+        Thread cache file: /Users/you/.config/perplexity-cli/threads-cache.json
+        Thread cache permissions: secure (0o600)
+        Cookie storage enabled: True
     """
     record_output_flags(ctx, flags)
     from perplexity_cli.runners import run_doctor_security_command

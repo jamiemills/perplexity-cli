@@ -5,6 +5,8 @@ from __future__ import annotations
 import click
 
 from perplexity_cli.commands._ctx import ClickValue, _ensure_ctx_obj, record_output_flags
+from perplexity_cli.commands._examples import MODELS_LIST_JSON_EXAMPLE
+from perplexity_cli.commands._help_refs import AUTH_LOGIN_HELP_REF
 from perplexity_cli.commands._help_sections import HelpSectionConfig, add_help_sections
 
 
@@ -37,7 +39,9 @@ def models_group(ctx: click.Context) -> None:
     help=(
         "Emit output as a structured JSON envelope to stdout instead of "
         "human-readable text.  The envelope contains {ok, command, result, meta, "
-        "next_actions} on success.  Intended for programmatic consumption."
+        "next_actions} on success, or {ok, command, error, fix, next_actions} on "
+        "failure.  The result object includes 'models' (array).  Intended for "
+        "programmatic consumption."
     ),
 )
 @click.option(
@@ -98,7 +102,9 @@ models_group.add_command(models_list)
 add_help_sections(
     models_list,
     HelpSectionConfig(
+        json_example=MODELS_LIST_JSON_EXAMPLE,
+        json_schema=True,
         exit_codes=True,
-        see_also=("pxcli query --model",),
+        see_also=(AUTH_LOGIN_HELP_REF, "pxcli query --model", "pxcli schema"),
     ),
 )

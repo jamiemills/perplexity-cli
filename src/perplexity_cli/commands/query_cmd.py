@@ -176,7 +176,7 @@ def query(ctx: click.Context, query_text: str, **params: ClickValue) -> None:
       The --json flag produces a structured envelope:
         {ok, command, result, meta, next_actions}
       where result contains:
-        {answer: string, references: [{index, title, url, snippet}, ...]}
+        {answer: string, references: [{name, url, snippet}, ...]}
 
     \b
     NDJSON STREAMING (--json --stream):
@@ -224,6 +224,8 @@ def query(ctx: click.Context, query_text: str, **params: ClickValue) -> None:
         created by Guido van Rossum and first released in 1991 [1].
         ...
 
+    \b
+
     References:
         ----------
         [1] Python (programming language) - Wikipedia
@@ -261,6 +263,17 @@ add_help_sections(
             STYLE_SET_HELP_REF,
             "pxcli schema",
         ),
-        env_vars=("PERPLEXITY_BASE_URL", "NO_COLOR", "XDG_CONFIG_HOME", "PERPLEXITY_CONFIG_DIR"),
+        env_vars=(
+            "PERPLEXITY_BASE_URL",
+            "PERPLEXITY_QUERY_ENDPOINT",
+            "PERPLEXITY_THREAD_LIST_ENDPOINT",
+            "PERPLEXITY_UPLOAD_URL_ENDPOINT",
+            "PERPLEXITY_S3_BUCKET_URL",
+            "PERPLEXITY_MODEL_CONFIG_ENDPOINT",
+            "PERPLEXITY_USER_SETTINGS_ENDPOINT",
+            "PERPLEXITY_CONFIG_DIR",
+            "XDG_CONFIG_HOME",
+            "NO_COLOR",
+        ),
     ),
 )

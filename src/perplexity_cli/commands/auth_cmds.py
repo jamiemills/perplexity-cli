@@ -96,12 +96,25 @@ def auth_login(ctx: click.Context, port: int | None, **flags: ClickValue) -> Non
     SETUP INSTRUCTIONS:
       1. Install Chrome for Testing:
          npx @puppeteer/browsers install chrome@stable
-      2. Create a shell alias in ~/.bashrc or ~/.zshrc:
-         alias chromefortesting='open ~/.local/bin/chrome/mac_arm-*/\\
-           chrome-mac-arm64/Google\\ Chrome\\ for\\ Testing.app \\
-           --args "--remote-debugging-port=9222" "about:blank"'
+      2. Launch it with remote debugging on port 9222.  Examples by platform:
+         - Apple Silicon macOS:
+             open ~/.local/bin/chrome/mac_arm-*/chrome-mac-arm64/\\
+               "Google Chrome for Testing.app" --args \
+               "--remote-debugging-port=9222" "about:blank"
+         - Intel macOS:
+             open ~/.local/bin/chrome/mac-x64/*/chrome-mac-x64/\\
+               "Google Chrome for Testing.app" --args \
+               "--remote-debugging-port=9222" "about:blank"
+         - Linux:
+             ~/.local/bin/chrome/linux64/*/chrome-linux64/chrome \
+               --remote-debugging-port=9222 about:blank
+         - Windows (PowerShell):
+             $env:LOCALAPPDATA\\chrome\\win64-*\\chrome-win64\\chrome.exe \
+               --remote-debugging-port=9222 about:blank
+         The exact path depends on where
+         `npx @puppeteer/browsers install chrome@stable` placed the build.
       3. Run authentication (two terminals):
-         Terminal 1:  chromefortesting
+         Terminal 1:  start Chrome for Testing as above
          Terminal 2:  pxcli auth login
 
     The authentication flow has a 120-second timeout.  If you are not
