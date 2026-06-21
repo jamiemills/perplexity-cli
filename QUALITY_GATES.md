@@ -13,25 +13,25 @@ critical checks in a clean environment and adds build validation. The release
 workflow proves tag, source, metadata, and artefacts agree before upload.
 
 ```
-edit code
-  |
-  v
-pre-commit, stage 1: read-only analysers and validators (parallel)
-  |
-  v
-pre-commit, stage 2: staged-file auto-fixers (sequential)
-  |
-  v
-pre-commit, stage 3: fail-fast unit tests (parallel, xdist)
-  |
-  v
-pre-push: expensive whole-project checks (parallel)
-  |
-  v
-CI: clean-room Ubuntu + macOS, full pipeline
-  |
-  v
-release: version validation, CI, publish
+                  edit code
+                    |
+                    v
+  +-- session ---- pre-commit, stage 1: read-only analysers (parallel)
+  | (OpenCode)      |
+  | plugins run     v
+  | continuously)  pre-commit, stage 2: staged-file auto-fixers (sequential)
+  |                  |
+  |                 v
+  |                pre-commit, stage 3: unit tests (parallel, xdist)
+  |                  |
+  |                 v
+  +-- quality ---- pre-push: whole-project checks (parallel)
+  |   plan loop     |
+  |   (generate    v
+  |    -> review)  CI: clean-room Ubuntu + macOS, full pipeline
+  |                  |
+  |                 v
+  |                release: version validation, CI, publish
 ```
 
 ### Gate Categories at a Glance
@@ -242,7 +242,8 @@ need whole-project context, or are too slow/noisy per commit.
 | Gate | Command | Tool(s) |
 |------|---------|---------|
 | Gitleaks secret scan | `make gitleaks` | gitleaks via `scripts/gitleaks_check.sh` |
-| Agent unified check | `make agent-check-no-tests` | `scripts/agent_check.py` (all pre-commit linters, excludes tests) |
+| Agent unified check (pre-commit linters) | `make agent-check-no-tests` | `scripts/agent_check.py` (all stage-1 linters, excludes tests) |
+| Agent unified check (pre-push full set) | `make agent-check-push` | `scripts/agent_check.py` pre-push (linters + coverage + safety + property) |
 | Coverage (parallel) | `make test-coverage` | pytest-cov + pytest-xdist (`-n auto`) + `scripts/check_module_coverage.py` |
 | Safety dependency scan | `make safety` | safety via `scripts/agent_check.py safety` |
 | Fuzz tests | `make test-fuzz` | pytest (atheris fuzz harnesses, `-m fuzz`) |
@@ -478,7 +479,8 @@ and CI from silently diverging.
 | Whitespace/EOF fixers | Pre-commit | pre-commit-hooks | `lefthook.yml` |
 | Unit tests (parallel) | Pre-commit, CI | pytest, pytest-xdist | `make test` |
 | Gitleaks commit-range scan | Pre-push | gitleaks | `make gitleaks` |
-| Agent unified check | Pre-push | `scripts/agent_check.py` | `make agent-check-no-tests` |
+| Agent unified check (pre-commit linters, no tests) | Pre-push | `scripts/agent_check.py` | `make agent-check-no-tests` |
+| Agent unified check (pre-push full set: safety, coverage, property) | Pre-push, CI | `scripts/agent_check.py` | `make agent-check-push` |
 | Coverage + per-module (parallel) | Pre-push, CI | pytest-cov, pytest-xdist | `make test-coverage` |
 | Safety dependency scan | Pre-push, CI | safety | `make safety` |
 | Fuzz tests | Pre-push, CI | pytest, atheris | `make test-fuzz` |
