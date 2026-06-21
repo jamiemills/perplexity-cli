@@ -21,7 +21,7 @@ PROPERTY_PROFILE ?= ci
 # Development setup
 # ---------------------------------------------------------------------------
 
-.PHONY: check-uv check-gitleaks setup
+.PHONY: check-uv check-gitleaks setup configure-opencode
 
 check-uv:  ## Verify uv is installed
 	@command -v uv >/dev/null 2>&1 || { \
@@ -47,11 +47,27 @@ check-infisical:  ## Verify infisical CLI is installed
 		exit 1; \
 	}
 
-setup: check-uv check-gitleaks check-infisical  ## Set up a local development environment
+setup: check-uv check-gitleaks check-infisical  ## Set up a local development environment (run configure-opencode after)
 	uv venv --python $(PYTHON_VERSION) --allow-existing
 	uv sync --locked --extra dev --group dev
 	uv run lefthook install
 	uv run pxcli --help > /dev/null
+
+configure-opencode:  ## Install OpenCode dependencies and configure plugins/agents
+	@echo "Installing OpenCode plugin dependencies..."
+	cd .opencode && npm install
+	@echo ""
+	@echo "OpenCode plugins and agents are configured in opencode.jsonc."
+	@echo "The following plugins are registered:"
+	@echo "  - quality-gate         (blocks edits that loosen gate thresholds)"
+	@echo "  - pxcli-quality        (real-time per-file quality feedback)"
+	@echo "  - pre-push-docs-check  (reminds to update docs before push)"
+	@echo "  - plan-compliance-gate (blocks commit when quality plan fails)"
+	@echo ""
+	@echo "The following agents are registered:"
+	@echo "  - quality-plan-reviewer (reviews quality plan compliance)"
+	@echo ""
+	@echo "Reload the OpenCode session to activate plugins."
 
 # ---------------------------------------------------------------------------
 # Formatting

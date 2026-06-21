@@ -7,10 +7,46 @@
   // HUMAN OVERRIDE: To change gate thresholds, temporarily remove
   // the deny rule below, edit quality/gates.conf, and restore.
   // To approve a blocked edit, set OPENCODE_DISABLE_QUALITY_GATE=1.
+
   "permission": {
     "edit": {
       "*": "allow",
       "**/quality/gates.conf": "deny"
+    }
+  },
+
+  // -----------------------------------------------------------------------
+  // Plugins — loaded from .opencode/plugins/
+  //
+  // quality-gate:   blocks edits that loosen gate thresholds or add
+  //                 bypass patterns to scripts/ and Makefile.
+  // pxcli-quality:  real-time feedback: conventions injection, per-file
+  //                 ruff/radon/bandit/ty checks, idle-time semgrep/pyright.
+  // pre-push-docs:  reminds to update CLI help text and README before push.
+  // plan-compliance: blocks git commit when the quality plan reports FAIL.
+  // -----------------------------------------------------------------------
+  "plugins": [
+    ".opencode/plugins/quality-gate.ts",
+    ".opencode/plugins/pxcli-quality.ts",
+    ".opencode/plugins/pre-push-docs-check.ts",
+    ".opencode/plugins/plan-compliance-gate.ts"
+  ],
+
+  // -----------------------------------------------------------------------
+  // Agents — loaded from .opencode/agents/
+  //
+  // quality-plan-reviewer: reads the latest quality plan, runs
+  //   'make plan-check', categorises failures, and suggests fixes.
+  //   Invoke when the plan-compliance-gate blocks a commit.
+  // -----------------------------------------------------------------------
+  "agents": {
+    "quality-plan-reviewer": {
+      "path": ".opencode/agents/quality-plan-reviewer.md",
+      "permission": {
+        "edit": {
+          "*": "deny"
+        }
+      }
     }
   }
 }
