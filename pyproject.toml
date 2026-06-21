@@ -143,7 +143,7 @@ min_confidence = 80
 [tool.mutmut]
 paths_to_mutate = ["src/perplexity_cli/"]
 tests_dir = ["tests/"]
-pytest_add_cli_args = ["--ignore=tests/test_cyclomatic_complexity.py", "--ignore=tests/test_test_isolation.py", "--ignore=tests/test_vulture_dead_code.py", "--ignore=tests/test_semgrep_clean_code.py", "--ignore=tests/test_coupling_metrics.py", "--ignore=tests/test_safety_scan.py", "--ignore=tests/test_mutate_diff_files.py", "--ignore=tests/test_plan_compliance.py", "--ignore=tests/test_quality_ratchets.py", "--ignore=tests/test_schema_drift.py", "--ignore=tests/test_repository_hygiene.py"]
+pytest_add_cli_args = ["--ignore=tests/test_cyclomatic_complexity.py", "--ignore=tests/test_test_isolation.py", "--ignore=tests/test_vulture_dead_code.py", "--ignore=tests/test_semgrep_clean_code.py", "--ignore=tests/test_coupling_metrics.py", "--ignore=tests/test_safety_scan.py", "--ignore=tests/test_mutate_diff_files.py", "--ignore=tests/test_plan_compliance.py", "--ignore=tests/test_quality_ratchets.py", "--ignore=tests/test_schema_drift.py", "--ignore=tests/test_repository_hygiene.py", "--ignore=tests/test_help_doc_drift.py"]
 do_not_mutate = ["**/formatting/registry.py"]
 
 [tool.pyright]
