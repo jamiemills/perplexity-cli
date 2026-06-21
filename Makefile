@@ -202,7 +202,7 @@ test:  ## Run tests without coverage (fail-fast)
 	uv run pytest tests/ -q --tb=line -x
 
 test-coverage:  ## Run tests with coverage enforcement
-	uv run pytest tests/ -q --tb=line -x \
+	uv run pytest tests/ -q --tb=line -x -n auto \
 		--cov=perplexity_cli --cov-report=term-missing \
 		--cov-report=json --cov-report=xml:coverage.xml
 	uv run python scripts/check_module_coverage.py --min-coverage $(MIN_COVERAGE)

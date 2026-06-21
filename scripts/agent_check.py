@@ -180,6 +180,8 @@ PRE_PUSH_ALL: tuple[Analyser, ...] = (
             "run",
             "pytest",
             "tests/",
+            "-n",
+            "auto",
             "-v",
             "--tb=long",
             "--cov=perplexity_cli",
