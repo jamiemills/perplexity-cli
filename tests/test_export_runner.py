@@ -9,7 +9,6 @@ from unittest.mock import Mock, patch
 import pytest
 
 from perplexity_cli.runners.export import (
-    _exit_with_date_error,
     _handle_cache_clear,
     _handle_http_status_error,
     _handle_known_error,
@@ -188,25 +187,6 @@ class TestValidateExportDates:
                 _validate_export_dates("bad", None, output_format="json")
             mock_handle.assert_called_once()
 
-
-class TestExitWithDateError:
-    """Tests for _exit_with_date_error."""
-
-    def test_json_mode_calls_handle_error(self, capsys):
-        """In JSON mode, handle_error is called before exit."""
-        with patch("perplexity_cli.runners.export.handle_error") as mock_handle:
-            with pytest.raises(SystemExit):
-                _exit_with_date_error(ValueError("bad date"), output_format="json")
-            mock_handle.assert_called_once()
-
-    def test_human_mode_shows_date_in_message(self, capsys):
-        """In human mode, the specific invalid date value appears in the error."""
-        with pytest.raises(SystemExit) as exc_info:
-            _exit_with_date_error(ValueError("bad date 2025-13-45"), output_format="human")
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        assert "bad date 2025-13-45" in captured.err
-        assert "YYYY-MM-DD" in captured.err
 
 
 class TestSetupRateLimiter:

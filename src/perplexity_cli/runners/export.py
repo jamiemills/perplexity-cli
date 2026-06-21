@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypedDict, TypeGuard
+from typing import TYPE_CHECKING, Protocol, TypedDict
 
 import click
 
@@ -113,6 +113,11 @@ class ExportResult:
     date_range: ExportDateRange
 
 
+# ---------------------------------------------------------------------------
+# Dependency factories
+# ---------------------------------------------------------------------------
+
+
 def _create_token_manager() -> TokenManager:
     """Create the token manager used by this runner."""
     from perplexity_cli.auth.token_manager import TokenManager
@@ -120,14 +125,12 @@ def _create_token_manager() -> TokenManager:
     return TokenManager()
 
 
-def _is_object_dict(value: object) -> TypeGuard[dict[object, object]]:
-    """Return True when ``value`` is a plain dictionary."""
-    return isinstance(value, dict)
-
-
-def _is_object_mapping(value: object) -> TypeGuard[Mapping[object, object]]:
-    """Return True when ``value`` is a mapping."""
-    return isinstance(value, Mapping)
+def _emit_json_error(
+    e: Exception, output_format: OutputFormat
+) -> None:
+    """Emit ``e`` as a JSON error envelope when in JSON output mode."""
+    if output_format == "json":
+        handle_error(e, _COMMAND, output_format="json")
 
 
 def _create_cache_manager() -> ThreadCacheManager:
@@ -137,34 +140,9 @@ def _create_cache_manager() -> ThreadCacheManager:
     return ThreadCacheManager()
 
 
-def _create_thread_scraper(
-    prepared: PreparedExport,
-    force_refresh: bool,
-) -> ThreadScraper:
-    """Create the thread scraper for the export workflow."""
-    from perplexity_cli.threads.scraper import ThreadScraper
-
-    return _call_scraper_factory(
-        ThreadScraper,
-        token=prepared.token,
-        cookies=prepared.cookies,
-        rate_limiter=prepared.rate_limiter,
-        cache_manager=prepared.cache_manager,
-        force_refresh=force_refresh,
-    )
-
-
-def _call_scraper_factory(
-    factory: Callable[..., ThreadScraper],
-    **kwargs: object,
-) -> ThreadScraper:
-    """Instantiate the scraper through a callable boundary."""
-    return factory(**kwargs)
-
-
 def _thread_payload(record: object) -> ThreadPayload:
     """Convert a thread-like object into JSON-envelope payload data."""
-    if _is_object_dict(record):
+    if isinstance(record, dict):
         record_dict: dict[object, object] = record
         return {
             "title": _string_or_empty(record_dict.get("title", "")),
@@ -187,24 +165,21 @@ def _string_or_empty(value: object) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _write_threads_csv(records: list[ThreadRecord], output_path: Path | None) -> Path:
-    """Write thread rows to CSV through a typed boundary."""
-    from perplexity_cli.threads.exporter import write_threads_csv
-
-    return write_threads_csv(records, output_path)
-
 
 def _normalise_context(ctx_obj: object) -> ExportContext | None:
     """Validate and narrow the Click context flags we rely on."""
-    if ctx_obj is None:
+    if not isinstance(ctx_obj, Mapping):
         return None
-    if not _is_object_mapping(ctx_obj):
-        raise TypeError("ctx_obj must be a mapping or None")
 
     ctx_mapping: Mapping[object, object] = ctx_obj
     normalised: dict[str, object] = {}
     for key in ("json", "schema", "debug"):
-        _store_context_flag(normalised, ctx_mapping, key)
+        value = ctx_mapping.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, bool):
+            raise TypeError(f"ctx_obj['{key}'] must be a bool when provided")
+        normalised[key] = value
     return ExportContext(
         json=bool(normalised.get("json")),
         schema=bool(normalised.get("schema")),
@@ -235,58 +210,25 @@ def _build_export_request(
     )
 
 
-def _require_output_path(output_path: Path | None) -> Path:
-    """Return a guaranteed output path after CSV writing succeeds."""
-    if output_path is None:
-        raise RuntimeError("Output path should be available after export")
-    return output_path
-
 
 def _resolve_export_tail_values(
     args: tuple[object, ...],
     kwargs: Mapping[str, object],
 ) -> tuple[object | None, object, object]:
     """Extract ``output``, ``force_refresh``, and ``clear_cache`` values."""
-    if args:
-        return _resolve_export_tail_from_args(args, kwargs)
-    return _resolve_export_tail_from_kwargs(kwargs)
-
-
-def _resolve_export_tail_from_args(
-    args: tuple[object, ...],
-    kwargs: Mapping[str, object],
-) -> tuple[object | None, object, object]:
-    """Extract the trailing request values from positional arguments."""
-    if kwargs or len(args) != _EXPORT_TAIL_ARG_COUNT:
+    if kwargs:
+        expected_keys = {"output", "force_refresh", "clear_cache"}
+        if set(kwargs) != expected_keys:
+            raise TypeError(
+                "run_export_threads_command requires output, force_refresh, clear_cache"
+            )
+        return kwargs["output"], kwargs["force_refresh"], kwargs["clear_cache"]
+    if len(args) != _EXPORT_TAIL_ARG_COUNT:
         raise TypeError(
             "run_export_threads_command expected output, force_refresh, and clear_cache"
         )
     output, force_refresh, clear_cache = args
     return output, force_refresh, clear_cache
-
-
-def _resolve_export_tail_from_kwargs(
-    kwargs: Mapping[str, object],
-) -> tuple[object | None, object, object]:
-    """Extract the trailing request values from keyword arguments."""
-    expected_keys = {"output", "force_refresh", "clear_cache"}
-    if set(kwargs) != expected_keys:
-        raise TypeError("run_export_threads_command requires output, force_refresh, clear_cache")
-    return kwargs["output"], kwargs["force_refresh"], kwargs["clear_cache"]
-
-
-def _store_context_flag(
-    normalised: dict[str, object],
-    ctx_mapping: Mapping[object, object],
-    key: str,
-) -> None:
-    """Validate and store one optional boolean context flag."""
-    value = ctx_mapping.get(key)
-    if value is None:
-        return
-    if not isinstance(value, bool):
-        raise TypeError(f"ctx_obj['{key}'] must be a bool when provided")
-    normalised[key] = value
 
 
 def _validate_optional_date(value: object, field_name: str) -> str | None:
@@ -314,24 +256,6 @@ def _require_bool_value(value: object, field_name: str) -> bool:
     return value
 
 
-def _exit_with_date_error(
-    e: ValueError, output_format: OutputFormat
-) -> None:
-    """Report a date validation error and exit."""
-    if output_format == "json":
-        handle_error(e, _COMMAND, output_format="json")
-    click.echo(f"[ERROR] Invalid date format: {e}", err=True)
-    click.echo("Please use YYYY-MM-DD format (e.g., 2025-12-23)", err=True)
-    sys.exit(1)
-
-
-def _parse_date(date_str: str | None) -> None:
-    """Parse a single date string, raising ValueError if invalid."""
-    from dateutil import parser as dateutil_parser
-
-    if date_str:
-        dateutil_parser.parse(date_str)
-
 
 def _validate_export_dates(
     from_date: str | None, to_date: str | None, output_format: OutputFormat
@@ -340,10 +264,21 @@ def _validate_export_dates(
     if not (from_date or to_date):
         return
     try:
-        _parse_date(from_date)
-        _parse_date(to_date)
+        _try_parse_dates(from_date, to_date)
     except ValueError as e:
-        _exit_with_date_error(e, output_format)
+        _emit_json_error(e, output_format)
+        click.echo(f"[ERROR] Invalid date format: {e}", err=True)
+        click.echo("Please use YYYY-MM-DD format (e.g., 2025-12-23)", err=True)
+        sys.exit(1)
+
+
+def _try_parse_dates(from_date: str | None, to_date: str | None) -> None:
+    """Parse date strings, raising ValueError if either is invalid."""
+    from dateutil import parser as dateutil_parser
+
+    for date_str in (from_date, to_date):
+        if date_str:
+            dateutil_parser.parse(date_str)
 
 
 def _setup_rate_limiter(logger: logging.Logger) -> ExportRateLimiterProtocol | None:
@@ -363,6 +298,11 @@ def _setup_rate_limiter(logger: logging.Logger) -> ExportRateLimiterProtocol | N
         requests_per_period=config.requests_per_period,
         period_seconds=config.period_seconds,
     )
+
+
+# ---------------------------------------------------------------------------
+# Export pipeline
+# ---------------------------------------------------------------------------
 
 
 def _handle_cache_clear(
@@ -396,14 +336,13 @@ def _scrape_threads(
         if output_format != "json":
             click.echo(f"\rExtracting {current}/{total} threads...", nl=False)
 
-    async def run_scrape() -> list[ThreadRecord]:
-        return await scraper.scrape_all_threads(
+    threads = run_async(
+        scraper.scrape_all_threads(
             from_date=from_date,
             to_date=to_date,
             progress_callback=update_progress,
         )
-
-    threads = run_async(run_scrape())
+    )
     if output_format != "json":
         click.echo()
     return threads
@@ -415,12 +354,7 @@ def _handle_no_threads(
     output_format: OutputFormat,
 ) -> None:
     """Handle the case where no threads were found, exiting the process."""
-    if output_format == "json":
-        handle_error(
-            ValueError("No threads found matching criteria"),
-            _COMMAND,
-            output_format="json",
-        )
+    _emit_json_error(ValueError("No threads found matching criteria"), output_format)
     click.echo("\n[ERROR] No threads found matching criteria.", err=True)
     _echo_date_range(from_date, to_date, prefix="Date range")
     sys.exit(1)
@@ -439,7 +373,9 @@ def _echo_date_range(
 
 def _output_json(result: ExportResult, include_schema: SchemaInclusion) -> None:
     """Write JSON envelope output for export results."""
-    output_path = _require_output_path(result.output_path)
+    output_path = result.output_path
+    if output_path is None:
+        raise RuntimeError("Output path should be available after export")
     thread_items = [_thread_payload(thread) for thread in result.threads]
     env = success_envelope(
         _COMMAND,
@@ -460,7 +396,9 @@ def _output_export_results(
     result: ExportResult, output_mode: OutputMode, logger: logging.Logger
 ) -> None:
     """Write CSV and output results in the appropriate format."""
-    output_path = _write_threads_csv(result.threads, result.output_path)
+    from perplexity_cli.threads.exporter import write_threads_csv
+
+    output_path = write_threads_csv(result.threads, result.output_path)
     written_result = ExportResult(
         threads=result.threads,
         output_path=output_path,
@@ -482,8 +420,7 @@ def _handle_known_error(
     e: Exception, output_format: OutputFormat, logger: logging.Logger
 ) -> None:
     """Handle AuthenticationError, PerplexityRequestError, UpstreamSchemaError, ValueError, and RateLimitError."""
-    if output_format == "json":
-        handle_error(e, _COMMAND, output_format="json")
+    _emit_json_error(e, output_format)
     logger.error("Export failed: %s", e, exc_info=True)
     click.echo(f"\n[ERROR] Export failed: {e}", err=True)
     if isinstance(e, AuthenticationError):
@@ -499,8 +436,7 @@ def _handle_http_status_error(
     logger: logging.Logger,
 ) -> None:
     """Handle HTTP status errors from the Perplexity API."""
-    if output_format == "json":
-        handle_error(e, _COMMAND, output_format="json")
+    _emit_json_error(e, output_format)
     debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
     handle_http_error(e, logger, debug_mode="debug" if debug_mode else "normal", context="during thread export")
 
@@ -512,8 +448,7 @@ def _handle_unexpected_error(
     logger: logging.Logger,
 ) -> None:
     """Handle unexpected errors during export."""
-    if output_format == "json":
-        handle_error(e, _COMMAND, output_format="json")
+    _emit_json_error(e, output_format)
     debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
     handle_unexpected_cli_error(
         e,
@@ -528,12 +463,7 @@ def _handle_auth_missing(
     logger: logging.Logger,
 ) -> None:
     """Handle missing authentication, exiting the process."""
-    if output_format == "json":
-        handle_error(
-            AuthenticationError("Not authenticated"),
-            _COMMAND,
-            output_format="json",
-        )
+    _emit_json_error(AuthenticationError("Not authenticated"), output_format)
     click.echo("[ERROR] Not authenticated.", err=True)
     click.echo("\nPlease authenticate first with: pxcli auth login", err=True)
     logger.warning("Export attempted without authentication")
@@ -542,11 +472,9 @@ def _handle_auth_missing(
 
 def _resolve_ctx_flags(ctx_obj: ExportContext | None) -> OutputMode:
     """Extract json_mode and include_schema from the context object."""
-    json_mode = ctx_obj.get("json", False) if ctx_obj else False
-    include_schema = ctx_obj.get("schema", False) if ctx_obj else False
     return OutputMode(
-        json_mode="json" if json_mode else "human",
-        include_schema="with_schema" if include_schema else "no_schema",
+        json_mode="json" if (ctx_obj and ctx_obj.get("json")) else "human",
+        include_schema="with_schema" if (ctx_obj and ctx_obj.get("schema")) else "no_schema",
     )
 
 
@@ -589,7 +517,15 @@ def _prepare_export(
 
 def _execute_scrape_and_export(prepared: PreparedExport, request: ExportRequest) -> None:
     """Create the scraper, scrape threads, and output results."""
-    scraper = _create_thread_scraper(prepared, request.force_refresh)
+    from perplexity_cli.threads.scraper import ThreadScraper
+
+    scraper = ThreadScraper(
+        token=prepared.token,
+        cookies=prepared.cookies,
+        rate_limiter=prepared.rate_limiter,
+        cache_manager=prepared.cache_manager,
+        force_refresh=request.force_refresh,
+    )
     threads = _scrape_threads(
         scraper,
         request.date_range.from_date,
