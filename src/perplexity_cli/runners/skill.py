@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2
 from importlib.resources import files
 from typing import Any, cast
 
