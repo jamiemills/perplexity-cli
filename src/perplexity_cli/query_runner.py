@@ -12,7 +12,7 @@ import os
 import sys
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -547,6 +547,28 @@ def _check_for_duplicate_request_param(parsed: dict[str, str], key: str) -> None
         raise ValueError(f"Duplicate request parameter override: {key}")
 
 
+def _handle_query_error(
+    fn: Callable[[], None],
+    json_mode: bool,
+    ctx_obj: dict[str, object] | None,
+) -> None:
+    """Wrap a callable with KeyboardInterrupt and general exception handling.
+
+    Args:
+        fn: The callable to execute within error handling.
+        json_mode: Whether JSON output mode is active.
+        ctx_obj: The Click context object dictionary.
+    """
+    logger = get_logger()
+    output_format: OutputFormat = "json" if json_mode else "human"
+    try:
+        fn()
+    except KeyboardInterrupt:
+        _handle_keyboard_interrupt(output_format, logger)
+    except Exception as exc:
+        _handle_query_exception(exc, ctx_obj, output_format)
+
+
 def run_query_command(
     ctx_obj: dict[str, object] | None,
     query_text: str,
@@ -578,7 +600,7 @@ def run_query_command(
     auth = AuthContext(token=token, cookies=cookies)
     attachment_urls = resolve_attachment_urls(query_text, attachments_str, auth)
 
-    try:
+    def _execute_query_body() -> None:
         resolved_output_format, formatter = get_query_formatter(output_format)
         final_query = build_final_query(query_text)
         request_params = parse_request_param_overrides(request_param_overrides)
@@ -604,11 +626,7 @@ def run_query_command(
             else:
                 _fetch_and_render(api, query_input, render, trace)
 
-    except KeyboardInterrupt:
-        _handle_keyboard_interrupt("json" if json_mode else "human", logger)
-
-    except Exception as exc:
-        _handle_query_exception(exc, ctx_obj, "json" if json_mode else "human")
+    _handle_query_error(_execute_query_body, json_mode, ctx_obj)
 
 
 def _handle_keyboard_interrupt(
