@@ -69,9 +69,9 @@ def collect_findings() -> list[str]:
     if not CONFIG.is_file():
         print(f"Semgrep architecture config not found: {CONFIG}", file=sys.stderr)
         return []
-    semgrep_bin = shutil.which("semgrep") or "semgrep"
     cmd = [
-        semgrep_bin,
+        "uvx",
+        "semgrep",
         "--config",
         str(CONFIG),
         "--json",
