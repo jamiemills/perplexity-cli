@@ -29,7 +29,7 @@ classifiers = [
 
 dependencies = [
     "click>=8.0",
-    "cryptography>=46.0.7",
+    "cryptography>=48.0.1",
     "curl-cffi>=0.15.0",
     "httpx>=0.25",
     "mcp>=1.0.0",
