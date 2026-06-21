@@ -290,6 +290,9 @@ def _create_async_session(timeout: int = _DEFAULT_TIMEOUT_SECONDS) -> AsyncSessi
 
     from perplexity_cli.utils.session_factory import AsyncSession
 
+    if AsyncSession is None:
+        raise RuntimeError("AsyncSession from session_factory resolved to None")
+
     return AsyncSession(impersonate="chrome", timeout=timeout)
 
 
