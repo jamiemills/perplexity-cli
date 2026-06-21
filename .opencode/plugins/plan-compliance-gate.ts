@@ -63,16 +63,14 @@ function planIsFailing(text: string): boolean {
 
 const PLAN_BLOCK_MESSAGE = `Commit blocked: the quality plan reports failures.
 
-The latest quality plan under .claude/plans/ reports Result: FAIL or
-contains [FAIL] items in the Analyzer Compliance Review.  A build phase
-must not consume this plan until all categories pass.
+The quality-plan-reviewer subagent has been automatically invoked to
+analyse the failures and suggest fixes.  Review its findings below.
 
-To resolve:
+To resolve manually:
   1. Run 'make quality-plan' to regenerate the plan with current data.
   2. Address any [FAIL] items in the plan's Fix Plan section.
   3. Verify with 'make plan-check'.
-  4. Invoke the quality-plan-reviewer subagent to validate.
-  5. Retry the commit once the plan reports Result: PASS.
+  4. Retry the commit once the plan reports Result: PASS.
 
 If the failures are pre-existing and intentional (remediation plan),
 update the plan's Analyzer Compliance Review to reflect current state
@@ -138,9 +136,27 @@ export const PlanComplianceGatePlugin: Plugin = async ({ client, directory }) =>
         body: {
           service: "plan-compliance-gate",
           level: "warn",
-          message: "Intercepted git commit; quality plan reports FAIL.",
+          message: "Intercepted git commit; quality plan reports FAIL. Invoking quality-plan-reviewer.",
         },
       });
+
+      // Invoke the quality-plan-reviewer subagent to analyse the failures.
+      // If the subagent isn't available, the block message guides the user.
+      try {
+        await client.tasks({
+          subagent_type: "quality-plan-reviewer",
+          description: "Review failing quality plan",
+          prompt: "The quality plan under .claude/plans/ reports Result: FAIL. Run make plan-check, categorise the failures, and suggest specific fixes for each category. Do not edit files — only report findings and suggestions.",
+        });
+      } catch (e) {
+        await client.app.log({
+          body: {
+            service: "plan-compliance-gate",
+            level: "info",
+            message: `Could not auto-invoke reviewer: ${e}. Manual invocation may be needed.`,
+          },
+        });
+      }
 
       throw new Error(PLAN_BLOCK_MESSAGE);
     },
