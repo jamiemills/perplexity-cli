@@ -1,8 +1,8 @@
 """Retry utilities with exponential backoff for network requests."""
 
+import random
 import time
 from collections.abc import Callable
-from secrets import SystemRandom
 from typing import Final, TypeVar
 
 from tenacity import (
@@ -16,8 +16,6 @@ from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
 )
-
-_rng = SystemRandom()
 
 _HTTP_STATUS_TOO_MANY_REQUESTS: Final[int] = 429
 _HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
@@ -132,7 +130,7 @@ def get_backoff_delay(
         return delay
 
     jitter_window = delay * jitter_factor
-    jitter = _rng.uniform(-jitter_window, jitter_window)
+    jitter = random.uniform(-jitter_window, jitter_window)  # nosec B311
     return max(0.0, min(delay + jitter, max_delay))
 
 
