@@ -243,9 +243,8 @@ as an independent opinion alongside Pyright.
 - **What it defends against:** type inconsistencies that one type engine may
   miss or choose not to report, especially while `ty` and Pyright evolve with
   different inference strategies.
-- **Why analyse this:** relying on one type checker makes the codebase inherit
-  that tool's blind spots. A second analyser increases confidence in interfaces
-  that are consumed by CLI, MCP, tests, and packaging entry points.
+- **Why analyse this:** a second type engine catches issues that one analyser
+  may miss, especially across CLI, MCP, and API boundaries.
 - **Value provided:** redundancy without large configuration cost. It makes type
   feedback less dependent on a single implementation's interpretation.
 - **Why here:** it is read-only and paired with Pyright in the fastest stage, so
@@ -264,12 +263,10 @@ The repository runs it on production source and does not globally skip rules.
   subprocess use, weak randomness, insecure temporary files, hardcoded secrets,
   risky deserialisation, suspicious networking/TLS choices, and other Bandit AST
   patterns.
-- **Why analyse this:** the CLI handles tokens, browser cookies, local config,
-  network calls, attachments, and thread cache data. Security mistakes in those
-  paths can expose session material or weaken local credential handling.
-- **Value provided:** automated review of high-risk idioms before code leaves a
-  developer machine. Targeted `# nosec BXXX` comments must carry justification
-  instead of globally muting checks.
+- **Why analyse this:** the CLI handles tokens, cookies, config, and network
+  calls. Security mistakes in these paths can expose session material.
+- **Value provided:** automated review of high-risk idioms. Targeted `# nosec`
+  comments carry justification instead of globally muting checks.
 - **Why here:** security lint is cheap, deterministic, and read-only. Early
   placement prevents obvious security mistakes from being normalised in commits.
 
@@ -285,12 +282,10 @@ threshold of 80 and a whitelist for intentional dynamic references.
   `min_confidence = 80`.
 - **What it defends against:** obsolete functions, unreachable classes, stale
   constants, forgotten command paths, and dead compatibility branches.
-- **Why analyse this:** dead code increases the review surface and can preserve
-  old security assumptions, old API shapes, or unused abstractions that mislead
-  future contributors.
-- **Value provided:** keeps the source tree smaller and makes architectural
-  signals cleaner. A reviewer can trust that public-looking code is likely still
-  connected to behaviour.
+- **Why analyse this:** dead code bloats the review surface, preserves stale
+  assumptions, and misleads contributors.
+- **Value provided:** a smaller, cleaner source tree where public code is
+  actually connected to behaviour.
 - **Why here:** dead-code checks are static and fast enough to run per commit;
   catching unused additions immediately is cheaper than deleting them later.
 
@@ -306,9 +301,8 @@ or worse according to the configured command.
 - **What it defends against:** branching-heavy functions, deeply nested command
   handling, multi-responsibility control flow, and paths that become difficult
   to test exhaustively.
-- **Why analyse this:** a CLI with auth, streaming, JSON envelopes, attachment
-  handling, and error mapping can easily concentrate too many branches in one
-  function. Complexity correlates with missed edge cases.
+- **Why analyse this:** a CLI with multiple subsystems can concentrate too many
+  branches in one function. Complexity correlates with missed edge cases.
 - **Value provided:** pressures code toward small helpers, clearer boundaries,
   and lower testing burden.
 - **Why here:** complexity is a design smell best caught while the change is
@@ -345,12 +339,10 @@ is visible over time.
 - **What it defends against:** gradual erosion that no single commit reveals —
   a steadily rising CC or falling MI across a module signals accumulating
   complexity even when every individual commit passed the radon gates.
-- **Why analyse this:** the radon gates are pass/fail at a point in time; trend
-  tracking adds the time dimension so regressions that stay just under the
-  threshold are still visible.
-- **Value provided:** a directional view of maintainability, complementing the
-  point-in-time `complexity-cc` / `complexity-mi` gates. It is informational
-  rather than blocking.
+- **Why analyse this:** point-in-time gates cannot show gradual erosion. Trend
+  tracking makes regressions just under the threshold visible.
+- **Value provided:** a directional view complementing the point-in-time gates;
+  informational rather than blocking.
 - **Why here:** trend tracking needs git history and a full source scan, so it
   is run on demand rather than in the pre-commit/pre-push fast paths.
 
@@ -374,9 +366,8 @@ comment, and best-practice rules with warnings and errors treated as failures.
   framework leaks.
 - **Why analyse this:** static style rules encode review standards in a way that
   scales. They stop repeated review comments from becoming manual labour.
-- **Value provided:** protects readability, observability, exception semantics,
-  and architecture intent. It also makes the repository's conventions executable
-  rather than tribal knowledge.
+- **Value provided:** protects readability, observability, and architecture
+  intent. Makes repository conventions executable rather than tribal knowledge.
 - **Why here:** Semgrep is read-only and runs before auto-fixers because most of
   its findings require a design choice, not formatting.
 
@@ -432,7 +423,7 @@ commit is created.
   credentials, and other secret-looking material.
 - **Why analyse this:** once a secret is committed, remediation requires history
   cleanup and credential rotation. Preventing the commit is much cheaper.
-- **Value provided:** first-line secret defence close to the author's edit.
+- **Value provided:** first-line secret defence at the author's edit point.
 - **Why here:** it scans working changes rather than pushed commit ranges, so it
   is correctly placed before the commit. Gitleaks later re-checks commit history
   before push.
@@ -453,9 +444,9 @@ target version and line length.
   `src tests` in `make format-check`/`make format-fix`.
 - **What it defends against:** churn from personal formatting preferences,
   inconsistent wrapping, noisy reviews, and formatting-only disputes.
-- **Why analyse this:** formatting is not behaviour, but inconsistent formatting
-  makes behaviour changes harder to review.
-- **Value provided:** stable diffs and predictable style without human debate.
+- **Why analyse this:** inconsistent formatting makes behaviour changes harder
+  to review.
+- **Value provided:** stable diffs and predictable style.
 - **Why here:** it mutates files, so it runs after read-only blockers and before
   tests. `stage_fixed: true` ensures the commit contains the formatter output.
 
@@ -476,11 +467,10 @@ staged files.
   attribute issues.
 - **Why analyse this:** Ruff catches many defects that are either runtime errors
   waiting to happen or style inconsistencies that increase review cost.
-- **Value provided:** combines formatter, import organiser, bugbear-style lint,
-  pyupgrade, and docstyle checks in one fast tool.
-- **Why here:** many findings are auto-fixable, so the pre-commit hook repairs
-  staged files before tests run. CI later runs non-mutating checks to prove the
-  committed tree is clean.
+- **Value provided:** combines formatting, import ordering, bugbear-style lint,
+  and docstyle checks in one fast tool.
+- **Why here:** auto-fixable findings are repaired before tests. CI later proves
+  the committed tree is clean.
 
 ### Whitespace and End-of-file Fixers
 
@@ -517,7 +507,7 @@ without coverage enforcement.
 - **Value provided:** fast behavioural confidence before a commit is accepted.
 - **Why here:** tests are slower than static checks and should only run after
   formatting/lint/type/security gates pass. Coverage is deferred to pre-push to
-  avoid making every small commit pay for threshold reporting.
+  avoid per-commit threshold overhead.
 
 ## Pre-push: Expensive Whole-project Gates
 
@@ -533,12 +523,12 @@ changes.
   `scripts/gitleaks_check.sh`.
 - **What is analysed:** the range from the remote tracking branch to `HEAD`, or
   a suitable base branch for new branches; findings are redacted.
-- **What it defends against:** secrets that were committed earlier in the branch,
-  amended into history, or not present in the current working tree.
+- **What it defends against:** secrets committed earlier in the branch, amended
+  into history, or absent from the working tree.
 - **Why analyse this:** a pre-commit secret scan can miss history already present
   on the branch. Push is the last local moment to stop those commits from
   reaching the remote.
-- **Value provided:** second-line secret defence at the history boundary.
+- **Value provided:** second-line secret defence at the push boundary.
 - **Why here:** Gitleaks works on commit history, so pre-push is more valuable
   than pre-commit for this gate.
 
@@ -555,7 +545,7 @@ agent and pre-push use, excluding tests in the pre-push hook.
   when an automated agent or contributor wants one consolidated report.
 - **Why analyse this:** many independent tools can make feedback hard to triage.
   A unified runner turns multiple static checks into a single operational lane.
-- **Value provided:** consistent local/agent feedback and a compact failure view.
+- **Value provided:** consistent feedback and a compact failure view.
 - **Why here:** pre-push has enough time budget for a consolidated static pass,
   and it complements the individual pre-commit hooks.
 
@@ -573,12 +563,10 @@ agent and pre-push use, excluding tests in the pre-push hook.
 - **What it defends against:** untested branches, modules that hide behind good
   aggregate coverage, and changes that add behaviour without corresponding
   tests.
-- **Why analyse this:** global coverage can be misleading. A well-tested module
-  can mask an untested new module. Per-module enforcement prevents that hiding.
-- **Value provided:** measurable regression protection and clearer accountability
-  for new code.
-- **Why here:** coverage is slower than a fail-fast test run and is more useful
-  at branch granularity than every individual commit.
+- **Why analyse this:** global coverage can mask untested modules. Per-module
+  enforcement prevents that hiding.
+- **Value provided:** measurable regression protection and clearer accountability.
+- **Why here:** coverage is more valuable at branch granularity than per-commit.
 
 ### Safety Dependency Scan
 
@@ -592,11 +580,9 @@ key directly or through Infisical when available.
   Safety runner.
 - **What it defends against:** known vulnerable dependency versions and supply
   chain risk introduced by direct or transitive packages.
-- **Why analyse this:** source code can be clean while a dependency contains a
-  published vulnerability. This project depends on networking, cryptography,
-  rich output, MCP, and HTTP libraries, so dependency health matters.
-- **Value provided:** supply-chain visibility before code is pushed and again in
-  CI.
+- **Why analyse this:** clean source code does not guarantee clean dependencies.
+  Networking, cryptography, and HTTP libraries carry supply-chain risk.
+- **Value provided:** supply-chain visibility at push and in CI.
 - **Why here:** dependency scanning is slower and may need credentials. Pre-push
   and CI are better positions than pre-commit.
 
@@ -611,9 +597,8 @@ through the `tests/test_fuzz.py` lane.
   excludes these from ordinary test runs.
 - **What it defends against:** crashes, malformed-input failures, parser edge
   cases, and assumptions that only hold for hand-written examples.
-- **Why analyse this:** CLIs process user input, JSON, files, URLs, and remote
-  response shapes. Fuzzing explores unexpected shapes more cheaply than writing
-  every case by hand.
+- **Why analyse this:** fuzzing explores unexpected input shapes more cheaply
+  than writing every case by hand.
 - **Value provided:** resilience against weird inputs and stronger confidence in
   validation/error paths.
 - **Why here:** fuzzing is CPU-intensive relative to unit tests, so it runs at
@@ -630,8 +615,7 @@ through the `tests/test_fuzz.py` lane.
   systems that consume external reports.
 - **Why analyse this:** local terminal failures are useful to developers, but CI
   and code-quality dashboards often need structured artefacts.
-- **Value provided:** creates report material that can be uploaded or inspected
-  by external quality tooling.
+- **Value provided:** creates report material for external quality dashboards.
 - **Why here:** report generation is not needed for every commit. It belongs in
   pre-push/CI, where whole-branch artefacts are meaningful.
 
@@ -652,9 +636,8 @@ rules and framework isolation.
 - **Why analyse this:** architecture erosion is usually incremental. A single
   convenient import can invert dependencies and make future testing or reuse
   harder.
-- **Value provided:** executable architecture fitness function. It preserves the
-  intended separation between core business objects, orchestration, adapters,
-  and presentation.
+- **Value provided:** executable architecture fitness function that preserves
+  the intended layer separation.
 - **Why here:** architecture checks need whole-source context and are less about
   a staged hunk than about branch-level direction. They also run in CI through
   `make check`.
@@ -737,10 +720,9 @@ produced plan against the prevention rules before any build phase consumes it.
   marked `[PASS]`, with a consistent `Result:` line and a self-review section.
 - **What it defends against:** a plan that leaves a rule category unaddressed,
   marks one `[FAIL]`, or is internally inconsistent proceeding to a build phase.
-- **Value provided:** the closing loop on the prevention pipeline. The
-  `quality-plan` generator runs this same analyser on its own output to produce
-  a real `Generated Plan Self-Review`; `make plan-check` re-runs it standalone,
-  and the `plan-compliance-gate` OpenCode plugin enforces it at `git commit`.
+- **Value provided:** the closing loop on the prevention pipeline. The generator
+  self-reviews; `make plan-check` re-runs standalone; the OpenCode plugin
+  enforces it at `git commit`.
 - **Why here:** runs after a plan exists, on demand or at commit time.
 
 ### Plan Compliance Gate
@@ -834,10 +816,8 @@ with different profiles for development, push, CI, and fast runs. The
   transformations.
 - **Why analyse this:** generated examples probe the space around invariants
   instead of only checking hand-picked cases.
-- **Value provided:** broader behavioural assurance with a tunable speed/depth
-  trade-off. The 3.12 jobs get fast feedback (~30s property run); the 3.13/3.14
-  jobs provide deep coverage (~4min property run) for the PyPI and release
-  variants.
+- **Value provided:** tunable speed/depth trade-off: fast feedback on 3.12
+  (~30s), deep coverage on 3.13/3.14 (~4min) for PyPI and release variants.
 - **Why here:** push gets a balanced 50-example profile; CI varies by lane as
   described above. The `PROPERTY_PROFILE` indirection keeps `make ci` a single
   command while letting the CI matrix control the depth.
@@ -878,9 +858,8 @@ with different profiles for development, push, CI, and fast runs. The
 - **What it defends against:** POSIX-but-not-Linux differences, path behaviour,
   shell/script assumptions, filesystem behaviour, platform-specific test
   failures, and packaging issues specific to Darwin.
-- **Why analyse this:** the project targets local terminal use, and macOS is a
-  likely contributor and user platform. Running the full pipeline catches
-  platform-specific failures in tests, coverage, and packaging.
+- **Why analyse this:** macOS is a likely contributor and user platform. The
+  full pipeline catches Darwin-specific failures that Ubuntu would miss.
 - **Value provided:** complete cross-platform confidence for the macOS platform.
 - **Why here:** macOS runners are costlier than Ubuntu, but the full pipeline
   provides unique value in catching Darwin-specific edge cases.
@@ -898,8 +877,8 @@ wheel contents, and installs the wheel in isolation.
 - **What it defends against:** packages that pass tests in editable mode but fail
   after installation, missing package data, invalid distribution metadata, broken
   entry points, and accidental omission of runtime resources.
-- **Why analyse this:** users install wheels, not the developer's editable
-  checkout. Packaging is a separate contract from source tests.
+- **Why analyse this:** users install wheels, not an editable checkout.
+  Packaging is a separate contract from source tests.
 - **Value provided:** confidence that a published package can actually be
   installed and invoked.
 - **Why here:** building and smoke-testing every commit would be too heavy, but
@@ -921,7 +900,7 @@ wheel contents, and installs the wheel in isolation.
   metadata, releasing artefacts that did not pass CI, manual credential leakage,
   and missing release files.
 - **Why analyse this:** release mistakes are externally visible and harder to
-  undo than local or CI failures.
+  undo than CI failures.
 - **Value provided:** a repeatable, auditable release path with OIDC instead of a
   long-lived PyPI token.
 - **Why here:** only tag builds should publish. The version check has no value
