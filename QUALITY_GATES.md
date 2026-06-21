@@ -74,7 +74,7 @@ The ordering matters:
 |---|---|---|---|
 | Pyright type check | Pre-commit, CI | `pyright` | `make typecheck-pyright`, `[tool.pyright]` |
 | ty type check | Pre-commit, CI | `ty` | `make typecheck` |
-| Bandit security lint | Pre-commit, CI | `bandit` | `make bandit`, `[tool.bandit]` |
+| Bandit security lint | Pre-commit, CI | `bandit` | `make bandit`, `[tool.bandit]` (uses `uv run bandit`) |
 | Vulture dead-code scan | Pre-commit, CI | `vulture` | `make vulture`, `[tool.vulture]` |
 | Radon cyclomatic complexity | Pre-commit, CI | `radon` | `make complexity-cc` |
 | Radon maintainability index | Pre-commit, CI | `radon` | `make complexity-mi` |
@@ -87,16 +87,22 @@ The ordering matters:
 | Ruff format | Pre-commit, CI | `ruff` | `ruff format`, `[tool.ruff]` |
 | Ruff lint/fix | Pre-commit, CI | `ruff` | `ruff check`, `[tool.ruff.lint]` |
 | Whitespace and EOF fixers | Pre-commit | `pre-commit-hooks` | `lefthook.yml` |
-| Unit tests | Pre-commit, CI | `pytest` | `make test`, `[tool.pytest.ini_options]` |
+| Unit tests (parallel) | Pre-commit, CI | `pytest`, `pytest-xdist` | `make test` (uses `-n auto`), `[tool.pytest.ini_options]` |
 | Gitleaks commit-range scan | Pre-push | `gitleaks` | `make gitleaks`, `scripts/gitleaks_check.sh` |
 | Agent unified check | Pre-push | custom Python | `make agent-check-no-tests` |
-| Coverage and per-module coverage | Pre-push, CI | `pytest-cov`, custom Python | `make test-coverage` |
+| Coverage and per-module coverage (parallel) | Pre-push, CI | `pytest-cov`, `pytest-xdist`, custom Python | `make test-coverage` (uses `-n auto`), `[tool.coverage]` |
 | Safety dependency scan | Pre-push, CI | `safety` via custom runner | `make safety` |
 | Fuzz tests | Pre-push, CI | `pytest`, `atheris` harnesses | `make test-fuzz` |
 | Sonar reports | Pre-push, CI | Bandit JSON via custom script | `make sonar-reports` |
 | Architecture check | Pre-push, CI | custom AST analyser | `make arch-check` |
 | Coupling check | Pre-push, CI | custom AST analyser | `make coupling-check` |
 | Quality ratchets (file-size, suppressions, ruff-arch, pyright-strict, semgrep-arch) | Pre-push, CI | custom Python + baselines | `make ratchets`, `quality/baselines/` |
+| Test parallelisation | Pre-push, CI, local | `pytest-xdist` | `-n auto` in `make test`, `make test-coverage`, `agent_check.py` |
+| Property test profile selection | CI | `PROPERTY_PROFILE` Makefile variable | `PROPERTY_PROFILE=push` or `=ci` in CI matrix |
+| Coupling leaf-dependency filter | Pre-push, CI | analyser feature | excludes Ce=1 modules whose sole dep is a Ce=0 leaf |
+| Coupling TYPE_CHECKING guard filter | Pre-push, CI | analyser feature | excludes imports under `if TYPE_CHECKING:` |
+| Coupling function-body filter | Pre-push, CI | analyser feature | excludes lazy imports inside function bodies |
+| Coupling init-only filter | Pre-push, CI | analyser feature | excludes package `__init__.py` re-export hubs |
 | Schema-drift guard | Pre-push, CI (pytest) | custom AST test | `tests/test_schema_drift.py` |
 | Complexity trend tracking | On-demand | custom Python | `make metrics-track` |
 | Quality plan generator | On-demand | custom Python | `make quality-plan OUT=...` |
@@ -138,7 +144,7 @@ and local development do not drift.
 | Pre-commit stage 2 | `ruff-check` | `ruff check --fix {staged_files}` | Mutating lint fixes must run after formatting and before tests. |
 | Pre-commit stage 2 | `trailing-whitespace` | `trailing-whitespace-fixer {staged_files}` | Text clean-up is automatic and should not consume review attention. |
 | Pre-commit stage 2 | `end-of-file-fixer` | `end-of-file-fixer {staged_files}` | Final-newline repair is automatic staged-file hygiene. |
-| Pre-commit stage 3 | `pytest-check` | `make test` | Behavioural proof runs only after static and formatter gates pass. |
+| Pre-commit stage 3 | `pytest-check` | `make test` (uses `pytest-xdist -n auto`) | Behavioural proof runs only after static and formatter gates pass. |
 | Pre-push | `gitleaks-detect` | `make gitleaks` | Commit-range secret scanning belongs at the boundary to the remote. |
 | Pre-push | `agent-check` | `make agent-check-no-tests` | Consolidated static report is useful at branch-push granularity. |
 | Pre-push | `pytest-coverage` | `make test-coverage` | Coverage is a branch quality threshold, not a per-commit formatting concern. |
@@ -205,7 +211,7 @@ as an independent opinion alongside Pyright.
 The repository runs it on production source and does not globally skip rules.
 
 - **Tool used:** `bandit`, invoked by `make bandit` as
-  `uvx --from bandit bandit -c pyproject.toml -r src/ -ll -ii`.
+  `uv run bandit -c pyproject.toml -r src/ -ll -ii`.
 - **What is analysed:** recursive Python source under `src/`; `tests/` are
   excluded in `[tool.bandit]`.
 - **What it defends against:** common Python security hazards such as unsafe
@@ -452,8 +458,8 @@ staged files.
 **Summary:** The pre-commit test gate runs the default safe test suite, fail-fast,
 without coverage enforcement.
 
-- **Tool used:** `pytest`, invoked by `make test` as
-  `uv run pytest tests/ -q --tb=line -x`.
+- **Tool used:** `pytest`, `pytest-xdist`, invoked by `make test` as
+  `uv run pytest tests/ -q --tb=line -x -n auto`.
 - **What is analysed:** tests under `tests/`, with default marker exclusions from
   `[tool.pytest.ini_options]`: integration, real API, manual, real user config,
   and fuzz tests are excluded by default.
@@ -511,10 +517,10 @@ agent and pre-push use, excluding tests in the pre-push hook.
 
 **Summary:** Coverage is enforced both globally and per module at 85 percent.
 
-- **Tool used:** `pytest-cov` plus `scripts/check_module_coverage.py`, invoked by
+- **Tool used:** `pytest-cov`, `pytest-xdist`, and `scripts/check_module_coverage.py`, invoked by
   `make test-coverage`.
 - **What is analysed:** the safe pytest suite with coverage for
-  `perplexity_cli`; reports are generated in terminal, JSON, and XML formats.
+  `the package`; reports are generated in terminal, JSON, and XML formats.
   `[tool.coverage.run]` enables branch coverage and `[tool.coverage.report]`
   sets `fail_under = 85`. The custom module check skips files with fewer than
   five reportable statements and fails modules below 85 percent.
@@ -589,7 +595,7 @@ through the `tests/test_fuzz.py` lane.
 rules and framework isolation.
 
 - **Tool used:** `scripts/check_architecture.py`, invoked by `make arch-check`.
-- **What is analysed:** imports in `src/perplexity_cli`, mapped to layers:
+- **What is analysed:** imports in `src/the package`, mapped to layers:
   domain, application, infrastructure, and presentation. It checks import
   direction, framework imports in domain/application layers, inter-adapter
   coupling, and utility isolation.
@@ -614,7 +620,7 @@ flags modules far from the main sequence.
 
 - **Tool used:** `scripts/check_coupling.py`, invoked by `make coupling-check`.
 - **What is analysed:** AST imports and class definitions under
-  `src/perplexity_cli`. It computes afferent coupling (`Ca`), efferent coupling
+  `src/the package`. It computes afferent coupling (`Ca`), efferent coupling
   (`Ce`), instability (`I = Ce / (Ca + Ce)`), abstractness (`A`), and distance
   from the main sequence (`D = |A + I - 1|`). The default distance threshold is
   `0.3`.
@@ -647,9 +653,9 @@ so they execute in pre-push (`lefthook.yml`) and CI (`make ci`).
 | Pyright strict | `make typecheck-strict-ratchet` | strict-mode `Any`/unknown diagnostics via a temp config | untyped-boundary erosion (review §3) |
 | Semgrep architecture | `make semgrep-architecture` | `.semgrep-architecture.yml` rules | TOCTOU, retry scatter, ad-hoc HTTP-status classification, function-local imports, `sys.exit`/`click.echo` outside canonical homes, getter side effects (review §2a/2c/4/6/7) |
 
-- **Why ratchets:** the existing debt is large (e.g. 682 strict diagnostics, 43
-  complexity findings). A hard gate would block all work until the debt is
-  cleared; a ratchet blocks growth and lets the baseline shrink only.
+- **Why ratchets:** a hard gate on existing architectural debt would block all
+  work until cleared. A ratchet blocks growth and lets the baseline shrink only
+  through intentional fixes (run `<gate> --update-baseline` after refactoring).
 - **Schema-drift guard:** `tests/test_schema_drift.py` complements the ratchets
   by failing if a new hand-written command-result schema dict appears;
   schemas must derive from Pydantic models via `model_json_schema()` (review §1b).
@@ -764,35 +770,48 @@ to fail. The pre-push gate scopes this to changed source files.
 ### Property-based Tests
 
 **Summary:** Hypothesis tests verify invariants over many generated examples,
-with different profiles for development, push, CI, and fast runs.
+with different profiles for development, push, CI, and fast runs. The
+`PROPERTY_PROFILE` Makefile variable (default `ci`) controls which profile the
+`make ci` pipeline uses.
 
 - **Tool used:** `hypothesis` through pytest, invoked by
-  `make test-property-push` and `make test-property-ci`.
+  `make test-property-push`, `make test-property-ci`, and
+  `make test-property-$(PROPERTY_PROFILE)`.
 - **What is analysed:** `tests/test_property.py`. Profiles in `tests/conftest.py`
   set `dev` to 10 examples, `push` to 50 examples, `ci` to 1000 examples with a
-  500 ms deadline, and `fast` to 3 examples.
+  500 ms deadline, and `fast` to 3 examples. In CI, `PROPERTY_PROFILE=push` is
+  used for fast-feedback lanes (Ubuntu/Python 3.12, macOS) while
+  `PROPERTY_PROFILE=ci` is used for thorough lanes (Ubuntu/Python 3.13 and 3.14,
+  PyPI publish).
 - **What it defends against:** edge cases that example-based tests miss,
   especially around serialisation, validation, parsing, and reversible
   transformations.
 - **Why analyse this:** generated examples probe the space around invariants
   instead of only checking hand-picked cases.
 - **Value provided:** broader behavioural assurance with a tunable speed/depth
-  trade-off.
-- **Why here:** push gets a balanced 50-example profile; CI gets the deeper
-  1000-example profile where latency is acceptable and reproducibility matters.
+  trade-off. The 3.12 jobs get fast feedback (~30s property run); the 3.13/3.14
+  jobs provide deep coverage (~4min property run) for the PyPI and release
+  variants.
+- **Why here:** push gets a balanced 50-example profile; CI varies by lane as
+  described above. The `PROPERTY_PROFILE` indirection keeps `make ci` a single
+  command while letting the CI matrix control the depth.
 
 ## CI Gates
 
 ### Ubuntu CI Matrix
 
-**Summary:** The main CI job runs `make ci` on Ubuntu for Python 3.12 and 3.13
-from a clean dependency sync.
+**Summary:** The main CI job runs `make ci` on Ubuntu for Python 3.12, 3.13, and
+3.14 from a clean dependency sync.
 
 - **Tool used:** GitHub Actions with `actions/checkout`, `astral-sh/setup-uv`,
   `actions/setup-python`, `uv sync --all-extras --locked`, and `make ci`.
-- **What is analysed:** the complete repository under two Python versions.
+- **What is analysed:** the complete repository under three Python versions.
   `make ci` runs `check`, `test-coverage`, `test-fuzz`, `safety`,
-  `sonar-reports`, `test-property-ci`, `build`, `verify`, and `smoke-test`.
+  `sonar-reports`, `test-property-$(PROPERTY_PROFILE)`, `build`, `verify`, and
+  `smoke-test`. Python 3.13 and 3.14 use `PROPERTY_PROFILE=ci` (1000-example
+  property tests); Python 3.12 uses `PROPERTY_PROFILE=push` (50-example) for
+  faster feedback. Test execution uses `pytest-xdist -n auto` for parallel
+  execution across available cores.
 - **What it defends against:** local-environment drift, missing lockfile updates,
   Python-version incompatibility, package build failures, hidden test failures,
   and dependency problems not present on a developer machine.
@@ -803,21 +822,22 @@ from a clean dependency sync.
 - **Why here:** CI is slower but authoritative. It repeats local gates and adds
   packaging verification that does not belong in every pre-commit hook.
 
-### macOS Safe Checks
+### macOS Full Pipeline
 
-**Summary:** A separate macOS job runs `make check && make test` on Python 3.12.
+**Summary:** A separate macOS job runs the full `make ci` pipeline on Python 3.12.
 
 - **Tool used:** GitHub Actions on `macos-latest`.
-- **What is analysed:** static checks and the safe test suite on macOS.
+- **What is analysed:** the complete CI pipeline on macOS, identical to the
+  Ubuntu matrix except using `PROPERTY_PROFILE=push` for faster property tests.
 - **What it defends against:** POSIX-but-not-Linux differences, path behaviour,
-  shell/script assumptions, filesystem behaviour, and platform-specific test
-  failures.
-- **Why analyse this:** the CLI is intended for local terminal use, and macOS is
-  a likely contributor/user platform.
-- **Value provided:** cross-platform confidence without duplicating the full
-  expensive Ubuntu matrix.
-- **Why here:** macOS runners are slower/costlier, so this lane runs safe checks
-  rather than the full release-grade pipeline.
+  shell/script assumptions, filesystem behaviour, platform-specific test
+  failures, and packaging issues specific to Darwin.
+- **Why analyse this:** the project targets local terminal use, and macOS is a
+  likely contributor and user platform. Running the full pipeline catches
+  platform-specific failures in tests, coverage, and packaging.
+- **Value provided:** complete cross-platform confidence for the macOS platform.
+- **Why here:** macOS runners are costlier than Ubuntu, but the full pipeline
+  provides unique value in catching Darwin-specific edge cases.
 
 ### Build, Verify, and Smoke Test
 
