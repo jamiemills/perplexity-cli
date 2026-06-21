@@ -12,19 +12,29 @@ before a commit. Expensive whole-project checks run before a push. CI repeats
 critical checks in a clean environment and adds build validation. The release
 workflow proves tag, source, metadata, and artefacts agree before upload.
 
-```mermaid
-flowchart TD
-    Edit["edit code"] --> S1["pre-commit, stage 1<br/>read-only analysers<br/><i>parallel</i>"]
-    S1 --> S2["pre-commit, stage 2<br/>staged-file auto-fixers<br/><i>sequential</i>"]
-    S2 --> S3["pre-commit, stage 3<br/>unit tests<br/><i>parallel, xdist</i>"]
-    S3 --> Push["pre-push<br/>whole-project checks<br/><i>parallel</i>"]
-    Push --> CI["CI<br/>clean-room Ubuntu + macOS<br/>full pipeline"]
-    CI --> Release["release<br/>version validation<br/>CI, publish"]
+```
+edit code
+  |
+  v
+pre-commit, stage 1: read-only analysers and validators (parallel)
+  |
+  v
+pre-commit, stage 2: staged-file auto-fixers (sequential)
+  |
+  v
+pre-commit, stage 3: unit tests (parallel, xdist)
+  |
+  v
+pre-push: whole-project checks (parallel)
+  |
+  v
+CI: clean-room Ubuntu + macOS, full pipeline
+  |
+  v
+release: version validation, CI, publish
 
-    Session["OpenCode session<br/><i>plugins run continuously</i>"] -.-> S1
-    Session -.-> Push
-
-    Plan["quality plan loop<br/><i>generate -> review</i>"] -.-> Push
+  (OpenCode session plugins run continuously across all stages)
+  (quality plan loop: generate -> review runs alongside pre-push/CI)
 ```
 
 ### Gate Categories at a Glance
