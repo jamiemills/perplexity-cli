@@ -257,6 +257,36 @@ def _entry_to_dict(entry: ModelConfigEntry) -> dict[str, Any]:
     }
 
 
+def _execute_models_list(
+    token: str,
+    cookies: dict[str, str] | None,
+    json_mode: bool,
+    include_schema: bool,
+) -> None:
+    """Fetch models and render output in the requested format.
+
+    Args:
+        token: Authentication token.
+        cookies: Browser cookies.
+        json_mode: Whether to output JSON.
+        include_schema: Whether to include JSON schema.
+    """
+    logger = get_logger()
+    try:
+        client = _create_rest_client(token, cookies)
+        level = _detect_subscription_level(client)
+        service = _create_model_service(client, level)
+        entries = service.list_available_models()
+    except Exception as exc:
+        _handle_list_error(exc, "json" if json_mode else "human", logger)
+        return  # unreachable; _handle_list_error always exits
+
+    if json_mode:
+        _output_json(entries, "with_schema" if include_schema else "no_schema")
+    else:
+        click.echo(format_model_table(entries))
+
+
 def run_models_list_command(
     ctx_obj: dict[str, Any] | None,
 ) -> None:
@@ -281,19 +311,7 @@ def run_models_list_command(
         logger.error("Model listing attempted without authentication")
         sys.exit(1)
 
-    try:
-        client = _create_rest_client(token, cookies)
-        level = _detect_subscription_level(client)
-        service = _create_model_service(client, level)
-        entries = service.list_available_models()
-    except Exception as exc:
-        _handle_list_error(exc, "json" if json_mode else "human", logger)
-        return  # unreachable; _handle_list_error always exits
-
-    if json_mode:
-        _output_json(entries, "with_schema" if include_schema else "no_schema")
-    else:
-        click.echo(format_model_table(entries))
+    _execute_models_list(token, cookies, json_mode, include_schema)
 
 
 def _output_json(
