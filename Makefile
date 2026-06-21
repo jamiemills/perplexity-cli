@@ -53,19 +53,34 @@ setup: check-uv check-gitleaks check-infisical  ## Set up a local development en
 	uv run lefthook install
 	uv run pxcli --help > /dev/null
 
-configure-opencode:  ## Install OpenCode dependencies and configure plugins/agents
+configure-opencode:  ## Install OpenCode deps and verify plugin/agent wiring
 	@echo "Installing OpenCode plugin dependencies..."
-	cd .opencode && npm install
+	@cd .opencode && npm install
 	@echo ""
-	@echo "OpenCode plugins and agents are configured in opencode.jsonc."
-	@echo "The following plugins are registered:"
-	@echo "  - quality-gate         (blocks edits that loosen gate thresholds)"
-	@echo "  - pxcli-quality        (real-time per-file quality feedback)"
-	@echo "  - pre-push-docs-check  (reminds to update docs before push)"
-	@echo "  - plan-compliance-gate (blocks commit when quality plan fails)"
+	@echo "Verifying plugin and agent wiring..."
+	@ok=true; \
+	for f in quality-gate.ts pxcli-quality.ts pre-push-docs-check.ts plan-compliance-gate.ts; do \
+		if [ ! -f .opencode/plugins/$$f ]; then \
+			echo "  MISSING: .opencode/plugins/$$f"; ok=false; \
+		else echo "  OK: .opencode/plugins/$$f"; fi; \
+	done; \
+	if [ ! -f .opencode/agents/quality-plan-reviewer.md ]; then \
+		echo "  MISSING: .opencode/agents/quality-plan-reviewer.md"; ok=false; \
+	else echo "  OK: .opencode/agents/quality-plan-reviewer.md"; fi; \
+	if [ ! -f opencode.jsonc ]; then \
+		echo "  MISSING: opencode.jsonc"; ok=false; \
+	else echo "  OK: opencode.jsonc"; fi; \
+	if [ "$$ok" != "true" ]; then \
+		echo ""; \
+		echo "Some OpenCode files are missing. Verify the repository checkout"; \
+		echo "is complete or run 'git checkout -- .opencode/ opencode.jsonc'."; \
+		exit 1; \
+	fi
 	@echo ""
-	@echo "The following agents are registered:"
-	@echo "  - quality-plan-reviewer (reviews quality plan compliance)"
+	@echo "OpenCode wiring verified:"
+	@echo "  Plugins (4): quality-gate, pxcli-quality, pre-push-docs-check, plan-compliance-gate"
+	@echo "  Agents  (1): quality-plan-reviewer"
+	@echo "  Config     : opencode.jsonc registers all plugins and agents"
 	@echo ""
 	@echo "Reload the OpenCode session to activate plugins."
 

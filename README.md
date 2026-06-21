@@ -30,11 +30,17 @@ Both `pxcli` and `perplexity-cli` work as command names after installation.
 ```bash
 git clone https://github.com/jamiemills/perplexity-cli.git
 cd perplexity-cli
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
-pytest  # verify setup
+make setup               # venv, deps, lefthook git hooks
+make configure-opencode  # OpenCode plugin/agent npm deps + wiring verification
+make test                # verify everything works
 ```
 </details>
+
+> **`make setup`** installs the Python virtualenv, locked dependencies, lefthook
+> git hooks, and verifies the CLI builds.  **`make configure-opencode`** installs
+> the npm packages needed by the OpenCode quality-gate plugins and verifies that
+> all plugin and agent files are correctly wired in `opencode.jsonc`.  Both are
+> idempotent — safe to re-run.
 
 ## Quick start
 
