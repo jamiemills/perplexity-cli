@@ -19,6 +19,7 @@ from perplexity_cli.utils.exceptions import (
 
 _HTTP_STATUS_TOO_MANY_REQUESTS: Final[int] = 429
 _HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
+_rng = random
 
 T = TypeVar("T")
 
@@ -130,7 +131,7 @@ def get_backoff_delay(
         return delay
 
     jitter_window = delay * jitter_factor
-    jitter = random.uniform(-jitter_window, jitter_window)  # nosec B311
+    jitter = _rng.uniform(-jitter_window, jitter_window)  # nosec B311
     return max(0.0, min(delay + jitter, max_delay))
 
 

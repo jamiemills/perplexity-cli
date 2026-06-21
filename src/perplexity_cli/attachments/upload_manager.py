@@ -29,7 +29,7 @@ try:
 
     RequestException = _ReqExc
 except ImportError:  # pragma: no cover
-    RequestException = Exception  # nosemgrep
+    RequestException = Exception
 
 if TYPE_CHECKING:
     from curl_cffi.requests import AsyncSession
