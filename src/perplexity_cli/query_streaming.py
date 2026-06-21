@@ -182,9 +182,7 @@ def _handle_stream_upstream_schema_error(
     raise SystemExit(1)
 
 
-def _handle_stream_keyboard_interrupt(
-    _error: Any, logger: logging.Logger
-) -> None:
+def _handle_stream_keyboard_interrupt(logger: logging.Logger) -> None:
     logger.info("Streaming interrupted by user")
     click.echo("\n[ERROR] Streaming interrupted.", err=True)
     raise SystemExit(130)
@@ -224,7 +222,7 @@ def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorH
         ),
         (
             KeyboardInterrupt,
-            _handle_stream_keyboard_interrupt,
+            lambda _e, log: _handle_stream_keyboard_interrupt(log),
         ),
         (
             (ClickException, OSError),

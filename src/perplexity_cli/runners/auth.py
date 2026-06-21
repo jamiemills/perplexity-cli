@@ -109,6 +109,48 @@ def run_auth_command(ctx_obj: object, port: int) -> None:
         logger.info("Authentication interrupted by user")
 
 
+def _handle_auth_timeout_error(
+    e: TimeoutError | AuthenticationError,
+    output_format: OutputFormat,
+    port: int,
+    base_url: str,
+) -> None:
+    """Handle authentication timeout or authentication errors."""
+    if output_format == "json":
+        handle_error(e, _AUTH_LOGIN_COMMAND, output_format="json")
+    get_logger().debug("Authentication failed: %s", e, exc_info=True)
+    click.echo(f"[ERROR] Authentication failed: {e}", err=True)
+    _print_auth_troubleshooting(port, base_url)
+    sys.exit(1)
+
+
+def _handle_auth_os_config_error(
+    e: OSError | ConfigurationError,
+    output_format: OutputFormat,
+    debug_level: DebugMode,
+) -> None:
+    """Handle OS-level or configuration errors during authentication."""
+    if output_format == "json":
+        handle_error(e, _AUTH_LOGIN_COMMAND, output_format="json")
+    handle_unexpected_cli_error(
+        e,
+        get_logger(),
+        debug_mode=debug_level,
+        message_tuple=(f"[ERROR] Unexpected error: {e}", "Unexpected error during authentication", False),
+    )
+
+
+def _resolve_auth_render_flags(
+    json_mode: bool, include_schema: bool, debug_mode: bool
+) -> tuple[OutputFormat, SchemaInclusion, DebugMode]:
+    """Convert boolean flags to Literal-typed render configuration."""
+    return (
+        "json" if json_mode else "human",
+        "with_schema" if include_schema else "no_schema",
+        "debug" if debug_mode else "normal",
+    )
+
+
 def _execute_auth(
     port: int,
     ctx_flags: tuple[bool, bool, bool],
@@ -116,9 +158,9 @@ def _execute_auth(
 ) -> None:
     """Perform authentication and handle domain-specific errors."""
     json_mode, include_schema, debug_mode = ctx_flags
-    output_format: OutputFormat = "json" if json_mode else "human"
-    schema_inclusion: SchemaInclusion = "with_schema" if include_schema else "no_schema"
-    debug_level: DebugMode = "debug" if debug_mode else "normal"
+    output_format, schema_inclusion, debug_level = _resolve_auth_render_flags(
+        json_mode, include_schema, debug_mode
+    )
     from perplexity_cli.auth.oauth_handler import authenticate_sync
 
     logger = get_logger()
@@ -131,21 +173,9 @@ def _execute_auth(
         )
         _handle_auth_success(token, cookies, output_format, schema_inclusion)
     except (TimeoutError, AuthenticationError) as e:
-        if output_format == "json":
-            handle_error(e, _AUTH_LOGIN_COMMAND, output_format="json")
-        logger.debug("Authentication failed: %s", e, exc_info=True)
-        click.echo(f"[ERROR] Authentication failed: {e}", err=True)
-        _print_auth_troubleshooting(port, base_url)
-        sys.exit(1)
+        _handle_auth_timeout_error(e, output_format, port, base_url)
     except (OSError, ConfigurationError) as e:
-        if output_format == "json":
-            handle_error(e, _AUTH_LOGIN_COMMAND, output_format="json")
-        handle_unexpected_cli_error(
-            e,
-            logger,
-            debug_mode=debug_level,
-            message_tuple=(f"[ERROR] Unexpected error: {e}", "Unexpected error during authentication", False),
-        )
+        _handle_auth_os_config_error(e, output_format, debug_level)
 
 
 def _resolve_logout_ctx(
