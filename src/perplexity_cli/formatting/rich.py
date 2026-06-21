@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import re
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
-from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting.base import Formatter
+
+if TYPE_CHECKING:
+    from perplexity_cli.api.models import Answer, WebResult
+
 
 _SECTION_HEADER_STYLE = "bold cyan"
 _HEADER_LEVEL_2: Final[int] = 2

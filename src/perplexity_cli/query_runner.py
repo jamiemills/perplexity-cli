@@ -13,12 +13,11 @@ import sys
 import time
 import uuid
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import click
 
-from perplexity_cli._types import DebugMode, OutputFormat, SchemaInclusion
+from perplexity_cli._types import DebugMode, OutputFormat, QueryOptions, SchemaInclusion
 from perplexity_cli.api.models import QueryInput, TraceContext
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.formatting.context import OutputOptions, RenderContext
@@ -41,17 +40,6 @@ if TYPE_CHECKING:
     from perplexity_cli.formatting.base import Formatter
     from perplexity_cli.utils.attachment_models import FileAttachment
 
-
-@dataclass(frozen=True, slots=True)
-class QueryOptions:
-    """Optional flags for :func:`run_query_command`, built from CLI flags."""
-
-    output_format: str | None
-    strip_references: bool
-    stream: bool
-    attachments: tuple[str, ...]
-    model_preference: str | None
-    request_param_overrides: tuple[str, ...]
 
 _QUERY_JSON_COMMAND = "pxcli query --json"
 
@@ -102,12 +90,8 @@ def log_query_debug_context(
     logger.debug("Execution environment: %s", _detect_execution_environment())
 
     token_path = get_config_paths().token_path
-    logger.debug(
-        "Token path: %s", redact_path(token_path)
-    )
-    logger.debug(
-        "Token exists: %s", token_path.exists()
-    )
+    logger.debug("Token path: %s", redact_path(token_path))
+    logger.debug("Token exists: %s", token_path.exists())
     logger.debug("Cookie storage enabled: %s", get_save_cookies_enabled())
     logger.debug(
         "Query command invoked: query=%s, format=%s, stream=%s",
@@ -433,9 +417,7 @@ def _try_dispatch_known_error(
     return False
 
 
-def _handle_fallback_error(
-    exc: Exception, logger: logging.Logger, debug_mode: DebugMode
-) -> None:
+def _handle_fallback_error(exc: Exception, logger: logging.Logger, debug_mode: DebugMode) -> None:
     """Handle an unexpected error type.
 
     Args:
@@ -471,7 +453,11 @@ def _fetch_and_render(
     logger.info("Fetching complete answer")
     answer_obj = api.get_complete_answer(
         query_input.query,
-        extra_params=(query_input.attachment_urls, query_input.model_preference, query_input.request_params),
+        extra_params=(
+            query_input.attachment_urls,
+            query_input.model_preference,
+            query_input.request_params,
+        ),
     )
     logger.debug(
         "Received answer: %s characters, %s references",
@@ -629,9 +615,7 @@ def run_query_command(
     _handle_query_error(_execute_query_body, json_mode, ctx_obj)
 
 
-def _handle_keyboard_interrupt(
-    output_format: OutputFormat, logger: logging.Logger
-) -> None:
+def _handle_keyboard_interrupt(output_format: OutputFormat, logger: logging.Logger) -> None:
     """Handle a keyboard interrupt during query execution.
 
     Args:

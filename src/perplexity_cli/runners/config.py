@@ -189,7 +189,9 @@ def _print_config_change_message(key: str, bool_value: bool) -> None:
         click.echo(msgs[1])
 
 
-def run_set_config_command(key: str, value: str, *, output_format: OutputFormat | None = None) -> None:
+def run_set_config_command(
+    key: str, value: str, *, output_format: OutputFormat | None = None
+) -> None:
     """Execute the set-config command."""
     from perplexity_cli.utils.config import clear_feature_config_cache, set_feature
 

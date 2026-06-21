@@ -32,7 +32,9 @@ class TestHandleErrorJsonMode:
     """Tests for handle_error in JSON mode."""
 
     def test_authentication_error_json(self):
-        stdout, _, code = _capture_handle_error(AuthenticationError("bad token"), output_format="json")
+        stdout, _, code = _capture_handle_error(
+            AuthenticationError("bad token"), output_format="json"
+        )
         data = json.loads(stdout)
         assert data["error"]["code"] == "authentication_required"
         assert code == 4
@@ -44,7 +46,9 @@ class TestHandleErrorJsonMode:
         assert code == 6
 
     def test_network_error_json(self):
-        stdout, _, code = _capture_handle_error(PerplexityRequestError("timeout"), output_format="json")
+        stdout, _, code = _capture_handle_error(
+            PerplexityRequestError("timeout"), output_format="json"
+        )
         data = json.loads(stdout)
         assert data["error"]["code"] == "network_error"
         assert code == 6
@@ -71,7 +75,9 @@ class TestHandleErrorJsonMode:
         assert code == 6
 
     def test_configuration_error_json(self):
-        stdout, _, code = _capture_handle_error(ConfigurationError("bad config"), output_format="json")
+        stdout, _, code = _capture_handle_error(
+            ConfigurationError("bad config"), output_format="json"
+        )
         data = json.loads(stdout)
         assert data["error"]["code"] == "configuration_error"
         assert code == 7

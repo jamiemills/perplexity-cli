@@ -420,9 +420,7 @@ class SSEMessage(BaseModel):
     @classmethod
     def _validate_upstream_shape(cls, raw_input: object) -> object:
         """Enforce upstream contract: top-level mapping with list-shaped blocks."""
-        parsed = require_mapping(
-            raw_input, "Malformed SSE message in upstream response"
-        )
+        parsed = require_mapping(raw_input, "Malformed SSE message in upstream response")
         require_list(parsed.get("blocks", []), "Malformed SSE blocks in upstream response")
         return parsed
 

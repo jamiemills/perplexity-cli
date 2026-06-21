@@ -57,9 +57,7 @@ class TestFetchTargets:
         mock_resp.raise_for_status = MagicMock()
 
         client = ChromeDevToolsClient(9222)
-        with patch(
-            "httpx.get", return_value=mock_resp
-        ):
+        with patch("httpx.get", return_value=mock_resp):
             result = client._fetch_targets()
         assert result == targets
 
@@ -80,9 +78,7 @@ class TestFetchTargets:
         mock_resp.raise_for_status = MagicMock()
 
         client = ChromeDevToolsClient(9222)
-        with patch(
-            "httpx.get", return_value=mock_resp
-        ):
+        with patch("httpx.get", return_value=mock_resp):
             with pytest.raises(AuthenticationError, match="invalid targets payload"):
                 client._fetch_targets()
 
@@ -93,9 +89,7 @@ class TestFetchTargets:
         mock_resp.raise_for_status = MagicMock()
 
         client = ChromeDevToolsClient(9222)
-        with patch(
-            "httpx.get", return_value=mock_resp
-        ):
+        with patch("httpx.get", return_value=mock_resp):
             with pytest.raises(AuthenticationError, match="Failed to connect"):
                 client._fetch_targets()
 
@@ -152,9 +146,7 @@ class TestConnect:
 
         client = ChromeDevToolsClient(9222)
         with (
-            patch(
-                "httpx.get", return_value=mock_resp
-            ),
+            patch("httpx.get", return_value=mock_resp),
             patch(
                 "perplexity_cli.auth.oauth_handler.websockets.connect", side_effect=fake_connect
             ) as mock_connect,
@@ -172,9 +164,7 @@ class TestConnect:
         mock_resp.raise_for_status = MagicMock()
 
         client = ChromeDevToolsClient(9222)
-        with patch(
-            "httpx.get", return_value=mock_resp
-        ):
+        with patch("httpx.get", return_value=mock_resp):
             with pytest.raises(AuthenticationError, match="WebSocket debugger URL"):
                 await client.connect()
 
@@ -604,9 +594,7 @@ class TestAuthenticateWithBrowser:
             return mock_ws
 
         with (
-            patch(
-                "httpx.get", return_value=mock_resp
-            ),
+            patch("httpx.get", return_value=mock_resp),
             patch("perplexity_cli.auth.oauth_handler.websockets.connect", side_effect=fake_connect),
             patch("perplexity_cli.auth.oauth_handler.asyncio.sleep", new_callable=AsyncMock),
         ):
@@ -637,9 +625,7 @@ class TestAuthenticateWithBrowser:
             return mock_ws
 
         with (
-            patch(
-                "httpx.get", return_value=mock_resp
-            ),
+            patch("httpx.get", return_value=mock_resp),
             patch("perplexity_cli.auth.oauth_handler.websockets.connect", side_effect=fake_connect),
         ):
             with pytest.raises(AuthenticationError, match="Chrome error"):

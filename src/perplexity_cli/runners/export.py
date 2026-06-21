@@ -7,7 +7,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypedDict
+from typing import TYPE_CHECKING, Protocol, TypedDict, TypeGuard
 
 import click
 
@@ -125,9 +125,7 @@ def _create_token_manager() -> TokenManager:
     return TokenManager()
 
 
-def _emit_json_error(
-    e: Exception, output_format: OutputFormat
-) -> None:
+def _emit_json_error(e: Exception, output_format: OutputFormat) -> None:
     """Emit ``e`` as a JSON error envelope when in JSON output mode."""
     if output_format == "json":
         handle_error(e, _COMMAND, output_format="json")
@@ -140,14 +138,17 @@ def _create_cache_manager() -> ThreadCacheManager:
     return ThreadCacheManager()
 
 
+def _is_dict_str_obj(v: object) -> TypeGuard[dict[str, object]]:
+    return isinstance(v, dict)
+
+
 def _thread_payload(record: object) -> ThreadPayload:
     """Convert a thread-like object into JSON-envelope payload data."""
-    if isinstance(record, dict):
-        record_dict: dict[object, object] = record
+    if _is_dict_str_obj(record):
         return {
-            "title": _string_or_empty(record_dict.get("title", "")),
-            "created_at": _string_or_empty(record_dict.get("created_at", "")),
-            "url": _string_or_empty(record_dict.get("url", "")),
+            "title": _string_or_empty(record.get("title", "")),
+            "created_at": _string_or_empty(record.get("created_at", "")),
+            "url": _string_or_empty(record.get("url", "")),
         }
 
     title = getattr(record, "title", "")
@@ -165,16 +166,14 @@ def _string_or_empty(value: object) -> str:
     return value if isinstance(value, str) else ""
 
 
-
 def _normalise_context(ctx_obj: object) -> ExportContext | None:
     """Validate and narrow the Click context flags we rely on."""
-    if not isinstance(ctx_obj, Mapping):
+    if not _is_dict_str_obj(ctx_obj):
         return None
 
-    ctx_mapping: Mapping[object, object] = ctx_obj
     normalised: dict[str, object] = {}
     for key in ("json", "schema", "debug"):
-        value = ctx_mapping.get(key)
+        value = ctx_obj.get(key)
         if value is None:
             continue
         if not isinstance(value, bool):
@@ -208,7 +207,6 @@ def _build_export_request(
         force_refresh=validated_force_refresh,
         clear_cache=validated_clear_cache,
     )
-
 
 
 def _resolve_export_tail_values(
@@ -254,7 +252,6 @@ def _require_bool_value(value: object, field_name: str) -> bool:
     if not isinstance(value, bool):
         raise TypeError(f"{field_name} must be a bool")
     return value
-
 
 
 def _validate_export_dates(
@@ -416,9 +413,7 @@ def _output_export_results(
     click.echo(f"[OK] Saved to: {output_path.resolve()}")
 
 
-def _handle_known_error(
-    e: Exception, output_format: OutputFormat, logger: logging.Logger
-) -> None:
+def _handle_known_error(e: Exception, output_format: OutputFormat, logger: logging.Logger) -> None:
     """Handle AuthenticationError, PerplexityRequestError, UpstreamSchemaError, ValueError, and RateLimitError."""
     _emit_json_error(e, output_format)
     logger.error("Export failed: %s", e, exc_info=True)
@@ -438,7 +433,9 @@ def _handle_http_status_error(
     """Handle HTTP status errors from the Perplexity API."""
     _emit_json_error(e, output_format)
     debug_mode = ctx_obj.get("debug", False) if ctx_obj else False
-    handle_http_error(e, logger, debug_mode="debug" if debug_mode else "normal", context="during thread export")
+    handle_http_error(
+        e, logger, debug_mode="debug" if debug_mode else "normal", context="during thread export"
+    )
 
 
 def _handle_unexpected_error(

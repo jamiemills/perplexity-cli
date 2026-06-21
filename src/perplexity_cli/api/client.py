@@ -692,9 +692,7 @@ class SSEClient:
                 ctx.effective_timeout,
             )
 
-        self.logger.debug(
-            "Authentication: Bearer token present=%s", bool(self.auth.token)
-        )
+        self.logger.debug("Authentication: Bearer token present=%s", bool(self.auth.token))
         self._log_cookie_context()
 
     def _log_cookie_context(self) -> None:

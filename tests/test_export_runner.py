@@ -188,7 +188,6 @@ class TestValidateExportDates:
             mock_handle.assert_called_once()
 
 
-
 class TestSetupRateLimiter:
     """Tests for _setup_rate_limiter."""
 
@@ -296,7 +295,9 @@ class TestHandleKnownError:
         from perplexity_cli.utils.exceptions import AuthenticationError
 
         with pytest.raises(SystemExit):
-            _handle_known_error(AuthenticationError("expired"), output_format="human", logger=Mock())
+            _handle_known_error(
+                AuthenticationError("expired"), output_format="human", logger=Mock()
+            )
         err = capsys.readouterr().err
         assert "re-authenticate" in err
 

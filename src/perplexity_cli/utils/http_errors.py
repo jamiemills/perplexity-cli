@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any, Final
 import click
 
 from perplexity_cli._types import DebugMode
-
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,

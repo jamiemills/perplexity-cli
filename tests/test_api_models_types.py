@@ -18,10 +18,7 @@ from perplexity_cli.api.models import (
     HttpRequestContext,
     QueryInput,
     QueryParams,
-    QueryRequest,
     SSEMessage,
-    TraceContext,
-    WebResult,
 )
 
 

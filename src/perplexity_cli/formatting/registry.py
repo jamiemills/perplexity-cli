@@ -1,6 +1,11 @@
 """Formatter registry for managing available formatters."""
 
-from perplexity_cli.formatting.base import Formatter
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from perplexity_cli.formatting.base import Formatter
 
 
 class FormatterRegistry:
@@ -32,11 +37,11 @@ class FormatterRegistry:
             ValueError: If the formatter name is not found.
         """
         if name not in self._formatters:
-            available = ", ".join(self.list())
+            available = ", ".join(self.names())
             raise ValueError(f"Unknown formatter: {name}. Available: {available}")
         return self._formatters[name]()
 
-    def list(self) -> list[str]:
+    def names(self) -> list[str]:
         """List all registered formatter names.
 
         Returns:
@@ -80,7 +85,7 @@ def list_formatters() -> list[str]:
     Returns:
         List of formatter names.
     """
-    return _registry.list()
+    return _registry.names()
 
 
 def resolve_format(explicit_format: str | None, *, no_color: bool = False) -> str:

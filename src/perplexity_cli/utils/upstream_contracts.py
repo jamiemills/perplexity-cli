@@ -67,18 +67,14 @@ def schema_error(
     return UpstreamSchemaError(message)
 
 
-def require_mapping(
-    value: object, context: str, detail: str | None = None
-) -> dict[str, Any]:
+def require_mapping(value: object, context: str, detail: str | None = None) -> dict[str, Any]:
     """Require a dictionary-shaped payload value."""
     if not _is_mapping(value):
         raise schema_error(context, "object", value, detail)
     return value
 
 
-def require_list(
-    value: object, context: str, detail: str | None = None
-) -> list[Any]:
+def require_list(value: object, context: str, detail: str | None = None) -> list[Any]:
     """Require a list-shaped payload value."""
     if not _is_sequence(value):
         raise schema_error(context, "array", value, detail)

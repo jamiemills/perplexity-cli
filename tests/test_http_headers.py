@@ -15,9 +15,7 @@ class TestBuildPerplexityHeaders:
 
     def test_authorization_with_token(self):
         """Test that providing a token adds an Authorization header."""
-        headers = build_perplexity_headers(
-            "abc", header_extras=(None, "https://example.com")
-        )
+        headers = build_perplexity_headers("abc", header_extras=(None, "https://example.com"))
         assert headers["Authorization"] == "Bearer abc"
 
     def test_no_authorization_without_token(self):
@@ -34,15 +32,14 @@ class TestBuildPerplexityHeaders:
 
     def test_no_csrf_without_cookies(self):
         """Test that no X-CSRFToken header is present when cookies is None."""
-        headers = build_perplexity_headers(
-            None, None, header_extras=(None, "https://example.com")
-        )
+        headers = build_perplexity_headers(None, None, header_extras=(None, "https://example.com"))
         assert "X-CSRFToken" not in headers
 
     def test_custom_content_type(self):
         """Test that a custom content type is used."""
         headers = build_perplexity_headers(
-            None, content_type="multipart/form-data",
+            None,
+            content_type="multipart/form-data",
             header_extras=(None, "https://example.com"),
         )
         assert headers["Content-Type"] == "multipart/form-data"

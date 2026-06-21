@@ -136,7 +136,11 @@ def _handle_auth_os_config_error(
         e,
         get_logger(),
         debug_mode=debug_level,
-        message_tuple=(f"[ERROR] Unexpected error: {e}", "Unexpected error during authentication", False),
+        message_tuple=(
+            f"[ERROR] Unexpected error: {e}",
+            "Unexpected error during authentication",
+            False,
+        ),
     )
 
 
@@ -168,9 +172,7 @@ def _execute_auth(
     try:
         logger.debug("Calling authenticate_sync")
         token, cookies = authenticate_sync(port=port)
-        logger.info(
-            "Token and %s cookies extracted successfully", len(cookies)
-        )
+        logger.info("Token and %s cookies extracted successfully", len(cookies))
         _handle_auth_success(token, cookies, output_format, schema_inclusion)
     except (TimeoutError, AuthenticationError) as e:
         _handle_auth_timeout_error(e, output_format, port, base_url)

@@ -10,6 +10,8 @@
 # Test markers:       pyproject.toml [tool.pytest.ini_options] addopts
 # =============================================================================
 
+include quality/gates.conf
+
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 PYTHON_VERSION ?= 3.12
@@ -93,10 +95,10 @@ typecheck-all: typecheck typecheck-pyright  ## Run all type checkers
 .PHONY: bandit vulture gitleaks security
 
 bandit:  ## Run bandit security linter
-	uvx --from bandit bandit -c pyproject.toml -r src/ -ll -ii
+	uv run bandit -c pyproject.toml -r src/ -ll -ii
 
 vulture:  ## Run vulture dead-code detector
-	uv run vulture src/ vulture_whitelist.py --min-confidence 80
+	uv run vulture src/ vulture_whitelist.py --min-confidence $(MIN_CONFIDENCE)
 
 gitleaks:  ## Run gitleaks secret detection
 	scripts/gitleaks_check.sh
@@ -110,7 +112,7 @@ security: bandit vulture  ## Run all security checks
 .PHONY: complexity-cc complexity-mi complexity
 
 complexity-cc:  ## Check cyclomatic complexity (radon)
-	@output=$$(uv run radon cc src/ -s -n B) && \
+	@output=$$(uv run radon cc src/ -s -n $(RADON_CC_GRADE)) && \
 	if [ -n "$$output" ]; then \
 		echo "Cyclomatic complexity violations (B or worse):"; \
 		echo "$$output"; \
@@ -118,7 +120,7 @@ complexity-cc:  ## Check cyclomatic complexity (radon)
 	fi
 
 complexity-mi:  ## Check maintainability index (radon)
-	@output=$$(uv run radon mi src/ -s -n B) && \
+	@output=$$(uv run radon mi src/ -s -n $(RADON_MI_GRADE)) && \
 	if [ -n "$$output" ]; then \
 		echo "Maintainability index violations (B or worse):"; \
 		echo "$$output"; \
@@ -151,7 +153,7 @@ semgrep:  ## Run semgrep static analysis
 .PHONY: coupling-check metrics-track
 
 coupling-check:  ## Measure coupling and stability metrics (Martin metrics)
-	uv run python scripts/check_coupling.py
+	uv run python scripts/check_coupling.py --max-flagged $(MAX_FLAGGED)
 
 metrics-track:  ## Track CC and MI trends over recent git revisions
 	uv run python scripts/track_metrics.py
@@ -203,7 +205,7 @@ test-coverage:  ## Run tests with coverage enforcement
 	uv run pytest tests/ -q --tb=line -x \
 		--cov=perplexity_cli --cov-report=term-missing \
 		--cov-report=json --cov-report=xml:coverage.xml
-	uv run python scripts/check_module_coverage.py --min-coverage 85
+	uv run python scripts/check_module_coverage.py --min-coverage $(MIN_COVERAGE)
 
 test-fuzz:  ## Run fuzz tests
 	uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz
@@ -288,7 +290,37 @@ endif
 
 .PHONY: check ci agent-check agent-check-push agent-check-no-tests
 
-check: format-check lint typecheck-all security complexity semgrep arch-check coupling-check ratchets  ## Run all static checks (no tests)
+# Conditional prerequisites — controlled by quality/gates.conf
+CHECK_PREREQS :=
+ifeq ($(CHECK_FORMAT),true)
+CHECK_PREREQS += format-check
+endif
+ifeq ($(CHECK_LINT),true)
+CHECK_PREREQS += lint
+endif
+ifeq ($(CHECK_TYPECHECK_ALL),true)
+CHECK_PREREQS += typecheck-all
+endif
+ifeq ($(CHECK_SECURITY),true)
+CHECK_PREREQS += security
+endif
+ifeq ($(CHECK_COMPLEXITY),true)
+CHECK_PREREQS += complexity
+endif
+ifeq ($(CHECK_SEMGREP),true)
+CHECK_PREREQS += semgrep
+endif
+ifeq ($(CHECK_ARCH),true)
+CHECK_PREREQS += arch-check
+endif
+ifeq ($(CHECK_COUPLING),true)
+CHECK_PREREQS += coupling-check
+endif
+ifeq ($(CHECK_RATCHETS),true)
+CHECK_PREREQS += ratchets
+endif
+
+check: $(CHECK_PREREQS)  ## Run all static checks (no tests)
 
 agent-check:  ## Run all pre-commit analysers in parallel with unified output (for agents/CI)
 	uv run python scripts/agent_check.py pre-commit
@@ -321,8 +353,8 @@ ci:  ## Full CI pipeline
 
 .PHONY: file-size suppression-ratchet ruff-architecture typecheck-strict-ratchet semgrep-architecture quality-plan
 
-file-size:  ## Ratchet: block new/grown oversized source files (cap 1000 lines)
-	uv run python scripts/check_file_size.py
+file-size:  ## Ratchet: block new/grown oversized source files (cap $(FILE_SIZE_CAP) lines)
+	uv run python scripts/check_file_size.py --max-lines $(FILE_SIZE_CAP)
 
 suppression-ratchet:  ## Ratchet: block new/grown inline suppressions
 	uv run python scripts/check_suppressions.py

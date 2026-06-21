@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Agents have full edit rights to all files except the locked gates
+  // config.  The quality-gate plugin enforces that scripts/ and
+  // Makefile can only be tightened, never loosened or bypassed.
+  //
+  // HUMAN OVERRIDE: To change gate thresholds, temporarily remove
+  // the deny rule below, edit quality/gates.conf, and restore.
+  // To approve a blocked edit, set OPENCODE_DISABLE_QUALITY_GATE=1.
+  "permission": {
+    "edit": {
+      "*": "allow",
+      "**/quality/gates.conf": "deny"
+    }
+  }
+}

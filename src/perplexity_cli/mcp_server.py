@@ -57,10 +57,13 @@ class MCPQueryResult(BaseModel):
     rendered_response: str = Field(
         description="Answer rendered in the requested output format.",
     )
-    references: Annotated[list[MCPReference], Field(
-        default_factory=list,
-        description="References returned by Perplexity.",
-    )]
+    references: Annotated[
+        list[MCPReference],
+        Field(
+            default_factory=list,
+            description="References returned by Perplexity.",
+        ),
+    ]
     reference_count: int = Field(description="Number of references returned.")
 
 

@@ -21,7 +21,7 @@ import importlib
 from dataclasses import dataclass
 from pathlib import Path
 
-from perplexity_cli.query_runner import QueryOptions
+from perplexity_cli._types import QueryOptions
 
 
 @dataclass(frozen=True, slots=True)

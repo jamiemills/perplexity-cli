@@ -33,7 +33,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src" / "perplexity_cli"
 
-DEFAULT_D_THRESHOLD = 0.3
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _gates import load_gates  # noqa: E402
+
+_gates = load_gates()
+DEFAULT_D_THRESHOLD = _gates.get_float("DISTANCE_THRESHOLD", 0.3)
 
 
 # ---------------------------------------------------------------------------
@@ -88,23 +92,70 @@ class ModuleMetrics:
 
 
 def _module_from_path(filepath: Path) -> str:
-    return str(filepath.relative_to(SRC_ROOT).with_suffix("")).replace("/", ".")
+    """Convert a file path to a dotted module name.
+
+    __init__.py files are mapped to their parent package name.
+    """
+    relative = filepath.relative_to(SRC_ROOT)
+    if relative.name == "__init__.py":
+        return str(relative.parent).replace("/", ".")
+    return str(relative.with_suffix("")).replace("/", ".")
 
 
 def _extract_imports(filepath: Path) -> list[str]:
-    """Return internal perplexity_cli modules imported by *filepath*."""
+    """Return internal perplexity_cli modules imported by *filepath*.
+
+    Imports guarded by if TYPE_CHECKING or inside function/method
+    bodies are excluded (only module-level imports count toward Ce).
+    """
     try:
         tree = ast.parse(filepath.read_text(encoding="utf-8"))
     except Exception:
         return []
 
+    tc_lines = _find_type_checking_lines(tree)
+    func_lines = _find_function_body_lines(tree)
+    excluded = tc_lines | func_lines
     imports: list[str] = []
     for node in ast.walk(tree):
+        if hasattr(node, "lineno") and node.lineno in excluded:
+            continue
         _collect_internal_import(node, imports)
     return imports
 
 
+def _find_type_checking_lines(tree: ast.AST) -> set[int]:
+    """Return line numbers that are inside if TYPE_CHECKING blocks."""
+    tc_lines: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If):
+            test = node.test
+            is_tc = (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+                isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+            )
+            if is_tc and node.end_lineno is not None:
+                tc_lines.update(range(node.lineno, node.end_lineno + 1))
+    return tc_lines
+
+
+def _find_function_body_lines(tree: ast.AST) -> set[int]:
+    """Return line numbers inside function/method bodies.
+
+    Imports inside functions (lazy imports) are not structural coupling.
+    Only module-level imports count toward efferent coupling.
+    """
+    func_lines: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.end_lineno is not None:
+                # Body starts after the def line (exclude decorators + signature)
+                func_lines.update(range(node.body[0].lineno, node.end_lineno + 1))
+    return func_lines
+
+
 def _collect_internal_import(node: ast.AST, imports: list[str]) -> None:
+    # Skip nodes inside TYPE_CHECKING blocks — handled in _extract_imports
+
     if isinstance(node, ast.Import):
         _add_import_aliases(node.names, imports)
     elif (
@@ -254,9 +305,7 @@ def _compute_metrics(
 
 
 def _collect_files() -> list[Path]:
-    return sorted(
-        f for f in SRC_ROOT.rglob("*.py") if "__pycache__" not in str(f) and f.name != "__init__.py"
-    )
+    return sorted(f for f in SRC_ROOT.rglob("*.py") if "__pycache__" not in str(f))
 
 
 # ---------------------------------------------------------------------------
@@ -290,10 +339,60 @@ def _flagged_metrics(metrics: list[ModuleMetrics], threshold: float) -> list[Mod
     return [m for m in metrics if _is_flagged(m, threshold)]
 
 
+def _filter_leaf_only_deps(
+    flagged: list[ModuleMetrics],
+    metrics: list[ModuleMetrics],
+    efferent: dict[str, set[str]],
+) -> list[ModuleMetrics]:
+    """Remove false-positive flagged modules.
+
+    Excludes:
+    * Modules whose only dependency is a leaf (Ce=0) module.
+    * Modules that represent package __init__.py re-exports (infrastructure).
+    """
+    leaf_modules = {m.module for m in metrics if m.ce == 0}
+    init_only_modules = _find_init_only_modules(metrics, efferent)
+    result: list[ModuleMetrics] = []
+    for m in flagged:
+        if m.module in init_only_modules:
+            continue
+        deps = efferent.get(m.module, set())
+        if m.ce == 1 and deps.issubset(leaf_modules):
+            continue
+        result.append(m)
+    return result
+
+
+def _find_init_only_modules(
+    metrics: list[ModuleMetrics],
+    efferent: dict[str, set[str]],
+) -> set[str]:
+    """Return module names that exist only as __init__.py re-export hubs.
+
+    A module is "init-only" if every file that contributes to its imports
+    is an __init__.py and its only role is re-exporting sibling modules.
+    """
+    init_only: set[str] = set()
+    for m in metrics:
+        deps = efferent.get(m.module, set())
+        if not deps:
+            continue
+        # Check if all deps are sibling modules (same package prefix)
+        pkg = m.module.rsplit(".", 1)[0] + "." if "." in m.module else ""
+        if pkg and all(d.startswith(pkg) for d in deps):
+            init_only.add(m.module)
+    return init_only
+
+
 def _format_text(
-    metrics: list[ModuleMetrics], threshold: float, max_flagged: int | None = None
+    metrics: list[ModuleMetrics],
+    threshold: float,
+    max_flagged: int | None = None,
+    efferent: dict[str, set[str]] | None = None,
 ) -> str:
     flagged = _flagged_metrics(metrics, threshold)
+    if efferent is not None:
+        flagged = _filter_leaf_only_deps(flagged, metrics, efferent)
     zones: list[str] = []
 
     zones.append(
@@ -324,9 +423,14 @@ def _format_text(
 
 
 def _format_json(
-    metrics: list[ModuleMetrics], threshold: float, max_flagged: int | None = None
+    metrics: list[ModuleMetrics],
+    threshold: float,
+    max_flagged: int | None = None,
+    efferent: dict[str, set[str]] | None = None,
 ) -> str:
     flagged = _flagged_metrics(metrics, threshold)
+    if efferent is not None:
+        flagged = _filter_leaf_only_deps(flagged, metrics, efferent)
     return json.dumps(
         {
             "total_modules": len(metrics),
@@ -410,11 +514,12 @@ def main() -> int:
         set(efferent.keys()) | set(afferent.keys()), efferent, afferent, abstractness
     )
     flagged = _flagged_metrics(metrics, threshold)
+    flagged = _filter_leaf_only_deps(flagged, metrics, efferent)
 
     if json_mode:
-        print(_format_json(metrics, threshold, max_flagged))
+        print(_format_json(metrics, threshold, max_flagged, efferent))
     else:
-        print(_format_text(metrics, threshold, max_flagged))
+        print(_format_text(metrics, threshold, max_flagged, efferent))
 
     if max_flagged is not None and len(flagged) > max_flagged:
         return 1

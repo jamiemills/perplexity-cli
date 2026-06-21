@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from perplexity_cli.api.models import Answer, WebResult
+from typing import TYPE_CHECKING
+
 from perplexity_cli.formatting.base import Formatter
+
+if TYPE_CHECKING:
+    from perplexity_cli.api.models import Answer, WebResult
 
 
 class MarkdownFormatter(Formatter):

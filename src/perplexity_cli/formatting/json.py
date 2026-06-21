@@ -1,10 +1,14 @@
 """JSON formatter for structured JSON output."""
 
-import json
-from typing import Any
+from __future__ import annotations
 
-from perplexity_cli.api.models import Answer, WebResult
+import json
+from typing import TYPE_CHECKING, Any
+
 from perplexity_cli.formatting.base import Formatter
+
+if TYPE_CHECKING:
+    from perplexity_cli.api.models import Answer, WebResult
 
 
 class JSONFormatter(Formatter):

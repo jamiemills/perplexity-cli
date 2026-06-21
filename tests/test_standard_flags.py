@@ -4,8 +4,9 @@ import json
 from contextlib import ExitStack
 from unittest.mock import Mock, patch
 
+from perplexity_cli._types import QueryOptions
 from perplexity_cli.api.models import Answer
-from perplexity_cli.query_runner import QueryOptions, run_query_command
+from perplexity_cli.query_runner import run_query_command
 
 _DEFAULT_OPTIONS = QueryOptions(
     output_format="plain",

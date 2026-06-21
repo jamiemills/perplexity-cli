@@ -117,9 +117,11 @@ class PerplexityAPI:
         query: str,
         search_implementation_mode: str = "standard",
         *,
-        extra_params: tuple[
-            list[str] | None, str | None, dict[str, object] | None
-        ] = (None, None, None),
+        extra_params: tuple[list[str] | None, str | None, dict[str, object] | None] = (
+            None,
+            None,
+            None,
+        ),
     ) -> Answer:
         """Submit a query and return the complete answer with references.
 

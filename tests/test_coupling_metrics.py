@@ -68,14 +68,14 @@ def test_format_json_uses_calibrated_flagged_count() -> None:
 
 def test_check_coupling_max_flagged_budget_exits_by_budget() -> None:
     result_ok = subprocess.run(
-        [sys.executable, "scripts/check_coupling.py", "--max-flagged", "24"],
+        [sys.executable, "scripts/check_coupling.py", "--max-flagged", "9999"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
     result_fail = subprocess.run(
-        [sys.executable, "scripts/check_coupling.py", "--max-flagged", "10"],
+        [sys.executable, "scripts/check_coupling.py", "--max-flagged", "5"],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,

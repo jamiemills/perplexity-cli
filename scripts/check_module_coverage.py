@@ -16,7 +16,11 @@ import json
 import sys
 from pathlib import Path
 
-DEFAULT_MIN_COVERAGE = 85
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _gates import load_gates
+
+_gates = load_gates()
+DEFAULT_MIN_COVERAGE = _gates.get_int("MIN_COVERAGE", 85)
 DEFAULT_REPORT = "coverage.json"
 _MIN_REPORTABLE_STATEMENTS = 5
 

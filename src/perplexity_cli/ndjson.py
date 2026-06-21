@@ -89,9 +89,11 @@ class NDJSONWriter:
         ok: bool,
         command: str,
         result: dict[str, Any],
-        extras: tuple[
-            dict[str, Any] | None, list[dict[str, Any]] | None, bool
-        ] = (None, None, False),
+        extras: tuple[dict[str, Any] | None, list[dict[str, Any]] | None, bool] = (
+            None,
+            None,
+            False,
+        ),
     ) -> None:
         """Write a result event (final line).
 

@@ -1,11 +1,3 @@
 {
-  "fingerprints": [
-    "src/perplexity_cli/runners/export.py:145:8:reportUnknownVariableType",
-    "src/perplexity_cli/runners/export.py:173:4:reportUnknownVariableType",
-    "src/perplexity_cli/runners/export.py:525:22:reportArgumentType",
-    "src/perplexity_cli/utils/session_factory.py:50:4:reportUnknownParameterType",
-    "src/perplexity_cli/utils/session_factory.py:50:55:reportMissingTypeArgument",
-    "src/perplexity_cli/utils/session_factory.py:74:4:reportUnknownParameterType",
-    "src/perplexity_cli/utils/session_factory.py:74:56:reportMissingTypeArgument"
-  ]
+  "fingerprints": []
 }

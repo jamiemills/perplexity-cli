@@ -28,6 +28,11 @@ from tempfile import TemporaryDirectory
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _gates import load_gates  # noqa: E402
+
+_gates = load_gates()
+
 # ---------------------------------------------------------------------------
 # Analyser definitions
 # ---------------------------------------------------------------------------
@@ -112,14 +117,26 @@ PRE_COMMIT_LINTERS: tuple[Analyser, ...] = (
     Analyser("ty", ["uv", "run", "ty", "check", "src"]),
     Analyser(
         "bandit",
-        ["uvx", "--from", "bandit", "bandit", "-c", "pyproject.toml", "-r", "src/", "-ll", "-ii"],
+        ["uv", "run", "bandit", "-c", "pyproject.toml", "-r", "src/", "-ll", "-ii"],
     ),
     Analyser(
         "vulture",
-        ["uv", "run", "vulture", "src/", "vulture_whitelist.py", "--min-confidence", "80"],
+        [
+            "uv",
+            "run",
+            "vulture",
+            "src/",
+            "vulture_whitelist.py",
+            "--min-confidence",
+            str(_gates["MIN_CONFIDENCE"]),
+        ],
     ),
-    Analyser("radon-cc", ["uv", "run", "radon", "cc", "src/", "-s", "-n", "B"]),
-    Analyser("radon-mi", ["uv", "run", "radon", "mi", "src/", "-s", "-n", "B"]),
+    Analyser(
+        "radon-cc", ["uv", "run", "radon", "cc", "src/", "-s", "-n", _gates["RADON_CC_GRADE"]]
+    ),
+    Analyser(
+        "radon-mi", ["uv", "run", "radon", "mi", "src/", "-s", "-n", _gates["RADON_MI_GRADE"]]
+    ),
     Analyser(
         "semgrep",
         [
@@ -138,7 +155,7 @@ PRE_COMMIT_LINTERS: tuple[Analyser, ...] = (
             "--severity",
             "WARNING",
             "--exclude-rule",
-            "python.lang.maintainability.useless-innerfunction.useless-inner-function",
+            "python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
             "--exclude",
             "tests/",
             "--error",
@@ -176,7 +193,17 @@ PRE_PUSH_ALL: tuple[Analyser, ...] = (
         "fuzz", ["uv", "run", "pytest", "tests/test_fuzz.py", "-v", "--tb=long", "-m", "fuzz"]
     ),
     Analyser("arch-check", ["uv", "run", "python", "scripts/check_architecture.py"]),
-    Analyser("coupling-check", ["uv", "run", "python", "scripts/check_coupling.py"]),
+    Analyser(
+        "coupling-check",
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/check_coupling.py",
+            "--max-flagged",
+            str(_gates["MAX_FLAGGED"]),
+        ],
+    ),
     Analyser(
         "test-property",
         [

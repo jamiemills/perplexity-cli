@@ -34,7 +34,9 @@ class TestSessionLoggerDisabled:
         from perplexity_cli.session_log import SessionLogger
 
         logger = SessionLogger("test-session", enabled="disabled")
-        logger.log_response(success="ok", duration_ms=100, result_summary="done")  # should not raise
+        logger.log_response(
+            success="ok", duration_ms=100, result_summary="done"
+        )  # should not raise
 
 
 class TestSessionLoggerEnabled:

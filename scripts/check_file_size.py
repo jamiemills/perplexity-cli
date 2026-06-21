@@ -29,7 +29,12 @@ from _ratchet import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC = PROJECT_ROOT / "src"
-DEFAULT_MAX_LINES = 1000
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _gates import load_gates  # noqa: E402
+
+_gates = load_gates()
+DEFAULT_MAX_LINES = _gates.get_int("FILE_SIZE_CAP", 1000)
 BASELINE_NAME = "file-size.json"
 DESCRIPTION = "File-size ratchet: block new or grown oversized source files."
 _SCRIPT = Path(__file__).name

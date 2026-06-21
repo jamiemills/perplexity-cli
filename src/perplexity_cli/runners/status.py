@@ -313,6 +313,4 @@ def run_status_command(
         click.echo("Status: [INFO] Token file has insecure permissions")
         click.echo(f"Error: {e}")
         click.echo(f"\nFix with: chmod 0600 {tm.token_path}")
-        logger.error(
-            "Token file has insecure permissions: %s", e
-        )
+        logger.error("Token file has insecure permissions: %s", e)

@@ -125,9 +125,7 @@ class ThreadCacheManager:
 
         return cache_format
 
-    def _decrypt_and_validate_cache(
-        self, outer_cache: CacheFormat
-    ) -> CacheContent:
+    def _decrypt_and_validate_cache(self, outer_cache: CacheFormat) -> CacheContent:
         """Decrypt and validate the inner cache content.
 
         Args:
@@ -324,7 +322,7 @@ class ThreadCacheManager:
     def merge_threads(
         self,
         cached_threads: list[ThreadRecord],
-        new_threads: list[ThreadRecord],
+        fetched_threads: list[ThreadRecord],
     ) -> list[ThreadRecord]:
         """Merge cached threads with newly fetched threads.
 
@@ -334,7 +332,7 @@ class ThreadCacheManager:
 
         Args:
             cached_threads: Threads from cache.
-            new_threads: Threads from API.
+            fetched_threads: Threads from API.
 
         Returns:
             Merged list of unique threads, sorted newest-first.
@@ -344,7 +342,7 @@ class ThreadCacheManager:
 
         # Add only new threads (not already in cache)
         merged = list(cached_threads)
-        for thread in new_threads:
+        for thread in fetched_threads:
             if thread.url not in cached_urls:
                 merged.append(thread)
                 cached_urls.add(thread.url)
@@ -355,7 +353,7 @@ class ThreadCacheManager:
             reverse=True,
         )
 
-        deduped_count = len(new_threads) - (len(merged) - len(cached_threads))
+        deduped_count = len(fetched_threads) - (len(merged) - len(cached_threads))
         if deduped_count > 0:
             self.logger.debug("Deduplicated %s duplicate threads", deduped_count)
 

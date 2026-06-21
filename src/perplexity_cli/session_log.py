@@ -19,9 +19,7 @@ class SessionLogger:
     The logger is a no-op if session logging is not enabled.
     """
 
-    def __init__(
-        self, session_id: str, *, enabled: str = "disabled"
-    ) -> None:
+    def __init__(self, session_id: str, *, enabled: str = "disabled") -> None:
         """Initialise the session logger.
 
         Args:

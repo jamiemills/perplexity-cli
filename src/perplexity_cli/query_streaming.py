@@ -171,14 +171,10 @@ def _run_stream_loop(
     return accumulated_text, references
 
 
-def _handle_stream_upstream_schema_error(
-    error: Any, logger: logging.Logger
-) -> None:
+def _handle_stream_upstream_schema_error(error: Any, logger: logging.Logger) -> None:
     logger.error("Malformed upstream response during streaming: %s", error)
     click.echo()
-    click.echo(
-        f"[ERROR] Upstream response format changed: {error}", err=True
-    )
+    click.echo(f"[ERROR] Upstream response format changed: {error}", err=True)
     raise SystemExit(1)
 
 
@@ -188,14 +184,10 @@ def _handle_stream_keyboard_interrupt(logger: logging.Logger) -> None:
     raise SystemExit(130)
 
 
-def _handle_stream_output_error(
-    error: Any, logger: logging.Logger
-) -> None:
+def _handle_stream_output_error(error: Any, logger: logging.Logger) -> None:
     logger.error("Streaming output failed: %s", error)
     click.echo()
-    click.echo(
-        f"[ERROR] Failed to render streaming output: {error}", err=True
-    )
+    click.echo(f"[ERROR] Failed to render streaming output: {error}", err=True)
     raise SystemExit(1)
 
 
@@ -259,7 +251,11 @@ def _handle_stream_error(error: Exception) -> None:
     handle_unexpected_cli_error(
         error,
         logger,
-        message_tuple=("[ERROR] An unexpected error occurred.", "Unexpected error during streaming", True),
+        message_tuple=(
+            "[ERROR] An unexpected error occurred.",
+            "Unexpected error during streaming",
+            True,
+        ),
     )
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import click
 
-from perplexity_cli.commands import _ensure_ctx_obj
+# _ensure_ctx_obj inlined — see below
 
 # ---------------------------------------------------------------------------
 # Shell completion scripts
@@ -93,7 +93,8 @@ _STYLE_SET_HELP_REF = "pxcli style set"
 @click.pass_context
 def completion_group(ctx: click.Context) -> None:
     """Generate shell completion scripts."""
-    _ensure_ctx_obj(ctx)
+    if ctx.obj is None:
+        ctx.obj = {}
 
 
 @click.command(name="bash")

@@ -8,10 +8,10 @@ factory functions rather than importing ``curl_cffi`` directly.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-Session: type | None = None
-AsyncSession: type | None = None
+Session: Any = None
+AsyncSession: Any = None
 _curl_cffi_available = False
 _curl_cffi_import_error: str | None = None
 
@@ -30,6 +30,8 @@ except ImportError as _exc:  # pragma: no cover
     )
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from curl_cffi.requests import AsyncSession as AsyncSessionType
     from curl_cffi.requests import Session as SessionType
 
@@ -48,7 +50,7 @@ def _guard_curl_cffi() -> None:
         raise RuntimeError(_curl_cffi_import_error)
 
 
-def create_sync_session(timeout: int | None = None) -> SessionType:
+def create_sync_session(timeout: int | None = None) -> SessionType[Any]:
     """Create a synchronous curl_cffi Session with Chrome TLS impersonation.
 
     Args:
@@ -72,7 +74,7 @@ def create_sync_session(timeout: int | None = None) -> SessionType:
     return session_cls(impersonate=IMPERSONATE_PROFILE, timeout=timeout)
 
 
-def create_async_session(timeout: int | None = None) -> AsyncSessionType:
+def create_async_session(timeout: int | None = None) -> AsyncSessionType[Any]:
     """Create an asynchronous curl_cffi AsyncSession with Chrome TLS impersonation.
 
     Args:

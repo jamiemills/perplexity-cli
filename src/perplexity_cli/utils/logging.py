@@ -8,7 +8,7 @@ from datetime import UTC
 from pathlib import Path
 from typing import TextIO
 
-from perplexity_cli.utils.config import get_config_paths
+# get_config_paths imported lazily in get_default_log_file()
 
 
 class DynamicStderrHandler(logging.StreamHandler[TextIO]):
@@ -168,6 +168,8 @@ def get_default_log_file() -> Path:
     Returns:
         Path to default log file in config directory.
     """
+    from perplexity_cli.utils.config import get_config_paths
+
     return get_config_paths().log_file_path
 
 
