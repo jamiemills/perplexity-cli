@@ -15,6 +15,7 @@ include quality/gates.conf
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 PYTHON_VERSION ?= 3.12
+PROPERTY_PROFILE ?= ci
 
 # ---------------------------------------------------------------------------
 # Development setup
@@ -337,7 +338,7 @@ ci:  ## Full CI pipeline
 	$(MAKE) test-fuzz
 	$(MAKE) safety
 	$(MAKE) sonar-reports
-	$(MAKE) test-property-ci
+	$(MAKE) test-property-$(PROPERTY_PROFILE)
 	$(MAKE) build
 	$(MAKE) verify
 	$(MAKE) smoke-test

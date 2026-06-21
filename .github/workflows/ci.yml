@@ -20,7 +20,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.12', '3.13', '3.14']
+        include:
+          - python-version: '3.12'
+            property-profile: push
+          - python-version: '3.13'
+            property-profile: ci
+          - python-version: '3.14'
+            property-profile: ci
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,6 +45,7 @@ jobs:
       - name: Run CI pipeline
         env:
           SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+          PROPERTY_PROFILE: ${{ matrix.property-profile }}
         run: make ci
 
   test-macos:
@@ -62,4 +69,5 @@ jobs:
       - name: Run CI pipeline
         env:
           SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+          PROPERTY_PROFILE: push
         run: make ci
