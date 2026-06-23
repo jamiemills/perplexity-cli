@@ -1,0 +1,51 @@
+[importlinter]
+root_package = perplexity_cli
+include_external_packages = True
+
+[importlinter:contract:1]
+name = Domain must not import frameworks, CLI, or network libraries
+type = forbidden
+source_modules =
+    perplexity_cli.envelope
+    perplexity_cli.config.models
+    perplexity_cli.config.defaults
+    perplexity_cli.models
+    perplexity_cli.models.model_config
+    perplexity_cli.ndjson
+forbidden_modules =
+    click
+    rich
+    httpx
+    curl_cffi
+    websockets
+    mcp
+    cryptography
+    tenacity
+
+[importlinter:contract:2]
+name = Application services must not import concrete adapters
+type = forbidden
+source_modules =
+    perplexity_cli.services
+forbidden_modules =
+    perplexity_cli.api
+    perplexity_cli.auth
+    perplexity_cli.attachments
+    perplexity_cli.threads
+
+[importlinter:contract:3]
+name = Presentation must not reach into adapter internals
+type = forbidden
+source_modules =
+    perplexity_cli.cli
+    perplexity_cli.commands
+    perplexity_cli.formatting
+    perplexity_cli.help_json
+    perplexity_cli.mcp_server
+forbidden_modules =
+    perplexity_cli.api.client
+    perplexity_cli.auth.oauth_handler
+    perplexity_cli.auth.token_manager
+    perplexity_cli.attachments.upload_manager
+    perplexity_cli.threads.scraper
+    perplexity_cli.threads.cache_manager

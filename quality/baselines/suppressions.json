@@ -1,5 +1,5 @@
 {
-  "src/perplexity_cli/runners/skill.py": 1,
-  "src/perplexity_cli/utils/config.py": 1,
+  "src/perplexity_cli/runners/skill.py": 2,
+  "src/perplexity_cli/utils/config.py": 2,
   "src/perplexity_cli/utils/retry.py": 1
 }

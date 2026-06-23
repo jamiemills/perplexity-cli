@@ -255,7 +255,8 @@ class Formatter(ABC):
             answer: Answer object containing text and references.
             strip_references: If True, exclude references section from output.
         """
-        raise NotImplementedError("This formatter does not support direct rendering")
+        msg = "This formatter does not support direct rendering"
+        raise NotImplementedError(msg)
 
     def should_use_colors(self) -> bool:
         """Check if colours should be used based on TTY and NO_COLOR.
@@ -283,6 +284,4 @@ def should_use_plain_default() -> bool:
 
     if not sys.stdout.isatty():
         return True
-    if os.environ.get("NO_COLOR") is not None:
-        return True
-    return False
+    return os.environ.get("NO_COLOR") is not None

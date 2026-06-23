@@ -7,7 +7,7 @@ import logging
 import os
 from functools import lru_cache
 
-# nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2
+# nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2  # noqa: ERA001
 from importlib import resources
 from pathlib import Path
 from typing import Any, TypeGuard
@@ -88,16 +88,14 @@ def get_config_dir() -> Path:
     else:
         # Linux/macOS — respect XDG_CONFIG_HOME
         xdg_config = os.getenv("XDG_CONFIG_HOME")
-        if xdg_config:
-            base_dir = Path(xdg_config)
-        else:
-            base_dir = Path.home() / ".config"
+        base_dir = Path(xdg_config) if xdg_config else Path.home() / ".config"
         config_dir = base_dir / "perplexity-cli"
 
     try:
         config_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        raise ConfigurationError(f"Failed to create config directory {config_dir}: {e}") from e
+        msg = f"Failed to create config directory {config_dir}: {e}"
+        raise ConfigurationError(msg) from e
 
     return config_dir
 
@@ -116,7 +114,8 @@ def _get_default_urls() -> dict[str, Any]:
         with package_config.open("r", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
-        raise ConfigurationError(f"Failed to load default URLs configuration: {e}") from e
+        msg = f"Failed to load default URLs configuration: {e}"
+        raise ConfigurationError(msg) from e
 
 
 def _ensure_user_urls_config() -> None:
@@ -128,7 +127,8 @@ def _ensure_user_urls_config() -> None:
             with open(urls_path, "w", encoding="utf-8") as f:
                 json.dump(default_urls, f, indent=2)
         except (OSError, json.JSONDecodeError) as e:
-            raise ConfigurationError(f"Failed to create URLs configuration file: {e}") from e
+            msg = f"Failed to create URLs configuration file: {e}"
+            raise ConfigurationError(msg) from e
 
 
 def _apply_url_env_overrides(perplexity_config: dict[str, Any]) -> None:
@@ -180,21 +180,25 @@ def get_urls() -> URLConfig:
         with open(urls_path, encoding="utf-8") as f:
             urls_dict = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
-        raise ConfigurationError(f"Failed to load URLs configuration: {e}") from e
+        msg = f"Failed to load URLs configuration: {e}"
+        raise ConfigurationError(msg) from e
 
     if "perplexity" not in urls_dict:
-        raise ConfigurationError("URLs configuration missing 'perplexity' section")
+        msg = "URLs configuration missing 'perplexity' section"
+        raise ConfigurationError(msg)
 
     perplexity_config = urls_dict["perplexity"]
     if not _is_str_dict(perplexity_config):
-        raise ConfigurationError("'perplexity' section must be a dictionary")
+        msg = "'perplexity' section must be a dictionary"
+        raise ConfigurationError(msg)
 
     _apply_url_env_overrides(perplexity_config)
 
     try:
         return URLConfig.model_validate(perplexity_config)
     except ValueError as e:
-        raise ConfigurationError(f"Invalid URLs configuration: {e}") from e
+        msg = f"Invalid URLs configuration: {e}"
+        raise ConfigurationError(msg) from e
 
 
 def clear_urls_cache() -> None:
@@ -350,7 +354,8 @@ def _merge_rate_limiting_section(urls_data: dict[str, Any], config_dict: dict[st
         return
     user_config = urls_data["rate_limiting"]
     if not _is_str_dict(user_config):
-        raise ConfigurationError("rate_limiting section must be a dictionary")
+        msg = "rate_limiting section must be a dictionary"
+        raise ConfigurationError(msg)
     config_dict.update(user_config)
 
 
@@ -382,9 +387,8 @@ def _apply_rate_limiting_rps(config_dict: dict[str, Any]) -> None:
     try:
         config_dict["requests_per_period"] = int(os.environ["PERPLEXITY_RATE_LIMITING_RPS"])
     except ValueError as e:
-        raise ConfigurationError(
-            f"Invalid PERPLEXITY_RATE_LIMITING_RPS: {os.environ['PERPLEXITY_RATE_LIMITING_RPS']}"
-        ) from e
+        msg = f"Invalid PERPLEXITY_RATE_LIMITING_RPS: {os.environ['PERPLEXITY_RATE_LIMITING_RPS']}"
+        raise ConfigurationError(msg) from e
 
 
 def _apply_rate_limiting_period(config_dict: dict[str, Any]) -> None:
@@ -394,9 +398,8 @@ def _apply_rate_limiting_period(config_dict: dict[str, Any]) -> None:
     try:
         config_dict["period_seconds"] = float(os.environ["PERPLEXITY_RATE_LIMITING_PERIOD"])
     except ValueError as e:
-        raise ConfigurationError(
-            f"Invalid PERPLEXITY_RATE_LIMITING_PERIOD: {os.environ['PERPLEXITY_RATE_LIMITING_PERIOD']}"
-        ) from e
+        msg = f"Invalid PERPLEXITY_RATE_LIMITING_PERIOD: {os.environ['PERPLEXITY_RATE_LIMITING_PERIOD']}"
+        raise ConfigurationError(msg) from e
 
 
 def get_rate_limiting_config() -> RateLimitConfig:
@@ -421,7 +424,8 @@ def get_rate_limiting_config() -> RateLimitConfig:
     try:
         return RateLimitConfig(**config_dict)
     except ValueError as e:
-        raise ConfigurationError(f"Invalid rate limiting configuration: {e}") from e
+        msg = f"Invalid rate limiting configuration: {e}"
+        raise ConfigurationError(msg) from e
 
 
 def get_feature_config_path() -> Path:
@@ -480,14 +484,13 @@ def _load_feature_config_from_file() -> dict[str, Any]:
         if "features" in user_config:
             features = user_config["features"]
             if not _is_str_dict(features):
-                raise ConfigurationError(
-                    "Feature configuration 'features' section must be a dictionary"
-                )
+                msg = "Feature configuration 'features' section must be a dictionary"
+                raise ConfigurationError(msg)
             feature_dict.update(features)
     except (OSError, json.JSONDecodeError) as e:
-        from perplexity_cli.utils.logging import get_logger as _get_logger
-
-        _get_logger().warning("Failed to load feature config, using defaults: %s", e)
+        logging.getLogger("perplexity_cli").warning(
+            "Failed to load feature config, using defaults: %s", e
+        )
     return feature_dict
 
 
@@ -532,7 +535,8 @@ def get_feature_config() -> FeatureConfig:
     try:
         return FeatureConfig(**feature_dict)
     except ValueError as e:
-        raise ConfigurationError(f"Invalid feature configuration: {e}") from e
+        msg = f"Invalid feature configuration: {e}"
+        raise ConfigurationError(msg) from e
 
 
 def clear_feature_config_cache() -> None:
@@ -577,10 +581,12 @@ def set_feature(key: str, value: object) -> None:
     """
     valid_keys = ["save_cookies", "debug_mode"]
     if key not in valid_keys:
-        raise ConfigurationError(f"Invalid feature key: {key}. Valid keys: {', '.join(valid_keys)}")
+        msg = f"Invalid feature key: {key}. Valid keys: {', '.join(valid_keys)}"
+        raise ConfigurationError(msg)
 
     if not isinstance(value, bool):
-        raise ConfigurationError(f"Feature value must be boolean, got {type(value).__name__}")
+        msg = f"Feature value must be boolean, got {type(value).__name__}"
+        raise ConfigurationError(msg)
 
     # Load current config (as Pydantic model)
     feature_config = get_feature_config()

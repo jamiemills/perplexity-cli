@@ -53,11 +53,11 @@ def _derive_encryption_key_legacy() -> bytes:
         key_hash = hashlib.sha256(_build_key_material() + _KEY_DERIVATION_SALT).digest()
 
         # Convert to Fernet-compatible key (base64-encoded 32 bytes)
-        fernet_key = base64.urlsafe_b64encode(key_hash)
-        return fernet_key
+        return base64.urlsafe_b64encode(key_hash)
 
     except OSError as e:
-        raise ConfigurationError(f"Failed to derive encryption key (legacy): {e}") from e
+        msg = f"Failed to derive encryption key (legacy): {e}"
+        raise ConfigurationError(msg) from e
 
 
 @lru_cache(maxsize=1)
@@ -84,7 +84,8 @@ def derive_encryption_key() -> bytes:
         return _derive_fernet_key(_KEY_DERIVATION_SALT)  # NOSONAR
 
     except OSError as e:
-        raise ConfigurationError(f"Failed to derive encryption key: {e}") from e
+        msg = f"Failed to derive encryption key: {e}"
+        raise ConfigurationError(msg) from e
 
 
 def encrypt_token(token: str) -> str:
@@ -107,17 +108,20 @@ def encrypt_token(token: str) -> str:
         payload = _ENCRYPTED_TOKEN_VERSION_PREFIX + salt + encrypted
         return base64.urlsafe_b64encode(payload).decode()
     except (ConfigurationError, ValueError, TypeError) as e:
-        raise ConfigurationError(f"Failed to encrypt token: {e}") from e
+        msg = f"Failed to encrypt token: {e}"
+        raise ConfigurationError(msg) from e
 
 
 def _decrypt_with_current_format(decoded_payload: bytes) -> str:
     """Decrypt a token stored in the current format with a per-message salt."""
     if not decoded_payload.startswith(_ENCRYPTED_TOKEN_VERSION_PREFIX):
-        raise ValueError("Encrypted token is not in the current format")
+        msg = "Encrypted token is not in the current format"
+        raise ValueError(msg)
 
     payload = decoded_payload[len(_ENCRYPTED_TOKEN_VERSION_PREFIX) :]
     if len(payload) <= _PER_MESSAGE_SALT_BYTES:
-        raise ValueError("Encrypted token payload is truncated")
+        msg = "Encrypted token payload is truncated"
+        raise ValueError(msg)
 
     salt = payload[:_PER_MESSAGE_SALT_BYTES]
     encrypted_bytes = payload[_PER_MESSAGE_SALT_BYTES:]
@@ -168,8 +172,9 @@ def decrypt_token(encrypted_token: str) -> str:
             try:
                 return _decrypt_with_legacy_sha256(encrypted_token)
             except (ConfigurationError, ValueError, TypeError, InvalidToken) as e:
-                raise AuthenticationError(
+                msg = (
                     "Failed to decrypt token. This usually means the token was "
                     "encrypted on a different machine or with a different user. "
                     "Please re-authenticate with: perplexity-cli auth"
-                ) from e
+                )
+                raise AuthenticationError(msg) from e

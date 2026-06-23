@@ -38,7 +38,8 @@ class FormatterRegistry:
         """
         if name not in self._formatters:
             available = ", ".join(self.names())
-            raise ValueError(f"Unknown formatter: {name}. Available: {available}")
+            msg = f"Unknown formatter: {name}. Available: {available}"
+            raise ValueError(msg)
         return self._formatters[name]()
 
     def names(self) -> list[str]:

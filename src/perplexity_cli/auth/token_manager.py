@@ -33,7 +33,8 @@ def _extract_token_string(record: dict[str, object]) -> str:
     """
     value = record.get("token")
     if not isinstance(value, str) or not value:
-        raise AuthenticationError("Token file is missing encrypted token data")
+        msg = "Token file is missing encrypted token data"
+        raise AuthenticationError(msg)
     return value
 
 
@@ -90,9 +91,8 @@ class TokenManager:
 
         except OSError as e:
             self.logger.error("Failed to save token: %s", e, exc_info=True)
-            raise OSError(
-                f"Failed to save or set permissions on token file {self.token_path}: {e}"
-            ) from e
+            msg = f"Failed to save or set permissions on token file {self.token_path}: {e}"
+            raise OSError(msg) from e
 
     def _prepare_token_data(
         self, encrypted_token: str, cookies: dict[str, str] | None
@@ -161,7 +161,8 @@ class TokenManager:
 
         except (OSError, json.JSONDecodeError) as e:
             self.logger.error("Failed to load token: %s", e, exc_info=True)
-            raise OSError(f"Failed to load token from {self.token_path}: {e}") from e
+            msg = f"Failed to load token from {self.token_path}: {e}"
+            raise OSError(msg) from e
 
     def _read_and_validate_token_file(self) -> dict[str, object]:
         """Read and validate the token file structure.
@@ -177,13 +178,13 @@ class TokenManager:
 
         if not token_record.get("encrypted", False):
             self.logger.warning("Token file is not encrypted")
-            raise AuthenticationError(
-                "Token file is not encrypted. Please re-authenticate with: pxcli auth login"
-            )
+            msg = "Token file is not encrypted. Please re-authenticate with: pxcli auth login"
+            raise AuthenticationError(msg)
 
         if not token_record.get("token"):
             self.logger.error("Token file missing encrypted token data")
-            raise AuthenticationError("Token file is missing encrypted token data")
+            msg = "Token file is missing encrypted token data"
+            raise AuthenticationError(msg)
 
         return token_record
 
@@ -324,7 +325,8 @@ class TokenManager:
                 self.logger.info("Token cleared from %s", redact_path(self.token_path))
             except OSError as e:
                 self.logger.error("Failed to delete token file: %s", e, exc_info=True)
-                raise OSError(f"Failed to delete token file: {e}") from e
+                msg = f"Failed to delete token file: {e}"
+                raise OSError(msg) from e
 
     def token_exists(self) -> bool:
         """Check if a stored token exists.

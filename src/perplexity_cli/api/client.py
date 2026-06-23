@@ -73,28 +73,32 @@ def _require_str(value: object, context: str) -> str:
     """Return *value* as a string or raise for an invalid transport shape."""
     if isinstance(value, str):
         return value
-    raise RuntimeError(f"Expected string transport attribute for {context}")
+    msg = f"Expected string transport attribute for {context}"
+    raise RuntimeError(msg)
 
 
 def _require_int(value: object, context: str) -> int:
     """Return *value* as an integer or raise for an invalid transport shape."""
     if isinstance(value, int):
         return value
-    raise RuntimeError(f"Expected integer transport attribute for {context}")
+    msg = f"Expected integer transport attribute for {context}"
+    raise RuntimeError(msg)
 
 
 def _require_bool(value: object, context: str) -> bool:
     """Return *value* as a boolean or raise for an invalid transport shape."""
     if isinstance(value, bool):
         return value
-    raise RuntimeError(f"Expected boolean transport attribute for {context}")
+    msg = f"Expected boolean transport attribute for {context}"
+    raise RuntimeError(msg)
 
 
 def _require_bytes_or_str(value: object, context: str) -> bytes | str:
     """Return *value* as bytes or string or raise for an invalid shape."""
     if isinstance(value, bytes | str):
         return value
-    raise RuntimeError(f"Expected bytes-or-string transport attribute for {context}")
+    msg = f"Expected bytes-or-string transport attribute for {context}"
+    raise RuntimeError(msg)
 
 
 def _require_json_object_or_none(value: object, context: str) -> JsonObject | None:
@@ -103,7 +107,8 @@ def _require_json_object_or_none(value: object, context: str) -> JsonObject | No
         return None
     if _is_json_object(value):
         return value
-    raise RuntimeError(f"Expected JSON object transport attribute for {context}")
+    msg = f"Expected JSON object transport attribute for {context}"
+    raise RuntimeError(msg)
 
 
 def _is_deep_research_value(value: object) -> bool:
@@ -122,12 +127,14 @@ def _iter_object_values(value: object, context: str) -> Iterator[object]:
     """Yield objects from an untyped iterable transport value."""
     iter_attr = getattr(value, "__iter__", None)
     if not callable(iter_attr):
-        raise RuntimeError(f"Expected iterable transport value for {context}")
+        msg = f"Expected iterable transport value for {context}"
+        raise RuntimeError(msg)
 
     iterator = iter_attr()
     next_attr = getattr(iterator, "__next__", None)
     if not callable(next_attr):
-        raise RuntimeError(f"Expected iterator transport value for {context}")
+        msg = f"Expected iterator transport value for {context}"
+        raise RuntimeError(msg)
 
     while True:
         try:
@@ -141,10 +148,12 @@ def _coerce_header_pair(item: object, context: str) -> tuple[str, str]:
     len_attr = getattr(item, "__len__", None)
     getitem_attr = getattr(item, "__getitem__", None)
     if not callable(len_attr) or not callable(getitem_attr):
-        raise RuntimeError(f"Expected header pair items for {context}")
+        msg = f"Expected header pair items for {context}"
+        raise RuntimeError(msg)
     size = len_attr()
     if not isinstance(size, int) or size != HEADER_PAIR_SIZE:
-        raise RuntimeError(f"Expected header pair items for {context}")
+        msg = f"Expected header pair items for {context}"
+        raise RuntimeError(msg)
     return str(getitem_attr(0)), str(getitem_attr(1))
 
 
@@ -152,7 +161,8 @@ def _coerce_header_mapping(value: object, context: str) -> dict[str, str]:
     """Coerce header-like items into a standard string dictionary."""
     items_attr = getattr(value, "items", None)
     if not callable(items_attr):
-        raise RuntimeError(f"Expected mapping-like transport attribute for {context}")
+        msg = f"Expected mapping-like transport attribute for {context}"
+        raise RuntimeError(msg)
 
     items_result_object = items_attr()
 
@@ -200,12 +210,14 @@ class _ResponseAdapter:
     def iter_lines(self) -> Iterator[bytes | str]:
         iter_lines_attr = getattr(self._response, "iter_lines", None)
         if not callable(iter_lines_attr):
-            raise RuntimeError("Expected callable response.iter_lines transport method")
+            msg = "Expected callable response.iter_lines transport method"
+            raise RuntimeError(msg)
 
         lines_result_object = iter_lines_attr()
         for raw_line in _iter_object_values(lines_result_object, "response.iter_lines"):
             if not isinstance(raw_line, bytes | str):
-                raise RuntimeError("Expected bytes or string lines from response.iter_lines")
+                msg = "Expected bytes or string lines from response.iter_lines"
+                raise RuntimeError(msg)
             yield raw_line
 
 
@@ -218,7 +230,8 @@ class _StreamContextAdapter:
     def __enter__(self) -> _ResponseAdapter:
         enter_attr = getattr(self._context, "__enter__", None)
         if not callable(enter_attr):
-            raise RuntimeError("Expected __enter__ on stream context manager")
+            msg = "Expected __enter__ on stream context manager"
+            raise RuntimeError(msg)
         return _ResponseAdapter(enter_attr())
 
     def __exit__(
@@ -229,11 +242,13 @@ class _StreamContextAdapter:
     ) -> bool | None:
         exit_attr = getattr(self._context, "__exit__", None)
         if not callable(exit_attr):
-            raise RuntimeError("Expected __exit__ on stream context manager")
+            msg = "Expected __exit__ on stream context manager"
+            raise RuntimeError(msg)
         result = exit_attr(exc_type, exc_value, traceback)
         if result is None or isinstance(result, bool):
             return result
-        raise RuntimeError("Expected bool-or-None return from stream context manager")
+        msg = "Expected bool-or-None return from stream context manager"
+        raise RuntimeError(msg)
 
 
 def _create_transport_session(timeout: int) -> object:
@@ -241,17 +256,18 @@ def _create_transport_session(timeout: int) -> object:
     session_factory_module = importlib.import_module("perplexity_cli.utils.session_factory")
     create_sync_session = getattr(session_factory_module, "create_sync_session", None)
     if not callable(create_sync_session):
-        raise RuntimeError("Expected callable create_sync_session transport factory")
+        msg = "Expected callable create_sync_session transport factory"
+        raise RuntimeError(msg)
 
-    session = create_sync_session(timeout=timeout)
-    return session
+    return create_sync_session(timeout=timeout)
 
 
 def _close_transport_session(session: object) -> None:
     """Close the underlying transport session."""
     close_attr = getattr(session, "close", None)
     if not callable(close_attr):
-        raise RuntimeError("Expected callable session.close transport method")
+        msg = "Expected callable session.close transport method"
+        raise RuntimeError(msg)
     close_attr()
 
 
@@ -263,7 +279,8 @@ def _open_stream_context(
     """Open a typed stream context from the untyped transport session."""
     stream_attr = getattr(session, "stream", None)
     if not callable(stream_attr):
-        raise RuntimeError("Expected callable session.stream transport method")
+        msg = "Expected callable session.stream transport method"
+        raise RuntimeError(msg)
 
     return _StreamContextAdapter(
         stream_attr(
@@ -373,10 +390,12 @@ class SSEParser:
         try:
             parsed = json.loads(data_str)
         except json.JSONDecodeError as e:
-            raise UpstreamSchemaError(f"Failed to parse SSE data as JSON: {data_str[:100]}") from e
+            msg = f"Failed to parse SSE data as JSON: {data_str[:100]}"
+            raise UpstreamSchemaError(msg) from e
 
         if not _is_json_object(parsed):
-            raise UpstreamSchemaError("SSE data must decode to a JSON object")
+            msg = "SSE data must decode to a JSON object"
+            raise UpstreamSchemaError(msg)
         return parsed
 
     @staticmethod
@@ -453,8 +472,9 @@ class RetryHandler:
     def _handle_401_error(self, error: PerplexityHTTPStatusError) -> float:
         """Handle 401 authentication errors (never retryable)."""
         self.logger.error("HTTP 401 error (not retryable): %s", error)
+        msg = "Authentication failed. Token may be invalid or expired."
         raise PerplexityHTTPStatusError(
-            "Authentication failed. Token may be invalid or expired.",
+            msg,
             request=error.request,
             response=error.response,
         ) from error
@@ -477,8 +497,9 @@ class RetryHandler:
             self.max_retries,
             error,
         )
+        msg = "Access forbidden. Check API permissions or try again later."
         raise PerplexityHTTPStatusError(
-            "Access forbidden. Check API permissions or try again later.",
+            msg,
             request=error.request,
             response=error.response,
         ) from error
@@ -506,8 +527,9 @@ class RetryHandler:
             return wait_time
 
         if status == HTTP_STATUS_TOO_MANY_REQUESTS:
+            msg = "Rate limit exceeded. Please wait and try again."
             raise PerplexityHTTPStatusError(
-                "Rate limit exceeded. Please wait and try again.",
+                msg,
                 request=error.request,
                 response=error.response,
             ) from error

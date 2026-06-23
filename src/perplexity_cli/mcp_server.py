@@ -116,7 +116,8 @@ def _normalise_output_format(output_format: str) -> OutputFormat:
     }
     normalised = aliases.get(output_format.strip().lower())
     if normalised is None:
-        raise ValueError("output_format must be one of: json, markdown, plain")
+        msg = "output_format must be one of: json, markdown, plain"
+        raise ValueError(msg)
     return cast(OutputFormat, normalised)
 
 
@@ -197,7 +198,8 @@ def run_mcp_query(query: str, mode: QueryMode, output_format: str) -> MCPQueryRe
     """
     cleaned_query = query.strip()
     if not cleaned_query:
-        raise ValueError("query must not be empty")
+        msg = "query must not be empty"
+        raise ValueError(msg)
 
     normalised_format = _normalise_output_format(output_format)
 

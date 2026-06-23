@@ -135,7 +135,8 @@ def _get_cache_str_field(thread_dict: dict[str, object], field: str) -> str:
     """Extract a required string field from a cached thread entry."""
     value = thread_dict.get(field)
     if not isinstance(value, str):
-        raise UpstreamSchemaError(f"Malformed cached thread record: missing {field}")
+        msg = f"Malformed cached thread record: missing {field}"
+        raise UpstreamSchemaError(msg)
     return value
 
 
@@ -207,14 +208,16 @@ def _coerce_optional_str(value: object, field_name: str) -> str | None:
     """Validate an optional string argument parsed from a legacy call shape."""
     if value is None or isinstance(value, str):
         return value
-    raise TypeError(f"{field_name} must be a string or None")
+    msg = f"{field_name} must be a string or None"
+    raise TypeError(msg)
 
 
 def _coerce_optional_int(value: object, field_name: str) -> int | None:
     """Validate an optional integer argument parsed from a legacy call shape."""
     if value is None or isinstance(value, int):
         return value
-    raise TypeError(f"{field_name} must be an integer or None")
+    msg = f"{field_name} must be an integer or None"
+    raise TypeError(msg)
 
 
 def _coerce_progress_callback(value: object) -> ProgressCallback | None:
@@ -223,13 +226,15 @@ def _coerce_progress_callback(value: object) -> ProgressCallback | None:
         return None
     if _is_progress_callback(value):
         return value
-    raise TypeError("progress_callback must be callable or None")
+    msg = "progress_callback must be callable or None"
+    raise TypeError(msg)
 
 
 def _validate_batch_processing_arg_count(arg_count: int) -> None:
     """Validate the legacy batch-processing argument count."""
     if arg_count > _LEGACY_CONTEXT_ARG_LIMIT:
-        raise TypeError("_process_thread_batch expected at most three context arguments")
+        msg = "_process_thread_batch expected at most three context arguments"
+        raise TypeError(msg)
 
 
 def _legacy_context_value(args: tuple[object, ...], index: int) -> object | None:
@@ -270,7 +275,8 @@ def _require_response(response: object) -> ResponseProtocol:
     """Validate that an upstream response matches the scraper protocol."""
     if isinstance(response, ResponseProtocol) or _is_response_protocol(response):
         return response
-    raise UpstreamSchemaError("Malformed HTTP response object from upstream session")
+    msg = "Malformed HTTP response object from upstream session"
+    raise UpstreamSchemaError(msg)
 
 
 def _create_async_session(timeout: int = _DEFAULT_TIMEOUT_SECONDS) -> AsyncSession[Response]:
@@ -286,12 +292,14 @@ def _create_async_session(timeout: int = _DEFAULT_TIMEOUT_SECONDS) -> AsyncSessi
         RuntimeError: If curl_cffi is not installed.
     """
     if not _CURL_CFFI_AVAILABLE:
-        raise RuntimeError("curl_cffi is required but could not be imported")
+        msg = "curl_cffi is required but could not be imported"
+        raise RuntimeError(msg)
 
     from perplexity_cli.utils.session_factory import AsyncSession
 
     if AsyncSession is None:
-        raise RuntimeError("AsyncSession from session_factory resolved to None")
+        msg = "AsyncSession from session_factory resolved to None"
+        raise RuntimeError(msg)
 
     return AsyncSession(impersonate="chrome", timeout=timeout)
 
@@ -325,7 +333,8 @@ def _validate_date_params(from_date: str | None, to_date: str | None) -> None:
             try:
                 dateutil_parser.parse(value)
             except (ValueError, OverflowError) as exc:
-                raise ValueError(f"Invalid {label} '{value}': expected YYYY-MM-DD format") from exc
+                msg = f"Invalid {label} '{value}': expected YYYY-MM-DD format"
+                raise ValueError(msg) from exc
 
 
 def _extract_total_threads(thread_dict: ThreadPayload, total_threads: int | None) -> int:
@@ -334,7 +343,8 @@ def _extract_total_threads(thread_dict: ThreadPayload, total_threads: int | None
         return total_threads
     raw = thread_dict.get("total_threads", 0)
     if not isinstance(raw, int):
-        raise UpstreamSchemaError("Malformed total_threads value in upstream API response")
+        msg = "Malformed total_threads value in upstream API response"
+        raise UpstreamSchemaError(msg)
     return raw
 
 
@@ -354,7 +364,8 @@ def _get_str_field(thread_dict: ThreadPayload, field: str, default: str | None =
     """
     value = thread_dict.get(field, default)
     if not isinstance(value, str):
-        raise UpstreamSchemaError(f"Malformed thread {field} in upstream API response")
+        msg = f"Malformed thread {field} in upstream API response"
+        raise UpstreamSchemaError(msg)
     return value
 
 
@@ -378,7 +389,8 @@ def _parse_single_thread(
 
     timestamp_str = _get_str_field(thread_dict, "last_query_datetime")
     if not timestamp_str:
-        raise UpstreamSchemaError("Malformed thread timestamp in upstream API response")
+        msg = "Malformed thread timestamp in upstream API response"
+        raise UpstreamSchemaError(msg)
 
     dt = datetime.fromisoformat(timestamp_str)
     if from_date and not _is_in_date_range(dt, from_date, None):
@@ -409,14 +421,14 @@ def _handle_http_error(e: PerplexityHTTPStatusError) -> None:
 
     error_code, _, _ = classify_http_error(e)
     if error_code == ErrorCode.authentication_required:
-        raise AuthenticationError(
+        msg = (
             "Authentication failed. Token may be expired. "
             "Please re-authenticate with: perplexity-cli auth"
-        ) from e
+        )
+        raise AuthenticationError(msg) from e
     if error_code == ErrorCode.rate_limited:
-        raise RateLimitError(
-            "Rate limit exceeded while fetching threads. Please try again later."
-        ) from e
+        msg = "Rate limit exceeded while fetching threads. Please try again later."
+        raise RateLimitError(msg) from e
     raise
 
 
@@ -678,7 +690,8 @@ class ThreadScraper:
             _handle_http_error(e)
             return []  # unreachable, satisfies type checker
         except _curl_request_exception_type as e:
-            raise PerplexityRequestError(f"Network error while fetching threads: {e}") from e
+            msg = f"Network error while fetching threads: {e}"
+            raise PerplexityRequestError(msg) from e
 
     async def _execute_api_post(
         self,
@@ -722,7 +735,8 @@ class ThreadScraper:
         try:
             return parse_thread_list_payload(response.json())
         except ValueError as e:
-            raise UpstreamSchemaError("Malformed thread list response from upstream API") from e
+            msg = "Malformed thread list response from upstream API"
+            raise UpstreamSchemaError(msg) from e
 
     def _build_auth_context(self, session_token: str) -> tuple[dict[str, str], dict[str, str]]:
         """Build headers and cookies for API requests.
@@ -849,7 +863,8 @@ class ThreadScraper:
             if record:
                 threads.append(record)
         except ValueError as e:
-            raise UpstreamSchemaError("Malformed thread timestamp in upstream API response") from e
+            msg = "Malformed thread timestamp in upstream API response"
+            raise UpstreamSchemaError(msg) from e
         return False
 
     def _filter_by_date_range(

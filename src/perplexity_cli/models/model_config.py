@@ -61,7 +61,8 @@ class ModelInfo(BaseModel):
     def validate_label(cls, value: str) -> str:
         """Validate that the label is non-empty."""
         if not value.strip():
-            raise ValueError("Label must be non-empty")
+            msg = "Label must be non-empty"
+            raise ValueError(msg)
         return value
 
 

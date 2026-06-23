@@ -22,7 +22,7 @@ def _describe_dict_shape(value: object) -> str:
     """Describe a dictionary-shaped payload value for diagnostics."""
     if not _is_mapping(value):
         return type(value).__name__
-    keys = sorted(str(key) for key in value.keys())[:5]
+    keys = sorted(str(key) for key in value)[:5]
     return f"object(keys=[{', '.join(keys)}])"
 
 

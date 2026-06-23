@@ -31,7 +31,8 @@ def convert_cache_dicts_to_thread_records(
     records: list[ThreadRecord] = []
     for thread_dict in thread_dicts:
         if not _is_str_str_dict(thread_dict):
-            raise UpstreamSchemaError("Malformed cached thread record")
+            msg = "Malformed cached thread record"
+            raise UpstreamSchemaError(msg)
 
         try:
             records.append(
@@ -42,6 +43,7 @@ def convert_cache_dicts_to_thread_records(
                 )
             )
         except KeyError as e:
-            raise UpstreamSchemaError(f"Malformed cached thread record: missing {e.args[0]}") from e
+            msg = f"Malformed cached thread record: missing {e.args[0]}"
+            raise UpstreamSchemaError(msg) from e
 
     return records

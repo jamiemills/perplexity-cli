@@ -177,7 +177,8 @@ def _normalise_context(ctx_obj: object) -> ExportContext | None:
         if value is None:
             continue
         if not isinstance(value, bool):
-            raise TypeError(f"ctx_obj['{key}'] must be a bool when provided")
+            msg = f"ctx_obj['{key}'] must be a bool when provided"
+            raise TypeError(msg)
         normalised[key] = value
     return ExportContext(
         json=bool(normalised.get("json")),
@@ -217,14 +218,12 @@ def _resolve_export_tail_values(
     if kwargs:
         expected_keys = {"output", "force_refresh", "clear_cache"}
         if set(kwargs) != expected_keys:
-            raise TypeError(
-                "run_export_threads_command requires output, force_refresh, clear_cache"
-            )
+            msg = "run_export_threads_command requires output, force_refresh, clear_cache"
+            raise TypeError(msg)
         return kwargs["output"], kwargs["force_refresh"], kwargs["clear_cache"]
     if len(args) != _EXPORT_TAIL_ARG_COUNT:
-        raise TypeError(
-            "run_export_threads_command expected output, force_refresh, and clear_cache"
-        )
+        msg = "run_export_threads_command expected output, force_refresh, and clear_cache"
+        raise TypeError(msg)
     output, force_refresh, clear_cache = args
     return output, force_refresh, clear_cache
 
@@ -234,7 +233,8 @@ def _validate_optional_date(value: object, field_name: str) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str):
-        raise TypeError(f"{field_name} must be a string or None")
+        msg = f"{field_name} must be a string or None"
+        raise TypeError(msg)
     return value
 
 
@@ -243,14 +243,16 @@ def _validate_output_path(value: object) -> Path | None:
     if value is None:
         return None
     if not isinstance(value, Path):
-        raise TypeError("output must be a Path or None")
+        msg = "output must be a Path or None"
+        raise TypeError(msg)
     return value
 
 
 def _require_bool_value(value: object, field_name: str) -> bool:
     """Validate one required boolean argument."""
     if not isinstance(value, bool):
-        raise TypeError(f"{field_name} must be a bool")
+        msg = f"{field_name} must be a bool"
+        raise TypeError(msg)
     return value
 
 
@@ -433,7 +435,7 @@ def _output_export_results(
 def _handle_known_error(e: Exception, output_format: OutputFormat, logger: logging.Logger) -> None:
     """Handle AuthenticationError, PerplexityRequestError, UpstreamSchemaError, ValueError, and RateLimitError."""
     _emit_json_error(e, output_format)
-    logger.error("Export failed: %s", e, exc_info=True)
+    logger.error("Export failed: %s", e)
     click.echo(f"\n[ERROR] Export failed: {e}", err=True)
     if isinstance(e, AuthenticationError):
         click.echo("\nYour token may have expired. Please re-authenticate:", err=True)
@@ -508,7 +510,8 @@ def _prepare_export(
     token, cookies = tm.load_token()
     if not token:
         _handle_auth_missing(output_mode.json_mode, logger)
-        raise AssertionError("unreachable after auth-missing handler exits")
+        msg = "unreachable after auth-missing handler exits"
+        raise AssertionError(msg)
 
     _validate_export_dates(
         request.date_range.from_date,

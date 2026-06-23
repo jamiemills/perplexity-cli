@@ -33,7 +33,8 @@ class StyleManager:
                 style_config = json.load(f)
                 return style_config.get("style")
         except (json.JSONDecodeError, KeyError) as e:
-            raise OSError(f"Failed to load style from {self.style_path}: {e}") from e
+            msg = f"Failed to load style from {self.style_path}: {e}"
+            raise OSError(msg) from e
 
     def _validate_style_input(self, style: str) -> None:
         """Validate that a style string meets requirements.
@@ -45,14 +46,17 @@ class StyleManager:
             ValueError: If style is empty, blank, or exceeds maximum length.
         """
         if type(style) is not str or not style:
-            raise ValueError("Style must be a non-empty string")
+            msg = "Style must be a non-empty string"
+            raise ValueError(msg)
         if not style.strip():
-            raise ValueError("Style cannot be blank or whitespace only")
+            msg = "Style cannot be blank or whitespace only"
+            raise ValueError(msg)
         if len(style) > MAX_STYLE_LENGTH:
-            raise ValueError(
+            msg = (
                 f"Style exceeds maximum length of {MAX_STYLE_LENGTH} characters "
                 f"(current length: {len(style)} characters)"
             )
+            raise ValueError(msg)
 
     def save_style(self, style: str) -> None:
         """Save style configuration to file.
@@ -78,7 +82,8 @@ class StyleManager:
                 json.dump(style_config, f, indent=2)
             os.chmod(self.style_path, 0o600)
         except OSError as e:
-            raise OSError(f"Failed to save style to {self.style_path}: {e}") from e
+            msg = f"Failed to save style to {self.style_path}: {e}"
+            raise OSError(msg) from e
 
     def clear_style(self) -> None:
         """Remove style configuration.
@@ -89,7 +94,8 @@ class StyleManager:
             try:
                 self.style_path.unlink()
             except OSError as e:
-                raise OSError(f"Failed to delete style file {self.style_path}: {e}") from e
+                msg = f"Failed to delete style file {self.style_path}: {e}"
+                raise OSError(msg) from e
 
     def validate_style(self, style: str) -> bool:
         """Validate style format.
@@ -104,6 +110,4 @@ class StyleManager:
             return False
         if not style.strip():
             return False
-        if len(style) > MAX_STYLE_LENGTH:
-            return False
-        return True
+        return not len(style) > MAX_STYLE_LENGTH

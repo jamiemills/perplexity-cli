@@ -50,7 +50,7 @@ def write_threads_csv(
         ...     ThreadRecord(
         ...         title="Test thread",
         ...         url="https://www.perplexity.ai/search/test-abc123",
-        ...         created_at="2025-12-23T13:51:50Z"
+        ...         created_at="2025-12-23T13:51:50Z",
         ...     )
         ... ]
         >>> path = write_threads_csv(records)
@@ -58,7 +58,8 @@ def write_threads_csv(
         threads-2025-12-23-143022.csv
     """
     if not records:
-        raise ValueError("Cannot write CSV with empty records list")
+        msg = "Cannot write CSV with empty records list"
+        raise ValueError(msg)
 
     # Generate default filename if not provided
     if output_path is None:
@@ -82,4 +83,5 @@ def write_threads_csv(
 
         return output_path
     except OSError as e:
-        raise OSError(f"Failed to write CSV file to {output_path}: {e}") from e
+        msg = f"Failed to write CSV file to {output_path}: {e}"
+        raise OSError(msg) from e

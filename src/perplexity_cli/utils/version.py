@@ -69,7 +69,8 @@ def get_version() -> str:
     try:
         return version("pxcli")
     except PackageNotFoundError:
-        raise RuntimeError("Unable to determine pxcli version") from None
+        msg = "Unable to determine pxcli version"
+        raise RuntimeError(msg) from None
 
 
 def get_version_from_pyproject() -> str:
@@ -83,7 +84,8 @@ def get_version_from_pyproject() -> str:
     """
     package_version = _read_pyproject_version()
     if package_version is None:
-        raise RuntimeError("pyproject.toml version could not be read")
+        msg = "pyproject.toml version could not be read"
+        raise RuntimeError(msg)
 
     return package_version
 

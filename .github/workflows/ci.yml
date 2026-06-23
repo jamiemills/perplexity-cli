@@ -14,9 +14,24 @@ permissions:
   contents: read
 
 jobs:
+  security-scan:
+    name: Security Scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+
   test:
     name: Ubuntu / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    needs: security-scan
     strategy:
       fail-fast: false
       matrix:
@@ -51,6 +66,7 @@ jobs:
   test-macos:
     name: macOS / Python 3.12
     runs-on: macos-latest
+    needs: security-scan
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

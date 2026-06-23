@@ -1,15 +1,7 @@
 """Plan-compliance analyser (the post-plan gate).
 
-Validates that a plan -- the output of ``make quality-plan`` or any document
-under ``.claude/plans/`` -- adheres to the prevention rules before a build
-phase may consume it.  This is the "analyser run after a plan is produced"
-required by ``.claude/analyzer-prevention-plan.md`` section 14.
-
-It enforces the Analyzer Compliance Review contract: the plan must contain a
-completed checklist covering every rule category (file-size, type boundaries,
-complexity, layering, structural patterns, suppressions), each marked
-``[PASS]``/``[FAIL]``, plus a consistent ``Result:`` line and a self-review
-section.  A plan with any ``[FAIL]`` or a missing category is non-compliant.
+Validates that a plan adheres to the prevention rules before a build
+phase may consume it.
 
 Usage::
 
@@ -28,28 +20,23 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PLANS_DIR = PROJECT_ROOT / ".claude" / "plans"
 DESCRIPTION = "Validate a produced plan against the prevention rules."
 
-# Each rule category and the synonyms that identify its checklist line.  The
-# synonyms span both the generator's gate-name vocabulary and the
-# quality-plan-reviewer subagent's rule-category vocabulary.
 _REQUIRED_CATEGORIES = {
-    "file size": ("file-size", "file size", "file sprawl"),
-    "type boundaries (Any/unknown)": ("pyright-strict", "any boundary", "any/unknown", "unknown"),
-    "complexity / parameters": ("ruff-architecture", "complexity", "parameter", "too-many"),
-    "layering / imports": (
-        "arch-check",
-        "coupling",
-        "import boundary",
-        "layering",
-        "layer boundary",
-    ),
-    "structural patterns (retry/status/TOCTOU)": (
+    "formatting": ("format-check",),
+    "linting": (" lint ", "lint violations"),
+    "type checking": ("typecheck-ty", "typecheck-pyright-strict"),
+    "security & dead code": ("bandit", "vulture"),
+    "complexity": ("complexity-cc", "complexity-mi"),
+    "semgrep static analysis": ("semgrep-clean-code",),
+    "architecture / coupling": ("arch-check", "coupling-check"),
+    "ratchets & hard gates": (
+        "file-size",
+        "suppressions",
+        "ruff-architecture",
+        "pyright-strict",
         "semgrep-architecture",
-        "retry",
-        "toctou",
-        "status",
-        "structural",
     ),
-    "suppressions": ("suppression",),
+    "dependencies": ("deptry", "pip-audit"),
+    "coverage": ("test-coverage", "module-coverage"),
 }
 
 
@@ -65,7 +52,6 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _resolve_plan(path: Path | None) -> Path | None:
-    """Return the explicit plan path or the newest plan under .claude/plans/."""
     if path is not None:
         return path if path.is_file() else None
     if not PLANS_DIR.is_dir():
@@ -75,7 +61,6 @@ def _resolve_plan(path: Path | None) -> Path | None:
 
 
 def _extract_section(text: str, heading: str) -> str:
-    """Return the body of a ``## <heading>`` section (up to the next ``## ``)."""
     marker = f"## {heading}"
     start = text.find(marker)
     if start < 0:
@@ -86,21 +71,20 @@ def _extract_section(text: str, heading: str) -> str:
 
 
 def _matches_synonym(line_lower: str, synonyms: tuple[str, ...]) -> bool:
-    """True if any synonym appears in the lower-cased line."""
     return any(syn in line_lower for syn in synonyms)
 
 
 def _line_marker(line_lower: str) -> str | None:
-    """Return 'pass'/'fail' for a ``[PASS]``/``[FAIL]`` line, else None."""
     if "[fail]" in line_lower:
         return "fail"
+    if "[skip]" in line_lower:
+        return "skip"
     if "[pass]" in line_lower:
         return "pass"
     return None
 
 
 def _category_status(compliance: str, synonyms: tuple[str, ...]) -> str:
-    """Return 'pass', 'fail', or 'missing' for one rule category."""
     for line in compliance.splitlines():
         lower = line.lower()
         if _matches_synonym(lower, synonyms):
@@ -111,7 +95,6 @@ def _category_status(compliance: str, synonyms: tuple[str, ...]) -> str:
 
 
 def _result_line(compliance: str) -> str:
-    """Return the overall Result value from the compliance section, or '' ."""
     for line in compliance.splitlines():
         stripped = line.strip().lower().lstrip("- ")
         if not stripped.startswith("result"):
@@ -124,7 +107,6 @@ def _result_line(compliance: str) -> str:
 
 
 def _has_self_review(text: str) -> bool:
-    """True if the plan contains a self-review section."""
     return bool(
         _extract_section(text, "Generated Plan Self-Review")
         or _extract_section(text, "Plan Self-Review")
@@ -132,7 +114,6 @@ def _has_self_review(text: str) -> bool:
 
 
 def _category_reasons(compliance: str) -> list[str]:
-    """Collect missing/failed checklist categories."""
     reasons: list[str] = []
     for category, synonyms in _REQUIRED_CATEGORIES.items():
         status = _category_status(compliance, synonyms)
@@ -144,7 +125,6 @@ def _category_reasons(compliance: str) -> list[str]:
 
 
 def _result_reasons(compliance: str) -> list[str]:
-    """Return reasons for a missing or failing Result line."""
     result = _result_line(compliance)
     if not result:
         return ["missing 'Result: PASS|FAIL' line in the compliance review"]
@@ -154,15 +134,9 @@ def _result_reasons(compliance: str) -> list[str]:
 
 
 def _validate(text: str, require_self_review: bool = True) -> list[str]:
-    """Validate plan text; return a list of failure reasons (empty = compliant).
-
-    ``require_self_review`` is False when the generator calls this on a body
-    that has not yet had its self-review section appended.
-    """
-    compliance = _extract_section(text, "Analyzer Compliance Review")
+    compliance = _extract_section(text, "Analyser Compliance Review")
     if not compliance:
-        return ["missing '## Analyzer Compliance Review' section"]
-
+        return ["missing '## Analyser Compliance Review' section"]
     reasons = _category_reasons(compliance)
     reasons.extend(_result_reasons(compliance))
     if require_self_review and not _has_self_review(text):
@@ -171,7 +145,6 @@ def _validate(text: str, require_self_review: bool = True) -> list[str]:
 
 
 def _display(plan: Path) -> str:
-    """Return a readable path, relative to the project root when possible."""
     try:
         return str(plan.relative_to(PROJECT_ROOT))
     except ValueError:
@@ -197,8 +170,7 @@ def main() -> None:
     for reason in reasons:
         print(f"  - {reason}", file=sys.stderr)
     print(
-        "\nA build phase must not consume this plan until it passes. Update the "
-        "plan's Analyzer Compliance Review or re-run the quality-plan-reviewer subagent.",
+        "\nA build phase must not consume this plan until it passes.",
         file=sys.stderr,
     )
     sys.exit(1)

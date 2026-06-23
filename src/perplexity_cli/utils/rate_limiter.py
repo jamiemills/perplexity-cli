@@ -36,9 +36,11 @@ class RateLimiter:
             ValueError: If parameters are invalid.
         """
         if requests_per_period <= 0:
-            raise ValueError("requests_per_period must be greater than 0")
+            msg = "requests_per_period must be greater than 0"
+            raise ValueError(msg)
         if period_seconds <= 0:
-            raise ValueError("period_seconds must be greater than 0")
+            msg = "period_seconds must be greater than 0"
+            raise ValueError(msg)
 
         self.requests_per_period = requests_per_period
         self.period_seconds = period_seconds

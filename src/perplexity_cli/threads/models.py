@@ -36,7 +36,8 @@ class CacheMetadata(BaseModel):
         """Validate sync time is not in the future."""
         now = datetime.now(v.tzinfo) if v.tzinfo is not None else datetime.now()
         if v > now:
-            raise ValueError("last_sync_time cannot be in the future")
+            msg = "last_sync_time cannot be in the future"
+            raise ValueError(msg)
         return v
 
     @field_validator("total_threads")
@@ -44,7 +45,8 @@ class CacheMetadata(BaseModel):
     def validate_total_threads(cls, v: int) -> int:
         """Validate total_threads is non-negative."""
         if v < 0:
-            raise ValueError("total_threads cannot be negative")
+            msg = "total_threads cannot be negative"
+            raise ValueError(msg)
         return v
 
 
@@ -61,7 +63,8 @@ class CacheFormat(BaseModel):
     def validate_cache(cls, v: str) -> str:
         """Validate encrypted cache is not empty."""
         if not v or not v.strip():
-            raise ValueError("Encrypted cache cannot be empty")
+            msg = "Encrypted cache cannot be empty"
+            raise ValueError(msg)
         return v
 
     @field_validator("created_at")
@@ -70,7 +73,8 @@ class CacheFormat(BaseModel):
         """Validate created_at is not in the future."""
         now = datetime.now(v.tzinfo) if v.tzinfo is not None else datetime.now()
         if v > now:
-            raise ValueError("created_at cannot be in the future")
+            msg = "created_at cannot be in the future"
+            raise ValueError(msg)
         return v
 
 
@@ -87,11 +91,14 @@ def _validate_thread_dict(thread: object) -> TypeGuard[dict[str, object]]:
         ValueError: If the thread is not a dict or lacks required fields.
     """
     if not isinstance(thread, dict):
-        raise ValueError("Each thread must be a dictionary")
+        msg = "Each thread must be a dictionary"
+        raise ValueError(msg)
     if "url" not in thread:
-        raise ValueError("Each thread must have a 'url' field")
+        msg = "Each thread must have a 'url' field"
+        raise ValueError(msg)
     if "title" not in thread:
-        raise ValueError("Each thread must have a 'title' field")
+        msg = "Each thread must have a 'title' field"
+        raise ValueError(msg)
     return True
 
 

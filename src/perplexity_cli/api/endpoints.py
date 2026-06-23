@@ -70,7 +70,8 @@ class PerplexityAPI:
             UpstreamSchemaError: For malformed responses.
         """
         if not query_input.query.strip():
-            raise ValueError("Query must not be empty")
+            msg = "Query must not be empty"
+            raise ValueError(msg)
 
         # Generate UUIDs for request tracking
         frontend_uuid = str(uuid.uuid4())
@@ -175,7 +176,8 @@ class PerplexityAPI:
             UpstreamSchemaError: If no final message or no answer text is found.
         """
         if final_message is None:
-            raise UpstreamSchemaError("No final SSE message found in upstream response")
+            msg = "No final SSE message found in upstream response"
+            raise UpstreamSchemaError(msg)
 
         final_answer = final_message.extract_answer_text()
         references = final_message.web_results or []
@@ -185,8 +187,9 @@ class PerplexityAPI:
 
         status = final_message.status or "<empty>"
         block_usages = final_message.describe_block_usages()
-        raise UpstreamSchemaError(
+        msg = (
             "No answer found in final upstream response: "
             f"status={status}, "
             f"block_usages={block_usages}"
         )
+        raise UpstreamSchemaError(msg)
