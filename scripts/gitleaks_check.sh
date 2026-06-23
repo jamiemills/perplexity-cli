@@ -4,6 +4,7 @@
 #
 # Runs gitleaks against the commit range being pushed (or full history in CI).
 # Uses the current gitleaks git command style.
+    
 #
 # Environment variable CI_NO_SKIP:
 #   When set to "1" or "true", gitleaks unavailability is a hard failure.
@@ -69,11 +70,9 @@ fi
 echo "gitleaks: scanning commits in range '$range'..."
 
 gitleaks git \
-    --source=. \
     --verbose \
     --redact \
     --log-opts="$range"
-
 exit_code=$?
 
 if [ "$exit_code" -eq 0 ]; then
