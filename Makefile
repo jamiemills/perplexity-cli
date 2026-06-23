@@ -254,7 +254,7 @@ test-coverage:  ## Run tests with coverage enforcement
 	uv run pytest tests/ -q --tb=line -x -n auto \
 		--cov=perplexity_cli --cov-report=term-missing \
 		--cov-report=json --cov-report=xml:coverage.xml
-	uv run python scripts/check_module_coverage.py --min-coverage $(MIN_COVERAGE)
+	uv run python scripts/check_module_coverage.py --min-coverage 80
 
 test-fuzz:  ## Run fuzz tests
 	uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz
