@@ -430,6 +430,9 @@ ci:  ## Full CI pipeline
 
 file-size:  ## Hard gate: block oversized source files
 	@uv run python scripts/check_file_size.py --max-lines $(FILE_SIZE_CAP); \
+	if [ $$? -ne 0 ]; then \
+		echo "File-size gate FAILED."; \
+		echo "Split the file, or raise FILE_SIZE_CAP in quality/gates.conf."; \
 		exit 1; \
 	fi
 
