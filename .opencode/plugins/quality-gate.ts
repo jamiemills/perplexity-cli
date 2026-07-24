@@ -15,6 +15,8 @@
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
+import { readFile } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Protected files
@@ -23,9 +25,11 @@ import type { Plugin } from "@opencode-ai/plugin";
 const PROTECTED_DIRS = ["scripts/", "Makefile"];
 
 function isProtectedFile(filePath: string): boolean {
-  if (!filePath) return false;
-  return PROTECTED_DIRS.some(
-    (p) => filePath === p || filePath.endsWith(`/${p}`) || filePath.includes(`/${p}/`),
+  const normalised = filePath.replace(/\\/g, "/").replace(/^\.\//, "");
+  return PROTECTED_DIRS.some((path) =>
+    path.endsWith("/")
+      ? normalised.startsWith(path) || normalised.includes(`/${path}`)
+      : normalised === path || normalised.endsWith(`/${path}`),
   );
 }
 
@@ -41,21 +45,31 @@ const BYPASS_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /#\s*type:\s*ignore/i,       label: "# type: ignore" },
 ];
 
-const GATE_REFERENCES = [
-  "--max-flagged",
-  "--min-coverage",
-  "--min-confidence",
-  "fail_under",
-  "-n ",
+const GATE_REFERENCES: { re: RegExp; label: string }[] = [
+  { re: /--max-flagged\b/, label: "--max-flagged" },
+  { re: /--min-coverage\b/, label: "--min-coverage" },
+  { re: /--min-confidence\b/, label: "--min-confidence" },
+  { re: /\bfail_under\b/, label: "fail_under" },
+  { re: /\bradon\s+(?:cc|mi)[^\n]*\s-n(?:\s|$)/, label: "radon -n" },
+  { re: /\$\(MIN_COVERAGE\)/, label: "MIN_COVERAGE locked threshold" },
+  { re: /\$\(MIN_CONFIDENCE\)/, label: "MIN_CONFIDENCE locked threshold" },
+  { re: /\$\(MAX_FLAGGED\)/, label: "MAX_FLAGGED locked threshold" },
+  { re: /\$\(SEMGREP_SEVERITY\)/, label: "SEMGREP_SEVERITY locked threshold" },
 ];
 
 function countMatches(text: string, re: RegExp): number {
-  return (text.match(new RegExp(re.source, "g")) || []).length;
+  return (text.match(new RegExp(re.source, re.flags.replace("g", "") + "g")) || []).length;
 }
 
 function isAddingBypass(oldStr: string, newStr: string): string | null {
   for (const { re, label } of BYPASS_PATTERNS) {
-    if (countMatches(newStr, re) > countMatches(oldStr, re)) {
+    const additions = newStr
+      .split("\n")
+      .filter((line) => re.test(line) && !isJustifiedSuppression(line, label));
+    const removals = oldStr
+      .split("\n")
+      .filter((line) => re.test(line) && !isJustifiedSuppression(line, label));
+    if (additions.length > removals.length) {
       return `added ${label} bypass`;
     }
   }
@@ -67,12 +81,55 @@ function isAddingBypass(oldStr: string, newStr: string): string | null {
   }
 
   for (const gate of GATE_REFERENCES) {
-    if (oldStr.includes(gate) && !newStr.includes(gate)) {
-      return `removed ${gate.trim()} gate reference`;
+    if (countMatches(oldStr, gate.re) > countMatches(newStr, gate.re)) {
+      return `removed ${gate.label} gate reference`;
     }
   }
 
   return null;
+}
+
+function isJustifiedSuppression(line: string, label: string): boolean {
+  if (label === "# nosec") {
+    return /#\s*nosec\s+[A-Z]\d{3}\s+(?:-|\u2014|:)\s*\S/i.test(line);
+  }
+  if (label === "# pragma: no cover") {
+    return /#\s*pragma:\s*no\s*cover\s+(?:-|\u2014|:)\s*\S/i.test(line);
+  }
+  if (label === "# type: ignore") {
+    return /#\s*type:\s*ignore\[[^\]]+\]\s+(?:-|\u2014|:)\s*\S/i.test(line);
+  }
+  return false;
+}
+
+interface PatchChange {
+  added: string[];
+  removed: string[];
+}
+
+function protectedPatchChanges(patchText: string): Map<string, PatchChange> {
+  const changes = new Map<string, PatchChange>();
+  let current: PatchChange | null = null;
+
+  for (const line of patchText.split("\n")) {
+    const fileMatch = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/.exec(line);
+    if (fileMatch) {
+      const filePath = (fileMatch[1] ?? "").trim();
+      current = isProtectedFile(filePath) ? { added: [], removed: [] } : null;
+      if (current) changes.set(filePath, current);
+      continue;
+    }
+    if (line.startsWith("*** ")) {
+      current = null;
+      continue;
+    }
+    if (current && line.startsWith("+") && !line.startsWith("+++")) {
+      current.added.push(line.slice(1));
+    } else if (current && line.startsWith("-") && !line.startsWith("---")) {
+      current.removed.push(line.slice(1));
+    }
+  }
+  return changes;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,14 +154,17 @@ To override this block: set OPENCODE_DISABLE_QUALITY_GATE=1.`;
 // ---------------------------------------------------------------------------
 
 async function readCurrentContent(
-  $: any,
+  directory: string,
   filePath: string,
 ): Promise<string> {
   try {
-    const r = await $`cat ${filePath}`.quiet().nothrow();
-    return r.stdout?.toString() ?? "";
-  } catch {
-    return "";
+    const resolvedPath = isAbsolute(filePath) ? filePath : resolve(directory, filePath);
+    return await readFile(resolvedPath, "utf8");
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+      return "";
+    }
+    throw error;
   }
 }
 
@@ -117,15 +177,16 @@ async function getModifiedProtected(
   directory: string,
 ): Promise<string[]> {
   try {
-    const r = await $`git diff --name-only -- scripts/ Makefile`
+    const r = await $`git status --porcelain -- scripts/ Makefile`
       .cwd(directory)
       .quiet()
       .nothrow();
 
-    const stdout = r.stdout?.toString() ?? "";
+    if (r.exitCode !== 0) return [];
+    const stdout = r.stdout.toString();
     return stdout
       .split("\n")
-      .map((l: string) => l.trim())
+      .map((line: string) => line.slice(3).split(" -> ").at(-1)?.trim() ?? "")
       .filter(Boolean);
   } catch {
     return [];
@@ -142,13 +203,12 @@ async function verifyGateIntact(
       .quiet()
       .nothrow();
 
-    if (r.exitCode === 0) {
-      return "coupling-check PASSED — the coupling budget gate may have been bypassed.";
-    }
-  } catch {
-    // coupling-check failing is the expected healthy state
+    if (r.exitCode === 0) return null;
+    const detail = r.stderr.toString().trim() || r.stdout.toString().trim();
+    return `coupling-check FAILED${detail ? `: ${detail}` : ""}`;
+  } catch (error) {
+    return `coupling-check could not run: ${String(error)}`;
   }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,52 +216,59 @@ async function verifyGateIntact(
 // ---------------------------------------------------------------------------
 
 export const QualityGatePlugin: Plugin = async ({ client, $, directory }) => {
+  if (process.env.OPENCODE_DISABLE_QUALITY_GATE === "1") return {};
+
+  async function block(filePath: string, reason: string): Promise<never> {
+    await client.app.log({
+      body: {
+        service: "quality-gate",
+        level: "warn",
+        message: `Blocked change to ${filePath}: ${reason}`,
+      },
+    });
+    throw new Error(blockMessage(reason));
+  }
+
   return {
     // --- Pre-turn ---
 
     "tool.execute.before": async (input, output) => {
       // --- write: read current content, compare with new, check for bypasses ---
       if (input.tool === "write") {
-        const filePath: string = input.args.filePath ?? "";
+        const filePath: string = output.args.filePath ?? "";
         if (!isProtectedFile(filePath)) return;
 
-        const newContent: string = input.args.content ?? "";
+        const newContent: string = output.args.content ?? "";
         if (!newContent) return;
 
-        const oldContent = await readCurrentContent($, filePath);
+        const oldContent = await readCurrentContent(directory, filePath);
         const reason = isAddingBypass(oldContent, newContent);
         if (!reason) return;
 
-        await client.app.log({
-          body: {
-            service: "quality-gate",
-            level: "warn",
-            message: `Blocked write to ${filePath}: ${reason}`,
-          },
-        });
-        throw new Error(blockMessage(reason));
+        await block(filePath, reason);
       }
 
       // --- edit: semantic bypass detection ---
       if (input.tool === "edit") {
-        const filePath: string = input.args.filePath ?? "";
+        const filePath: string = output.args.filePath ?? "";
         if (!isProtectedFile(filePath)) return;
 
-        const oldStr: string = input.args.oldString ?? "";
-        const newStr: string = input.args.newString ?? "";
+        const oldStr: string = output.args.oldString ?? "";
+        const newStr: string = output.args.newString ?? "";
         if (!oldStr && !newStr) return;
 
         const reason = isAddingBypass(oldStr, newStr);
         if (!reason) return;
 
-        await client.app.log({
-          body: {
-            service: "quality-gate",
-            level: "warn",
-            message: `Blocked edit to ${filePath}: ${reason}`,
-          },
-        });
-        throw new Error(blockMessage(reason));
+        await block(filePath, reason);
+      }
+
+      if (input.tool === "apply_patch") {
+        const patchText: string = output.args.patchText ?? output.args.patch ?? "";
+        for (const [filePath, change] of protectedPatchChanges(patchText)) {
+          const reason = isAddingBypass(change.removed.join("\n"), change.added.join("\n"));
+          if (reason) await block(filePath, reason);
+        }
       }
     },
 
@@ -211,9 +278,8 @@ export const QualityGatePlugin: Plugin = async ({ client, $, directory }) => {
       if (event.type !== "session.idle") return;
 
       const modified = await getModifiedProtected($, directory);
+      if (modified.length === 0) return;
       const gateWarning = await verifyGateIntact($, directory);
-
-      if (modified.length === 0 && gateWarning === null) return;
 
       const lines: string[] = [];
       if (modified.length > 0) {
@@ -222,6 +288,8 @@ export const QualityGatePlugin: Plugin = async ({ client, $, directory }) => {
       }
       if (gateWarning !== null) {
         lines.push(`\n${gateWarning}`);
+      } else {
+        lines.push("\ncoupling-check passed.");
       }
       lines.push(
         "\nIf any gate was unintentionally loosened, revert the changes.",
@@ -231,7 +299,7 @@ export const QualityGatePlugin: Plugin = async ({ client, $, directory }) => {
       await client.app.log({
         body: {
           service: "quality-gate",
-          level: "warn",
+          level: gateWarning === null ? "info" : "warn",
           message: lines.join("\n"),
         },
       });

@@ -1,0 +1,3819 @@
+rules:
+- id: python.lang.maintainability.useless-assign-keyed.useless-assignment-keyed
+  message: key `$Y` in `$X` is assigned twice; the first assignment is useless
+  languages:
+  - python
+  severity: INFO
+  pattern-either:
+  - pattern: |
+      $X[$Y] = ...
+      $X[$Y] = ...
+  - pattern: |
+      $X[$Y][$Z] = ...
+      $X[$Y][$Z] = ...
+  metadata:
+    category: maintainability
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.maintainability.useless-assign-keyed.useless-assignment-keyed
+    shortlink: https://sg.run/zv6G
+    semgrep.dev:
+      rule:
+        r_id: 9617
+        rv_id: 946312
+        rule_id: 9AU1KY
+        version_id: PkTQZGZ
+        url: https://semgrep.dev/playground/r/PkTQZGZ/python.lang.maintainability.useless-assign-keyed.useless-assignment-keyed
+        origin: community
+- id: python.django.best-practice.use-onetoonefield.use-onetoonefield
+  patterns:
+  - pattern-inside: |
+      class $M(...):
+        ...
+  - pattern: $F = django.db.models.ForeignKey(..., unique=True, ...)
+  message: Use 'django.db.models.OneToOneField' instead of 'ForeignKey' with unique=True.
+    'OneToOneField' is used to create one-to-one relationships.
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.best-practice.use-onetoonefield.use-onetoonefield
+    shortlink: https://sg.run/W8Q2
+    semgrep.dev:
+      rule:
+        r_id: 9453
+        rv_id: 946119
+        rule_id: zdUk4Z
+        version_id: 0bT15Nn
+        url: https://semgrep.dev/playground/r/0bT15Nn/python.django.best-practice.use-onetoonefield.use-onetoonefield
+        origin: community
+- id: python.lang.correctness.return-in-init.yield-in-init
+  patterns:
+  - pattern-inside: |
+      class $A(...):
+          ...
+  - pattern-inside: |
+      def __init__(...):
+          ...
+  - pattern-not-inside: |
+      def __init__(...):
+          ...
+          def $F(...):
+              ...
+  - pattern-either:
+    - pattern: yield ...
+    - pattern: yield
+  message: '`yield` should never appear inside a class __init__ function. This will
+    cause a runtime error.'
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.return-in-init.yield-in-init
+    shortlink: https://sg.run/PJ6Y
+    semgrep.dev:
+      rule:
+        r_id: 9601
+        rv_id: 946299
+        rule_id: BYUNYe
+        version_id: e1T98kK
+        url: https://semgrep.dev/playground/r/e1T98kK/python.lang.correctness.return-in-init.yield-in-init
+        origin: community
+- id: python.lang.best-practice.hardcoded-tmp-path.hardcoded-tmp-path
+  pattern: open("=~/^\/tmp.*/", ...)
+  message: Detected hardcoded temp directory. Consider using 'tempfile.TemporaryFile'
+    instead.
+  metadata:
+    references:
+    - https://docs.python.org/3/library/tempfile.html#tempfile.TemporaryFile
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.hardcoded-tmp-path.hardcoded-tmp-path
+    shortlink: https://sg.run/zv0W
+    semgrep.dev:
+      rule:
+        r_id: 9561
+        rv_id: 946249
+        rule_id: yyUnXZ
+        version_id: LjTXy8O
+        url: https://semgrep.dev/playground/r/LjTXy8O/python.lang.best-practice.hardcoded-tmp-path.hardcoded-tmp-path
+        origin: community
+  severity: WARNING
+  languages:
+  - python
+- id: python.lang.correctness.unchecked-returns.unchecked-subprocess-call
+  patterns:
+  - pattern: subprocess.$CALL(...)
+  - pattern-not-inside: $S = subprocess.call(...)
+  - pattern-not-inside: subprocess.call(...) == $X
+  - pattern-not-inside: return subprocess.call(...)
+  - metavariable-pattern:
+      metavariable: $CALL
+      pattern: call
+  - focus-metavariable: $CALL
+  fix: check_call
+  message: This is not checking the return value of this subprocess call; if it fails
+    no exception will be raised. Consider subprocess.check_call() instead
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    references:
+    - https://docs.python.org/3/library/subprocess.html#subprocess.check_call
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.unchecked-returns.unchecked-subprocess-call
+    shortlink: https://sg.run/J9Ww
+    semgrep.dev:
+      rule:
+        r_id: 9602
+        rv_id: 946304
+        rule_id: DbUp82
+        version_id: ExTg2D9
+        url: https://semgrep.dev/playground/r/ExTg2D9/python.lang.correctness.unchecked-returns.unchecked-subprocess-call
+        origin: community
+- id: python.django.correctness.model-save.django-db-model-save-super
+  patterns:
+  - pattern-inside: |
+      class $MODEL(django.db.models.Model):
+          ...
+  - pattern-not: |
+      def save(self, ...):
+        ...
+        super($MODEL, self).save(...)
+  - pattern-not: |
+      def save(self, ...):
+        ...
+        super().save(...)
+  - pattern: |
+      def save(self, ...):
+        ...
+  message: Detected a django model `$MODEL` is not calling super().save() inside of
+    the save method.
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: correctness
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.correctness.model-save.django-db-model-save-super
+    shortlink: https://sg.run/6nN1
+    semgrep.dev:
+      rule:
+        r_id: 9459
+        rv_id: 946125
+        rule_id: 9AU1BD
+        version_id: o5TZeqw
+        url: https://semgrep.dev/playground/r/o5TZeqw/python.django.correctness.model-save.django-db-model-save-super
+        origin: community
+- id: go.lang.best-practice.hidden-goroutine.hidden-goroutine
+  patterns:
+  - pattern-not: |
+      func $FUNC(...) {
+        go func() {
+          ...
+        }(...)
+        $MORE
+      }
+  - pattern: |
+      func $FUNC(...) {
+        go func() {
+          ...
+        }(...)
+      }
+  message: Detected a hidden goroutine. Function invocations are expected to synchronous,
+    and this function will execute asynchronously because all it does is call a goroutine.
+    Instead, remove the internal goroutine and call the function using 'go'.
+  languages:
+  - go
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - go
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/go.lang.best-practice.hidden-goroutine.hidden-goroutine
+    shortlink: https://sg.run/DopW
+    semgrep.dev:
+      rule:
+        r_id: 9096
+        rv_id: 945550
+        rule_id: BYUNq6
+        version_id: 5PT9OrD
+        url: https://semgrep.dev/playground/r/5PT9OrD/go.lang.best-practice.hidden-goroutine.hidden-goroutine
+        origin: community
+- id: python.lang.correctness.list-modify-iterating.list-modify-while-iterate
+  message: It appears that `$LIST` is a list that is being modified while in a for
+    loop. This will likely cause a runtime error or an infinite loop.
+  languages:
+  - python
+  severity: ERROR
+  pattern-either:
+  - pattern: |
+      for $ELEMENT in $LIST:
+        ...
+        $LIST.pop(...)
+  - pattern: |
+      for $ELEMENT in $LIST:
+        ...
+        $LIST.push(...)
+  - pattern: |
+      for $ELEMENT in $LIST:
+        ...
+        $LIST.append(...)
+  - pattern: |
+      for $ELEMENT in $LIST:
+        ...
+        $LIST.extend(...)
+  - pattern: |
+      for $ELEMENT in $LIST:
+        ...
+        $LIST.remove(...)
+  metadata:
+    category: correctness
+    technology:
+    - python
+    references:
+    - https://unspecified.wordpress.com/2009/02/12/thou-shalt-not-modify-a-list-during-iteration/
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.list-modify-iterating.list-modify-while-iterate
+    shortlink: https://sg.run/0Qr5
+    semgrep.dev:
+      rule:
+        r_id: 9598
+        rv_id: 946295
+        rule_id: GdU7wZ
+        version_id: kbTYklJ
+        url: https://semgrep.dev/playground/r/kbTYklJ/python.lang.correctness.list-modify-iterating.list-modify-while-iterate
+        origin: community
+- id: python.lang.correctness.concurrent.uncaught-executor-exceptions
+  patterns:
+  - pattern-inside: |
+      with concurrent.futures.thread.ThreadPoolExecutor(...) as $EXECUTOR:
+        ...
+  - pattern-not-inside: |
+      $VAR = $EXECUTOR.map(...)
+      ...
+      for ... in $VAR:
+        ...
+  - pattern-not-inside: |
+      $VAR = $EXECUTOR.map(...)
+      ...
+      [... for ... in $VAR]
+  - pattern-not-inside: |
+      [... for ... in $EXECUTOR.map(...)]
+  - pattern-not-inside: |
+      for $IT in $EXECUTOR.map(...):
+        ...
+  - pattern: $EXECUTOR.map(...)
+  message: 'Values returned by thread pool map must be read in order to raise exceptions.
+    Consider using `for _ in $EXECUTOR.map(...): pass`.'
+  severity: WARNING
+  languages:
+  - python
+  metadata:
+    references:
+    - https://superfastpython.com/threadpoolexecutor-exception-handling/
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.concurrent.uncaught-executor-exceptions
+    shortlink: https://sg.run/Av48
+    semgrep.dev:
+      rule:
+        r_id: 9594
+        rv_id: 946290
+        rule_id: lBU9Pl
+        version_id: 9lTy109
+        url: https://semgrep.dev/playground/r/9lTy109/python.lang.correctness.concurrent.uncaught-executor-exceptions
+        origin: community
+- id: python.django.performance.access-foreign-keys.access-foreign-keys
+  patterns:
+  - pattern-either:
+    - pattern-inside: |
+        from django.$Y import $Z
+        ...
+    - pattern-inside: |
+        import django
+        ...
+  - pattern: $X.user.id
+  - pattern-not: request.user.id
+  - pattern-not: self.request.user.id
+  message: You should use ITEM.user_id rather than ITEM.user.id to prevent running
+    an extra query.
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: performance
+    technology:
+    - django
+    references:
+    - https://docs.djangoproject.com/en/5.0/topics/db/optimization/#use-foreign-key-values-directly
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.performance.access-foreign-keys.access-foreign-keys
+    shortlink: https://sg.run/XBoB
+    semgrep.dev:
+      rule:
+        r_id: 9464
+        rv_id: 946134
+        rule_id: kxUkqk
+        version_id: rxT6rW0
+        url: https://semgrep.dev/playground/r/rxT6rW0/python.django.performance.access-foreign-keys.access-foreign-keys
+        origin: community
+- id: java.lang.correctness.eqeq.eqeq
+  patterns:
+  - pattern-not-inside: assert $X;
+  - pattern-not-inside: |
+      assert $X : $Y;
+  - pattern-either:
+    - pattern: $X == $X
+    - pattern: $X != $X
+  - pattern-not: 1 == 1
+  message: '`$X == $X` or `$X != $X` is always true. (Unless the value compared is
+    a float or double). To test if `$X` is not-a-number, use `Double.isNaN($X)`.'
+  languages:
+  - java
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - java
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/java.lang.correctness.eqeq.eqeq
+    shortlink: https://sg.run/qx1x
+    semgrep.dev:
+      rule:
+        r_id: 9156
+        rv_id: 945642
+        rule_id: 9AU1x1
+        version_id: 7ZTrQXA
+        url: https://semgrep.dev/playground/r/7ZTrQXA/java.lang.correctness.eqeq.eqeq
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-importlib2
+  pattern: import importlib.resources
+  message: Found 'importlib.resources', which is a module only available on Python
+    3.7+. This does not work in lower versions, and therefore is not backwards compatible.
+    Use importlib_resources instead for older Python versions.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-importlib2
+    shortlink: https://sg.run/eL3y
+    semgrep.dev:
+      rule:
+        r_id: 9576
+        rv_id: 946266
+        rule_id: L1Uy0n
+        version_id: qkT4jn5
+        url: https://semgrep.dev/playground/r/qkT4jn5/python.lang.compatibility.python37.python37-compatibility-importlib2
+        origin: community
+- id: python.lang.correctness.file-object-redefined-before-close.file-object-redefined-before-close
+  patterns:
+  - pattern: |
+      $F = open($X, ...)
+      ...
+      $F = open($Y, ...)
+  - pattern-not: |
+      $F = open($X, ...)
+      ...
+      $F.close()
+      ...
+      $F = open($Y, ...)
+  message: Detected a file object that is redefined and never closed. This could leak
+    file descriptors and unnecessarily consume system resources.
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.file-object-redefined-before-close.file-object-redefined-before-close
+    shortlink: https://sg.run/W81g
+    semgrep.dev:
+      rule:
+        r_id: 9597
+        rv_id: 946294
+        rule_id: 5rUO54
+        version_id: NdTqk2P
+        url: https://semgrep.dev/playground/r/NdTqk2P/python.lang.correctness.file-object-redefined-before-close.file-object-redefined-before-close
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-pdb
+  pattern: pdb.set_trace(header=$X, ...)
+  message: pdb.set_trace() with the header argument is only available on Python 3.7+
+    and is therefore not backwards compatible. Instead, use set_trace() without the
+    header argument.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-pdb
+    shortlink: https://sg.run/GeA2
+    semgrep.dev:
+      rule:
+        r_id: 9592
+        rv_id: 946281
+        rule_id: KxUby2
+        version_id: YDTvR0k
+        url: https://semgrep.dev/playground/r/YDTvR0k/python.lang.compatibility.python37.python37-compatibility-pdb
+        origin: community
+- id: python.lang.correctness.return-in-init.return-in-init
+  patterns:
+  - pattern-inside: |
+      class $A(...):
+          ...
+  - pattern-inside: |
+      def __init__(...):
+          ...
+  - pattern-not-inside: |
+      def __init__(...):
+          ...
+          def $F(...):
+              ...
+  - patterns:
+    - pattern: return ...
+    - pattern-not: return
+    - pattern-not: return None
+  message: '`return` should never appear inside a class __init__ function. This will
+    cause a runtime error.'
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.return-in-init.return-in-init
+    shortlink: https://sg.run/4xwl
+    semgrep.dev:
+      rule:
+        r_id: 9600
+        rv_id: 946298
+        rule_id: AbUzYe
+        version_id: O9TX3WW
+        url: https://semgrep.dev/playground/r/O9TX3WW/python.lang.correctness.return-in-init.return-in-init
+        origin: community
+- id: python.django.best-practice.upsell_django_environ.use-django-environ
+  patterns:
+  - pattern-not-inside: |
+      import environ
+      ...
+  - pattern-either:
+    - pattern: |
+        import django
+        ...
+        import os
+        ...
+        $FOO = $M.environ[...]
+    - pattern: |
+        import os
+        ...
+        import django
+        ...
+        $FOO = $M.environ[...]
+  message: You are using environment variables inside django app. Use `django-environ`
+    as it a better alternative for deployment.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: best-practice
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.best-practice.upsell_django_environ.use-django-environ
+    shortlink: https://sg.run/DoQP
+    semgrep.dev:
+      rule:
+        r_id: 9452
+        rv_id: 946118
+        rule_id: oqUeND
+        version_id: WrTEoBB
+        url: https://semgrep.dev/playground/r/WrTEoBB/python.django.best-practice.upsell_django_environ.use-django-environ
+        origin: community
+- id: go.lang.best-practice.channel-guarded-with-mutex.channel-guarded-with-mutex
+  pattern-either:
+  - pattern: |
+      $MUX.Lock()
+      $VALUE <- $CHANNEL
+      $MUX.Unlock()
+  - pattern: |
+      $MUX.Lock()
+      $VALUE = <- $CHANNEL
+      $MUX.Unlock()
+  message: Detected a channel guarded with a mutex. Channels already have an internal
+    mutex, so this is unnecessary. Remove the mutex. See https://hackmongo.com/page/golang-antipatterns/#guarded-channel
+    for more information.
+  languages:
+  - go
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - go
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/go.lang.best-practice.channel-guarded-with-mutex.channel-guarded-with-mutex
+    shortlink: https://sg.run/Bko9
+    semgrep.dev:
+      rule:
+        r_id: 9095
+        rv_id: 945549
+        rule_id: AbUzDB
+        version_id: JdTDyG9
+        url: https://semgrep.dev/playground/r/JdTDyG9/go.lang.best-practice.channel-guarded-with-mutex.channel-guarded-with-mutex
+        origin: community
+- id: go.lang.correctness.permissions.file_permission.incorrect-default-permission
+  message: Detected file permissions that are set to more than `0600` (user/owner
+    can read and write). Setting file permissions to higher than `0600` is most likely
+    unnecessary and violates the principle of least privilege. Instead, set permissions
+    to be `0600` or less for os.Chmod, os.Mkdir, os.OpenFile, os.MkdirAll, and ioutil.WriteFile
+  metadata:
+    cwe: 'CWE-276: Incorrect Default Permissions'
+    source_rule_url: https://github.com/securego/gosec
+    category: correctness
+    references:
+    - https://github.com/securego/gosec/blob/master/rules/fileperms.go
+    technology:
+    - go
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    vulnerability_class:
+    - Improper Authorization
+    source: https://semgrep.dev/r/go.lang.correctness.permissions.file_permission.incorrect-default-permission
+    shortlink: https://sg.run/PJdq
+    semgrep.dev:
+      rule:
+        r_id: 9101
+        rv_id: 945554
+        rule_id: qNUj6y
+        version_id: BjT1NJP
+        url: https://semgrep.dev/playground/r/BjT1NJP/go.lang.correctness.permissions.file_permission.incorrect-default-permission
+        origin: community
+  severity: WARNING
+  languages:
+  - go
+  patterns:
+  - pattern-either:
+    - pattern: os.Chmod($NAME, $PERM)
+    - pattern: os.Mkdir($NAME, $PERM)
+    - pattern: os.OpenFile($NAME, $FLAG, $PERM)
+    - pattern: os.MkdirAll($NAME, $PERM)
+    - pattern: ioutil.WriteFile($NAME, $DATA, $PERM)
+  - metavariable-comparison:
+      metavariable: $PERM
+      comparison: $PERM > 0o600
+      base: 8
+  - focus-metavariable:
+    - $PERM
+  fix: |
+    0600
+- id: go.lang.correctness.overflow.overflow.integer-overflow-int32
+  message: Detected conversion of the result of a strconv.Atoi command to an int32.
+    This could lead to an integer overflow, which could possibly result in unexpected
+    behavior and even privilege escalation. Instead, use `strconv.ParseInt`.
+  languages:
+  - go
+  severity: WARNING
+  patterns:
+  - pattern: |
+      $F, $ERR := strconv.Atoi($NUM)
+      ...
+      int32($F)
+  - metavariable-comparison:
+      metavariable: $NUM
+      comparison: $NUM > 2147483647 or $NUM < -2147483648
+      strip: true
+  metadata:
+    category: correctness
+    technology:
+    - go
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/go.lang.correctness.overflow.overflow.integer-overflow-int32
+    shortlink: https://sg.run/4xJE
+    semgrep.dev:
+      rule:
+        r_id: 9100
+        rv_id: 945553
+        rule_id: KxUbEk
+        version_id: A8TJz02
+        url: https://semgrep.dev/playground/r/A8TJz02/go.lang.correctness.overflow.overflow.integer-overflow-int32
+        origin: community
+- id: java.lang.correctness.hardcoded-conditional.hardcoded-conditional
+  patterns:
+  - pattern-either:
+    - pattern: if (true) { ... }
+    - pattern: if (false) { ... }
+    - pattern: if ($VAR = true) { ... }
+    - pattern: if ($VAR = false) { ... }
+    - pattern: if ($EXPR && false) { ... }
+    - pattern: if (false && $EXPR) { ... }
+    - pattern: if ($EXPR || true) { ... }
+    - pattern: if (true || $EXPR) { ... }
+  message: This if statement will always have the same behavior and is therefore unnecessary.
+  languages:
+  - java
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - java
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/java.lang.correctness.hardcoded-conditional.hardcoded-conditional
+    shortlink: https://sg.run/l2zj
+    semgrep.dev:
+      rule:
+        r_id: 9157
+        rv_id: 945643
+        rule_id: yyUnKv
+        version_id: LjTXylw
+        url: https://semgrep.dev/playground/r/LjTXylw/java.lang.correctness.hardcoded-conditional.hardcoded-conditional
+        origin: community
+- id: python.flask.best-practice.use-jsonify.use-jsonify
+  patterns:
+  - pattern: $JSONDUMPS
+  - pattern-either:
+    - pattern-inside: |
+        return json.dumps($...VAR)
+    - pattern-inside: |
+        $DATA = json.dumps($...VAR)
+        ...
+        return $DATA
+  - pattern-inside: |
+      @app.route(...)
+      def $X():
+        ...
+  - metavariable-pattern:
+      metavariable: $JSONDUMPS
+      pattern: json.dumps($...VAR)
+  - focus-metavariable: $JSONDUMPS
+  fix: |
+    flask.jsonify($...VAR)
+  message: flask.jsonify() is a Flask helper method which handles the correct  settings
+    for returning JSON from Flask routes
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: best-practice
+    technology:
+    - flask
+    references:
+    - https://flask.palletsprojects.com/en/2.2.x/api/#flask.json.jsonify
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.flask.best-practice.use-jsonify.use-jsonify
+    shortlink: https://sg.run/XBlb
+    semgrep.dev:
+      rule:
+        r_id: 9520
+        rv_id: 946199
+        rule_id: NbUkx6
+        version_id: vdTGnyK
+        url: https://semgrep.dev/playground/r/vdTGnyK/python.flask.best-practice.use-jsonify.use-jsonify
+        origin: community
+- id: python.lang.compatibility.python36.python36-compatibility-Popen2
+  pattern: subprocess.Popen(encoding=$X, ...)
+  message: the `encoding` argument to Popen is only available on Python 3.6+
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python36.python36-compatibility-Popen2
+    shortlink: https://sg.run/x1Dg
+    semgrep.dev:
+      rule:
+        r_id: 9574
+        rv_id: 946264
+        rule_id: EwU2n3
+        version_id: 0bT15bx
+        url: https://semgrep.dev/playground/r/0bT15bx/python.lang.compatibility.python36.python36-compatibility-Popen2
+        origin: community
+- id: python.lang.maintainability.return.code-after-unconditional-return
+  pattern: |
+    return ...
+    $S
+  message: code after return statement will not be executed
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: maintainability
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.maintainability.return.code-after-unconditional-return
+    shortlink: https://sg.run/6nOo
+    semgrep.dev:
+      rule:
+        r_id: 9615
+        rv_id: 946310
+        rule_id: j2UvZG
+        version_id: 3ZTOPwl
+        url: https://semgrep.dev/playground/r/3ZTOPwl/python.lang.maintainability.return.code-after-unconditional-return
+        origin: community
+- id: java.lang.correctness.assignment-comparison.assignment-comparison
+  message: The value of `$X` is being ignored and will be used in the conditional
+    test
+  languages:
+  - java
+  severity: ERROR
+  pattern-either:
+  - pattern: if ($X=true) { ... }
+  - pattern: if ($X=false) { ... }
+  metadata:
+    category: correctness
+    technology:
+    - java
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/java.lang.correctness.assignment-comparison.assignment-comparison
+    shortlink: https://sg.run/Klod
+    semgrep.dev:
+      rule:
+        r_id: 9155
+        rv_id: 945641
+        rule_id: 10UK1b
+        version_id: ExTg2Xw
+        url: https://semgrep.dev/playground/r/ExTg2Xw/java.lang.correctness.assignment-comparison.assignment-comparison
+        origin: community
+- id: python.lang.compatibility.python36.python36-compatibility-Popen1
+  pattern: subprocess.Popen(errors=$X, ...)
+  message: the `errors` argument to Popen is only available on Python 3.6+
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python36.python36-compatibility-Popen1
+    shortlink: https://sg.run/weBP
+    semgrep.dev:
+      rule:
+        r_id: 9573
+        rv_id: 946263
+        rule_id: nJUz7A
+        version_id: WrTEo4r
+        url: https://semgrep.dev/playground/r/WrTEo4r/python.lang.compatibility.python36.python36-compatibility-Popen1
+        origin: community
+- id: javascript.lang.correctness.useless-eqeq.eqeq-is-bad
+  patterns:
+  - pattern-not-inside: assert(...)
+  - pattern-either:
+    - pattern: $X == $X
+    - pattern: $X != $X
+  - pattern-not: 1 == 1
+  message: Detected a useless comparison operation `$X == $X` or `$X != $X`. This
+    operation is always true. If testing for floating point NaN, use `math.isnan`,
+    or `cmath.isnan` if the number is complex.
+  languages:
+  - javascript
+  - typescript
+  severity: INFO
+  metadata:
+    category: correctness
+    technology:
+    - javascript
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/javascript.lang.correctness.useless-eqeq.eqeq-is-bad
+    shortlink: https://sg.run/Kl6n
+    semgrep.dev:
+      rule:
+        r_id: 9311
+        rv_id: 945865
+        rule_id: X5U8Kj
+        version_id: JdTDywq
+        url: https://semgrep.dev/playground/r/JdTDywq/javascript.lang.correctness.useless-eqeq.eqeq-is-bad
+        origin: community
+- id: javascript.lang.correctness.useless-assign.useless-assignment
+  patterns:
+  - pattern: |
+      $X = $Y;
+      $X = $Z;
+  - pattern-not: |
+      $X = $Y;
+      $X = <... $X ...>;
+  message: '`$X` is assigned twice; the first assignment is useless'
+  languages:
+  - javascript
+  - typescript
+  severity: INFO
+  metadata:
+    category: correctness
+    technology:
+    - javascript
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/javascript.lang.correctness.useless-assign.useless-assignment
+    shortlink: https://sg.run/0Q9w
+    semgrep.dev:
+      rule:
+        r_id: 9310
+        rv_id: 945864
+        rule_id: 2ZUbOo
+        version_id: YDTvRG3
+        url: https://semgrep.dev/playground/r/YDTvRG3/javascript.lang.correctness.useless-assign.useless-assignment
+        origin: community
+- id: java.lang.correctness.no-string-eqeq.no-string-eqeq
+  languages:
+  - java
+  patterns:
+  - pattern-not: null == (String $Y)
+  - pattern: $X == (String $Y)
+  message: Strings should not be compared with '=='. This is a reference comparison
+    operator. Use '.equals()' instead.
+  severity: WARNING
+  metadata:
+    category: correctness
+    technology:
+    - java
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/java.lang.correctness.no-string-eqeq.no-string-eqeq
+    shortlink: https://sg.run/YvxX
+    semgrep.dev:
+      rule:
+        r_id: 9158
+        rv_id: 945644
+        rule_id: r6UrQ9
+        version_id: 8KTKjBd
+        url: https://semgrep.dev/playground/r/8KTKjBd/java.lang.correctness.no-string-eqeq.no-string-eqeq
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-os2-ok2
+  patterns:
+  - pattern-not-inside: |
+      if hasattr(os, 'pwritev'):
+          ...
+  - pattern: os.pwritev(...)
+  message: os.pwritev() is only available on Python 3.3+ and is therefore not backwards
+    compatible. Instead, use a combination of pwrite() and writev().
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-os2-ok2
+    shortlink: https://sg.run/5Q9X
+    semgrep.dev:
+      rule:
+        r_id: 9591
+        rv_id: 946280
+        rule_id: 0oU5vW
+        version_id: l4Tx9Op
+        url: https://semgrep.dev/playground/r/l4Tx9Op/python.lang.compatibility.python37.python37-compatibility-os2-ok2
+        origin: community
+- id: javascript.lang.correctness.no-replaceall.no-replaceall
+  message: The string method replaceAll is not supported in all versions of javascript,
+    and is not supported by older browser versions. Consider using replace() with
+    a regex as the first argument instead like mystring.replace(/bad/g, "good") instead
+    of mystring.replaceAll("bad", "good") (https://discourse.threejs.org/t/replaceall-is-not-a-function/14585)
+  severity: WARNING
+  languages:
+  - javascript
+  - typescript
+  pattern: $STRING.replaceAll("...",$NEW)
+  metadata:
+    category: correctness
+    technology:
+    - javascript
+    references:
+    - https://discourse.threejs.org/t/replaceall-is-not-a-function/14585
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/javascript.lang.correctness.no-replaceall.no-replaceall
+    shortlink: https://sg.run/W8NE
+    semgrep.dev:
+      rule:
+        r_id: 9309
+        rv_id: 945862
+        rule_id: pKUODv
+        version_id: qkT4jgZ
+        url: https://semgrep.dev/playground/r/qkT4jgZ/javascript.lang.correctness.no-replaceall.no-replaceall
+        origin: community
+- id: python.lang.maintainability.useless-innerfunction.useless-inner-function
+  patterns:
+  - pattern-not-inside: |
+      def $F(...):
+          ...
+          def $FF(...):
+             ...
+          ...
+          <... $FF ...>
+  - pattern-not-inside: |
+      def $F(...):
+          ...
+          class $CLAZZ(...):
+            ...
+  - pattern-inside: |
+      def $F(...):
+        ...
+        def $FF(...):
+           ...
+        ...
+  - pattern: |
+      def $FF(...):
+        ...
+  - pattern-not: |
+      @$DECORATOR
+      def $FF(...):
+        ...
+  message: function `$FF` is defined inside a function but never used
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: maintainability
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.maintainability.useless-innerfunction.useless-inner-function
+    shortlink: https://sg.run/XB9K
+    semgrep.dev:
+      rule:
+        r_id: 9620
+        rv_id: 946315
+        rule_id: bwUwkn
+        version_id: GxTP7Xr
+        url: https://semgrep.dev/playground/r/GxTP7Xr/python.lang.maintainability.useless-innerfunction.useless-inner-function
+        origin: community
+- id: python.lang.maintainability.useless-ifelse.useless-if-conditional
+  message: if block checks for the same condition on both branches (`$X`)
+  languages:
+  - python
+  severity: WARNING
+  pattern: |
+    if $X:
+        ...
+    elif $X:
+        ...
+  metadata:
+    references:
+    - https://docs.python.org/3/tutorial/controlflow.html
+    category: maintainability
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.maintainability.useless-ifelse.useless-if-conditional
+    shortlink: https://sg.run/pxRg
+    semgrep.dev:
+      rule:
+        r_id: 9618
+        rv_id: 946313
+        rule_id: yyUnLW
+        version_id: JdTDyRP
+        url: https://semgrep.dev/playground/r/JdTDyRP/python.lang.maintainability.useless-ifelse.useless-if-conditional
+        origin: community
+- id: python.lang.maintainability.useless-ifelse.useless-if-body
+  pattern: |
+    if $X:
+        $S
+    else:
+        $S
+  message: Useless if statement; both blocks have the same body
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    references:
+    - https://docs.python.org/3/tutorial/controlflow.html
+    category: maintainability
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.maintainability.useless-ifelse.useless-if-body
+    shortlink: https://sg.run/2xN0
+    semgrep.dev:
+      rule:
+        r_id: 9619
+        rv_id: 946314
+        rule_id: r6UrYp
+        version_id: 5PT9OG8
+        url: https://semgrep.dev/playground/r/5PT9OG8/python.lang.maintainability.useless-ifelse.useless-if-body
+        origin: community
+- id: python.lang.best-practice.pass-body.pass-body-fn
+  patterns:
+  - pattern-not-inside: |
+      def __init__(self, ...):
+          ...
+  - pattern-not-inside: |
+      class $A:
+           ...
+  - pattern: |
+      def $X(...):
+          pass
+  message: '`pass` is the body of function $X. Consider removing this or raise NotImplementedError()
+    if this is a TODO'
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.pass-body.pass-body-fn
+    shortlink: https://sg.run/ydWR
+    semgrep.dev:
+      rule:
+        r_id: 9568
+        rv_id: 946257
+        rule_id: OrU3yZ
+        version_id: 5PT9Ogz
+        url: https://semgrep.dev/playground/r/5PT9Ogz/python.lang.best-practice.pass-body.pass-body-fn
+        origin: community
+- id: javascript.lang.best-practice.assigned-undefined.assigned-undefined
+  languages:
+  - javascript
+  - typescript
+  message: '`undefined` is not a reserved keyword in Javascript, so this is "valid"
+    Javascript but highly confusing and likely to result in bugs.'
+  pattern-either:
+  - pattern: undefined = $X;
+  - pattern: var undefined = $X;
+  - pattern: let undefined = $X;
+  - pattern: const undefined = $X;
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - javascript
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/javascript.lang.best-practice.assigned-undefined.assigned-undefined
+    shortlink: https://sg.run/GeK6
+    semgrep.dev:
+      rule:
+        r_id: 9304
+        rv_id: 945854
+        rule_id: lBU9DN
+        version_id: GxTP7ON
+        url: https://semgrep.dev/playground/r/GxTP7ON/javascript.lang.best-practice.assigned-undefined.assigned-undefined
+        origin: community
+- id: python.flask.correctness.access-request-in-wrong-handler.avoid-accessing-request-in-wrong-handler
+  patterns:
+  - pattern-inside: |
+      @app.route(..., method="GET")
+      def $X(...):
+        ...
+  - pattern-either:
+    - pattern: |
+        $Y = flask.request.json
+    - pattern: |
+        $Y = flask.request.form
+    - pattern: |
+        $Y = flask.request.data
+  message: Accessing request object inside a route handle for HTTP GET command will
+    throw due to missing request body.
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: correctness
+    technology:
+    - flask
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.flask.correctness.access-request-in-wrong-handler.avoid-accessing-request-in-wrong-handler
+    shortlink: https://sg.run/1ZYv
+    semgrep.dev:
+      rule:
+        r_id: 9522
+        rv_id: 946201
+        rule_id: wdUJe5
+        version_id: ZRT35o1
+        url: https://semgrep.dev/playground/r/ZRT35o1/python.flask.correctness.access-request-in-wrong-handler.avoid-accessing-request-in-wrong-handler
+        origin: community
+- id: python.django.correctness.nontext-field-must-set-null-true.nontext-field-must-set-null-true
+  patterns:
+  - pattern-inside: |
+      class $M(...):
+        ...
+  - pattern-not: $F = django.db.models.CharField(...)
+  - pattern-not: $F = django.db.models.TextField(...)
+  - pattern-not: $F = django.db.models.SlugField(...)
+  - pattern-not: $F = django.db.models.EmailField(...)
+  - pattern-not: $F = django.db.models.FileField(...)
+  - pattern-not: $F = django.db.models.ImageField(...)
+  - pattern-not: $F = django.db.models.URLField(...)
+  - pattern-not: $F = django.db.models.UUIDField(...)
+  - pattern-not: $F = django.db.models.ManyToManyField(...)
+  - pattern-not: $F = django.db.models.NullBooleanField(...)
+  - pattern-not: $F = django.contrib.gis.db.models.$MODEL(...)
+  - pattern-not: $F = phonenumber_field.modelfields.PhoneNumberField(...)
+  - pattern-not: $F = ckeditor.fields.RichTextField(...)
+  - pattern-not: $F = $X(..., null=True, blank=True, ...)
+  - pattern: $F = $X(..., blank=True, ...)
+  message: null=True should be set if blank=True is set on non-text fields.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: correctness
+    references:
+    - https://docs.djangoproject.com/en/4.0/ref/models/fields/#null
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.correctness.nontext-field-must-set-null-true.nontext-field-must-set-null-true
+    shortlink: https://sg.run/ox40
+    semgrep.dev:
+      rule:
+        r_id: 9460
+        rv_id: 946126
+        rule_id: yyUnJk
+        version_id: zyTlko4
+        url: https://semgrep.dev/playground/r/zyTlko4/python.django.correctness.nontext-field-must-set-null-true.nontext-field-must-set-null-true
+        origin: community
+- id: go.lang.correctness.overflow.overflow.integer-overflow-int16
+  message: Detected conversion of the result of a strconv.Atoi command to an int16.
+    This could lead to an integer overflow, which could possibly result in unexpected
+    behavior and even privilege escalation. Instead, use `strconv.ParseInt`.
+  languages:
+  - go
+  severity: WARNING
+  patterns:
+  - pattern: |
+      $F, $ERR := strconv.Atoi($NUM)
+      ...
+      int16($F)
+  - metavariable-comparison:
+      metavariable: $NUM
+      comparison: $NUM > 32767 or $NUM < -32768
+      strip: true
+  metadata:
+    category: correctness
+    technology:
+    - go
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/go.lang.correctness.overflow.overflow.integer-overflow-int16
+    shortlink: https://sg.run/Klr6
+    semgrep.dev:
+      rule:
+        r_id: 9099
+        rv_id: 945552
+        rule_id: 0oU5N3
+        version_id: RGTAgnL
+        url: https://semgrep.dev/playground/r/RGTAgnL/go.lang.correctness.overflow.overflow.integer-overflow-int16
+        origin: community
+- id: python.lang.correctness.useless-eqeq.useless-eqeq
+  patterns:
+  - pattern-not-inside: |
+      def __eq__(...):
+          ...
+  - pattern-not-inside: |
+      def __cmp__(...):
+          ...
+  - pattern-not-inside: assert(...)
+  - pattern-not-inside: assert ..., ...
+  - pattern-not-inside: assertTrue(...)
+  - pattern-not-inside: assertFalse(...)
+  - pattern-either:
+    - pattern: $X == $X
+    - pattern: $X != $X
+  - pattern-not: 1 == 1
+  message: 'This expression is always True: `$X == $X` or `$X != $X`. If testing for
+    floating point NaN, use `math.isnan($X)`, or `cmath.isnan($X)` if the number is
+    complex.'
+  languages:
+  - python
+  severity: INFO
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.useless-eqeq.useless-eqeq
+    shortlink: https://sg.run/GeAp
+    semgrep.dev:
+      rule:
+        r_id: 9604
+        rv_id: 946306
+        rule_id: 0oU5Ol
+        version_id: LjTXybY
+        url: https://semgrep.dev/playground/r/LjTXybY/python.lang.correctness.useless-eqeq.useless-eqeq
+        origin: community
+- id: python.lang.maintainability.return.return-not-in-function
+  patterns:
+  - pattern-not-inside: |
+      def $F(...):
+          ...
+      # TODO: first pattern should just automatically include this one
+  - pattern-not-inside: |
+      def $F(...) ->  $Y:
+          ...
+  - pattern: return ...
+  message: '`return` only makes sense inside a function'
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: maintainability
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.maintainability.return.return-not-in-function
+    shortlink: https://sg.run/oxG9
+    semgrep.dev:
+      rule:
+        r_id: 9616
+        rv_id: 946311
+        rule_id: 10UKxW
+        version_id: 44TZkqA
+        url: https://semgrep.dev/playground/r/44TZkqA/python.lang.maintainability.return.return-not-in-function
+        origin: community
+- id: python.lang.correctness.baseclass-attribute-override.baseclass-attribute-override
+  message: Class $C inherits from both `$A` and `$B` which both have a method named
+    `$F`; one of these methods will be overwritten.
+  languages:
+  - python
+  severity: WARNING
+  patterns:
+  - pattern-inside: |
+      class $A(...):
+        ...
+        def $F1(...):
+          ...
+        ...
+      ...
+  - pattern-inside: |
+      class $B(...):
+        ...
+        def $F2(...):
+          ...
+        ...
+      ...
+  - metavariable-comparison:
+      comparison: str($F1) == str($F2)
+  - pattern: |
+      class $C(..., $A, ..., $B, ...):
+        ...
+  - focus-metavariable: $C
+  metadata:
+    category: correctness
+    references:
+    - https://docs.python.org/3/tutorial/classes.html#multiple-inheritance
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.baseclass-attribute-override.baseclass-attribute-override
+    shortlink: https://sg.run/Roze
+    semgrep.dev:
+      rule:
+        r_id: 9593
+        rv_id: 946282
+        rule_id: qNUjq2
+        version_id: 6xTxjgW
+        url: https://semgrep.dev/playground/r/6xTxjgW/python.lang.correctness.baseclass-attribute-override.baseclass-attribute-override
+        origin: community
+- id: javascript.lang.best-practice.leftover_debugging.javascript-alert
+  message: found alert() call; should this be in production code?
+  languages:
+  - javascript
+  - typescript
+  severity: WARNING
+  pattern-either:
+  - pattern: alert()
+  - pattern: alert($X)
+  metadata:
+    category: best-practice
+    technology:
+    - javascript
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/javascript.lang.best-practice.leftover_debugging.javascript-alert
+    shortlink: https://sg.run/Ro1N
+    semgrep.dev:
+      rule:
+        r_id: 9305
+        rv_id: 945856
+        rule_id: YGURbz
+        version_id: A8TJzPw
+        url: https://semgrep.dev/playground/r/A8TJzPw/javascript.lang.best-practice.leftover_debugging.javascript-alert
+        origin: community
+- id: python.django.best-practice.json_response.use-json-response
+  patterns:
+  - pattern-inside: |
+      def $X(...):
+        ...
+  - pattern: |
+      $Y = json.dumps(...)
+      ...
+      django.http.HttpResponse($Y, ...)
+  message: Use JsonResponse instead
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: best-practice
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.best-practice.json_response.use-json-response
+    shortlink: https://sg.run/BkQA
+    semgrep.dev:
+      rule:
+        r_id: 9451
+        rv_id: 946117
+        rule_id: 6JUjYX
+        version_id: DkTNplJ
+        url: https://semgrep.dev/playground/r/DkTNplJ/python.django.best-practice.json_response.use-json-response
+        origin: community
+- id: python.lang.correctness.tempfile.flush.tempfile-without-flush
+  languages:
+  - python
+  message: Using '$F.name' without '.flush()' or '.close()' may cause an error because
+    the file may not exist when '$F.name' is used. Use '.flush()' or close the file
+    before using '$F.name'.
+  pattern-either:
+  - patterns:
+    - pattern-not-inside: |
+        $F = tempfile.NamedTemporaryFile(...)
+        ...
+        $F.write(...)
+        ...
+        $F.flush()
+        ...
+        $F.name
+    - pattern-not-inside: |
+        $F = tempfile.NamedTemporaryFile(...)
+        ...
+        $F.write(...)
+        ...
+        $F.close()
+        ...
+        $F.name
+    - pattern-not-inside: |
+        $F = tempfile.NamedTemporaryFile(..., delete=False, ...)
+        ...
+        $F.close()
+        ...
+        $F.name
+    - pattern-inside: |
+        $F = tempfile.NamedTemporaryFile(...)
+        ...
+    - pattern: |
+        $F.name
+  - patterns:
+    - pattern-not-inside: |
+        with tempfile.NamedTemporaryFile(...) as $F:
+            ...
+            $F.write(...)
+            ...
+            $F.flush()
+            ...
+            $F.name
+    - pattern-not-inside: |
+        with tempfile.NamedTemporaryFile(...) as $F:
+            ...
+            $F.write(...)
+            ...
+            $F.close()
+            ...
+            $F.name
+    - pattern-not-inside: |
+        with tempfile.NamedTemporaryFile(...) as $F:
+            ...
+            $MODULE.dump(..., $F, ...)
+            ...
+            $F.flush()
+            ...
+            $F.name
+    - pattern-not-inside: |
+        with tempfile.NamedTemporaryFile(...) as $F:
+            ...
+            $MODULE.dump(..., $F, ...)
+            ...
+            $F.close()
+            ...
+            $F.name
+    - pattern-inside: |
+        with tempfile.NamedTemporaryFile(...) as $F:
+            ...
+    - pattern: |
+        $F.name
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.tempfile.flush.tempfile-without-flush
+    shortlink: https://sg.run/l23y
+    semgrep.dev:
+      rule:
+        r_id: 9613
+        rv_id: 946301
+        rule_id: 2ZUb0A
+        version_id: d6TPjGW
+        url: https://semgrep.dev/playground/r/d6TPjGW/python.lang.correctness.tempfile.flush.tempfile-without-flush
+        origin: community
+- id: javascript.lang.best-practice.leftover_debugging.javascript-debugger
+  pattern: debugger;
+  message: found debugger call; should this be in production code?
+  languages:
+  - javascript
+  - typescript
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - javascript
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/javascript.lang.best-practice.leftover_debugging.javascript-debugger
+    shortlink: https://sg.run/AvRB
+    semgrep.dev:
+      rule:
+        r_id: 9306
+        rv_id: 945857
+        rule_id: 6JUjXk
+        version_id: BjT1Nj3
+        url: https://semgrep.dev/playground/r/BjT1Nj3/javascript.lang.best-practice.leftover_debugging.javascript-debugger
+        origin: community
+- id: python.lang.correctness.writing-to-file-in-read-mode.writing-to-file-in-read-mode
+  message: The file object '$FD' was opened in read mode, but is being written to.
+    This will cause a runtime error.
+  patterns:
+  - pattern-either:
+    - pattern-inside: |
+        $FD = open($NAME, "r", ...)
+        ...
+    - pattern-inside: |
+        $FD = open($NAME, "rb", ...)
+        ...
+    - pattern-inside: |
+        with open($NAME, "r", ...) as $FD:
+          ...
+    - pattern-inside: |
+        with open($NAME, "rb", ...) as $FD:
+          ...
+  - pattern: $FD.write(...)
+  severity: ERROR
+  languages:
+  - python
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.writing-to-file-in-read-mode.writing-to-file-in-read-mode
+    shortlink: https://sg.run/RozO
+    semgrep.dev:
+      rule:
+        r_id: 9605
+        rv_id: 946307
+        rule_id: KxUbyG
+        version_id: 8KTKjke
+        url: https://semgrep.dev/playground/r/8KTKjke/python.lang.correctness.writing-to-file-in-read-mode.writing-to-file-in-read-mode
+        origin: community
+- id: python.lang.compatibility.python36.python36-compatibility-ssl
+  pattern: ssl.get_ciphers()
+  message: this function is only available on Python 3.6+
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python36.python36-compatibility-ssl
+    shortlink: https://sg.run/kXn2
+    semgrep.dev:
+      rule:
+        r_id: 9572
+        rv_id: 946262
+        rule_id: ZqU5wR
+        version_id: DkTNpr8
+        url: https://semgrep.dev/playground/r/DkTNpr8/python.lang.compatibility.python36.python36-compatibility-ssl
+        origin: community
+- id: python.lang.best-practice.pass-body.pass-body-range
+  pattern: |
+    for $X in $Y:
+        pass
+  message: '`pass` is the body of for $X in $Y. Consider removing this or raise NotImplementedError()
+    if this is a TODO'
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.pass-body.pass-body-range
+    shortlink: https://sg.run/rdJR
+    semgrep.dev:
+      rule:
+        r_id: 9569
+        rv_id: 946258
+        rule_id: eqU8xE
+        version_id: GxTP7dA
+        url: https://semgrep.dev/playground/r/GxTP7dA/python.lang.best-practice.pass-body.pass-body-range
+        origin: community
+- id: go.lang.correctness.useless-eqeq.hardcoded-eq-true-or-false
+  message: Detected useless if statement. 'if (True)' and 'if (False)' always result
+    in the same behavior, and therefore is not necessary in the code. Remove the 'if
+    (False)' expression completely or just the 'if (True)' comparison depending on
+    which expression is in the code.
+  languages:
+  - go
+  severity: INFO
+  pattern-either:
+  - pattern: if (true) { ... }
+  - pattern: if (false) { ... }
+  metadata:
+    category: correctness
+    technology:
+    - go
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/go.lang.correctness.useless-eqeq.hardcoded-eq-true-or-false
+    shortlink: https://sg.run/0QkJ
+    semgrep.dev:
+      rule:
+        r_id: 9098
+        rv_id: 945557
+        rule_id: WAUoBp
+        version_id: 0bT15gv
+        url: https://semgrep.dev/playground/r/0bT15gv/go.lang.correctness.useless-eqeq.hardcoded-eq-true-or-false
+        origin: community
+- id: python.lang.correctness.common-mistakes.string-concat-in-list.string-concat-in-list
+  patterns:
+  - pattern-either:
+    - pattern-inside: '[...]'
+    - pattern-inside: '{...}'
+  - pattern: '"..." "..."'
+  - pattern-not-inside: f"..."
+  - pattern-not-inside: '{..., $KEY: $VALUE, ...}'
+  message: Detected strings that are implicitly concatenated inside a list. Python
+    will implicitly concatenate strings when not explicitly delimited. Was this supposed
+    to be individual elements of the list?
+  severity: WARNING
+  languages:
+  - python
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.common-mistakes.string-concat-in-list.string-concat-in-list
+    shortlink: https://sg.run/Kl07
+    semgrep.dev:
+      rule:
+        r_id: 9611
+        rv_id: 946289
+        rule_id: zdUkRQ
+        version_id: 1QToKLA
+        url: https://semgrep.dev/playground/r/1QToKLA/python.lang.correctness.common-mistakes.string-concat-in-list.string-concat-in-list
+        origin: community
+- id: javascript.lang.best-practice.leftover_debugging.javascript-confirm
+  pattern: confirm(...)
+  message: found confirm() call; should this be in production code?
+  languages:
+  - javascript
+  - typescript
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - javascript
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/javascript.lang.best-practice.leftover_debugging.javascript-confirm
+    shortlink: https://sg.run/BkAR
+    semgrep.dev:
+      rule:
+        r_id: 9307
+        rv_id: 945858
+        rule_id: oqUe1G
+        version_id: DkTNpo0
+        url: https://semgrep.dev/playground/r/DkTNpo0/javascript.lang.best-practice.leftover_debugging.javascript-confirm
+        origin: community
+- id: python.lang.correctness.useless-comparison.no-strings-as-booleans
+  message: Using strings as booleans in Python has unexpected results. `"one" and
+    "two"` will return "two". `"one" or "two"` will return "one". In Python, strings
+    are truthy, and strings with a non-zero length evaluate to True.
+  languages:
+  - python
+  severity: ERROR
+  pattern-either:
+  - pattern: |
+      if <... "..." and ... ...>:
+          ...
+  - pattern: |
+      if <... "..." or ... ...>:
+          ...
+  - patterns:
+    - pattern-not: |
+        if $X in "...":
+          ...
+    - pattern: |
+        if "...":
+            ...
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.useless-comparison.no-strings-as-booleans
+    shortlink: https://sg.run/5QxA
+    semgrep.dev:
+      rule:
+        r_id: 9603
+        rv_id: 946305
+        rule_id: WAUoxE
+        version_id: 7ZTrQ9O
+        url: https://semgrep.dev/playground/r/7ZTrQ9O/python.lang.correctness.useless-comparison.no-strings-as-booleans
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-importlib3
+  pattern: import importlib.abc.ResourceReader
+  message: Found usage of 'importlib.abc.ResourceReader'. This module is only available
+    on Python 3.7+ and is therefore not backwards compatible. Instead, use another
+    loader.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-importlib3
+    shortlink: https://sg.run/Zv2o
+    semgrep.dev:
+      rule:
+        r_id: 9579
+        rv_id: 946269
+        rule_id: QrUzJ9
+        version_id: JdTDyrP
+        url: https://semgrep.dev/playground/r/JdTDyrP/python.lang.compatibility.python37.python37-compatibility-importlib3
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-os1
+  pattern: os.preadv(...)
+  message: os.preadv() is only available on Python 3.7+ and is therefore not backwards
+    compatible. Instead, use a combination of os.readv() and os.pread().
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-os1
+    shortlink: https://sg.run/PJWW
+    semgrep.dev:
+      rule:
+        r_id: 9589
+        rv_id: 946279
+        rule_id: DbUpQQ
+        version_id: qkT4jnO
+        url: https://semgrep.dev/playground/r/qkT4jnO/python.lang.compatibility.python37.python37-compatibility-os1
+        origin: community
+- id: javascript.lang.best-practice.leftover_debugging.javascript-prompt
+  message: found prompt() call; should this be in production code?
+  languages:
+  - javascript
+  - typescript
+  severity: WARNING
+  pattern-either:
+  - pattern: prompt()
+  - pattern: prompt($X)
+  - pattern: prompt($X, $Y)
+  metadata:
+    category: best-practice
+    technology:
+    - javascript
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/javascript.lang.best-practice.leftover_debugging.javascript-prompt
+    shortlink: https://sg.run/DoDG
+    semgrep.dev:
+      rule:
+        r_id: 9308
+        rv_id: 945859
+        rule_id: zdUk3g
+        version_id: WrTEo5n
+        url: https://semgrep.dev/playground/r/WrTEo5n/javascript.lang.best-practice.leftover_debugging.javascript-prompt
+        origin: community
+- id: python.lang.best-practice.pdb.python-debugger-found
+  pattern-either:
+  - pattern: import pdb
+  - pattern: pdb.set_trace()
+  message: Importing the python debugger; did you mean to leave this in?
+  severity: WARNING
+  languages:
+  - python
+  metadata:
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.pdb.python-debugger-found
+    shortlink: https://sg.run/b7NE
+    semgrep.dev:
+      rule:
+        r_id: 9570
+        rv_id: 946259
+        rule_id: v8Un2J
+        version_id: RGTAg45
+        url: https://semgrep.dev/playground/r/RGTAg45/python.lang.best-practice.pdb.python-debugger-found
+        origin: community
+- id: ocaml.lang.best-practice.string.ocamllint-str-string-after
+  pattern: String.sub $S $N (String.length $S - $N)
+  message: Use instead `Str.string_after`
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.string.ocamllint-str-string-after
+    shortlink: https://sg.run/OPKk
+    semgrep.dev:
+      rule:
+        r_id: 9375
+        rv_id: 945959
+        rule_id: 8GUjZq
+        version_id: DkTNpP9
+        url: https://semgrep.dev/playground/r/DkTNpP9/ocaml.lang.best-practice.string.ocamllint-str-string-after
+        origin: community
+- id: ocaml.lang.best-practice.ref.ocamllint-ref-decr
+  pattern: $X := ! $X - 1
+  message: You should use `decr`
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    references:
+    - https://v2.ocaml.org/api/Stdlib.html#VALdecr
+    - https://v2.ocaml.org/api/Atomic.html#VALdecr
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.ref.ocamllint-ref-decr
+    shortlink: https://sg.run/weYd
+    semgrep.dev:
+      rule:
+        r_id: 9373
+        rv_id: 945957
+        rule_id: 7KUQyg
+        version_id: A8TJzO9
+        url: https://semgrep.dev/playground/r/A8TJzO9/ocaml.lang.best-practice.ref.ocamllint-ref-decr
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-multiprocess1
+  pattern: multiprocessing.Process.close()
+  message: multiprocessing.Process.close() is only available on Python 3.7+ and is
+    therefore not backwards compatible. Instead, use join().
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-multiprocess1
+    shortlink: https://sg.run/3xjp
+    semgrep.dev:
+      rule:
+        r_id: 9587
+        rv_id: 946277
+        rule_id: AbUzRA
+        version_id: 0bT15be
+        url: https://semgrep.dev/playground/r/0bT15be/python.lang.compatibility.python37.python37-compatibility-multiprocess1
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-math1
+  pattern: math.remainder($X, $Y)
+  message: math.remainder is only available on Python 3.7+ and is therefore not backwards
+    compatible. Instead, use math.fmod() or calculate $X - n* $Y.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-math1
+    shortlink: https://sg.run/Q50Q
+    semgrep.dev:
+      rule:
+        r_id: 9586
+        rv_id: 946276
+        rule_id: ReUgbz
+        version_id: WrTEopQ
+        url: https://semgrep.dev/playground/r/WrTEopQ/python.lang.compatibility.python37.python37-compatibility-math1
+        origin: community
+- id: python.lang.best-practice.missing-hash-with-eq.missing-hash-with-eq
+  patterns:
+  - pattern-not-inside: |
+      class A(...):
+          ...
+          def __hash__(self):
+              ...
+          ...
+          def __eq__(self, $O):
+              ...
+  - pattern: |
+      class A(...):
+        ...
+        def __eq__(self, $O): ...
+        ...
+  message: 'Class `$A` has defined `__eq__` which means it should also have defined
+    `__hash__`; '
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.missing-hash-with-eq.missing-hash-with-eq
+    shortlink: https://sg.run/1Z2v
+    semgrep.dev:
+      rule:
+        r_id: 9566
+        rv_id: 946255
+        rule_id: wdUJ35
+        version_id: PkTQZPG
+        url: https://semgrep.dev/playground/r/PkTQZPG/python.lang.best-practice.missing-hash-with-eq.missing-hash-with-eq
+        origin: community
+- id: ocaml.lang.best-practice.ref.ocamllint-ref-incr
+  pattern: $X := ! $X + 1
+  message: You should use `incr`
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    references:
+    - https://v2.ocaml.org/api/Stdlib.html#VALincr
+    - https://v2.ocaml.org/api/Atomic.html#VALincr
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.ref.ocamllint-ref-incr
+    shortlink: https://sg.run/kXJA
+    semgrep.dev:
+      rule:
+        r_id: 9372
+        rv_id: 945956
+        rule_id: EwU2w8
+        version_id: RGTAg6O
+        url: https://semgrep.dev/playground/r/RGTAg6O/ocaml.lang.best-practice.ref.ocamllint-ref-incr
+        origin: community
+- id: python.flask.best-practice.get-class-method-with-side-effects.flask-class-method-get-side-effects
+  patterns:
+  - pattern-either:
+    - pattern: |
+        def get(self,...):
+            ...
+            $METHOD(...)
+    - pattern: |
+        def get(self,...):
+            ...
+            $VAR = $METHOD(...)
+  - metavariable-regex:
+      metavariable: $METHOD
+      regex: (?i)(create|update|delete).*
+  message: Flask class method GET with side effects
+  severity: WARNING
+  languages:
+  - python
+  metadata:
+    category: best-practice
+    technology:
+    - flask
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.flask.best-practice.get-class-method-with-side-effects.flask-class-method-get-side-effects
+    shortlink: https://sg.run/2x6D
+    semgrep.dev:
+      rule:
+        r_id: 9519
+        rv_id: 946198
+        rule_id: bwUwYZ
+        version_id: e1T98Jw
+        url: https://semgrep.dev/playground/r/e1T98Jw/python.flask.best-practice.get-class-method-with-side-effects.flask-class-method-get-side-effects
+        origin: community
+- id: python.lang.best-practice.sleep.arbitrary-sleep
+  patterns:
+  - pattern-not: time.sleep($F(...))
+  - pattern-either:
+    - pattern: |
+        time.sleep($X: int)
+    - pattern: |
+        time.sleep($X: float)
+  message: time.sleep() call; did you mean to leave this in?
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.sleep.arbitrary-sleep
+    shortlink: https://sg.run/N4Bz
+    semgrep.dev:
+      rule:
+        r_id: 9571
+        rv_id: 946260
+        rule_id: d8UjDO
+        version_id: A8TJzo6
+        url: https://semgrep.dev/playground/r/A8TJzo6/python.lang.best-practice.sleep.arbitrary-sleep
+        origin: community
+- id: python.lang.correctness.common-mistakes.is-not-is-not.is-not-is-not
+  message: In Python 'X is not ...' is different from 'X is (not ...)'. In the latter
+    the 'not' converts the '...' directly to boolean.
+  languages:
+  - python
+  severity: ERROR
+  pattern: $S is (not ...)
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.common-mistakes.is-not-is-not.is-not-is-not
+    shortlink: https://sg.run/0Qrv
+    semgrep.dev:
+      rule:
+        r_id: 9610
+        rv_id: 946288
+        rule_id: oqUexJ
+        version_id: jQTzvXe
+        url: https://semgrep.dev/playground/r/jQTzvXe/python.lang.correctness.common-mistakes.is-not-is-not.is-not-is-not
+        origin: community
+- id: python.django.correctness.string-field-null-checks.no-null-string-field
+  patterns:
+  - pattern-inside: |
+      class $M(...):
+        ...
+  - pattern-not: $F = django.db.models.CharField(..., null=True, unique=True, blank=True,
+      ...)
+  - pattern-not: $F = django.db.models.TextField(..., null=True, unique=True, blank=True,
+      ...)
+  - pattern-either:
+    - pattern: $F = django.db.models.CharField(..., null=True, ...)
+    - pattern: $F = django.db.models.TextField(..., null=True, ...)
+  message: 'Avoid using null on string-based fields such as CharField and TextField.
+    If a string-based field has null=True, that means it has two possible values for
+    "no data": NULL, and the empty string. In most cases, it''s redundant to have
+    two possible values for "no data;" the Django convention is to use the empty string,
+    not NULL.'
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: correctness
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.correctness.string-field-null-checks.no-null-string-field
+    shortlink: https://sg.run/zvKd
+    semgrep.dev:
+      rule:
+        r_id: 9461
+        rv_id: 946127
+        rule_id: r6UrZy
+        version_id: pZTNOZK
+        url: https://semgrep.dev/playground/r/pZTNOZK/python.django.correctness.string-field-null-checks.no-null-string-field
+        origin: community
+- id: python.lang.best-practice.manual-collections-create.manual-defaultdict-dict-create
+  message: manually creating a defaultdict - use collections.defaultdict(dict)
+  languages:
+  - python
+  severity: WARNING
+  pattern-either:
+  - pattern: |
+      $DICT = {}
+      ...
+      for $KEY, $VALUE in $OTHERDICT.items():
+          ...
+          if $KEY not in $DICT:
+              ...
+              $DICT[$KEY] = {}
+              ...
+          $DICT[$KEY].update(...)
+  - pattern: |
+      $DICT = {}
+      ...
+      for $KEY, $VALUE in $OTHERDICT.items():
+          ...
+          $DICT.setdefault($KEY, {}).update(...)
+  metadata:
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.manual-collections-create.manual-defaultdict-dict-create
+    shortlink: https://sg.run/px4L
+    semgrep.dev:
+      rule:
+        r_id: 9562
+        rv_id: 946251
+        rule_id: r6UrxA
+        version_id: gETe1QK
+        url: https://semgrep.dev/playground/r/gETe1QK/python.lang.best-practice.manual-collections-create.manual-defaultdict-dict-create
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-ipv6network1
+  pattern: ipaddress.IPv6Network.subnet_of($X)
+  message: IPv6Network.subnet_of is only available on Python 3.7+ and is therefore
+    not backwards compatible. Instead, check if the subnet is in 'subnets'.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-ipv6network1
+    shortlink: https://sg.run/EkLe
+    semgrep.dev:
+      rule:
+        r_id: 9581
+        rv_id: 946271
+        rule_id: 4bUko0
+        version_id: GxTP7Er
+        url: https://semgrep.dev/playground/r/GxTP7Er/python.lang.compatibility.python37.python37-compatibility-ipv6network1
+        origin: community
+- id: python.lang.correctness.exit.use-sys-exit
+  languages:
+  - python
+  message: Detected use of `exit`. Use `sys.exit` over the python shell `exit` built-in.
+    `exit` is a helper for the interactive shell and may not be available on all Python
+    implementations.
+  patterns:
+  - pattern: exit($X)
+  - pattern-not: sys.exit($X)
+  severity: WARNING
+  fix: sys.exit($X)
+  metadata:
+    category: correctness
+    technology:
+    - python
+    references:
+    - https://stackoverflow.com/questions/6501121/difference-between-exit-and-sys-exit-in-python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.exit.use-sys-exit
+    shortlink: https://sg.run/Do5o
+    semgrep.dev:
+      rule:
+        r_id: 9596
+        rv_id: 946293
+        rule_id: JDUygy
+        version_id: bZTXwer
+        url: https://semgrep.dev/playground/r/bZTXwer/python.lang.correctness.exit.use-sys-exit
+        origin: community
+- id: ocaml.lang.best-practice.ifs.ocamllint-backwards-if
+  pattern: if $E then () else $E2
+  message: Backwards if. Rewrite the code as 'if not $E then $E2'.
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.ifs.ocamllint-backwards-if
+    shortlink: https://sg.run/b7Ov
+    semgrep.dev:
+      rule:
+        r_id: 9370
+        rv_id: 945954
+        rule_id: ZqU5AE
+        version_id: 5PT9O25
+        url: https://semgrep.dev/playground/r/5PT9O25/ocaml.lang.best-practice.ifs.ocamllint-backwards-if
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-httpconn
+  pattern: http.client.HTTPConnection(blocksize=$X,...)
+  message: Found usage of the 'blocksize' argument in a HTTPConnection call. This
+    is only available on Python 3.7+ and is therefore not backwards compatible. Remove
+    this in order for this code to work in Python 3.6 and below.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-httpconn
+    shortlink: https://sg.run/vzAb
+    semgrep.dev:
+      rule:
+        r_id: 9577
+        rv_id: 946267
+        rule_id: 8GUjbX
+        version_id: l4Tx9Or
+        url: https://semgrep.dev/playground/r/l4Tx9Or/python.lang.compatibility.python37.python37-compatibility-httpconn
+        origin: community
+- id: python.click.best-practice.echo-style.use-click-secho
+  pattern: click.echo(click.style($X, ...))
+  message: Use `click.secho($X)` instead. It combines click.echo() and click.style().
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: best-practice
+    technology:
+    - click
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.click.best-practice.echo-style.use-click-secho
+    shortlink: https://sg.run/8ywN
+    semgrep.dev:
+      rule:
+        r_id: 9440
+        rv_id: 946101
+        rule_id: GdU7AO
+        version_id: nWTpzXo
+        url: https://semgrep.dev/playground/r/nWTpzXo/python.click.best-practice.echo-style.use-click-secho
+        origin: community
+- id: python.lang.best-practice.manual-collections-create.manual-defaultdict-set-create
+  message: manually creating a defaultdict - use collections.defaultdict(set)
+  languages:
+  - python
+  severity: WARNING
+  pattern-either:
+  - pattern: |
+      $DICT = {}
+      ...
+      for $KEY, $VALUE in $OTHERDICT.items():
+          ...
+          if $KEY not in $DICT:
+              ...
+              $DICT[$KEY] = set()
+              ...
+          $DICT[$KEY].add(...)
+  - pattern: |
+      $DICT = {}
+      ...
+      for $KEY, $VALUE in $OTHERDICT.items():
+          ...
+          $DICT.setdefault($KEY, set()).add(...)
+  metadata:
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.manual-collections-create.manual-defaultdict-set-create
+    shortlink: https://sg.run/2xXD
+    semgrep.dev:
+      rule:
+        r_id: 9563
+        rv_id: 946252
+        rule_id: bwUwGZ
+        version_id: QkTZzex
+        url: https://semgrep.dev/playground/r/QkTZzex/python.lang.best-practice.manual-collections-create.manual-defaultdict-set-create
+        origin: community
+- id: ocaml.lang.best-practice.string.ocamllint-str-last-chars
+  pattern: String.sub $S (String.length $S - $N) $N
+  message: Use instead `Str.last_chars`
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.string.ocamllint-str-last-chars
+    shortlink: https://sg.run/eLvL
+    semgrep.dev:
+      rule:
+        r_id: 9376
+        rv_id: 945960
+        rule_id: gxU1D1
+        version_id: WrTEoXo
+        url: https://semgrep.dev/playground/r/WrTEoXo/ocaml.lang.best-practice.string.ocamllint-str-last-chars
+        origin: community
+- id: ocaml.lang.compatibility.deprecated.deprecated-pervasives
+  pattern: Pervasives.$X
+  message: Pervasives is deprecated and will not be available after 4.10. Use Stdlib.
+  languages:
+  - ocaml
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.compatibility.deprecated.deprecated-pervasives
+    shortlink: https://sg.run/dKe0
+    semgrep.dev:
+      rule:
+        r_id: 9378
+        rv_id: 945962
+        rule_id: 3qUP1E
+        version_id: K3TJbDY
+        url: https://semgrep.dev/playground/r/K3TJbDY/ocaml.lang.compatibility.deprecated.deprecated-pervasives
+        origin: community
+- id: ocaml.lang.best-practice.string.ocamllint-str-first-chars
+  pattern: String.sub $S 0 $N
+  message: Use instead `Str.first_chars`
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.string.ocamllint-str-first-chars
+    shortlink: https://sg.run/x16y
+    semgrep.dev:
+      rule:
+        r_id: 9374
+        rv_id: 945958
+        rule_id: L1Uy37
+        version_id: BjT1Ngx
+        url: https://semgrep.dev/playground/r/BjT1Ngx/ocaml.lang.best-practice.string.ocamllint-str-first-chars
+        origin: community
+- id: python.requests.best-practice.use-raise-for-status.use-raise-for-status
+  patterns:
+  - pattern-either:
+    - pattern: requests.request(...)
+    - pattern: requests.get(...)
+    - pattern: requests.post(...)
+    - pattern: requests.put(...)
+    - pattern: requests.delete(...)
+    - pattern: requests.head(...)
+    - pattern: requests.patch(...)
+  - pattern-not-inside: |
+      $RESP = requests.$METHOD(...)
+      $RESP.raise_for_status(...)
+  - pattern-not-inside: |
+      requests.$METHOD(...).raise_for_status(...)
+  - pattern-not-inside: |
+      $RESP = requests.$METHOD(...)
+      if $RESP.status_code == ...:
+        ...
+  - pattern-not-inside: |
+      $RESP = requests.$METHOD(...)
+      if $RESP.status_code != ...:
+        ...
+  - pattern-not-inside: |
+      $RESP = requests.$METHOD(...)
+      ...
+      if $RESP.ok:
+        ...
+  - pattern-not-inside: |
+      $RESP = requests.$METHOD(...)
+      ...
+      if not $RESP.ok:
+        ...
+  - pattern-not-inside: |
+      with ...:
+        ...
+        $RESP = requests.$METHOD(...)
+        ...
+      $RESP.raise_for_status(...)
+  - pattern-not-inside: |
+      with ... as ...:
+        ...
+        $RESP = requests.$METHOD(...)
+        ...
+      $RESP.raise_for_status(...)
+  message: There's an HTTP request made with requests, but the raise_for_status()
+    utility method isn't used. This can result in request errors going unnoticed and
+    your code behaving in unexpected ways, such as if your authorization API returns
+    a 500 error while you're only checking for a 401.
+  metadata:
+    references:
+    - https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status
+    category: best-practice
+    technology:
+    - requests
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.requests.best-practice.use-raise-for-status.use-raise-for-status
+    shortlink: https://sg.run/J3Xw
+    semgrep.dev:
+      rule:
+        r_id: 9690
+        rv_id: 946440
+        rule_id: DbUWd2
+        version_id: kbTYkXK
+        url: https://semgrep.dev/playground/r/kbTYkXK/python.requests.best-practice.use-raise-for-status.use-raise-for-status
+        origin: community
+  severity: WARNING
+  languages:
+  - python
+- id: python.lang.compatibility.python37.python37-compatibility-httpsconn
+  pattern: http.client.HTTPSConnection(blocksize=$X,...)
+  message: Found usage of the 'blocksize' argument in a HTTPSConnection call. This
+    is only available on Python 3.7+ and is therefore not backwards compatible. Remove
+    this in order for this code to work in Python 3.6 and below.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-httpsconn
+    shortlink: https://sg.run/dKwd
+    semgrep.dev:
+      rule:
+        r_id: 9578
+        rv_id: 946268
+        rule_id: gxU1qd
+        version_id: YDTvR0R
+        url: https://semgrep.dev/playground/r/YDTvR0R/python.lang.compatibility.python37.python37-compatibility-httpsconn
+        origin: community
+- id: ocaml.lang.best-practice.list.list-find-outside-try
+  patterns:
+  - pattern: |
+      List.find ...
+  - pattern-not-inside: |
+      try ... with ... -> ...
+  message: You should not use List.find outside of a try, or you should use List.find_opt
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.list.list-find-outside-try
+    shortlink: https://sg.run/N4KN
+    semgrep.dev:
+      rule:
+        r_id: 9371
+        rv_id: 945955
+        rule_id: nJUzLq
+        version_id: GxTP7K9
+        url: https://semgrep.dev/playground/r/GxTP7K9/ocaml.lang.best-practice.list.list-find-outside-try
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-textiowrapper
+  pattern: TextIOWrapper.reconfigure(...)
+  message: Found usage of 'importlib.abc.ResourceReader'. This module is only available
+    on Python 3.7+ and is therefore not backwards compatible. Instead, use another
+    loader.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-textiowrapper
+    shortlink: https://sg.run/ndL2
+    semgrep.dev:
+      rule:
+        r_id: 9580
+        rv_id: 946270
+        rule_id: 3qUPdy
+        version_id: 5PT9OD8
+        url: https://semgrep.dev/playground/r/5PT9OD8/python.lang.compatibility.python37.python37-compatibility-textiowrapper
+        origin: community
+- id: python.lang.best-practice.manual-collections-create.manual-defaultdict-list-create
+  message: manually creating a defaultdict - use collections.defaultdict(list)
+  languages:
+  - python
+  severity: WARNING
+  pattern-either:
+  - pattern: |
+      $DICT = {}
+      ...
+      for $KEY, $VALUE in $OTHERDICT.items():
+          ...
+          if $KEY not in $DICT:
+              ...
+              $DICT[$KEY] = []
+              ...
+          $DICT[$KEY].append(...)
+  - pattern: |
+      $DICT = {}
+      ...
+      for $KEY, $VALUE in $OTHERDICT.items():
+          ...
+          $DICT.setdefault($KEY, []).append(...)
+  metadata:
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.manual-collections-create.manual-defaultdict-list-create
+    shortlink: https://sg.run/XBzb
+    semgrep.dev:
+      rule:
+        r_id: 9564
+        rv_id: 946253
+        rule_id: NbUk16
+        version_id: 3ZTOP00
+        url: https://semgrep.dev/playground/r/3ZTOP00/python.lang.best-practice.manual-collections-create.manual-defaultdict-list-create
+        origin: community
+- id: python.django.performance.upsell-count.use-count-method
+  message: Looks like you need to determine the number of records. Django provides
+    the count() method which is more efficient than .len(). See https://docs.djangoproject.com/en/3.0/ref/models/querysets/
+  languages:
+  - python
+  severity: ERROR
+  pattern-either:
+  - pattern: $X.objects.$FUNC(...).len()
+  - pattern: $X.objects.$FUNC(...).$FILTER().len()
+  - pattern: $X.objects.$FUNC(...).$FILTER().$UPDATE(...).len()
+  metadata:
+    category: performance
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.performance.upsell-count.use-count-method
+    shortlink: https://sg.run/jRdN
+    semgrep.dev:
+      rule:
+        r_id: 9465
+        rv_id: 946135
+        rule_id: wdUJZ8
+        version_id: bZTXwyK
+        url: https://semgrep.dev/playground/r/bZTXwyK/python.django.performance.upsell-count.use-count-method
+        origin: community
+- id: python.bokeh.maintainability.deprecated.deprecated_apis.bokeh-deprecated-apis
+  message: These APIs are deprecated in Bokeh see https://docs.bokeh.org/en/latest/docs/releases.html#api-deprecations
+  languages:
+  - python
+  severity: WARNING
+  pattern-either:
+  - pattern: |
+      import bokeh.layouts.widgetbox
+  - pattern: |
+      import bokeh.models.graphs.from_networkx
+  metadata:
+    category: maintainability
+    technology:
+    - bokeh
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.bokeh.maintainability.deprecated.deprecated_apis.bokeh-deprecated-apis
+    shortlink: https://sg.run/7ok2
+    semgrep.dev:
+      rule:
+        r_id: 9438
+        rv_id: 946099
+        rule_id: JDUyW4
+        version_id: d6TPjXP
+        url: https://semgrep.dev/playground/r/d6TPjXP/python.bokeh.maintainability.deprecated.deprecated_apis.bokeh-deprecated-apis
+        origin: community
+- id: python.lang.best-practice.manual-collections-create.manual-counter-create
+  pattern: |
+    $DICT = {}
+    ...
+    for $KEY, $VALUE in $OTHERDICT.items():
+        ...
+        if $KEY not in $DICT:
+            ...
+            $DICT[$KEY] = 0
+            ...
+        $DICT[$KEY] += 1
+  message: manually creating a counter - use collections.Counter
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.manual-collections-create.manual-counter-create
+    shortlink: https://sg.run/jRZJ
+    semgrep.dev:
+      rule:
+        r_id: 9565
+        rv_id: 946254
+        rule_id: kxUk73
+        version_id: 44TZk0P
+        url: https://semgrep.dev/playground/r/44TZk0P/python.lang.best-practice.manual-collections-create.manual-counter-create
+        origin: community
+- id: python.lang.best-practice.open-never-closed.open-never-closed
+  patterns:
+  - pattern-not-inside: |
+      $F = open(...)
+      ...
+      $F.close()
+  - pattern-not-inside: |
+      $F = io.open(...)
+      ...
+      $F.close()
+  - pattern-not-inside: |
+      $F = tarfile.open(...)
+      ...
+      $F.close()
+  - pattern-not-inside: |
+      $F = ZipFile.open(...)
+      ...
+      $F.close()
+  - pattern-not-inside: |
+      $F = tempfile.TemporaryFile(...)
+      ...
+      $F.close()
+  - pattern-not-inside: |
+      $F = tempfile.NamedTemporaryFile(...)
+      ...
+      $F.close()
+  - pattern-not-inside: |
+      $F = tempfile.SpooledTemporaryFile(...)
+      ...
+      $F.close()
+  - pattern-not-inside: |
+      $F = open(...)
+      ...
+      try:
+          ...
+      finally:
+          $F.close()
+  - pattern-not-inside: |
+      $F = io.open(...)
+      ...
+      try:
+          ...
+      finally:
+          $F.close()
+  - pattern-not-inside: |
+      $F = tarfile.open(...)
+      ...
+      try:
+          ...
+      finally:
+          $F.close()
+  - pattern-not-inside: |
+      $F = ZipFile.open(...)
+      ...
+      try:
+          ...
+      finally:
+          $F.close()
+  - pattern-not-inside: |
+      $F = tempfile.TemporaryFile(...)
+      ...
+      try:
+          ...
+      finally:
+          $F.close()
+  - pattern-not-inside: |
+      $F = tempfile.NamedTemporaryFile(...)
+      ...
+      try:
+          ...
+      finally:
+          $F.close()
+  - pattern-not-inside: |
+      $F = tempfile.SpooledTemporaryFile(...)
+      ...
+      try:
+          ...
+      finally:
+          $F.close()
+  - pattern-either:
+    - pattern: $F = open(...)
+    - pattern: $F = io.open(...)
+    - pattern: $F = tarfile.open(...)
+    - pattern: $F = ZipFile.open(...)
+    - pattern: $F = tempfile.TemporaryFile(...)
+    - pattern: $F = tempfile.NamedTemporaryFile(...)
+    - pattern: $F = tempfile.SpooledTemporaryFile(...)
+  message: file object opened without corresponding close
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: best-practice
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.best-practice.open-never-closed.open-never-closed
+    shortlink: https://sg.run/9oN8
+    semgrep.dev:
+      rule:
+        r_id: 9567
+        rv_id: 946256
+        rule_id: x8Un4Q
+        version_id: JdTDy9x
+        url: https://semgrep.dev/playground/r/JdTDy9x/python.lang.best-practice.open-never-closed.open-never-closed
+        origin: community
+- id: go.lang.maintainability.useless-ifelse.useless-if-conditional
+  message: Detected an if block that checks for the same condition on both branches
+    (`$X`). The second condition check is useless as it is the same as the first,
+    and therefore can be removed from the code,
+  languages:
+  - go
+  severity: WARNING
+  pattern: |
+    if ($X) {
+        ...
+    } else if ($X) {
+        ...
+    }
+  metadata:
+    category: maintainability
+    technology:
+    - go
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/go.lang.maintainability.useless-ifelse.useless-if-conditional
+    shortlink: https://sg.run/J9yQ
+    semgrep.dev:
+      rule:
+        r_id: 9102
+        rv_id: 945558
+        rule_id: lBU9kj
+        version_id: K3TJb8y
+        url: https://semgrep.dev/playground/r/K3TJb8y/go.lang.maintainability.useless-ifelse.useless-if-conditional
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-locale1
+  pattern: locale.format_string(monetary=$X, ...)
+  message: Found usage of the 'monetary' argument in a function call of 'locale.format_string'.
+    This is only available on Python 3.7+ and is therefore not backwards compatible.
+    Instead, remove the 'monetary' argument.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-locale1
+    shortlink: https://sg.run/gLeZ
+    semgrep.dev:
+      rule:
+        r_id: 9585
+        rv_id: 946275
+        rule_id: GdU72R
+        version_id: DkTNp0N
+        url: https://semgrep.dev/playground/r/DkTNp0N/python.lang.compatibility.python37.python37-compatibility-locale1
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-importlib
+  pattern: importlib.source_hash()
+  message: source_hash' is only available on Python 3.7+. This does not work in lower
+    versions, and therefore is not backwards compatible. Instead, use another hash
+    function.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-importlib
+    shortlink: https://sg.run/OPDn
+    semgrep.dev:
+      rule:
+        r_id: 9575
+        rv_id: 946265
+        rule_id: 7KUQOl
+        version_id: K3TJbqv
+        url: https://semgrep.dev/playground/r/K3TJbqv/python.lang.compatibility.python37.python37-compatibility-importlib
+        origin: community
+- id: python.attr.correctness.mutable-initializer.attr-mutable-initializer
+  patterns:
+  - pattern-not-inside: |
+      def $Y(...):
+        ...
+  - pattern-not-inside: |
+      def $Y(...) -> $TYPE:
+        ...
+  - pattern-either:
+    - pattern-inside: |
+        @attr.s(...,auto_attribs=True, ...)
+        class $X(...):
+          ...
+    - pattern-inside: |
+        @attrs.define
+        class $X(...):
+          ...
+  - pattern-either:
+    - pattern: |
+        $M = {...}
+    - pattern: $M = [...]
+    - pattern: $M = list(...)
+    - pattern: $M = set(...)
+    - pattern: $M = dict(...)
+  message: 'Unsafe usage of mutable initializer with attr.s decorator. Multiple instances
+    of this class will re-use the same data structure, which is likely not the desired
+    behavior. Consider instead: replace assignment to mutable initializer (ex. dict()
+    or {}) with attr.ib(factory=type) where type is dict, set, or list'
+  severity: WARNING
+  languages:
+  - python
+  metadata:
+    category: correctness
+    technology:
+    - attr
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.attr.correctness.mutable-initializer.attr-mutable-initializer
+    shortlink: https://sg.run/EkQN
+    semgrep.dev:
+      rule:
+        r_id: 9437
+        rv_id: 946081
+        rule_id: PeUZ6E
+        version_id: o5TZevw
+        url: https://semgrep.dev/playground/r/o5TZevw/python.attr.correctness.mutable-initializer.attr-mutable-initializer
+        origin: community
+- id: python.sqlalchemy.correctness.delete-where.delete-where-no-execute
+  patterns:
+  - pattern: $X.delete().where(...)
+  - pattern-not-inside: $X.delete().where(...).execute()
+  - pattern-not-inside: $C.execute(...)
+  message: .delete().where(...) results in a no-op in SQLAlchemy unless the command
+    is executed, use .filter(...).delete() instead.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - sqlalchemy
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.sqlalchemy.correctness.delete-where.delete-where-no-execute
+    shortlink: https://sg.run/KWp7
+    semgrep.dev:
+      rule:
+        r_id: 9699
+        rv_id: 946448
+        rule_id: GdU0LJ
+        version_id: nWTpzKG
+        url: https://semgrep.dev/playground/r/nWTpzKG/python.sqlalchemy.correctness.delete-where.delete-where-no-execute
+        origin: community
+- id: ocaml.lang.performance.list.ocamllint-length-list-zero
+  pattern: List.length $X = 0
+  message: You probably want $X = [], which is faster.
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: performance
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.performance.list.ocamllint-length-list-zero
+    shortlink: https://sg.run/8yrQ
+    semgrep.dev:
+      rule:
+        r_id: 9384
+        rv_id: 945969
+        rule_id: ReUglk
+        version_id: RGTAg6R
+        url: https://semgrep.dev/playground/r/RGTAg6R/ocaml.lang.performance.list.ocamllint-length-list-zero
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-multiprocess2
+  pattern: multiprocessing.Process.kill()
+  message: multiprocessing.Process.kill() is only available on Python 3.7+ and is
+    therefore not backwards compatible. Instead, use terminate().
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-multiprocess2
+    shortlink: https://sg.run/4x1z
+    semgrep.dev:
+      rule:
+        r_id: 9588
+        rv_id: 946278
+        rule_id: BYUNE9
+        version_id: K3TJbqK
+        url: https://semgrep.dev/playground/r/K3TJbqK/python.lang.compatibility.python37.python37-compatibility-multiprocess2
+        origin: community
+- id: python.lang.correctness.dict-modify-iterating.dict-del-while-iterate
+  message: 'It appears that `$DICT[$KEY]` is a dict with items being deleted while
+    in a for loop. This is usually a bad idea and will likely lead to a RuntimeError:
+    dictionary changed size during iteration'
+  metadata:
+    references:
+    - https://docs.python.org/3/library/stdtypes.html#dictionary-view-objects
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.dict-modify-iterating.dict-del-while-iterate
+    shortlink: https://sg.run/BkP2
+    semgrep.dev:
+      rule:
+        r_id: 9595
+        rv_id: 946291
+        rule_id: PeUZLW
+        version_id: yeT0n14
+        url: https://semgrep.dev/playground/r/yeT0n14/python.lang.correctness.dict-modify-iterating.dict-del-while-iterate
+        origin: community
+  languages:
+  - python
+  severity: WARNING
+  pattern-either:
+  - pattern: |
+      for $KEY, $VALUE in $DICT.items():
+          ...
+          del $DICT[$KEY]
+  - pattern: |
+      for $KEY in $DICT.keys():
+          ...
+          del $DICT[$KEY]
+- id: ocaml.lang.best-practice.ifs.ocamllint-useless-else
+  pattern: if $E then $E1 else ()
+  message: Useless else. Just remove the else branch;
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.ifs.ocamllint-useless-else
+    shortlink: https://sg.run/rd7J
+    semgrep.dev:
+      rule:
+        r_id: 9369
+        rv_id: 945953
+        rule_id: d8UjxD
+        version_id: JdTDyYq
+        url: https://semgrep.dev/playground/r/JdTDyYq/ocaml.lang.best-practice.ifs.ocamllint-useless-else
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-ipv4network2
+  pattern: ipaddress.IPv4Network.supernet_of($X)
+  message: IPv4Network.supernet_of is only available on Python 3.7+ and is therefore
+    not backwards compatible. Instead, check if the supernet is in 'supernet'.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-ipv4network2
+    shortlink: https://sg.run/8y3E
+    semgrep.dev:
+      rule:
+        r_id: 9584
+        rv_id: 946274
+        rule_id: 5rUO61
+        version_id: BjT1N0K
+        url: https://semgrep.dev/playground/r/BjT1N0K/python.lang.compatibility.python37.python37-compatibility-ipv4network2
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-ipv4network1
+  pattern: ipaddress.IPv4Network.subnet_of($X)
+  message: IPv4Network.subnet_of is only available on Python 3.7+ and is therefore
+    not backwards compatible. Instead, check if the subnet is in 'subnets'.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-ipv4network1
+    shortlink: https://sg.run/LwRo
+    semgrep.dev:
+      rule:
+        r_id: 9583
+        rv_id: 946273
+        rule_id: JDUyqR
+        version_id: A8TJz73
+        url: https://semgrep.dev/playground/r/A8TJz73/python.lang.compatibility.python37.python37-compatibility-ipv4network1
+        origin: community
+- id: python.django.compatibility.django-2_0-compat.django-compat-2_0-signals-weak
+  pattern: django.dispatch.signals.Signal.disconnect(..., weak=$X, ...)
+  message: The weak argument to django.dispatch.signals.Signal.disconnect() is removed
+    in Django 2.0.
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: compatibility
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.compatibility.django-2_0-compat.django-compat-2_0-signals-weak
+    shortlink: https://sg.run/0Qjj
+    semgrep.dev:
+      rule:
+        r_id: 9454
+        rv_id: 946120
+        rule_id: pKUOWW
+        version_id: K3TJbE1
+        url: https://semgrep.dev/playground/r/K3TJbE1/python.django.compatibility.django-2_0-compat.django-compat-2_0-signals-weak
+        origin: community
+- id: python.sqlalchemy.performance.performance-improvements.len-all-count
+  pattern: len($X.all())
+  message: Using QUERY.count() instead of len(QUERY.all()) sends less data to the
+    client since the SQLAlchemy method is performed server-side.
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: performance
+    technology:
+    - sqlalchemy
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.sqlalchemy.performance.performance-improvements.len-all-count
+    shortlink: https://sg.run/4y8g
+    semgrep.dev:
+      rule:
+        r_id: 9700
+        rv_id: 946449
+        rule_id: ReUPOw
+        version_id: ExTg2Gr
+        url: https://semgrep.dev/playground/r/ExTg2Gr/python.sqlalchemy.performance.performance-improvements.len-all-count
+        origin: community
+- id: python.flask.maintainability.deprecated.deprecated-apis.flask-deprecated-apis
+  message: deprecated Flask API
+  languages:
+  - python
+  severity: WARNING
+  pattern-either:
+  - pattern: |
+      $F = Flask(...)
+      ...
+      $F.open_session(...)
+  - pattern: |
+      $F = Flask(...)
+      ...
+      $F.save_session(...)
+  - pattern: |
+      $F = Flask(...)
+      ...
+      $F.make_null_session(...)
+  - pattern: |
+      $F = Flask(...)
+      ...
+      $F.init_jinja_globals(...)
+  - pattern: |
+      $F = Flask(...)
+      ...
+      $F.request_globals_class(...)
+  - pattern: |
+      $F = Flask(...)
+      ...
+      $F.static_path(...)
+  - pattern: app.open_session(...)
+  - pattern: app.save_session(...)
+  - pattern: app.make_null_session(...)
+  - pattern: app.init_jinja_globals(...)
+  - pattern: app.request_globals_class(...)
+  - pattern: app.static_path(...)
+  - pattern: app.config.from_json(...)
+  - pattern: flask.json_available
+  - pattern: flask.request.module
+  - pattern: flask.testing.make_test_environ_builder(...)
+  metadata:
+    category: maintainability
+    technology:
+    - flask
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.flask.maintainability.deprecated.deprecated-apis.flask-deprecated-apis
+    shortlink: https://sg.run/rdLR
+    semgrep.dev:
+      rule:
+        r_id: 9525
+        rv_id: 946203
+        rule_id: eqU86E
+        version_id: ExTg2zL
+        url: https://semgrep.dev/playground/r/ExTg2zL/python.flask.maintainability.deprecated.deprecated-apis.flask-deprecated-apis
+        origin: community
+- id: ocaml.lang.best-practice.bool.ocamllint-bool-false
+  pattern-either:
+  - pattern: $X = false
+  - pattern: $X == false
+  - pattern: $X <> true
+  message: Comparison to boolean. Just use `not $X`
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.bool.ocamllint-bool-false
+    shortlink: https://sg.run/9oEy
+    semgrep.dev:
+      rule:
+        r_id: 9367
+        rv_id: 945950
+        rule_id: eqU8jW
+        version_id: 3ZTOPzN
+        url: https://semgrep.dev/playground/r/3ZTOPzN/ocaml.lang.best-practice.bool.ocamllint-bool-false
+        origin: community
+- id: python.django.compatibility.django-2_0-compat.django-compat-2_0-check-aggregate-support
+  pattern: django.db.backends.base.BaseDatabaseOperations.check_aggregate_support(...)
+  message: django.db.backends.base.BaseDatabaseOperations.check_aggregate_support()
+    is removed in Django 2.0.
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: compatibility
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.compatibility.django-2_0-compat.django-compat-2_0-check-aggregate-support
+    shortlink: https://sg.run/KlQ5
+    semgrep.dev:
+      rule:
+        r_id: 9455
+        rv_id: 946121
+        rule_id: 2ZUbqg
+        version_id: qkT4j68
+        url: https://semgrep.dev/playground/r/qkT4j68/python.django.compatibility.django-2_0-compat.django-compat-2_0-check-aggregate-support
+        origin: community
+- id: python.requests.best-practice.use-timeout.use-timeout
+  pattern-either:
+  - patterns:
+    - pattern-not: requests.$W(..., timeout=$N, ...)
+    - pattern-not: requests.$W(..., **$KWARGS)
+    - pattern-either:
+      - pattern: requests.request(...)
+      - pattern: requests.get(...)
+      - pattern: requests.post(...)
+      - pattern: requests.put(...)
+      - pattern: requests.delete(...)
+      - pattern: requests.head(...)
+      - pattern: requests.patch(...)
+  - patterns:
+    - pattern-inside: |
+        $SESSION = requests.Session(...)
+        ...
+    - pattern-not: |
+        $SESSION.$W(..., timeout=$N, ...)
+    - pattern-not: |
+        $SESSION.$W(..., **$KWARGS)
+    - pattern-either:
+      - pattern: $SESSION.get(...)
+      - pattern: $SESSION.post(...)
+      - pattern: $SESSION.put(...)
+      - pattern: $SESSION.delete(...)
+      - pattern: $SESSION.head(...)
+      - pattern: $SESSION.patch(...)
+  fix-regex:
+    regex: (.*)\)$
+    replacement: \1, timeout=30)
+  message: Detected a 'requests' call without a timeout set. By default, 'requests'
+    calls wait until the connection is closed. This means a 'requests' call without
+    a timeout will hang the program if a response is never received. Consider setting
+    a timeout for all 'requests'.
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: best-practice
+    references:
+    - https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts
+    - https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts
+    technology:
+    - requests
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.requests.best-practice.use-timeout.use-timeout
+    shortlink: https://sg.run/R8kO
+    semgrep.dev:
+      rule:
+        r_id: 9693
+        rv_id: 946443
+        rule_id: KxU42G
+        version_id: O9TX3Yn
+        url: https://semgrep.dev/playground/r/O9TX3Yn/python.requests.best-practice.use-timeout.use-timeout
+        origin: community
+- id: ocaml.lang.best-practice.hashtbl.hashtbl-find-outside-try
+  patterns:
+  - pattern: |
+      Hashtbl.find ...
+  - pattern-not-inside: |
+      try ... with Not_found -> ...
+  message: '''Hashtbl.find'' raises the ''Not_found'' exception. Handle the exception
+    or use ''Hashtbl.find_opt'' instead. If you have proof that the key exists in
+    the table, use ''assert false'' as the exception handler to demonstrate awareness
+    of the issue. If your code uses the syntax ''match Hashtbl.find ... with exception
+    Not_found -> ...'', it''s fine and we apologize for not detecting it. Consider
+    using ''Hashtbl.find_opt'' to please Semgrep and stay safe.'
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.hashtbl.hashtbl-find-outside-try
+    shortlink: https://sg.run/yd7A
+    semgrep.dev:
+      rule:
+        r_id: 9368
+        rv_id: 1197444
+        rule_id: v8Un6Z
+        version_id: 5PTokxQ
+        url: https://semgrep.dev/playground/r/5PTokxQ/ocaml.lang.best-practice.hashtbl.hashtbl-find-outside-try
+        origin: community
+- id: python.sqlalchemy.performance.performance-improvements.batch-import
+  pattern: |
+    for $X in $Y:
+      db.session.add($Z)
+  message: Rather than adding one element at a time, consider batch loading to improve
+    performance.
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: performance
+    technology:
+    - sqlalchemy
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.sqlalchemy.performance.performance-improvements.batch-import
+    shortlink: https://sg.run/PprN
+    semgrep.dev:
+      rule:
+        r_id: 9701
+        rv_id: 946450
+        rule_id: AbUWjy
+        version_id: 7ZTrQAb
+        url: https://semgrep.dev/playground/r/7ZTrQAb/python.sqlalchemy.performance.performance-improvements.batch-import
+        origin: community
+- id: ocaml.lang.performance.list.ocamllint-length-more-than-zero
+  pattern: List.length $X > 0
+  message: You probably want $X <> [], which is faster.
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: performance
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.performance.list.ocamllint-length-more-than-zero
+    shortlink: https://sg.run/gLZ5
+    semgrep.dev:
+      rule:
+        r_id: 9385
+        rv_id: 945970
+        rule_id: AbUz2X
+        version_id: A8TJzOg
+        url: https://semgrep.dev/playground/r/A8TJzOg/ocaml.lang.performance.list.ocamllint-length-more-than-zero
+        origin: community
+- id: ocaml.lang.best-practice.bool.ocamllint-bool-true
+  pattern-either:
+  - pattern: $X = true
+  - pattern: $X == true
+  - pattern: $X != false
+  message: Comparison to boolean. Just use `$X`
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.bool.ocamllint-bool-true
+    shortlink: https://sg.run/1ZE1
+    semgrep.dev:
+      rule:
+        r_id: 9366
+        rv_id: 945949
+        rule_id: OrU3xY
+        version_id: QkTZzjO
+        url: https://semgrep.dev/playground/r/QkTZzjO/ocaml.lang.best-practice.bool.ocamllint-bool-true
+        origin: community
+- id: python.lang.compatibility.python37.python37-compatibility-ipv6network2
+  pattern: ipaddress.IPv6Network.supernet_of($X)
+  message: IPv6Network.supernet_of is only available on Python 3.7+ and is therefore
+    not backwards compatible. Instead, check if the supernet is in 'supernet'.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: compatibility
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.compatibility.python37.python37-compatibility-ipv6network2
+    shortlink: https://sg.run/7orW
+    semgrep.dev:
+      rule:
+        r_id: 9582
+        rv_id: 946272
+        rule_id: PeUZYr
+        version_id: RGTAgGq
+        url: https://semgrep.dev/playground/r/RGTAgGq/python.lang.compatibility.python37.python37-compatibility-ipv6network2
+        origin: community
+- id: python.lang.correctness.common-mistakes.default-mutable-list.default-mutable-list
+  message: 'Function $F mutates default list $D. Python only instantiates default
+    function arguments once and shares the instance across the function calls. If
+    the default function argument is mutated, that will modify the instance used by
+    all future function calls. This can cause unexpected results, or lead to security
+    vulnerabilities whereby one function consumer can view or modify the data of another
+    function consumer. Instead, use a default argument (like None) to indicate that
+    no argument was provided and instantiate a new list at that time. For example:
+    `if $D is None: $D = []`.'
+  languages:
+  - python
+  severity: ERROR
+  options:
+    symbolic_propagation: true
+  patterns:
+  - pattern-not-inside: |
+      def $A(...):
+        ...
+        def $F(..., $D=[], ...):
+          ...
+  - pattern-inside: |
+      def $F(..., $D=[], ...):
+        ...
+  - pattern-not-inside: |
+      $D = []
+      ...
+  - pattern-not-inside: |
+      $D = [...]
+      ...
+  - pattern-not-inside: |
+      $D = list(...)
+      ...
+  - pattern-not-inside: |
+      $D = copy.deepcopy($D)
+      ...
+  - pattern-not-inside: |
+      $D = copy.copy($D)
+      ...
+  - pattern-not-inside: |
+      $D = list.copy($D)
+      ...
+  - pattern-not-inside: |
+      $D = $D[:]
+      ...
+  - pattern-not-inside: |
+      $D = [... for ... in ...]
+      ...
+  - pattern-not-inside: |
+      $D = $D or []
+      ...
+  - pattern-either:
+    - pattern: |
+        $D.append(...)
+    - pattern: |
+        $D.extend(...)
+    - pattern: |
+        $D.insert(...)
+  metadata:
+    category: correctness
+    technology:
+    - python
+    references:
+    - https://docs.python-guide.org/writing/gotchas/#mutable-default-arguments
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.common-mistakes.default-mutable-list.default-mutable-list
+    shortlink: https://sg.run/BkPW
+    semgrep.dev:
+      rule:
+        r_id: 9607
+        rv_id: 946285
+        rule_id: lBU9PZ
+        version_id: pZTNOjq
+        url: https://semgrep.dev/playground/r/pZTNOjq/python.lang.correctness.common-mistakes.default-mutable-list.default-mutable-list
+        origin: community
+- id: python.django.compatibility.django-2_0-compat.django-compat-2_0-extra-forms
+  message: The django.forms.extras package is removed in Django 2.0.
+  languages:
+  - python
+  severity: WARNING
+  pattern-either:
+  - pattern: from django.forms import extras
+  - pattern: from django.forms.extras import $X
+  - pattern: from django.forms import extras as $Y
+  - pattern: from django.forms.extras import $X as $Y
+  - pattern: import django.forms.extras
+  - pattern: import django.forms.extras.$X
+  - pattern: import django.forms.extras as $Y
+  - pattern: import django.forms.extras.$X as $Y
+  metadata:
+    category: compatibility
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.compatibility.django-2_0-compat.django-compat-2_0-extra-forms
+    shortlink: https://sg.run/qx07
+    semgrep.dev:
+      rule:
+        r_id: 9456
+        rv_id: 946122
+        rule_id: X5U89v
+        version_id: l4Tx9kO
+        url: https://semgrep.dev/playground/r/l4Tx9kO/python.django.compatibility.django-2_0-compat.django-compat-2_0-extra-forms
+        origin: community
+- id: ocaml.lang.best-practice.string.ocamllint-useless-sprintf
+  pattern-either:
+  - pattern: Printf.sprintf "..."
+  - pattern: Printf.sprintf "%s" $S
+  message: Useless sprintf
+  languages:
+  - ocaml
+  severity: WARNING
+  metadata:
+    category: best-practice
+    technology:
+    - ocaml
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/ocaml.lang.best-practice.string.ocamllint-useless-sprintf
+    shortlink: https://sg.run/vzl0
+    semgrep.dev:
+      rule:
+        r_id: 9377
+        rv_id: 945961
+        rule_id: QrUzO6
+        version_id: 0bT158E
+        url: https://semgrep.dev/playground/r/0bT158E/ocaml.lang.best-practice.string.ocamllint-useless-sprintf
+        origin: community
+- id: python.lang.correctness.pdb.pdb-remove
+  pattern-either:
+  - pattern: pdb.$X(...)
+  - pattern: pdb.Pdb.$X(...)
+  message: pdb is an interactive debugging tool and you may have forgotten to remove
+    it before committing your code
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.pdb.pdb-remove
+    shortlink: https://sg.run/Kl0X
+    semgrep.dev:
+      rule:
+        r_id: 9599
+        rv_id: 946296
+        rule_id: ReUgv3
+        version_id: w8TKJxO
+        url: https://semgrep.dev/playground/r/w8TKJxO/python.lang.correctness.pdb.pdb-remove
+        origin: community
+- id: python.django.correctness.string-field-null-checks.string-field-must-set-null-true
+  patterns:
+  - pattern-inside: |
+      class $M(...):
+        ...
+  - pattern-not: $F = django.db.models.CharField(..., unique=True, blank=True, null=True,
+      ...)
+  - pattern-not: $F = django.db.models.TextField(..., unique=True, blank=True, null=True,
+      ...)
+  - pattern-either:
+    - pattern: $F = django.db.models.CharField(..., unique=True, blank=True, ...)
+    - pattern: $F = django.db.models.TextField(..., unique=True, blank=True, ...)
+  message: If a text field declares unique=True and blank=True, null=True must also
+    be set to avoid unique constraint violations when saving multiple objects with
+    blank values.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.correctness.string-field-null-checks.string-field-must-set-null-true
+    shortlink: https://sg.run/pxPZ
+    semgrep.dev:
+      rule:
+        r_id: 9462
+        rv_id: 946128
+        rule_id: bwUwqR
+        version_id: 2KTYbyD
+        url: https://semgrep.dev/playground/r/2KTYbyD/python.django.correctness.string-field-null-checks.string-field-must-set-null-true
+        origin: community
+- id: python.flask.correctness.same-handler-name.flask-duplicate-handler-name
+  pattern: |
+    @app.route("...", ...)
+    def $R(...):
+        ...
+    ...
+    @app.route("...", ...)
+    def $R(...):
+        ...
+  message: Looks like `$R` is a flask function handler that registered to two different
+    routes. This will cause a runtime error
+  languages:
+  - python
+  severity: WARNING
+  metadata:
+    category: correctness
+    technology:
+    - flask
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.flask.correctness.same-handler-name.flask-duplicate-handler-name
+    shortlink: https://sg.run/9o18
+    semgrep.dev:
+      rule:
+        r_id: 9523
+        rv_id: 946202
+        rule_id: x8UnYQ
+        version_id: nWTpzv1
+        url: https://semgrep.dev/playground/r/nWTpzv1/python.flask.correctness.same-handler-name.flask-duplicate-handler-name
+        origin: community
+- id: python.django.compatibility.django-2_0-compat.django-compat-2_0-assignment-tag
+  message: The assignment_tag helper is removed in Django 2.0.
+  languages:
+  - python
+  severity: WARNING
+  pattern-either:
+  - pattern: $X.assignment_tag(...)
+  - pattern: assignment_tag(...)
+  metadata:
+    category: compatibility
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.compatibility.django-2_0-compat.django-compat-2_0-assignment-tag
+    shortlink: https://sg.run/l2RE
+    semgrep.dev:
+      rule:
+        r_id: 9457
+        rv_id: 946123
+        rule_id: j2UvxK
+        version_id: YDTvRWb
+        url: https://semgrep.dev/playground/r/YDTvRWb/python.django.compatibility.django-2_0-compat.django-compat-2_0-assignment-tag
+        origin: community
+- id: python.django.compatibility.django-2_0-compat.django-compat-2_0-assert-redirects-helper
+  message: The host argument to assertRedirects is removed in Django 2.0.
+  languages:
+  - python
+  severity: WARNING
+  pattern-either:
+  - pattern: $X.assertRedirects(..., host=$Y, ...)
+  - pattern: assertRedirects(..., host=$Y, ...)
+  metadata:
+    category: compatibility
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.compatibility.django-2_0-compat.django-compat-2_0-assert-redirects-helper
+    shortlink: https://sg.run/YvQy
+    semgrep.dev:
+      rule:
+        r_id: 9458
+        rv_id: 946124
+        rule_id: 10UKlx
+        version_id: 6xTxjn9
+        url: https://semgrep.dev/playground/r/6xTxjn9/python.django.compatibility.django-2_0-compat.django-compat-2_0-assert-redirects-helper
+        origin: community
+- id: go.lang.correctness.useless-eqeq.eqeq-is-bad
+  patterns:
+  - pattern-not-inside: assert(...)
+  - pattern-either:
+    - pattern: $X == $X
+    - pattern: $X != $X
+  - pattern-not: 1 == 1
+  message: Detected useless comparison operation `$X == $X` or `$X != $X`. This will
+    always return 'True' or 'False' and therefore is not necessary. Instead, remove
+    this comparison operation or use another comparison expression that is not deterministic.
+  languages:
+  - go
+  severity: INFO
+  metadata:
+    category: correctness
+    technology:
+    - go
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/go.lang.correctness.useless-eqeq.eqeq-is-bad
+    shortlink: https://sg.run/W8dz
+    semgrep.dev:
+      rule:
+        r_id: 9097
+        rv_id: 945556
+        rule_id: DbUplr
+        version_id: WrTEoGR
+        url: https://semgrep.dev/playground/r/WrTEoGR/go.lang.correctness.useless-eqeq.eqeq-is-bad
+        origin: community
+- id: python.lang.correctness.common-mistakes.default-mutable-dict.default-mutable-dict
+  message: 'Function $F mutates default dict $D. Python only instantiates default
+    function arguments once and shares the instance across the function calls. If
+    the default function argument is mutated, that will modify the instance used by
+    all future function calls. This can cause unexpected results, or lead to security
+    vulnerabilities whereby one function consumer can view or modify the data of another
+    function consumer. Instead, use a default argument (like None) to indicate that
+    no argument was provided and instantiate a new dictionary at that time. For example:
+    `if $D is None: $D = {}`.'
+  languages:
+  - python
+  severity: ERROR
+  options:
+    symbolic_propagation: true
+  patterns:
+  - pattern-not-inside: |
+      def $A(...):
+        ...
+        def $F(..., $D={}, ...):
+          ...
+  - pattern-inside: |
+      def $F(..., $D={}, ...):
+        ...
+  - pattern-not-inside: |
+      $D = {}
+      ...
+  - pattern-not-inside: |
+      $D = dict(...)
+      ...
+  - pattern-not-inside: |
+      $D = $D.copy()
+      ...
+  - pattern-not-inside: |
+      $D = copy.deepcopy($D)
+      ...
+  - pattern-not-inside: |
+      $D = copy.copy($D)
+      ...
+  - pattern-not-inside: |
+      $D = dict.copy($D)
+      ...
+  - pattern-not-inside: |
+      $D = {... for ... in ...}
+      ...
+  - pattern-not-inside: |
+      $D = $D or {}
+      ...
+  - pattern-either:
+    - pattern: |
+        $D[...] = ...
+    - pattern: |
+        $D.update(...)
+    - pattern: |
+        $D.setdefault(...)
+  metadata:
+    category: correctness
+    technology:
+    - python
+    references:
+    - https://docs.python-guide.org/writing/gotchas/#mutable-default-arguments
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.common-mistakes.default-mutable-dict.default-mutable-dict
+    shortlink: https://sg.run/Av4p
+    semgrep.dev:
+      rule:
+        r_id: 9606
+        rv_id: 946284
+        rule_id: qNUjqR
+        version_id: zyTlkJe
+        url: https://semgrep.dev/playground/r/zyTlkJe/python.lang.correctness.common-mistakes.default-mutable-dict.default-mutable-dict
+        origin: community
+- id: python.sqlalchemy.correctness.bad-operator-in-filter.bad-operator-in-filter
+  languages:
+  - python
+  message: Only comparison operators should be used inside SQLAlchemy filter expressions.
+    Use `==` instead of `is`, `!=` instead of `is not`, `sqlalchemy.and_` instead
+    of `and`, `sqlalchemy.or_` instead of `or`, `sqlalchemy.not_` instead of `not`,
+    and `sqlalchemy.in_` instead of `in_`.
+  metadata:
+    references:
+    - https://docs.sqlalchemy.org/en/13/orm/tutorial.html#common-filter-operators
+    category: correctness
+    technology:
+    - sqlalchemy
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.sqlalchemy.correctness.bad-operator-in-filter.bad-operator-in-filter
+    shortlink: https://sg.run/0nLv
+    semgrep.dev:
+      rule:
+        r_id: 9698
+        rv_id: 946447
+        rule_id: 5rU4JE
+        version_id: ZRT35rO
+        url: https://semgrep.dev/playground/r/ZRT35rO/python.sqlalchemy.correctness.bad-operator-in-filter.bad-operator-in-filter
+        origin: community
+  patterns:
+  - pattern-inside: |
+      def $ANY(...):
+          ...
+          $MODEL.query
+  - pattern-inside: |
+      $TARGET.filter(...)
+  - pattern-either:
+    - pattern: not $A
+    - pattern: $A is $B
+    - pattern: $A is not $B
+    - pattern: $A and $B
+    - pattern: $A or $B
+    - pattern: $A in $B
+    - pattern: $A not in $B
+  severity: WARNING
+- id: python.lang.correctness.tempfile.mktemp.tempfile-insecure
+  pattern: tempfile.mktemp(...)
+  message: 'Use tempfile.NamedTemporaryFile instead. From the official Python documentation:
+    THIS FUNCTION IS UNSAFE AND SHOULD NOT BE USED. The file name may refer to a file
+    that did not exist at some point, but by the time you get around to creating it,
+    someone else may have beaten you to the punch.'
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.tempfile.mktemp.tempfile-insecure
+    shortlink: https://sg.run/Yvye
+    semgrep.dev:
+      rule:
+        r_id: 9614
+        rv_id: 946302
+        rule_id: X5U83p
+        version_id: ZRT35Pr
+        url: https://semgrep.dev/playground/r/ZRT35Pr/python.lang.correctness.tempfile.mktemp.tempfile-insecure
+        origin: community
+- id: python.django.performance.upsell_earliest_latest.use-earliest-or-latest
+  message: Looks like you are only accessing first element of an ordered QuerySet.
+    Use `latest()` or `earliest()` instead. See https://docs.djangoproject.com/en/3.0/ref/models/querysets/#django.db.models.query.QuerySet.latest
+  languages:
+  - python
+  severity: ERROR
+  pattern-either:
+  - pattern: $X.objects.order_by(...)[0]
+  - pattern: $X.objects.$FUNC(...).order_by(...)[0]
+  - pattern: $X.objects.$FUNC(...).$FILTER(...).order_by(...)[0]
+  metadata:
+    category: performance
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.performance.upsell_earliest_latest.use-earliest-or-latest
+    shortlink: https://sg.run/1ZoG
+    semgrep.dev:
+      rule:
+        r_id: 9466
+        rv_id: 946136
+        rule_id: x8UnX2
+        version_id: NdTqk4k
+        url: https://semgrep.dev/playground/r/NdTqk4k/python.django.performance.upsell_earliest_latest.use-earliest-or-latest
+        origin: community
+- id: go.lang.maintainability.useless-ifelse.useless-if-body
+  pattern: |
+    if ($X) {
+        $S
+    } else {
+        $S
+    }
+  message: Detected identical statements in the if body and the else body of an if-statement.
+    This will lead to the same code being executed no matter what the if-expression
+    evaluates to. Instead, remove the if statement.
+  languages:
+  - go
+  severity: WARNING
+  metadata:
+    category: maintainability
+    technology:
+    - go
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/go.lang.maintainability.useless-ifelse.useless-if-body
+    shortlink: https://sg.run/5Q53
+    semgrep.dev:
+      rule:
+        r_id: 9103
+        rv_id: 945559
+        rule_id: YGURWJ
+        version_id: qkT4jLl
+        url: https://semgrep.dev/playground/r/qkT4jLl/go.lang.maintainability.useless-ifelse.useless-if-body
+        origin: community
+- id: python.django.correctness.use-decimalfield-for-money.use-decimalfield-for-money
+  patterns:
+  - pattern-inside: |
+      class $M(...):
+        ...
+  - pattern: $F = django.db.models.FloatField(...)
+  - metavariable-regex:
+      metavariable: $F
+      regex: .*([pP][rR][iI][cC][eE]|[aA][mM][oO][uU][nN][tT]|[sS][uU][bB][tT][oO][tT][aA][lL]|[dD][oO][nN][aA][tT][iI][oO][nN]|[fF][eE][eE]|[sS][aA][lL][aA][rR][yY]|[pP][rR][eE][cC][iI][oO]).*
+  message: Found a FloatField used for variable $F. Use DecimalField for currency
+    fields to avoid float-rounding errors.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - django
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.django.correctness.use-decimalfield-for-money.use-decimalfield-for-money
+    shortlink: https://sg.run/2xzL
+    semgrep.dev:
+      rule:
+        r_id: 9463
+        rv_id: 946129
+        rule_id: NbUk89
+        version_id: X0TL8DP
+        url: https://semgrep.dev/playground/r/X0TL8DP/python.django.correctness.use-decimalfield-for-money.use-decimalfield-for-money
+        origin: community
+- id: python.lang.correctness.common-mistakes.is-comparison-string.string-is-comparison
+  patterns:
+  - pattern-not: $S is None
+  - pattern-not: type($X) is $T
+  - pattern-not: $S is True
+  - pattern-not: $S is False
+  - pattern-not: $S is ""
+  - pattern-either:
+    - pattern: $S is "..."
+    - pattern: '"..." is $S'
+  message: Found string comparison using 'is' operator. The 'is' operator is for reference
+    equality, not value equality, and therefore should not be used to compare strings.
+    For more information, see https://github.com/satwikkansal/wtfpython#-how-not-to-use-is-operator"
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.common-mistakes.is-comparison-string.string-is-comparison
+    shortlink: https://sg.run/W814
+    semgrep.dev:
+      rule:
+        r_id: 9609
+        rv_id: 946287
+        rule_id: 6JUjKG
+        version_id: X0TL8NG
+        url: https://semgrep.dev/playground/r/X0TL8NG/python.lang.correctness.common-mistakes.is-comparison-string.string-is-comparison
+        origin: community
+- id: python.lang.correctness.common-mistakes.is-comparison-string.identical-is-comparison
+  pattern: $S is $S
+  message: Found identical comparison using is. Ensure this is what you intended.
+  languages:
+  - python
+  severity: ERROR
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.common-mistakes.is-comparison-string.identical-is-comparison
+    shortlink: https://sg.run/Do5Y
+    semgrep.dev:
+      rule:
+        r_id: 9608
+        rv_id: 946286
+        rule_id: YGURPw
+        version_id: 2KTYbxX
+        url: https://semgrep.dev/playground/r/2KTYbxX/python.lang.correctness.common-mistakes.is-comparison-string.identical-is-comparison
+        origin: community
+- id: python.lang.correctness.exceptions.exceptions.raise-not-base-exception
+  message: In Python3, a runtime `TypeError` will be thrown if you attempt to raise
+    an object or class which does not inherit from `BaseException`
+  languages:
+  - python
+  severity: ERROR
+  pattern-either:
+  - pattern: raise "..."
+  - pattern: |
+      $X: BaseException
+      raise $X(...)
+  - patterns:
+    - pattern: raise $EXCEPTION
+    - metavariable-regex:
+        metavariable: $EXCEPTION
+        regex: '[0-9]*\.?[0-9]+'
+  metadata:
+    category: correctness
+    technology:
+    - python
+    license: Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license
+    source: https://semgrep.dev/r/python.lang.correctness.exceptions.exceptions.raise-not-base-exception
+    shortlink: https://sg.run/qxAz
+    semgrep.dev:
+      rule:
+        r_id: 9612
+        rv_id: 946292
+        rule_id: pKUOlQ
+        version_id: rxT6rzE
+        url: https://semgrep.dev/playground/r/rxT6rzE/python.lang.correctness.exceptions.exceptions.raise-not-base-exception
+        origin: community

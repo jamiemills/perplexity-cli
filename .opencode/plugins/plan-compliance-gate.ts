@@ -1,88 +1,35 @@
 /**
  * plan-compliance-gate -- OpenCode plugin for quality plan enforcement.
  *
- * Intercepts `git commit` commands and blocks them when the latest
- * quality plan under `.claude/plans/` reports `Result: FAIL` in its
- * Analyzer Compliance Review section.
- *
- * On the first commit attempt, the plugin reads the plan file, checks
- * for compliance, and blocks with a message.  The agent is expected to
- * address the failures (or run the quality-plan-reviewer subagent) and
- * retry the commit, which passes through unblocked.
- *
- * If no plan file exists, commits are allowed through (no plan = no
- * compliance check required).
+ * Intercepts `git commit` commands and delegates validation of the exact
+ * canonical quality plan to the project's canonical Make target. Every commit
+ * attempt is revalidated. If no canonical plan exists, commits are allowed.
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const GIT_COMMIT_RE = /(?:^|[\s;&|])["']?(?:[^\s;&|"'`]*\/)?git["']?(?:\s+(?!commit(?:\s|$))[^\s;&|]+)*\s+commit(?:\s|$)/;
+const COMMIT_WORD_RE = /(?:^|[^\w-])commit(?:$|[^\w-])/;
+const PLAN_RELATIVE_PATH = ".claude/plans/quality-plan.md";
 
-const GIT_COMMIT_RE = /git\s+commit/;
-
-function isGitCommit(command: string): boolean {
-  return GIT_COMMIT_RE.test(command);
+export function isGitCommit(command: string): boolean {
+  const normalised = command.replace(/\\(?=[A-Za-z])/g, "");
+  return GIT_COMMIT_RE.test(normalised) || COMMIT_WORD_RE.test(normalised);
 }
 
-function readPlan(directory: string): string | null {
-  const planPath = join(directory, ".claude", "plans", "quality-plan.md");
-  try {
-    if (!existsSync(planPath)) return null;
-    return readFileSync(planPath, "utf-8");
-  } catch {
-    return null;
-  }
-}
+const PLAN_BLOCK_MESSAGE = `Commit blocked: the canonical quality plan validation failed.
 
-function planIsFailing(text: string): boolean {
-  // Extract the Analyzer Compliance Review section
-  const reviewStart = text.indexOf("## Analyzer Compliance Review");
-  if (reviewStart < 0) return false;
-
-  const nextSection = text.indexOf("\n## ", reviewStart + 5);
-  const review = nextSection > 0
-    ? text.slice(reviewStart, nextSection)
-    : text.slice(reviewStart);
-
-  // Check for FAIL markers in the review section
-  const hasFail = review.includes("[FAIL]");
-  const resultFail =
-    review.includes("Result: FAIL") ||
-    review.includes("- Result: FAIL");
-
-  return hasFail || resultFail;
-}
-
-// ---------------------------------------------------------------------------
-// Block message
-// ---------------------------------------------------------------------------
-
-const PLAN_BLOCK_MESSAGE = `Commit blocked: the quality plan reports failures.
-
-The quality-plan-reviewer subagent has been automatically invoked to
-analyse the failures and suggest fixes.  Review its findings below.
+Invoke @quality-plan-reviewer manually to analyse the failures and suggest fixes.
 
 To resolve manually:
-  1. Run 'make quality-plan' to regenerate the plan with current data.
+  1. Read '.claude/plans/quality-plan.md'.
   2. Address any [FAIL] items in the plan's Fix Plan section.
-  3. Verify with 'make plan-check'.
-  4. Retry the commit once the plan reports Result: PASS.
+  3. Verify with 'make plan-check PLAN=.claude/plans/quality-plan.md'.
+  4. Retry the commit after validation passes.`;
 
-If the failures are pre-existing and intentional (remediation plan),
-update the plan's Analyzer Compliance Review to reflect current state
-before retrying.`;
-
-// ---------------------------------------------------------------------------
-// Plugin
-// ---------------------------------------------------------------------------
-
-export const PlanComplianceGatePlugin: Plugin = async ({ client, directory }) => {
-  let commitBlocked = false;
-
+export const PlanComplianceGatePlugin: Plugin = async ({ client, $, directory }) => {
   return {
     "tool.execute.before": async (input, output) => {
       if (input.tool !== "bash") return;
@@ -90,74 +37,41 @@ export const PlanComplianceGatePlugin: Plugin = async ({ client, directory }) =>
       const command: string = output.args.command ?? "";
       if (!isGitCommit(command)) return;
 
-      if (commitBlocked) {
-        // Already reminded; allow retry.
-        commitBlocked = false;
-
-        await client.app.log({
-          body: {
-            service: "plan-compliance-gate",
-            level: "info",
-            message: "Plan compliance check passed (retry allowed).",
-          },
-        });
-        return;
-      }
-
-      const plan = readPlan(directory);
-      if (plan === null) {
-        // No plan file exists — nothing to check.
+      const planPath = join(directory, PLAN_RELATIVE_PATH);
+      if (!existsSync(planPath)) {
         await client.app.log({
           body: {
             service: "plan-compliance-gate",
             level: "debug",
-            message: "No quality plan found; allowing commit.",
+            message: "No canonical quality plan found; allowing commit.",
           },
         });
         return;
       }
 
-      if (!planIsFailing(plan)) {
-        // Plan exists and passes.
+      const result = await $`make plan-check PLAN=.claude/plans/quality-plan.md`
+        .cwd(directory)
+        .quiet()
+        .nothrow();
+      if (result.exitCode === 0) {
         await client.app.log({
           body: {
             service: "plan-compliance-gate",
             level: "info",
-            message: "Quality plan compliance: PASS. Allowing commit.",
+            message: "Canonical quality plan validation passed; allowing commit.",
           },
         });
         return;
       }
 
-      // Plan is failing — block the commit.
-      commitBlocked = true;
-
+      const detail = result.stderr.toString().trim() || result.stdout.toString().trim();
       await client.app.log({
         body: {
           service: "plan-compliance-gate",
           level: "warn",
-          message: "Intercepted git commit; quality plan reports FAIL. Invoking quality-plan-reviewer.",
+          message: `Canonical quality plan validation failed${detail ? `: ${detail}` : ""}`,
         },
       });
-
-      // Invoke the quality-plan-reviewer subagent to analyse the failures.
-      // If the subagent isn't available, the block message guides the user.
-      try {
-        await client.tasks({
-          subagent_type: "quality-plan-reviewer",
-          description: "Review failing quality plan",
-          prompt: "The quality plan under .claude/plans/ reports Result: FAIL. Run make plan-check, categorise the failures, and suggest specific fixes for each category. Do not edit files — only report findings and suggestions.",
-        });
-      } catch (e) {
-        await client.app.log({
-          body: {
-            service: "plan-compliance-gate",
-            level: "info",
-            message: `Could not auto-invoke reviewer: ${e}. Manual invocation may be needed.`,
-          },
-        });
-      }
-
       throw new Error(PLAN_BLOCK_MESSAGE);
     },
   };

@@ -8,12 +8,26 @@ include quality/gates.conf
 SHELL := /bin/bash
 PYTHON_VERSION ?= 3.12
 PROPERTY_PROFILE ?= ci
+SEMGREP_VERSION := 1.171.0
+SEMGREP := uvx --from semgrep==$(SEMGREP_VERSION) semgrep
+SEMGREP_CONFIGS := \
+	--config .semgrep.yml \
+	--config .semgrep-community-python.yml \
+	--config .semgrep-community-comment.yml \
+	--config .semgrep-community-best-practices.yml
+SEMGREP_TARGETS ?= .
+SEMGREP_OPTIONS := \
+	$(SEMGREP_SEVERITY) \
+	--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
+	--exclude tests/ \
+	--exclude '.semgrep-community-*.yml' \
+	--metrics=off
 
 # ---------------------------------------------------------------------------
 # Development setup
 # ---------------------------------------------------------------------------
 
-.PHONY: check-uv check-gitleaks setup configure-opencode
+.PHONY: check-uv check-gitleaks setup configure-opencode opencode-check
 
 check-uv:  ## Verify uv is installed
 	@command -v uv >/dev/null 2>&1 || { \
@@ -47,7 +61,8 @@ setup: check-uv check-gitleaks check-infisical
 
 configure-opencode:
 	@echo "Installing OpenCode plugin dependencies..."
-	@cd .opencode && npm install
+	@npm --prefix .opencode ci
+	@$(MAKE) opencode-check
 	@echo ""
 	@echo "Verifying plugin and agent wiring..."
 	@ok=true; \
@@ -70,6 +85,14 @@ configure-opencode:
 	@echo ""
 	@echo "OpenCode wiring verified."
 	@echo ""
+
+opencode-check:  ## Type-check OpenCode plugins and validate resolved config when available
+	@npm --prefix .opencode run check
+	@if command -v opencode >/dev/null 2>&1; then \
+		opencode debug config >/dev/null; \
+	else \
+		echo "OpenCode CLI not installed; resolved-config validation skipped."; \
+	fi
 
 # ---------------------------------------------------------------------------
 # Formatting
@@ -155,18 +178,23 @@ complexity: complexity-cc complexity-mi  ## Run all complexity checks
 # Semgrep
 # ---------------------------------------------------------------------------
 
-.PHONY: semgrep
+.PHONY: semgrep semgrep-json semgrep-advisory
 
-semgrep:  ## Run semgrep static analysis
+semgrep:  ## Run the immutable blocking Semgrep ruleset
+	@$(SEMGREP) $(SEMGREP_CONFIGS) $(SEMGREP_OPTIONS) --error $(SEMGREP_TARGETS)
+
+semgrep-json:  ## Run the immutable Semgrep ruleset with machine-readable output
+	@$(SEMGREP) $(SEMGREP_CONFIGS) $(SEMGREP_OPTIONS) --json $(SEMGREP_TARGETS)
+
+semgrep-advisory:  ## Scan latest community packs without changing the blocking gate
 	uvx semgrep \
-		--config .semgrep.yml \
 		--config p/python \
 		--config p/comment \
 		--config p/r2c-best-practices \
 		$(SEMGREP_SEVERITY) \
 		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
 		--exclude tests/ \
-		--error --metrics=off .
+		--metrics=off .
 
 # ---------------------------------------------------------------------------
 # Architecture enforcement
@@ -245,16 +273,20 @@ mutate-browse:  ## Browse mutation results in interactive TUI
 # Testing
 # ---------------------------------------------------------------------------
 
-.PHONY: test test-coverage test-fuzz test-property test-property-push test-property-ci
+.PHONY: test test-coverage-report module-coverage test-coverage test-fuzz test-property test-property-push test-property-ci
 
 test:  ## Run tests without coverage (fail-fast, parallel)
 	uv run pytest tests/ -q --tb=line -x -n auto
 
-test-coverage:  ## Run tests with coverage enforcement
+test-coverage-report:  ## Run tests and produce coverage reports
 	uv run pytest tests/ -q --tb=line -x -n auto \
 		--cov=perplexity_cli --cov-report=term-missing \
 		--cov-report=json --cov-report=xml:coverage.xml
-	uv run python scripts/check_module_coverage.py --min-coverage 80
+
+module-coverage:  ## Enforce the minimum on every measured source module
+	uv run python scripts/check_module_coverage.py --min-coverage $(MIN_COVERAGE)
+
+test-coverage: test-coverage-report module-coverage  ## Run tests with coverage enforcement
 
 test-fuzz:  ## Run fuzz tests
 	uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz
@@ -291,10 +323,13 @@ safety:  ## Run safety dependency scan (skips locally when credentials unavailab
 	@if [ -n "$$SAFETY_API_KEY" ]; then \
 		uv run python scripts/agent_check.py safety; \
 	elif command -v infisical >/dev/null 2>&1; then \
-		infisical run --env dev -- \
-			uv run python scripts/agent_check.py safety \
-			|| { echo "Safety scan skipped: infisical run failed."; \
-			     echo "Set SAFETY_API_KEY or configure infisical."; }; \
+		if infisical run --env dev -- bash -c 'test -n "$$SAFETY_API_KEY"' \
+			>/dev/null 2>&1; then \
+			infisical run --env dev -- uv run python scripts/agent_check.py safety; \
+		else \
+			echo "Safety scan skipped: credentials unavailable through infisical."; \
+			echo "Set SAFETY_API_KEY or configure infisical."; \
+		fi; \
 	else \
 		echo "Safety scan skipped: SAFETY_API_KEY not set and infisical not available."; \
 		echo "Set SAFETY_API_KEY or install infisical (brew install infisical)."; \
@@ -304,8 +339,11 @@ safety-gate:  ## Run safety scan in CI mode (fails if credentials unavailable)
 	@if [ -n "$$SAFETY_API_KEY" ]; then \
 		uv run python scripts/agent_check.py safety; \
 	elif command -v infisical >/dev/null 2>&1; then \
-		infisical run --env dev -- uv run python scripts/agent_check.py safety;  || true
-			echo "Set SAFETY_API_KEY or configure infisical."; 
+		infisical run --env dev -- uv run python scripts/agent_check.py safety; \
+		status=$$?; \
+		if [ $$status -ne 0 ]; then \
+			echo "ERROR: authenticated Safety scan failed through infisical."; \
+			exit $$status; \
 		fi; \
 	else \
 		echo "ERROR: Safety scan requires SAFETY_API_KEY or infisical CLI."; \
@@ -350,7 +388,7 @@ endif
 	@echo "Releasing v$(V)..."
 	sed -i '' 's/^version = ".*"/version = "$(V)"/' pyproject.toml
 	uv lock
-	$(MAKE) ci
+	$(MAKE) ci-trusted
 	git add pyproject.toml uv.lock
 	git commit -m "Release $(V)"
 	git tag -a "v$(V)" -m "Release $(V)"
@@ -361,7 +399,7 @@ endif
 # Composite targets
 # ---------------------------------------------------------------------------
 
-.PHONY: check ci agent-check agent-check-push agent-check-no-tests
+.PHONY: check ci ci-trusted agent-check agent-check-push agent-check-no-tests
 
 CHECK_PREREQS :=
 ifeq ($(CHECK_FORMAT),true)
@@ -405,7 +443,7 @@ agent-check:
 	uv run python scripts/agent_check.py pre-commit
 
 agent-check-no-tests:
-	uv run python scripts/agent_check.py --no-tests pre-commit
+	uv run python scripts/agent_check.py --no-tests --no-fix pre-commit
 
 agent-check-push:
 	uv run python scripts/agent_check.py pre-push
@@ -414,13 +452,14 @@ ci:  ## Full CI pipeline
 	$(MAKE) check
 	$(MAKE) test-coverage
 	$(MAKE) test-fuzz
-	$(MAKE) safety-gate
 	$(MAKE) pip-audit
 	$(MAKE) sonar-reports
 	$(MAKE) test-property-$(PROPERTY_PROFILE)
 	$(MAKE) build
 	$(MAKE) verify
 	$(MAKE) smoke-test
+
+ci-trusted: ci safety-gate  ## Full CI plus authenticated Safety for trusted code
 
 # ---------------------------------------------------------------------------
 # Quality gates
@@ -457,8 +496,9 @@ typecheck-strict-ratchet:  ## Hard gate: pyright strict
 semgrep-architecture:  ## Ratchet: block new structural findings
 	uv run python scripts/check_semgrep_architecture.py
 
-quality-plan:  ## Run every analyser and write a full plan
-	uv run python scripts/generate_quality_plan.py --out "$${OUT:-.claude/plans/quality-plan.md}"
+quality-plan:  ## Run the canonical 20-gate analyser set and write a plan
+	uv run python scripts/generate_quality_plan.py \
+		--out "$${OUT:-.claude/plans/quality-plan.md}" --fail-on-violations
 
 plan-check:  ## Validate plan against prevention rules
 	uv run python scripts/check_plan_compliance.py $${PLAN:+--plan $$PLAN}

@@ -1,6 +1,6 @@
-"""Comprehensive quality-plan generator.
+"""Canonical quality-plan generator.
 
-Runs every quality analyser in one pass, compares each against its
+Runs the canonical 20-gate analyser set in one pass, compares each against its
 tracked baseline (where applicable), and writes a deterministic Markdown
 plan artefact that a later build phase can consume.  The plan distinguishes
 baselined debt from new regressions and includes the ``Analyser Compliance
@@ -26,16 +26,12 @@ from pathlib import Path
 from textwrap import dedent
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = PROJECT_ROOT / "scripts"
 DEFAULT_OUT = PROJECT_ROOT / ".claude" / "plans" / "quality-plan.md"
 
-sys.path.insert(0, str(SCRIPTS))
-from _gates import load_gates  # noqa: E402
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from check_plan_compliance import _validate  # noqa: E402
 
-_gates = load_gates()
-
-DESCRIPTION = "Run all quality analysers and write a follow-up plan artefact."
+DESCRIPTION = "Run the canonical quality gates and write a follow-up plan artefact."
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +60,7 @@ def _build_format_gates() -> tuple[Gate, ...]:
     return (
         Gate(
             "format-check",
-            ("uv", "run", "ruff", "format", "--check", "src", "tests"),
+            ("make", "format-check"),
             "code style divergence",
             "formatting",
         ),
@@ -75,7 +71,7 @@ def _build_lint_gates() -> tuple[Gate, ...]:
     return (
         Gate(
             "lint",
-            ("uv", "run", "ruff", "check", "src", "tests"),
+            ("make", "lint"),
             "lint violations",
             "linting",
         ),
@@ -86,13 +82,13 @@ def _build_typecheck_gates() -> tuple[Gate, ...]:
     return (
         Gate(
             "typecheck-ty",
-            ("uv", "run", "ty", "check", "src"),
+            ("make", "typecheck"),
             "type errors (ty)",
             "typing",
         ),
         Gate(
             "typecheck-pyright-strict",
-            ("uv", "run", "pyright", "src/"),
+            ("make", "typecheck-pyright"),
             "type errors (pyright strict)",
             "typing",
         ),
@@ -103,21 +99,13 @@ def _build_security_gates() -> tuple[Gate, ...]:
     return (
         Gate(
             "bandit",
-            ("uv", "run", "bandit", "-c", "pyproject.toml", "-r", "src/"),
+            ("make", "bandit"),
             "security vulnerabilities",
             "security",
         ),
         Gate(
             "vulture",
-            (
-                "uv",
-                "run",
-                "vulture",
-                "src/",
-                "vulture_whitelist.py",
-                "--min-confidence",
-                str(_gates["MIN_CONFIDENCE"]),
-            ),
+            ("make", "vulture"),
             "dead code accumulation",
             "security",
         ),
@@ -128,13 +116,13 @@ def _build_complexity_gates() -> tuple[Gate, ...]:
     return (
         Gate(
             "complexity-cc",
-            ("uv", "run", "radon", "cc", "src/", "-s", "-n", _gates["RADON_CC_GRADE"]),
+            ("make", "complexity-cc"),
             "cyclomatic-complexity violations",
             "complexity",
         ),
         Gate(
             "complexity-mi",
-            ("uv", "run", "radon", "mi", "src/", "-s", "-n", _gates["RADON_MI_GRADE"]),
+            ("make", "complexity-mi"),
             "maintainability-index violations",
             "complexity",
         ),
@@ -145,29 +133,7 @@ def _build_semgrep_gates() -> tuple[Gate, ...]:
     return (
         Gate(
             "semgrep-clean-code",
-            (
-                "uvx",
-                "semgrep",
-                "--config",
-                ".semgrep.yml",
-                "--config",
-                "p/python",
-                "--config",
-                "p/comment",
-                "--config",
-                "p/r2c-best-practices",
-                "--severity",
-                "ERROR",
-                "--severity",
-                "WARNING",
-                "--exclude-rule",
-                "python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
-                "--exclude",
-                "tests/",
-                "--error",
-                "--metrics=off",
-                ".",
-            ),
+            ("make", "semgrep"),
             "clean-code rule violations",
             "semgrep",
         ),
@@ -178,20 +144,13 @@ def _build_architecture_gates() -> tuple[Gate, ...]:
     return (
         Gate(
             "arch-check",
-            ("uv", "run", "python", "scripts/check_architecture.py", "--no-baseline"),
+            ("make", "arch-check"),
             "layer-boundary violations",
             "architecture",
         ),
         Gate(
             "coupling-check",
-            (
-                "uv",
-                "run",
-                "python",
-                "scripts/check_coupling.py",
-                "--max-flagged",
-                str(_gates["MAX_FLAGGED"]),
-            ),
+            ("make", "coupling-check"),
             "coupling/sprawl violations",
             "architecture",
         ),
@@ -202,38 +161,31 @@ def _build_ratchet_gates() -> tuple[Gate, ...]:
     return (
         Gate(
             "file-size",
-            (
-                "uv",
-                "run",
-                "python",
-                "scripts/check_file_size.py",
-                "--max-lines",
-                str(_gates["FILE_SIZE_CAP"]),
-            ),
+            ("make", "file-size"),
             "file-size sprawl",
             "ratchets",
         ),
         Gate(
             "suppressions",
-            ("uv", "run", "python", "scripts/check_suppressions.py"),
+            ("make", "suppression-ratchet"),
             "suppression creep",
             "ratchets",
         ),
         Gate(
             "ruff-architecture",
-            ("uv", "run", "python", "scripts/check_ruff_architecture.py"),
+            ("make", "ruff-architecture"),
             "complexity/parameter violations",
             "ratchets",
         ),
         Gate(
             "pyright-strict",
-            ("uv", "run", "python", "scripts/check_pyright_strict.py"),
+            ("make", "typecheck-strict-ratchet"),
             "Any/unknown type boundaries",
             "ratchets",
         ),
         Gate(
             "semgrep-architecture",
-            ("uv", "run", "python", "scripts/check_semgrep_architecture.py"),
+            ("make", "semgrep-architecture"),
             "structural pattern violations",
             "ratchets",
         ),
@@ -244,13 +196,13 @@ def _build_dependency_gates() -> tuple[Gate, ...]:
     return (
         Gate(
             "deptry",
-            ("uv", "run", "deptry", "src", "tests", "scripts"),
+            ("make", "deptry"),
             "missing/unused/misplaced dependencies",
             "dependencies",
         ),
         Gate(
             "pip-audit",
-            ("uv", "run", "pip-audit", "."),
+            ("make", "pip-audit"),
             "known dependency vulnerabilities",
             "dependencies",
         ),
@@ -261,34 +213,13 @@ def _build_coverage_gates() -> tuple[Gate, ...]:
     return (
         Gate(
             "test-coverage",
-            (
-                "uv",
-                "run",
-                "pytest",
-                "tests/",
-                "-q",
-                "--tb=line",
-                "-x",
-                "-n",
-                "auto",
-                "--cov=perplexity_cli",
-                "--cov-report=term",
-                "--cov-report=json",
-                "--cov-report=xml:coverage.xml",
-            ),
+            ("make", "test-coverage-report"),
             "insufficient test coverage",
             "coverage",
         ),
         Gate(
             "module-coverage",
-            (
-                "uv",
-                "run",
-                "python",
-                "scripts/check_module_coverage.py",
-                "--min-coverage",
-                str(_gates["MIN_COVERAGE"]),
-            ),
+            ("make", "module-coverage"),
             "per-module coverage below threshold",
             "coverage",
         ),
@@ -351,9 +282,21 @@ def _parse_args() -> argparse.Namespace:
 
 def _run_gate(gate: Gate) -> GateResult:
     """Run one gate and capture its pass/fail status and output."""
-    result = subprocess.run(
-        gate.command, capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=600
-    )
+    try:
+        result = subprocess.run(
+            gate.command,
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+            timeout=600,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return GateResult(
+            gate.name, gate.prevents, gate.category, False, False, "timed out after 600s"
+        )
+    except OSError as error:
+        return GateResult(gate.name, gate.prevents, gate.category, False, False, str(error))
     output = (result.stdout + result.stderr).strip()
     return GateResult(
         gate.name, gate.prevents, gate.category, result.returncode == 0, False, output
@@ -394,14 +337,17 @@ def _findings_section(results: list[GateResult]) -> list[str]:
             continue
         lines.append(f"\n### {cat_label}")
         for result in cat_results:
-            if result.skipped:
-                lines.append(f"#### {result.name}: SKIPPED\n\n{result.output}\n")
-            elif result.passed:
-                summary = result.output.splitlines()[0] if result.output else "passed"
-                lines.append(f"#### {result.name}: PASS\n\n{summary}\n")
-            else:
-                lines.append(f"#### {result.name}: FAIL\n\n```\n{result.output}\n```\n")
+            lines.append(_finding_block(result))
     return lines
+
+
+def _finding_block(result: GateResult) -> str:
+    if result.skipped:
+        return f"#### {result.name}: SKIPPED\n\n{result.output}\n"
+    if result.passed:
+        summary = result.output.splitlines()[0] if result.output else "passed"
+        return f"#### {result.name}: PASS\n\n{summary}\n"
+    return f"#### {result.name}: FAIL\n\n```\n{result.output}\n```\n"
 
 
 def _work_items(results: list[GateResult]) -> list[str]:
@@ -493,8 +439,7 @@ def _exit_code(
     return 0
 
 
-def main() -> None:
-    args = _parse_args()
+def _selected_gates(args: argparse.Namespace) -> list[Gate]:
     gates: list[Gate] = []
     for gate in _GATES:
         if args.skip_coverage and gate.category == "coverage":
@@ -502,15 +447,22 @@ def main() -> None:
         if args.skip_semgrep and gate.category == "semgrep":
             continue
         gates.append(gate)
+    return gates
+
+
+def _append_skipped_results(results: list[GateResult], args: argparse.Namespace) -> None:
+    if args.skip_coverage:
+        results.extend(_skipped_result(gate) for gate in _GATES if gate.category == "coverage")
+    if args.skip_semgrep:
+        results.extend(_skipped_result(gate) for gate in _GATES if gate.category == "semgrep")
+
+
+def main() -> None:
+    args = _parse_args()
+    gates = _selected_gates(args)
 
     results = [_run_gate(gate) for gate in gates]
-
-    if args.skip_coverage:
-        skipped_coverage = [g for g in _GATES if g.category == "coverage"]
-        results.extend(_skipped_result(g) for g in skipped_coverage)
-    if args.skip_semgrep:
-        skipped_semgrep = [g for g in _GATES if g.category == "semgrep"]
-        results.extend(_skipped_result(g) for g in skipped_semgrep)
+    _append_skipped_results(results, args)
 
     results.sort(
         key=lambda r: (

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,6 +36,7 @@ CONFIG = PROJECT_ROOT / ".semgrep-architecture.yml"
 BASELINE_NAME = "semgrep-architecture.json"
 DESCRIPTION = "Semgrep architecture ratchet: block new structural findings."
 _SCRIPT = Path(__file__).name
+SEMGREP_VERSION = "1.171.0"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -58,19 +58,23 @@ def _parse_results(stdout: str, stderr: str) -> list[str]:
     """Parse semgrep JSON output into sorted fingerprints."""
     try:
         data = json.loads(stdout or "{}")
-    except json.JSONDecodeError:
-        print("Semgrep produced unparseable output:\n" + stderr, file=sys.stderr)
-        return []
+    except json.JSONDecodeError as error:
+        message = stderr.strip() or "Semgrep produced unparseable JSON output."
+        raise RuntimeError(message) from error
+    errors = data.get("errors", [])
+    if errors:
+        raise RuntimeError(f"Semgrep reported analysis errors: {errors}")
     return sorted({_fingerprint(r) for r in data.get("results", [])})
 
 
 def collect_findings() -> list[str]:
     """Run semgrep with the architecture config and return sorted fingerprints."""
     if not CONFIG.is_file():
-        print(f"Semgrep architecture config not found: {CONFIG}", file=sys.stderr)
-        return []
+        raise RuntimeError(f"Semgrep architecture config not found: {CONFIG}")
     cmd = [
         "uvx",
+        "--from",
+        f"semgrep=={SEMGREP_VERSION}",
         "semgrep",
         "--config",
         str(CONFIG),
@@ -79,7 +83,17 @@ def collect_findings() -> list[str]:
         "--metrics=off",
         ".",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=180)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=PROJECT_ROOT,
+        timeout=180,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"Semgrep exited with status {result.returncode}."
+        raise RuntimeError(detail)
     return _parse_results(result.stdout, result.stderr)
 
 
@@ -106,7 +120,11 @@ def _report_regression(diff: FingerprintDiff) -> int:
 
 def main() -> None:
     args = _parse_args()
-    current = collect_findings()
+    try:
+        current = collect_findings()
+    except RuntimeError as error:
+        print(f"Semgrep architecture gate could not run: {error}", file=sys.stderr)
+        sys.exit(2)
 
     if args.update_baseline:
         path = save_fingerprints(BASELINE_NAME, current)

@@ -22,7 +22,6 @@ from _gates import load_gates
 _gates = load_gates()
 DEFAULT_MIN_COVERAGE = _gates.get_int("MIN_COVERAGE", 85)
 DEFAULT_REPORT = "coverage.json"
-_MIN_REPORTABLE_STATEMENTS = 5
 
 
 def _parse_args() -> argparse.Namespace:
@@ -58,17 +57,16 @@ def _load_report(path: str) -> dict:
 def _check_modules(coverage_data: dict, min_coverage: float) -> list[tuple[str, float, int, int]]:
     """Return a list of (module, percentage, statements, missing) for failing modules."""
     failures: list[tuple[str, float, int, int]] = []
+    files = coverage_data.get("files")
+    if not isinstance(files, dict) or not files:
+        msg = "Coverage report contains no module entries."
+        raise ValueError(msg)
 
-    for filepath, entry in sorted(coverage_data.get("files", {}).items()):
+    for filepath, entry in sorted(files.items()):
         summary = entry.get("summary", {})
         pct = summary.get("percent_covered", 0.0)
         stmts = summary.get("num_statements", 0)
         miss = summary.get("missing_lines", 0)
-
-        # Skip modules with very few statements (e.g. __init__.py with 0-2 lines)
-        # as they can swing wildly on a single line change.
-        if stmts < _MIN_REPORTABLE_STATEMENTS:
-            continue
 
         if pct < min_coverage:
             module = filepath.replace("src/perplexity_cli/", "").replace(".py", "")
@@ -80,7 +78,11 @@ def _check_modules(coverage_data: dict, min_coverage: float) -> list[tuple[str, 
 def main() -> None:
     args = _parse_args()
     coverage_report = _load_report(args.report)
-    failures = _check_modules(coverage_report, args.min_coverage)
+    try:
+        failures = _check_modules(coverage_report, args.min_coverage)
+    except ValueError as error:
+        print(f"Invalid coverage report: {error}", file=sys.stderr)
+        sys.exit(2)
 
     if not failures:
         total_pct = coverage_report.get("totals", {}).get("percent_covered", 0.0)

@@ -376,11 +376,13 @@ class TestQualityGatesMatchesRepo:
         """The doc must state that agent-check-push is NOT wired into lefthook/ci."""
         text = QUALITY_GATES.read_text(encoding="utf-8")
         assert "not currently wired into `lefthook.yml` or `make ci`" in text
+        assert "--no-tests --no-fix pre-commit" in text
 
     def test_safety_skip_behaviour_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "skip" in text.lower()
-        assert "make safety" in text
+        assert "unavailable credentials produce an informational skip" in text
+        assert "any Safety or Infisical child failure is" in text
+        assert "propagated and blocks the push" in text
 
     def test_gitleaks_graceful_skip_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
@@ -392,17 +394,62 @@ class TestQualityGatesMatchesRepo:
         text = QUALITY_GATES.read_text(encoding="utf-8")
         assert "reference mirror" in text  # FAIL_UNDER
         assert "`make semgrep` target via `$(SEMGREP_SEVERITY)`" in text  # SEMGREP_SEVERITY wired
+        assert "`DIFF_COVERAGE_THRESHOLD` | 90" in text
+        assert "grade B and worse fail, so only A passes" in text
+        assert "Grade B or better" not in text
+        assert "falls below B" not in text
+
+    def test_typecheck_and_ratchet_modes_are_exact(self) -> None:
+        text = QUALITY_GATES.read_text(encoding="utf-8")
+        assert "`[tool.pyright]`, strict mode" in text
+        assert "three baseline-aware" in text.lower()
+        assert "Ruff architecture hard gate" in text
+        assert "Pyright strict hard gate" in text
+        assert "scripts/check_ruff_architecture.py" not in text
+        assert "scripts/check_pyright_strict.py" not in text
 
     def test_opencode_plugin_caveats_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "semgrep from `PATH`" in text
-        assert "src/perplexity_cli/commands/" in text
+        assert "canonical immutable Semgrep" in text
+        assert "Tool and parser failures become visible error findings" in text
+        assert "reactive plugin does not record them" in text
+        assert "With no canonical plan, it allows the commit" in text
+
+    def test_trusted_safety_and_semgrep_snapshot_documented(self) -> None:
+        text = QUALITY_GATES.read_text(encoding="utf-8")
+        required = (
+            "Safety (trusted)",
+            "external fork",
+            "make pip-audit",
+            "quality/semgrep-snapshot.json",
+            "semgrep-advisory.yml",
+        )
+        missing = [token for token in required if token not in text]
+        assert missing == [], f"QUALITY_GATES.md missing security topology: {missing}"
 
     def test_auxiliary_make_targets_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
-        required = ("arch-explain", "format-fix", "make clean")
+        required = (
+            "arch-explain",
+            "format-fix",
+            "make clean",
+            "make diff-coverage",
+            "make deptry",
+            "make dependency-hygiene",
+            "make import-linter",
+            "make refurb",
+            "make quality-architecture",
+        )
         missing = [target for target in required if target not in text]
         assert missing == [], f"QUALITY_GATES.md missing targets: {missing}"
+
+    def test_quality_plan_scope_and_check_toggles_documented(self) -> None:
+        text = QUALITY_GATES.read_text(encoding="utf-8")
+        assert "canonical 20-gate planning set" in text
+        assert "does not represent every auxiliary" in text
+        assert "`CHECK_DEPTRY` | true" in text
+        assert "`CHECK_IMPORT_LINTER` | false" in text
+        assert "including enabled Deptry" in text
 
 
 # ---------------------------------------------------------------------------

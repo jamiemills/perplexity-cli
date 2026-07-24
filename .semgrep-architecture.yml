@@ -21,7 +21,7 @@ rules:
               ...
       - pattern-either:
           - pattern: import $M
-          - pattern: from $M import ...
+          - pattern: from $M import $N
     paths:
       exclude:
         - "**/test_*.py"
@@ -125,8 +125,11 @@ rules:
   - id: getter-with-side-effects
     patterns:
       - pattern-inside: |
-          def get_$NAME(...):
+          def $F(...):
               ...
+      - metavariable-regex:
+          metavariable: $F
+          regex: ^get_.+
       - pattern-either:
           - pattern: $PATH.mkdir(...)
           - pattern: os.makedirs(...)

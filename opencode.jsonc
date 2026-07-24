@@ -32,21 +32,6 @@
     ".opencode/plugins/plan-compliance-gate.ts"
   ],
 
-  // -----------------------------------------------------------------------
-  // Agents — loaded from .opencode/agents/
-  //
-  // quality-plan-reviewer: reads the latest quality plan, runs
-  //   'make plan-check', categorises failures, and suggests fixes.
-  //   Invoke when the plan-compliance-gate blocks a commit.
-  // -----------------------------------------------------------------------
-  "agent": {
-    "quality-plan-reviewer": {
-      "path": ".opencode/agents/quality-plan-reviewer.md",
-      "permission": {
-        "edit": {
-          "*": "deny"
-        }
-      }
-    }
-  }
+  // Agents are auto-discovered from .opencode/agents/ and configured by
+  // their frontmatter.
 }
