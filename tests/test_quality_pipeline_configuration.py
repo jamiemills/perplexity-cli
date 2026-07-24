@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -194,3 +195,15 @@ def test_lefthook_glob_alternatives_use_supported_braces() -> None:
     assert all("|" not in line for line in glob_lines)
     assert 'glob: "*.{py,yml,yaml,ts}"' in glob_lines
     assert 'glob: ".github/workflows/*.{yml,yaml}"' in glob_lines
+
+
+def test_mutmut_ignores_repository_infrastructure_tests() -> None:
+    """Mutmut's isolated tree cannot collect tests requiring repository tooling."""
+    config = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    arguments = set(config["tool"]["mutmut"]["pytest_add_cli_args"])
+    required = {
+        "--ignore=tests/test_module_coverage.py",
+        "--ignore=tests/test_quality_pipeline_configuration.py",
+        "--ignore=tests/test_workflow_configuration.py",
+    }
+    assert required <= arguments
