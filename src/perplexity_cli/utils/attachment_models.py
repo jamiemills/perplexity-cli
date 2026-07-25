@@ -33,9 +33,11 @@ class FileAttachment(BaseModel):
     def validate_filename(cls, value: str) -> str:
         """Validate filename is non-empty and within length limit."""
         if not value:
-            raise ValueError("Filename must be non-empty")
+            msg = "Filename must be non-empty"
+            raise ValueError(msg)
         if len(value) > _MAX_FILENAME_LENGTH:
-            raise ValueError(f"Filename must be <={_MAX_FILENAME_LENGTH} characters")
+            msg = f"Filename must be <={_MAX_FILENAME_LENGTH} characters"
+            raise ValueError(msg)
         return value
 
     @field_validator("content_type")
@@ -43,7 +45,8 @@ class FileAttachment(BaseModel):
     def validate_content_type(cls, value: str) -> str:
         """Validate content_type is non-empty."""
         if not value:
-            raise ValueError("Content type must be non-empty")
+            msg = "Content type must be non-empty"
+            raise ValueError(msg)
         return value
 
     @field_validator("data")
@@ -53,16 +56,19 @@ class FileAttachment(BaseModel):
         try:
             base64.b64decode(value, validate=True)
         except binascii.Error as exc:
-            raise ValueError(f"Invalid base64 data: {exc}") from exc
+            msg = f"Invalid base64 data: {exc}"
+            raise ValueError(msg) from exc
         return value
 
     @classmethod
     def from_file(cls, path: Path) -> FileAttachment:
         """Create attachment from file path."""
         if not path.exists():
-            raise FileNotFoundError(f"File not found: {path}")
+            msg = f"File not found: {path}"
+            raise FileNotFoundError(msg)
         if not path.is_file():
-            raise ValueError(f"Not a file: {path}")
+            msg = f"Not a file: {path}"
+            raise ValueError(msg)
 
         content = path.read_bytes()
         encoded = base64.b64encode(content).decode("ascii")

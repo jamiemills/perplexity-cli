@@ -65,8 +65,9 @@ def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
         request=request,
     )
 
+    msg = f"HTTP Error {response.status_code}"
     raise PerplexityHTTPStatusError(
-        f"HTTP Error {response.status_code}",
+        msg,
         request=request,
         response=simple_response,
     )

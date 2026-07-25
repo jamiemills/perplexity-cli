@@ -41,11 +41,13 @@ def parse_absolute_date_string(date_str: str) -> datetime:
 
         # Ensure we have timezone info (should be UTC from the string)
         if dt.tzinfo is None:
-            raise ValueError(f"Parsed datetime has no timezone info: {date_str}")
+            msg = f"Parsed datetime has no timezone info: {date_str}"
+            raise ValueError(msg)
 
         return dt
     except (ValueError, TypeError) as e:
-        raise ValueError(f"Failed to parse date string '{date_str}': {e}") from e
+        msg = f"Failed to parse date string '{date_str}': {e}"
+        raise ValueError(msg) from e
 
 
 def to_iso8601(dt: datetime) -> str:
@@ -177,7 +179,8 @@ def is_in_date_range(dt: datetime, from_date: str | None, to_date: str | None) -
     try:
         return _check_after_start(dt, from_date) and _check_before_end(dt, to_date)
     except (ValueError, TypeError) as e:
-        raise ValueError(
+        msg = (
             f"Invalid date format. Expected YYYY-MM-DD, got from_date='{from_date}', "
             f"to_date='{to_date}': {e}"
-        ) from e
+        )
+        raise ValueError(msg) from e

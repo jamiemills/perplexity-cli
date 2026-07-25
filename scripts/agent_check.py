@@ -11,6 +11,7 @@ Usage
     python scripts/agent_check.py pre-commit --files f1.py f2.py  # scoped
     python scripts/agent_check.py pre-push               # all pre-push analysers
     python scripts/agent_check.py --json pre-commit      # machine-readable output
+    python scripts/agent_check.py --no-fix pre-commit    # read-only checks
 """
 
 from __future__ import annotations
@@ -27,11 +28,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _gates import load_gates  # noqa: E402
-
-_gates = load_gates()
 
 # ---------------------------------------------------------------------------
 # Analyser definitions
@@ -94,7 +90,7 @@ def _build_safety_stage(cwd: Path) -> TemporaryDirectory:
 def _build_safety_command(cwd: Path) -> tuple[list[str], TemporaryDirectory]:
     stage = _build_safety_stage(cwd)
     stage_root = Path(stage.name)
-    command = ["uvx", "safety"]
+    command = ["uvx", "--from", "safety==3.8.1", "safety"]
     safety_api_key = os.environ.get("SAFETY_API_KEY")
     if safety_api_key:
         command.extend(["--key", safety_api_key, "--stage", "cicd"])
@@ -113,58 +109,15 @@ PRE_COMMIT_FIXERS: tuple[Analyser, ...] = (
 )
 
 PRE_COMMIT_LINTERS: tuple[Analyser, ...] = (
-    Analyser("pyright", ["uv", "run", "pyright", "src/"]),
-    Analyser("ty", ["uv", "run", "ty", "check", "src"]),
-    Analyser(
-        "bandit",
-        ["uv", "run", "bandit", "-c", "pyproject.toml", "-r", "src/", "-ll", "-ii"],
-    ),
-    Analyser(
-        "vulture",
-        [
-            "uv",
-            "run",
-            "vulture",
-            "src/",
-            "vulture_whitelist.py",
-            "--min-confidence",
-            str(_gates["MIN_CONFIDENCE"]),
-        ],
-    ),
-    Analyser(
-        "radon-cc", ["uv", "run", "radon", "cc", "src/", "-s", "-n", _gates["RADON_CC_GRADE"]]
-    ),
-    Analyser(
-        "radon-mi", ["uv", "run", "radon", "mi", "src/", "-s", "-n", _gates["RADON_MI_GRADE"]]
-    ),
-    Analyser(
-        "semgrep",
-        [
-            "uvx",
-            "semgrep",
-            "--config",
-            ".semgrep.yml",
-            "--config",
-            "p/python",
-            "--config",
-            "p/comment",
-            "--config",
-            "p/r2c-best-practices",
-            "--severity",
-            "ERROR",
-            "--severity",
-            "WARNING",
-            "--exclude-rule",
-            "python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
-            "--exclude",
-            "tests/",
-            "--error",
-            "--metrics=off",
-            ".",
-        ],
-    ),
-    Analyser("format-check", ["uv", "run", "ruff", "format", "--check", "src", "tests"]),
-    Analyser("lint", ["uv", "run", "ruff", "check", "src", "tests"]),
+    Analyser("pyright", ["make", "typecheck-pyright"]),
+    Analyser("ty", ["make", "typecheck"]),
+    Analyser("bandit", ["make", "bandit"]),
+    Analyser("vulture", ["make", "vulture"]),
+    Analyser("radon-cc", ["make", "complexity-cc"]),
+    Analyser("radon-mi", ["make", "complexity-mi"]),
+    Analyser("semgrep", ["make", "semgrep"]),
+    Analyser("format-check", ["make", "format-check"]),
+    Analyser("lint", ["make", "lint"]),
 )
 
 PRE_COMMIT_TESTS: tuple[Analyser, ...] = (
@@ -173,51 +126,12 @@ PRE_COMMIT_TESTS: tuple[Analyser, ...] = (
 
 # Pre-push analysers: all independent, all parallel.
 PRE_PUSH_ALL: tuple[Analyser, ...] = (
-    Analyser(
-        "test-coverage",
-        [
-            "uv",
-            "run",
-            "pytest",
-            "tests/",
-            "-n",
-            "auto",
-            "-v",
-            "--tb=long",
-            "--cov=perplexity_cli",
-            "--cov-report=term-missing",
-            "--cov-report=json",
-            "--cov-report=xml:coverage.xml",
-        ],
-    ),
+    Analyser("test-coverage", ["make", "test-coverage"]),
     Analyser("safety", [], command_builder=_build_safety_command),
-    Analyser(
-        "fuzz", ["uv", "run", "pytest", "tests/test_fuzz.py", "-v", "--tb=long", "-m", "fuzz"]
-    ),
-    Analyser("arch-check", ["uv", "run", "python", "scripts/check_architecture.py"]),
-    Analyser(
-        "coupling-check",
-        [
-            "uv",
-            "run",
-            "python",
-            "scripts/check_coupling.py",
-            "--max-flagged",
-            str(_gates["MAX_FLAGGED"]),
-        ],
-    ),
-    Analyser(
-        "test-property",
-        [
-            "uv",
-            "run",
-            "pytest",
-            "tests/test_property.py",
-            "-v",
-            "--tb=short",
-            "--hypothesis-profile=push",
-        ],
-    ),
+    Analyser("fuzz", ["make", "test-fuzz"]),
+    Analyser("arch-check", ["make", "arch-check"]),
+    Analyser("coupling-check", ["make", "coupling-check"]),
+    Analyser("test-property", ["make", "test-property-push"]),
 )
 
 # ---------------------------------------------------------------------------
@@ -278,6 +192,7 @@ def _run_one(analyser: Analyser, cwd: str) -> AnalyserResult:
             text=True,
             cwd=cwd,
             timeout=600,
+            check=False,
         )
         return AnalyserResult(
             name=analyser.name,
@@ -296,13 +211,18 @@ def _run_one(analyser: Analyser, cwd: str) -> AnalyserResult:
             duration_s=time.monotonic() - start,
             stderr="TIMEOUT after 600s",
         )
-    except FileNotFoundError:
+    except OSError as error:
+        detail = (
+            f"Command not found: {cmd[0]}"
+            if isinstance(error, FileNotFoundError)
+            else f"Could not run analyser: {error}"
+        )
         return AnalyserResult(
             name=analyser.name,
             command=cmd,
             passed=False,
             duration_s=time.monotonic() - start,
-            stderr=f"Command not found: {cmd[0]}",
+            stderr=detail,
         )
     finally:
         if cleanup_target is not None:
@@ -449,12 +369,13 @@ def _format_json(report: RunReport) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _run_pre_commit(cwd: str, skip_tests: bool = False) -> RunReport:
+def _run_pre_commit(cwd: str, *, skip_tests: bool = False, skip_fixers: bool = False) -> RunReport:
     """Run the pre-commit pipeline: fixers → linters → tests."""
     t0 = time.monotonic()
     all_results: list[AnalyserResult] = []
 
-    all_results.extend(_run_sequential(PRE_COMMIT_FIXERS, cwd))
+    if not skip_fixers:
+        all_results.extend(_run_sequential(PRE_COMMIT_FIXERS, cwd))
     all_results.extend(_run_parallel(PRE_COMMIT_LINTERS, cwd))
     if not skip_tests:
         all_results.extend(_run_parallel(PRE_COMMIT_TESTS, cwd))
@@ -489,31 +410,26 @@ def _run_safety(cwd: str) -> RunReport:
 # ---------------------------------------------------------------------------
 
 
-def _parse_args(raw: list[str]) -> tuple[bool, str | None, bool]:
-    json_mode = False
-    scope: str | None = None
-    skip_tests = False
-    for arg in raw:
-        if arg == "--json":
-            json_mode = True
-        elif arg == "--no-tests":
-            skip_tests = True
-        elif arg in ("pre-commit", "pre-push", "safety"):
-            scope = arg
-    return json_mode, scope, skip_tests
+def _parse_args(raw: list[str]) -> tuple[bool, str | None, bool, bool]:
+    scopes = {"pre-commit", "pre-push", "safety"}
+    scope = next((argument for argument in raw if argument in scopes), None)
+    return "--json" in raw, scope, "--no-tests" in raw, "--no-fix" in raw
 
 
 def main() -> None:
-    json_mode, scope, skip_tests = _parse_args(sys.argv[1:])
+    json_mode, scope, skip_tests, skip_fixers = _parse_args(sys.argv[1:])
 
     if scope is None:
-        print("Usage: agent_check.py [--json] [--no-tests] pre-commit|pre-push", file=sys.stderr)
+        print(
+            "Usage: agent_check.py [--json] [--no-tests] [--no-fix] pre-commit|pre-push|safety",
+            file=sys.stderr,
+        )
         sys.exit(2)
 
     cwd = str(PROJECT_ROOT)
 
     if scope == "pre-commit":
-        report = _run_pre_commit(cwd, skip_tests=skip_tests)
+        report = _run_pre_commit(cwd, skip_tests=skip_tests, skip_fixers=skip_fixers)
     elif scope == "safety":
         report = _run_safety(cwd)
     else:

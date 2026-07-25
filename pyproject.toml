@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Utilities",
@@ -47,6 +48,7 @@ dev = [
     "pytest-cov>=7.0",
     "pytest-asyncio>=1.2.0",
     "ruff>=0.1",
+    "refurb>=2.0",
     "ty>=0.0.24",
     "lefthook>=2.1.6",
     "bandit>=1.7.7",
@@ -77,41 +79,66 @@ perplexity_cli = ["resources/skill.md", "config/urls.json"]
 target-version = "py312"
 line-length = 100
 
+[tool.ruff.format]
+docstring-code-format = true
+
 [tool.ruff.lint]
 select = [
-    "E",     # pycodestyle errors
-    "W",     # pycodestyle warnings
-    "F",     # Pyflakes
-    "I",     # isort
-    "C4",    # flake8-comprehensions
-    "B",     # flake8-bugbear
-    "UP",    # pyupgrade
-    "D",     # pydocstyle
-    "S101",  # flake8-bandit: assert in production code
-    "T10",   # flake8-debugger: breakpoint(), pdb.set_trace(), etc.
-    "RUF",   # ruff-specific rules (incl. RUF012 mutable class attributes)
+    "E",     "W",     "F",     "I",
+    "C4",    "B",     "UP",    "D",
+    "S101",  "T10",   "RUF",
+    "C90",   "PL",    "ARG",   "RET",
+    "SIM",   "BLE",   "FBT",   "TRY",
+    "T20",   "ERA",   "PTH",   "PERF",
 ]
 ignore = [
-    "E501",  # line too long (handled by formatter)
-    "D105",  # missing docstring in magic method (self-documenting)
-    "D107",  # missing docstring in __init__ (covered by class docstring per Google convention)
-    "D301",  # raw docstrings -- Click uses \b (backspace) as a formatting directive;
-             # r-strings would break all CLI help output
+    "E501",    "D105",   "D107",   "D301",
+    "PLC0415",
+    "TRY003",  "EM101",  "EM102",
+    "G004",    "G201",
+    "FBT001",  "FBT002",  "FBT003",
+    "TRY004",  "TRY300",  "TRY301",  "TRY401",
+    "BLE001",
+    "PTH123",  "PTH101",
+    "PERF401", "PERF403",
+    "PLR0911", "PLR0912",  "PLR0915",
+    "PLR0133", "PLW2901",  "PLE0704",
+    "SIM108",
+    "ARG004",
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 5
+
+[tool.ruff.lint.pylint]
+max-args = 4
+max-branches = 5
+max-returns = 4
+max-statements = 30
+max-nested-blocks = 3
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["D", "S101"]  # tests: no docstrings required, asserts permitted
-"vulture_whitelist.py" = ["B018", "D", "F821"]  # whitelist: useless expressions are intentional
-"scripts/**/*.py" = ["D"]  # scripts: no docstrings required
+"tests/**/*.py" = [
+    "D", "S101", "PLR2004",
+    "T201","SIM117","SIM118","SIM105","SIM101",
+    "ARG001","ARG002","ARG005",
+    "PLW1510","PLR0913","C901",
+    "ERA001",
+    "PTH100","PTH118","PTH120","PLW0108","PLR1722",
+]
+"vulture_whitelist.py" = ["B018", "D", "F821"]
+"scripts/**/*.py" = ["D", "T20"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = '--strict-markers -v -m "not integration and not real_api and not manual and not real_user_config and not fuzz"'
 asyncio_default_fixture_loop_scope = "function"
+strict_config = true
+strict_xfail = true
 markers = [
     "integration: marks tests as integration tests",
     "security: marks tests as security tests",
@@ -121,6 +148,7 @@ markers = [
     "real_user_config: marks tests that intentionally use the real user config directory",
     "fuzz: marks tests as atheris fuzz tests (cpu-intensive, ~2-3s each)",
 ]
+
 [tool.coverage.run]
 source = ["perplexity_cli"]
 branch = true
@@ -131,9 +159,6 @@ fail_under = 85
 
 [tool.bandit]
 exclude_dirs = ["tests"]
-# No global skips -- all checks enabled at maximum strictness.
-# Genuine false positives are suppressed inline with targeted
-# '# nosec BXXX' comments that document the justification.
 
 [tool.vulture]
 paths = ["src/"]
@@ -143,13 +168,19 @@ min_confidence = 80
 [tool.mutmut]
 paths_to_mutate = ["src/perplexity_cli/"]
 tests_dir = ["tests/"]
-pytest_add_cli_args = ["--ignore=tests/test_cyclomatic_complexity.py", "--ignore=tests/test_test_isolation.py", "--ignore=tests/test_vulture_dead_code.py", "--ignore=tests/test_semgrep_clean_code.py", "--ignore=tests/test_coupling_metrics.py", "--ignore=tests/test_safety_scan.py", "--ignore=tests/test_mutate_diff_files.py", "--ignore=tests/test_plan_compliance.py", "--ignore=tests/test_quality_ratchets.py", "--ignore=tests/test_schema_drift.py", "--ignore=tests/test_repository_hygiene.py", "--ignore=tests/test_help_doc_drift.py"]
+pytest_add_cli_args = ["--ignore=tests/test_cyclomatic_complexity.py", "--ignore=tests/test_test_isolation.py", "--ignore=tests/test_vulture_dead_code.py", "--ignore=tests/test_semgrep_clean_code.py", "--ignore=tests/test_coupling_metrics.py", "--ignore=tests/test_safety_scan.py", "--ignore=tests/test_mutate_diff_files.py", "--ignore=tests/test_plan_compliance.py", "--ignore=tests/test_quality_ratchets.py", "--ignore=tests/test_schema_drift.py", "--ignore=tests/test_repository_hygiene.py", "--ignore=tests/test_help_doc_drift.py", "--ignore=tests/test_module_coverage.py", "--ignore=tests/test_quality_pipeline_configuration.py", "--ignore=tests/test_workflow_configuration.py"]
 do_not_mutate = ["**/formatting/registry.py"]
 
 [tool.pyright]
 include = ["src/"]
 pythonVersion = "3.12"
-typeCheckingMode = "standard"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = "none"
+reportImportCycles = "warning"
+reportUnnecessaryTypeIgnoreComment = "error"
+
+[tool.deptry]
+extend_exclude = ["vulture_whitelist\\.py"]
 
 [dependency-groups]
 dev = [
@@ -159,4 +190,21 @@ dev = [
     "mutmut>=3.0",
     "hypothesis>=6.0",
     "pytest-xdist>=3.0",
+    "deptry>=0.20",
+    "pip-audit>=2.7",
+    "import-linter>=2.0",
+]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = [
+    "pytest",
+    "pytest-mock",
+    "pytest-cov",
+    "pytest-asyncio",
+    "ruff",
+    "ty",
+    "lefthook",
+    "bandit",
+    "vulture",
+    "refurb",
 ]

@@ -73,9 +73,6 @@ const SKIPPED_PATHS = [
 
 const DEPENDENCY_FILES = ["pyproject.toml", "requirements.txt", "requirements-dev.txt"];
 
-// Semgrep is resolved from PATH; falls back gracefully if absent
-const SEMGREP_BIN = "semgrep";
-
 // ---------------------------------------------------------------------------
 // File classification helpers
 // ---------------------------------------------------------------------------
@@ -121,10 +118,10 @@ function formatFindings(findings: Finding[]): string {
 // Output parsers
 // ---------------------------------------------------------------------------
 
-function parseRuffJson(stdout: string): Finding[] {
+function parseRuffJson(stdout: string): Finding[] | null {
   try {
     const items = JSON.parse(stdout);
-    if (!Array.isArray(items)) return [];
+    if (!Array.isArray(items)) return null;
     return items.map((item: any) => ({
       tool: "ruff",
       line: item.location?.row ?? 0,
@@ -133,13 +130,14 @@ function parseRuffJson(stdout: string): Finding[] {
       severity: "warning" as const,
     }));
   } catch {
-    return [];
+    return null;
   }
 }
 
-function parseRadonJson(stdout: string): Finding[] {
+function parseRadonJson(stdout: string): Finding[] | null {
   try {
     const data = JSON.parse(stdout);
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
     const findings: Finding[] = [];
     for (const blocks of Object.values(data)) {
       if (!Array.isArray(blocks)) continue;
@@ -157,15 +155,15 @@ function parseRadonJson(stdout: string): Finding[] {
     }
     return findings;
   } catch {
-    return [];
+    return null;
   }
 }
 
-function parseBanditJson(stdout: string): Finding[] {
+function parseBanditJson(stdout: string): Finding[] | null {
   try {
     const data = JSON.parse(stdout);
     const results = data.results;
-    if (!Array.isArray(results)) return [];
+    if (!Array.isArray(results)) return null;
     return results.map((r: any) => ({
       tool: "bandit",
       line: r.line_number ?? 0,
@@ -174,7 +172,7 @@ function parseBanditJson(stdout: string): Finding[] {
       severity: r.issue_severity === "HIGH" ? ("error" as const) : ("warning" as const),
     }));
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -185,18 +183,19 @@ function parseTyText(stdout: string): Finding[] {
 
   const lines = stdout.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    const match = diagnosticRe.exec(lines[i]);
+    const currentLine = lines[i] ?? "";
+    const match = diagnosticRe.exec(currentLine);
     if (!match) continue;
 
     const severity = match[1] === "error" ? ("error" as const) : ("warning" as const);
-    const code = match[2];
-    const message = match[3];
+    const code = match[2] ?? "";
+    const message = match[3] ?? "";
     let line = 0;
 
     if (i + 1 < lines.length) {
-      const locMatch = locationRe.exec(lines[i + 1]);
+      const locMatch = locationRe.exec(lines[i + 1] ?? "");
       if (locMatch) {
-        line = parseInt(locMatch[1], 10);
+        line = parseInt(locMatch[1] ?? "0", 10);
       }
     }
 
@@ -205,11 +204,12 @@ function parseTyText(stdout: string): Finding[] {
   return findings;
 }
 
-function parseSafetyJson(stdout: string): Finding[] {
+function parseSafetyJson(stdout: string): Finding[] | null {
   try {
     const data = JSON.parse(stdout);
     const findings: Finding[] = [];
-    const projects = data.scan_results?.projects ?? [];
+    const projects = data.scan_results?.projects;
+    if (!Array.isArray(projects)) return null;
     for (const project of projects) {
       for (const file of project.files ?? []) {
         for (const dep of file.results?.dependencies ?? []) {
@@ -227,14 +227,15 @@ function parseSafetyJson(stdout: string): Finding[] {
     }
     return findings;
   } catch {
-    return [];
+    return null;
   }
 }
 
-function parsePyrightJson(stdout: string): Finding[] {
+function parsePyrightJson(stdout: string): Finding[] | null {
   try {
     const data = JSON.parse(stdout);
-    const diagnostics = data.generalDiagnostics ?? [];
+    const diagnostics = data.generalDiagnostics;
+    if (!Array.isArray(diagnostics)) return null;
     return diagnostics.map((d: any) => ({
       tool: "pyright",
       line: (d.range?.start?.line ?? -1) + 1,
@@ -243,14 +244,15 @@ function parsePyrightJson(stdout: string): Finding[] {
       severity: d.severity === "error" ? ("error" as const) : ("warning" as const),
     }));
   } catch {
-    return [];
+    return null;
   }
 }
 
-function parseSemgrepJson(stdout: string): Finding[] {
+function parseSemgrepJson(stdout: string): Finding[] | null {
   try {
     const data = JSON.parse(stdout);
-    return (data.results ?? []).map((r: any) => ({
+    if (!Array.isArray(data.results)) return null;
+    return data.results.map((r: any) => ({
       tool: "semgrep",
       line: r.start?.line ?? 0,
       code: r.check_id ?? "",
@@ -263,7 +265,7 @@ function parseSemgrepJson(stdout: string): Finding[] {
             : ("info" as const),
     }));
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -290,19 +292,53 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
     semgrep: null,
     pyright: null,
   };
+  const toolErrors: Record<string, string> = {};
+
+  function toolFailure(name: string, detail: string): Finding[] {
+    return [{
+      tool: name,
+      line: 0,
+      code: "TOOL_FAILURE",
+      message: detail || "tool failed without diagnostic output",
+      severity: "error",
+    }];
+  }
+
+  function unavailable(name: string): Finding[] | null {
+    return toolOk[name] === false
+      ? toolFailure(name, toolErrors[name] ?? "tool is unavailable")
+      : null;
+  }
 
   /** Log a tool-unavailable warning once and mark it as unavailable. */
   async function markUnavailable(name: string, errMsg: string): Promise<void> {
+    toolErrors[name] = errMsg;
     if (toolOk[name] !== false) {
       toolOk[name] = false;
       await client.app.log({
         body: {
           service: "pxcli-quality",
           level: "warn",
-          message: `${name} not available — skipping. ${errMsg}`,
+          message: `${name} failed; reporting a tool error. ${errMsg}`,
         },
       });
     }
+  }
+
+  async function checkedFindings(
+    name: string,
+    exitCode: number,
+    stderr: string,
+    parsed: Finding[] | null,
+  ): Promise<Finding[]> {
+    if (parsed !== null && (exitCode === 0 || parsed.length > 0)) {
+      toolOk[name] = true;
+      return parsed;
+    }
+
+    const detail = stderr.trim() || `exit code ${exitCode}; output could not be parsed`;
+    await markUnavailable(name, detail);
+    return toolFailure(name, detail);
   }
 
   // -----------------------------------------------------------------------
@@ -310,54 +346,55 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
   // -----------------------------------------------------------------------
 
   async function checkRuff(filePath: string): Promise<Finding[]> {
-    if (toolOk["ruff"] === false) return [];
+    const priorFailure = unavailable("ruff");
+    if (priorFailure) return priorFailure;
     try {
       const r = await $`uv run ruff check ${filePath} --output-format=json --no-fix`
         .quiet()
         .nothrow();
-      toolOk["ruff"] = true;
-      return parseRuffJson(r.stdout.toString());
+      return checkedFindings("ruff", r.exitCode, r.stderr.toString(), parseRuffJson(r.stdout.toString()));
     } catch (err: any) {
       await markUnavailable("ruff", err.message ?? "");
-      return [];
+      return toolFailure("ruff", err.message ?? String(err));
     }
   }
 
   async function checkRadon(filePath: string): Promise<Finding[]> {
-    if (toolOk["radon"] === false) return [];
+    const priorFailure = unavailable("radon");
+    if (priorFailure) return priorFailure;
     try {
       const r = await $`uv run radon cc ${filePath} -j`.quiet().nothrow();
-      toolOk["radon"] = true;
-      return parseRadonJson(r.stdout.toString());
+      return checkedFindings("radon", r.exitCode, r.stderr.toString(), parseRadonJson(r.stdout.toString()));
     } catch (err: any) {
       await markUnavailable("radon", err.message ?? "");
-      return [];
+      return toolFailure("radon", err.message ?? String(err));
     }
   }
 
   async function checkBandit(filePath: string): Promise<Finding[]> {
-    if (toolOk["bandit"] === false) return [];
+    const priorFailure = unavailable("bandit");
+    if (priorFailure) return priorFailure;
     try {
       const r = await $`uv run bandit ${filePath} -f json -c pyproject.toml`
         .quiet()
         .nothrow();
-      toolOk["bandit"] = true;
-      return parseBanditJson(r.stdout.toString());
+      return checkedFindings("bandit", r.exitCode, r.stderr.toString(), parseBanditJson(r.stdout.toString()));
     } catch (err: any) {
       await markUnavailable("bandit", err.message ?? "");
-      return [];
+      return toolFailure("bandit", err.message ?? String(err));
     }
   }
 
   async function checkTy(filePath: string): Promise<Finding[]> {
-    if (toolOk["ty"] === false) return [];
+    const priorFailure = unavailable("ty");
+    if (priorFailure) return priorFailure;
     try {
       const r = await $`uv run ty check ${filePath}`.quiet().nothrow();
-      toolOk["ty"] = true;
-      return parseTyText(r.stdout.toString());
+      const combined = `${r.stdout.toString()}\n${r.stderr.toString()}`;
+      return checkedFindings("ty", r.exitCode, r.stderr.toString(), parseTyText(combined));
     } catch (err: any) {
       await markUnavailable("ty", err.message ?? "");
-      return [];
+      return toolFailure("ty", err.message ?? String(err));
     }
   }
 
@@ -366,16 +403,16 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
   // -----------------------------------------------------------------------
 
   async function checkSafety(): Promise<Finding[]> {
-    if (toolOk["safety"] === false) return [];
+    const priorFailure = unavailable("safety");
+    if (priorFailure) return priorFailure;
     try {
-      const r = await $`uvx safety scan --target ${directory} --output json`
+      const r = await $`uvx --from safety==3.8.1 safety scan --target ${directory} --output json`
         .quiet()
         .nothrow();
-      toolOk["safety"] = true;
-      return parseSafetyJson(r.stdout.toString());
+      return checkedFindings("safety", r.exitCode, r.stderr.toString(), parseSafetyJson(r.stdout.toString()));
     } catch (err: any) {
       await markUnavailable("safety", err.message ?? "");
-      return [];
+      return toolFailure("safety", err.message ?? String(err));
     }
   }
 
@@ -384,29 +421,32 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
   // -----------------------------------------------------------------------
 
   async function checkSemgrep(files: string[]): Promise<Finding[]> {
-    if (toolOk["semgrep"] === false || files.length === 0) return [];
+    if (files.length === 0) return [];
+    const priorFailure = unavailable("semgrep");
+    if (priorFailure) return priorFailure;
     try {
-      const configPath = `${directory}/.semgrep.yml`;
-      const r = await $`${SEMGREP_BIN} --config ${configPath} ${files} --json --severity ERROR --severity WARNING`
+      const targets = files.join(" ");
+      const r = await $`make semgrep-json SEMGREP_TARGETS=${targets}`
+        .cwd(directory)
         .quiet()
         .nothrow();
-      toolOk["semgrep"] = true;
-      return parseSemgrepJson(r.stdout.toString());
+      return checkedFindings("semgrep", r.exitCode, r.stderr.toString(), parseSemgrepJson(r.stdout.toString()));
     } catch (err: any) {
       await markUnavailable("semgrep", err.message ?? "");
-      return [];
+      return toolFailure("semgrep", err.message ?? String(err));
     }
   }
 
   async function checkPyright(files: string[]): Promise<Finding[]> {
-    if (toolOk["pyright"] === false || files.length === 0) return [];
+    if (files.length === 0) return [];
+    const priorFailure = unavailable("pyright");
+    if (priorFailure) return priorFailure;
     try {
       const r = await $`uv run pyright --outputjson ${files}`.quiet().nothrow();
-      toolOk["pyright"] = true;
-      return parsePyrightJson(r.stdout.toString());
+      return checkedFindings("pyright", r.exitCode, r.stderr.toString(), parsePyrightJson(r.stdout.toString()));
     } catch (err: any) {
       await markUnavailable("pyright", err.message ?? "");
-      return [];
+      return toolFailure("pyright", err.message ?? String(err));
     }
   }
 

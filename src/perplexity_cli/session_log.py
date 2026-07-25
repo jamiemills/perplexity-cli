@@ -37,10 +37,7 @@ class SessionLogger:
         otherwise ~/.local/share/pxcli/sessions/
         """
         xdg = os.environ.get("XDG_DATA_HOME")
-        if xdg:
-            base = Path(xdg)
-        else:
-            base = Path.home() / ".local" / "share"
+        base = Path(xdg) if xdg else Path.home() / ".local" / "share"
         return base / "pxcli" / "sessions"
 
     @staticmethod

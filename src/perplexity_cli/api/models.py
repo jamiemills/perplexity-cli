@@ -210,7 +210,8 @@ class QueryParams(BaseModel):
             ValueError: If mode is not 'standard' or 'multi_step'.
         """
         if v not in ["standard", "multi_step"]:
-            raise ValueError('search_implementation_mode must be "standard" or "multi_step"')
+            msg = 'search_implementation_mode must be "standard" or "multi_step"'
+            raise ValueError(msg)
         return v
 
     def to_dict(self) -> dict[str, object]:

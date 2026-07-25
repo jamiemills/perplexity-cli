@@ -41,15 +41,15 @@ Then:
 git clone https://github.com/jamiemills/perplexity-cli.git
 cd perplexity-cli
 make setup               # venv, deps, lefthook git hooks (requires uv, gitleaks, infisical)
-make configure-opencode  # OpenCode plugin/agent npm deps + wiring verification
+make configure-opencode  # reproducible OpenCode plugin/config validation
 make test                # verify everything works
 ```
 </details>
 
 > **`make setup`** installs the Python virtualenv, locked dependencies, lefthook
 > git hooks, and verifies the CLI builds.  **`make configure-opencode`** installs
-> the npm packages needed by the OpenCode quality-gate plugins and verifies that
-> all plugin and agent files are correctly wired in `opencode.jsonc`.  Both are
+> the locked npm packages needed by the OpenCode plugins, type-checks them, and
+> validates `opencode.jsonc` and registered plugin paths. Both are
 > idempotent — safe to re-run.
 
 ## Quick start
@@ -1035,7 +1035,7 @@ Prerequisites: [`uv`](https://docs.astral.sh/uv/getting-started/installation/), 
 git clone https://github.com/jamiemills/perplexity-cli.git
 cd perplexity-cli
 make setup               # creates venv, syncs deps, installs lefthook hooks
-make configure-opencode  # installs OpenCode plugin npm deps, verifies wiring
+make configure-opencode  # npm ci, plugin type-check, JSONC/config validation
 ```
 
 The equivalent manual setup (skipping the prerequisite checks) is:
@@ -1049,7 +1049,7 @@ uv run lefthook install
 ### Testing
 
 ```bash
-uv run pytest                   # safe default test suite (1534 tests)
+uv run pytest                   # safe default test suite
 uv run pytest -m security       # security tests only
 uv run pytest -m fuzz           # fuzz tests (atheris harnesses)
 ```
@@ -1062,13 +1062,14 @@ The full catalogue of gates, what each defends against, and where it runs is
 documented in [`QUALITY_GATES.md`](QUALITY_GATES.md).
 
 ```bash
-make ci                         # run the full CI pipeline locally
+make ci                         # credential-free CI pipeline used by every PR
+make ci-trusted                 # make ci plus authenticated Safety
 make check                      # all static checks (no tests): ruff, ty/pyright,
                                 #   bandit, vulture, radon, semgrep, arch/coupling,
                                 #   and the quality ratchets
 make lint                       # ruff check only
 make security                   # bandit + vulture
-make semgrep                    # custom clean-code + community rulesets
+make semgrep                    # custom + reviewed immutable community snapshots
 make ratchets                   # baseline ratchets: block new/grown file-size,
                                 #   suppressions, complexity, strict-Any, structural findings
 make test                       # pytest (no coverage, fail-fast)
@@ -1082,8 +1083,12 @@ Quality ratchets capture existing structural debt (documented in
 `.claude/thermo-nuclear-review.md`) as accepted baselines under
 `quality/baselines/`, then fail only on *new* or *grown* findings — so the
 failure modes cannot spread while the debt is paid down incrementally.
-`make quality-plan` runs the plan-compliance analyser on its own output, and
-`make plan-check` re-validates any plan before a build phase consumes it.
+`make quality-plan` runs the plan-compliance analyser on its own output and
+returns non-zero if any named gate fails or is skipped. `make plan-check`
+requires every gate and the self-review to pass before a build phase consumes
+the plan. Latest community Semgrep packs run separately as a scheduled
+advisory; blocking scans use the reviewed hashes in
+`quality/semgrep-snapshot.json`.
 
 ### Releasing
 

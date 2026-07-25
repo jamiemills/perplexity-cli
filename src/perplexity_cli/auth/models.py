@@ -39,9 +39,11 @@ class TokenFormat(BaseModel):
     def validate_token(cls, v: str) -> str:
         """Validate token is not empty."""
         if not v:
-            raise ValueError("Token must be a non-empty string")
+            msg = "Token must be a non-empty string"
+            raise ValueError(msg)
         if not v.strip():
-            raise ValueError("Token cannot be whitespace-only")
+            msg = "Token cannot be whitespace-only"
+            raise ValueError(msg)
         return v
 
     @field_validator("created_at")
@@ -49,7 +51,8 @@ class TokenFormat(BaseModel):
     def validate_created_at(cls, v: datetime) -> datetime:
         """Validate created_at is not in the future."""
         if v > datetime.now():
-            raise ValueError("created_at cannot be in the future")
+            msg = "created_at cannot be in the future"
+            raise ValueError(msg)
         return v
 
     @field_serializer("created_at")
@@ -74,7 +77,8 @@ class CookieData(BaseModel):
     def validate_name(cls, v: str) -> str:
         """Validate cookie name is not empty."""
         if not v or not v.strip():
-            raise ValueError("Cookie name cannot be empty")
+            msg = "Cookie name cannot be empty"
+            raise ValueError(msg)
         return v
 
 
@@ -92,5 +96,6 @@ class TokenMetadata(BaseModel):
     def validate_age_days(cls, v: int | None) -> int | None:
         """Validate age_days is non-negative if provided."""
         if v is not None and v < 0:
-            raise ValueError("age_days cannot be negative")
+            msg = "age_days cannot be negative"
+            raise ValueError(msg)
         return v

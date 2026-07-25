@@ -92,7 +92,8 @@ class ThreadCacheManager:
 
         except (OSError, json.JSONDecodeError) as e:
             self.logger.error("Failed to load cache: %s", e, exc_info=True)
-            raise OSError(f"Failed to load cache from {self.cache_path}: {e}") from e
+            msg = f"Failed to load cache from {self.cache_path}: {e}"
+            raise OSError(msg) from e
 
     def _validate_outer_format(self, raw_data: dict[str, Any]) -> CacheFormat:
         """Validate and parse the outer cache file format.
@@ -109,19 +110,22 @@ class ThreadCacheManager:
         try:
             cache_format = CacheFormat.model_validate(raw_data)
         except ValidationError as e:
-            self.logger.error("Cache file has invalid outer format: %s", e)
-            raise ConfigurationError("Cache file has invalid format") from e
+            self.logger.exception("Cache file has invalid outer format: %s", e)
+            msg = "Cache file has invalid format"
+            raise ConfigurationError(msg) from e
 
         if not cache_format.encrypted:
             self.logger.warning("Cache file is not encrypted")
-            raise ConfigurationError(
+            msg = (
                 "Cache file is not encrypted. Cache may be corrupted. "
                 "Consider deleting and rebuilding."
             )
+            raise ConfigurationError(msg)
 
         if not cache_format.cache:
             self.logger.error("Cache file missing encrypted cache data")
-            raise ConfigurationError("Cache file is missing encrypted cache data")
+            msg = "Cache file is missing encrypted cache data"
+            raise ConfigurationError(msg)
 
         return cache_format
 
@@ -143,8 +147,9 @@ class ThreadCacheManager:
         try:
             return CacheContent.model_validate(decrypted_content)
         except ValidationError as e:
-            self.logger.error("Cache content has invalid format: %s", e)
-            raise ConfigurationError("Cache content has invalid format") from e
+            self.logger.exception("Cache content has invalid format: %s", e)
+            msg = "Cache content has invalid format"
+            raise ConfigurationError(msg) from e
 
     def save_cache(
         self,
@@ -209,9 +214,8 @@ class ThreadCacheManager:
 
         except OSError as e:
             self.logger.error("Failed to save cache: %s", e, exc_info=True)
-            raise OSError(
-                f"Failed to save or set permissions on cache file {self.cache_path}: {e}"
-            ) from e
+            msg = f"Failed to save or set permissions on cache file {self.cache_path}: {e}"
+            raise OSError(msg) from e
 
     def get_cache_coverage(self) -> tuple[str | None, str | None]:
         """Get date range covered by cache.
@@ -371,7 +375,8 @@ class ThreadCacheManager:
                 self.logger.info("Cache cleared from %s", self.cache_path)
             except OSError as e:
                 self.logger.error("Failed to delete cache file: %s", e, exc_info=True)
-                raise OSError(f"Failed to delete cache file: {e}") from e
+                msg = f"Failed to delete cache file: {e}"
+                raise OSError(msg) from e
 
     def cache_exists(self) -> bool:
         """Check if cache file exists on disk.

@@ -1,13 +1,5 @@
 # =============================================================================
 # Makefile -- single source of truth for all lint, test, and build commands.
-#
-# Used by GitHub Actions (.github/workflows/) and local git hooks
-# (lefthook.yml).  Every check target is independently callable so that
-# lefthook can attach glob triggers, while composite targets (check, ci)
-# provide convenient one-command execution for CI and local use.
-#
-# Coverage threshold: pyproject.toml [tool.coverage.report] fail_under = 85
-# Test markers:       pyproject.toml [tool.pytest.ini_options] addopts
 # =============================================================================
 
 include quality/gates.conf
@@ -16,12 +8,26 @@ include quality/gates.conf
 SHELL := /bin/bash
 PYTHON_VERSION ?= 3.12
 PROPERTY_PROFILE ?= ci
+SEMGREP_VERSION := 1.171.0
+SEMGREP := uvx --from semgrep==$(SEMGREP_VERSION) semgrep
+SEMGREP_CONFIGS := \
+	--config .semgrep.yml \
+	--config .semgrep-community-python.yml \
+	--config .semgrep-community-comment.yml \
+	--config .semgrep-community-best-practices.yml
+SEMGREP_TARGETS ?= .
+SEMGREP_OPTIONS := \
+	$(SEMGREP_SEVERITY) \
+	--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
+	--exclude tests/ \
+	--exclude '.semgrep-community-*.yml' \
+	--metrics=off
 
 # ---------------------------------------------------------------------------
 # Development setup
 # ---------------------------------------------------------------------------
 
-.PHONY: check-uv check-gitleaks setup configure-opencode
+.PHONY: check-uv check-gitleaks setup configure-opencode opencode-check
 
 check-uv:  ## Verify uv is installed
 	@command -v uv >/dev/null 2>&1 || { \
@@ -47,15 +53,16 @@ check-infisical:  ## Verify infisical CLI is installed
 		exit 1; \
 	}
 
-setup: check-uv check-gitleaks check-infisical  ## Set up a local development environment (run configure-opencode after)
+setup: check-uv check-gitleaks check-infisical
 	uv venv --python $(PYTHON_VERSION) --allow-existing
 	uv sync --locked --extra dev --group dev
 	uv run lefthook install
 	uv run pxcli --help > /dev/null
 
-configure-opencode:  ## Install OpenCode deps and verify plugin/agent wiring
+configure-opencode:
 	@echo "Installing OpenCode plugin dependencies..."
-	@cd .opencode && npm install
+	@npm --prefix .opencode ci
+	@$(MAKE) opencode-check
 	@echo ""
 	@echo "Verifying plugin and agent wiring..."
 	@ok=true; \
@@ -72,17 +79,20 @@ configure-opencode:  ## Install OpenCode deps and verify plugin/agent wiring
 	else echo "  OK: opencode.jsonc"; fi; \
 	if [ "$$ok" != "true" ]; then \
 		echo ""; \
-		echo "Some OpenCode files are missing. Verify the repository checkout"; \
-		echo "is complete or run 'git checkout -- .opencode/ opencode.jsonc'."; \
+		echo "Some OpenCode files are missing."; \
 		exit 1; \
 	fi
 	@echo ""
-	@echo "OpenCode wiring verified:"
-	@echo "  Plugins (4): quality-gate, pxcli-quality, pre-push-docs-check, plan-compliance-gate"
-	@echo "  Agents  (1): quality-plan-reviewer"
-	@echo "  Config     : opencode.jsonc registers all plugins and agents"
+	@echo "OpenCode wiring verified."
 	@echo ""
-	@echo "Reload the OpenCode session to activate plugins."
+
+opencode-check:  ## Type-check OpenCode plugins and validate resolved config when available
+	@npm --prefix .opencode run check
+	@if command -v opencode >/dev/null 2>&1; then \
+		opencode debug config >/dev/null; \
+	else \
+		echo "OpenCode CLI not installed; resolved-config validation skipped."; \
+	fi
 
 # ---------------------------------------------------------------------------
 # Formatting
@@ -115,7 +125,7 @@ lint:  ## Run linter (ruff check)
 typecheck:  ## Run type checker (ty)
 	uv run ty check src
 
-typecheck-pyright:  ## Run type checker (pyright)
+typecheck-pyright:  ## Run type checker (pyright, strict mode)
 	uv run pyright src/
 
 typecheck-all: typecheck typecheck-pyright  ## Run all type checkers
@@ -124,16 +134,19 @@ typecheck-all: typecheck typecheck-pyright  ## Run all type checkers
 # Security and dead-code analysis
 # ---------------------------------------------------------------------------
 
-.PHONY: bandit vulture gitleaks security
+.PHONY: bandit vulture gitleaks gitleaks-ci security
 
 bandit:  ## Run bandit security linter
-	uv run bandit -c pyproject.toml -r src/ -ll -ii
+	uv run bandit -c pyproject.toml -r src/
 
 vulture:  ## Run vulture dead-code detector
 	uv run vulture src/ vulture_whitelist.py --min-confidence $(MIN_CONFIDENCE)
 
-gitleaks:  ## Run gitleaks secret detection
+gitleaks:  ## Run gitleaks secret detection (pre-push: skips when not installed)
 	scripts/gitleaks_check.sh
+
+gitleaks-ci:  ## Run gitleaks in CI (fails if not installed)
+	CI_NO_SKIP=1 scripts/gitleaks_check.sh
 
 security: bandit vulture  ## Run all security checks
 
@@ -165,49 +178,78 @@ complexity: complexity-cc complexity-mi  ## Run all complexity checks
 # Semgrep
 # ---------------------------------------------------------------------------
 
-.PHONY: semgrep
+.PHONY: semgrep semgrep-json semgrep-advisory
 
-semgrep:  ## Run semgrep static analysis
+semgrep:  ## Run the immutable blocking Semgrep ruleset
+	@$(SEMGREP) $(SEMGREP_CONFIGS) $(SEMGREP_OPTIONS) --error $(SEMGREP_TARGETS)
+
+semgrep-json:  ## Run the immutable Semgrep ruleset with machine-readable output
+	@$(SEMGREP) $(SEMGREP_CONFIGS) $(SEMGREP_OPTIONS) --json $(SEMGREP_TARGETS)
+
+semgrep-advisory:  ## Scan latest community packs without changing the blocking gate
 	uvx semgrep \
-		--config .semgrep.yml \
 		--config p/python \
 		--config p/comment \
 		--config p/r2c-best-practices \
 		$(SEMGREP_SEVERITY) \
 		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
 		--exclude tests/ \
-		--error --metrics=off .
+		--metrics=off .
 
 # ---------------------------------------------------------------------------
 # Architecture enforcement
 # ---------------------------------------------------------------------------
 
-.PHONY: coupling-check metrics-track
+.PHONY: coupling-check metrics-track arch-check arch-explain
 
-coupling-check:  ## Measure coupling and stability metrics (Martin metrics)
+coupling-check:  ## Measure coupling and stability metrics
 	uv run python scripts/check_coupling.py --max-flagged $(MAX_FLAGGED)
 
 metrics-track:  ## Track CC and MI trends over recent git revisions
 	uv run python scripts/track_metrics.py
 
+arch-check:  ## Check architecture layer boundaries (hard gate, no baseline)
+	uv run python scripts/check_architecture.py --no-baseline
+
+arch-explain:  ## Display the architecture layer model
+	uv run python scripts/check_architecture.py --explain
+
+# ---------------------------------------------------------------------------
+# Dependency hygiene
+# ---------------------------------------------------------------------------
+
+.PHONY: deptry pip-audit dependency-hygiene
+
+deptry:  ## Check for missing, unused, and misplaced dependencies
+	uv run deptry src tests scripts
+
+pip-audit:  ## Scan dependencies for known vulnerabilities
+	uv run pip-audit .
+
+dependency-hygiene: deptry  ## Run all dependency hygiene checks
+
+# ---------------------------------------------------------------------------
+# Mutation testing
+# ---------------------------------------------------------------------------
+
 .PHONY: mutate mutate-results mutate-module mutate-diff mutate-estimate mutate-browse
 
-mutate:  ## Run mutation testing on the full source tree (hours — for CI/overnight)
+mutate:  ## Run mutation testing on the full source tree
 	uv run mutmut run
 
 mutate-estimate:  ## Estimate how long a full mutation run would take
 	uv run mutmut print-time-estimates
 
-mutate-module:  ## Run mutation testing on a specific module (usage: make mutate-module MODULE=api)
+mutate-module:  ## Run mutation testing on a specific module
 ifndef MODULE
 	$(error MODULE is not set. Usage: make mutate-module MODULE=api)
 endif
 	uv run mutmut run src/perplexity_cli/$(MODULE)/
 
-mutate-diff:  ## Run mutation testing on files changed vs base branch (for pre-push)
+mutate-diff:
 	@mapfile -t files < <(uv run python scripts/discover_mutate_diff_files.py); \
 	if [ "$${#files[@]}" -eq 0 ]; then \
-		echo "No source files changed — skipping mutation tests."; \
+		echo "No source files changed -- skipping mutation tests."; \
 		exit 0; \
 	fi; \
 	echo "Mutating $${#files[@]} changed file(s):"; \
@@ -229,56 +271,91 @@ mutate-browse:  ## Browse mutation results in interactive TUI
 
 # ---------------------------------------------------------------------------
 # Testing
-#
-# Marker exclusions (integration, real_api, manual, real_user_config, fuzz)
-# are applied automatically via addopts in pyproject.toml.
-# Coverage fail_under = 85 is set in pyproject.toml [tool.coverage.report].
 # ---------------------------------------------------------------------------
 
-.PHONY: test test-coverage test-fuzz test-property test-property-push test-property-ci
+.PHONY: test test-coverage-report module-coverage test-coverage test-fuzz test-property test-property-push test-property-ci
 
-test:  ## Run tests without coverage (fail-fast)
+test:  ## Run tests without coverage (fail-fast, parallel)
 	uv run pytest tests/ -q --tb=line -x -n auto
 
-test-coverage:  ## Run tests with coverage enforcement
+test-coverage-report:  ## Run tests and produce coverage reports
 	uv run pytest tests/ -q --tb=line -x -n auto \
 		--cov=perplexity_cli --cov-report=term-missing \
 		--cov-report=json --cov-report=xml:coverage.xml
+
+module-coverage:  ## Enforce the minimum on every measured source module
 	uv run python scripts/check_module_coverage.py --min-coverage $(MIN_COVERAGE)
+
+test-coverage: test-coverage-report module-coverage  ## Run tests with coverage enforcement
 
 test-fuzz:  ## Run fuzz tests
 	uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz
 
-test-property:  ## Run property-based tests (fast — dev profile, 10 examples each)
+test-property:  ## Run property-based tests (dev profile, 10 examples)
 	uv run pytest tests/test_property.py -v --tb=short --hypothesis-profile=dev
 
-test-property-push:  ## Run property-based tests (balanced — push profile, 50 examples each)
+test-property-push:  ## Run property-based tests (push profile, 50 examples)
 	uv run pytest tests/test_property.py -v --tb=short --hypothesis-profile=push
 
-test-property-ci:  ## Run property-based tests (thorough — CI profile, 1000 examples each)
+test-property-ci:  ## Run property-based tests (CI profile, 1000 examples)
 	uv run pytest tests/test_property.py -v --tb=short --hypothesis-profile=ci
+
+# ---------------------------------------------------------------------------
+# Diff coverage
+# ---------------------------------------------------------------------------
+
+.PHONY: diff-coverage
+
+diff-coverage:  ## Check coverage on changed lines
+	@if [ ! -f coverage.xml ]; then \
+		echo "coverage.xml not found -- run 'make test-coverage' first."; \
+		exit 2; \
+	fi
+	uvx diff-cover coverage.xml --fail-under=$(DIFF_COVERAGE_THRESHOLD)
 
 # ---------------------------------------------------------------------------
 # Safety
 # ---------------------------------------------------------------------------
 
-.PHONY: safety infisical-scan
+.PHONY: safety safety-gate infisical-scan
 
-safety:  ## Run safety dependency scan
+safety:  ## Run safety dependency scan (skips locally when credentials unavailable)
+	@if [ -n "$$SAFETY_API_KEY" ]; then \
+		uv run python scripts/agent_check.py safety; \
+	elif command -v infisical >/dev/null 2>&1; then \
+		if infisical run --env dev -- bash -c 'test -n "$$SAFETY_API_KEY"' \
+			>/dev/null 2>&1; then \
+			infisical run --env dev -- uv run python scripts/agent_check.py safety; \
+		else \
+			echo "Safety scan skipped: credentials unavailable through infisical."; \
+			echo "Set SAFETY_API_KEY or configure infisical."; \
+		fi; \
+	else \
+		echo "Safety scan skipped: SAFETY_API_KEY not set and infisical not available."; \
+		echo "Set SAFETY_API_KEY or install infisical (brew install infisical)."; \
+		echo "CI requires safety credentials -- set SAFETY_API_KEY secret in GitHub."; \
+	fi
+safety-gate:  ## Run safety scan in CI mode (fails if credentials unavailable)
 	@if [ -n "$$SAFETY_API_KEY" ]; then \
 		uv run python scripts/agent_check.py safety; \
 	elif command -v infisical >/dev/null 2>&1; then \
 		infisical run --env dev -- uv run python scripts/agent_check.py safety; \
+		status=$$?; \
+		if [ $$status -ne 0 ]; then \
+			echo "ERROR: authenticated Safety scan failed through infisical."; \
+			exit $$status; \
+		fi; \
 	else \
-		echo "Safety scan skipped: SAFETY_API_KEY not set and infisical not available."; \
-		echo "Set SAFETY_API_KEY or install infisical (brew install infisical)."; \
+		echo "ERROR: Safety scan requires SAFETY_API_KEY or infisical CLI."; \
+		echo "Set SAFETY_API_KEY secret in GitHub repository settings."; \
+		exit 2; \
 	fi
 
-infisical-scan:  ## Scan uncommitted changes for secrets (skips when infisical CLI is absent)
+infisical-scan:  ## Scan uncommitted changes for secrets
 	@if command -v infisical >/dev/null 2>&1; then \
 		infisical scan git-changes --verbose --exit-code 1; \
 	else \
-		echo "Infisical scan skipped: infisical CLI not installed (brew install infisical)."; \
+		echo "Infisical scan skipped: infisical CLI not installed."; \
 	fi
 
 # ---------------------------------------------------------------------------
@@ -304,14 +381,14 @@ smoke-test:  ## Install wheel in isolated venv and run smoke tests
 
 .PHONY: release
 
-release:  ## Bump version, lock, commit, tag, and push (usage: make release V=0.7.2)
+release:  ## Bump version, lock, commit, tag, and push
 ifndef V
 	$(error V is not set. Usage: make release V=0.7.2)
 endif
 	@echo "Releasing v$(V)..."
 	sed -i '' 's/^version = ".*"/version = "$(V)"/' pyproject.toml
 	uv lock
-	$(MAKE) ci
+	$(MAKE) ci-trusted
 	git add pyproject.toml uv.lock
 	git commit -m "Release $(V)"
 	git tag -a "v$(V)" -m "Release $(V)"
@@ -320,16 +397,10 @@ endif
 
 # ---------------------------------------------------------------------------
 # Composite targets
-#
-# All static checks are listed as prerequisites of the `check` target so
-# that `make -j check` runs them in parallel (~4s wall time instead of
-# ~13s sequential).  Each prerequisite is independently callable via
-# `make <target>` for use in lefthook with per-file globs.
 # ---------------------------------------------------------------------------
 
-.PHONY: check ci agent-check agent-check-push agent-check-no-tests
+.PHONY: check ci ci-trusted agent-check agent-check-push agent-check-no-tests
 
-# Conditional prerequisites — controlled by quality/gates.conf
 CHECK_PREREQS :=
 ifeq ($(CHECK_FORMAT),true)
 CHECK_PREREQS += format-check
@@ -358,74 +429,81 @@ endif
 ifeq ($(CHECK_RATCHETS),true)
 CHECK_PREREQS += ratchets
 endif
+ifeq ($(CHECK_IMPORT_LINTER),true)
+CHECK_PREREQS += import-linter
+endif
 
-check: $(CHECK_PREREQS)  ## Run all static checks (no tests)
+ifeq ($(CHECK_DEPTRY),true)
+CHECK_PREREQS += deptry
+endif
 
-agent-check:  ## Run all pre-commit analysers in parallel with unified output (for agents/CI)
+check: $(CHECK_PREREQS)  ## Run all static checks
+
+agent-check:
 	uv run python scripts/agent_check.py pre-commit
 
-agent-check-no-tests:  ## Run pre-commit analysers excluding tests (for pre-push)
-	uv run python scripts/agent_check.py --no-tests pre-commit
+agent-check-no-tests:
+	uv run python scripts/agent_check.py --no-tests --no-fix pre-commit
 
-agent-check-push:  ## Run all pre-push analysers in parallel with unified output (for agents/CI)
+agent-check-push:
 	uv run python scripts/agent_check.py pre-push
 
 ci:  ## Full CI pipeline
 	$(MAKE) check
 	$(MAKE) test-coverage
 	$(MAKE) test-fuzz
-	$(MAKE) safety
+	$(MAKE) pip-audit
 	$(MAKE) sonar-reports
 	$(MAKE) test-property-$(PROPERTY_PROFILE)
 	$(MAKE) build
 	$(MAKE) verify
 	$(MAKE) smoke-test
 
+ci-trusted: ci safety-gate  ## Full CI plus authenticated Safety for trusted code
+
 # ---------------------------------------------------------------------------
-# Quality ratchets
-#
-# Each gate captures current debt in quality/baselines/*.json and fails only on
-# NEW or grown findings, blocking the failure modes in
-# .claude/thermo-nuclear-review.md without forcing a refactor now.  Refresh a
-# baseline only after intentional fixes: `<gate> --update-baseline`.
+# Quality gates
 # ---------------------------------------------------------------------------
 
 .PHONY: file-size suppression-ratchet ruff-architecture typecheck-strict-ratchet semgrep-architecture quality-plan
 
-file-size:  ## Ratchet: block new/grown oversized source files (cap $(FILE_SIZE_CAP) lines)
-	uv run python scripts/check_file_size.py --max-lines $(FILE_SIZE_CAP)
+file-size:  ## Hard gate: block oversized source files
+	@uv run python scripts/check_file_size.py --max-lines $(FILE_SIZE_CAP); \
+	if [ $$? -ne 0 ]; then \
+		echo "File-size gate FAILED."; \
+		echo "Split the file, or raise FILE_SIZE_CAP in quality/gates.conf."; \
+		exit 1; \
+	fi
 
 suppression-ratchet:  ## Ratchet: block new/grown inline suppressions
 	uv run python scripts/check_suppressions.py
 
-ruff-architecture:  ## Ratchet: block new complexity/parameter findings (C901/PLR091*/ARG)
-	uv run python scripts/check_ruff_architecture.py
+ruff-architecture:  ## Hard gate: complexity/parameter findings (C901/PLR0913/ARG)
+	@uv run ruff check --select C901,PLR0913,PLR2004,ARG001,ARG002 \
+		--config "lint.mccabe.max-complexity = 5" \
+		--config "lint.pylint.max-args = 4" \
+		--output-format concise src/; \
+	status=$$?; \
+	if [ $$status -ne 0 ]; then \
+		echo ""; \
+		echo "Ruff architecture gate FAILED."; \
+	fi; \
+	exit $$status
 
-typecheck-strict-ratchet:  ## Ratchet: block new pyright strict (Any/unknown) diagnostics
-	uv run python scripts/check_pyright_strict.py
+typecheck-strict-ratchet:  ## Hard gate: pyright strict
+	uv run pyright src/
 
-semgrep-architecture:  ## Ratchet: block new structural findings (TOCTOU/retry/layering)
+semgrep-architecture:  ## Ratchet: block new structural findings
 	uv run python scripts/check_semgrep_architecture.py
 
-quality-plan:  ## Run every analyser and write a follow-up plan (OUT=.claude/plans/quality-plan.md)
-	uv run python scripts/generate_quality_plan.py --out "$${OUT:-.claude/plans/quality-plan.md}"
+quality-plan:  ## Run the canonical 20-gate analyser set and write a plan
+	uv run python scripts/generate_quality_plan.py \
+		--out "$${OUT:-.claude/plans/quality-plan.md}" --fail-on-violations
 
-plan-check:  ## Validate the latest produced plan against the prevention rules (PLAN=path)
+plan-check:  ## Validate plan against prevention rules
 	uv run python scripts/check_plan_compliance.py $${PLAN:+--plan $$PLAN}
 
-ratchets: file-size suppression-ratchet ruff-architecture typecheck-strict-ratchet semgrep-architecture  ## Run all quality ratchets
-
-# ---------------------------------------------------------------------------
-# Architecture
-# ---------------------------------------------------------------------------
-
-.PHONY: arch-check arch-explain
-
-arch-check:  ## Check architecture layer boundaries and import direction
-	uv run python scripts/check_architecture.py
-
-arch-explain:  ## Display the architecture layer model
-	uv run python scripts/check_architecture.py --explain
+ratchets: file-size suppression-ratchet ruff-architecture typecheck-strict-ratchet semgrep-architecture  ## Run all quality gates
 
 # ---------------------------------------------------------------------------
 # Sonar
@@ -454,4 +532,30 @@ clean:  ## Remove build artefacts
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
+
+# ---------------------------------------------------------------------------
+# Import Linter
+# ---------------------------------------------------------------------------
+
+.PHONY: import-linter
+
+import-linter:  ## Check architecture import contracts
+	uv run lint-imports
+
+# ---------------------------------------------------------------------------
+# Refurb
+# ---------------------------------------------------------------------------
+
+.PHONY: refurb
+
+refurb:  ## Run Refurb readability advisory checks
+	uv run refurb src/
+
+# ---------------------------------------------------------------------------
+# Composite additions for import-linter
+# ---------------------------------------------------------------------------
+
+.PHONY: quality-architecture
+
+quality-architecture: import-linter arch-check coupling-check  ## Run all architecture checks

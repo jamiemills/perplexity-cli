@@ -94,7 +94,8 @@ def _resolve_path(path: Path, files: set[Path]) -> None:
     elif path.is_dir():
         _add_directory_files(path, files)
     else:
-        raise ValueError(f"Not a file or directory: {path}")
+        msg = f"Not a file or directory: {path}"
+        raise ValueError(msg)
 
 
 def _process_query_paths(query_args: list[str], files: set[Path]) -> None:
@@ -111,7 +112,8 @@ def _process_query_paths(query_args: list[str], files: set[Path]) -> None:
     for arg in query_args:
         for path in _extract_file_paths_from_text(arg):
             if not path.exists():
-                raise FileNotFoundError(f"File or directory not found: {path}")
+                msg = f"File or directory not found: {path}"
+                raise FileNotFoundError(msg)
             _resolve_path(path, files)
             logger.debug("Extracted path from query: %s", redact_path(path))
 
@@ -129,7 +131,8 @@ def _resolve_attach_path(path_str: str, files: set[Path]) -> None:
     """
     path = Path(path_str).expanduser()
     if not path.exists():
-        raise FileNotFoundError(f"File or directory not found: {path}")
+        msg = f"File or directory not found: {path}"
+        raise FileNotFoundError(msg)
     _resolve_path(path, files)
 
 
@@ -183,10 +186,11 @@ def resolve_file_arguments(
     resolved_files = sorted(files)
 
     if len(resolved_files) > MAX_ATTACHMENT_COUNT:
-        raise AttachmentError(
+        msg = (
             f"Too many attachments: {len(resolved_files)} files exceeds the limit of "
             f"{MAX_ATTACHMENT_COUNT}"
         )
+        raise AttachmentError(msg)
 
     return resolved_files
 
@@ -201,10 +205,7 @@ def _should_skip_directory_entry(path: Path) -> bool:
         return True
     if name.startswith(SKIPPED_FILENAME_PREFIXES):
         return True
-    if path.suffix.lower() in SKIPPED_FILENAME_SUFFIXES:
-        return True
-
-    return False
+    return path.suffix.lower() in SKIPPED_FILENAME_SUFFIXES
 
 
 def _should_include_file(file_path: Path) -> bool:
@@ -274,16 +275,16 @@ def _load_single_attachment(path: Path, total_size: int) -> tuple[FileAttachment
     """
     file_size = path.stat().st_size
     if file_size > MAX_ATTACHMENT_FILE_SIZE:
-        raise AttachmentError(
+        msg = (
             f"Attachment too large: {path.name} exceeds the per-file limit of "
             f"{MAX_ATTACHMENT_FILE_SIZE} bytes"
         )
+        raise AttachmentError(msg)
 
     total_size += file_size
     if total_size > MAX_TOTAL_ATTACHMENT_SIZE:
-        raise AttachmentError(
-            f"Total attachment size exceeds the limit of {MAX_TOTAL_ATTACHMENT_SIZE} bytes"
-        )
+        msg = f"Total attachment size exceeds the limit of {MAX_TOTAL_ATTACHMENT_SIZE} bytes"
+        raise AttachmentError(msg)
 
     attachment = FileAttachment.from_file(path)
     logger.debug("Loaded attachment: %s (%s)", redact_path(path.name), attachment.content_type)
@@ -306,10 +307,11 @@ def load_attachments(file_paths: list[Path]) -> list[FileAttachment]:
         OSError: If a file cannot be read.
     """
     if len(file_paths) > MAX_ATTACHMENT_COUNT:
-        raise AttachmentError(
+        msg = (
             f"Too many attachments: {len(file_paths)} files exceeds the limit of "
             f"{MAX_ATTACHMENT_COUNT}"
         )
+        raise AttachmentError(msg)
 
     attachments: list[FileAttachment] = []
     total_size = 0
@@ -319,10 +321,10 @@ def load_attachments(file_paths: list[Path]) -> list[FileAttachment]:
             attachment, total_size = _load_single_attachment(path, total_size)
             attachments.append(attachment)
         except (FileNotFoundError, ValueError) as e:
-            logger.error("Failed to load attachment: %s: %s", path, e)
+            logger.exception("Failed to load attachment: %s: %s", path, e)
             raise
         except OSError as e:
-            logger.error("Error reading file: %s: %s", path, e)
+            logger.exception("Error reading file: %s: %s", path, e)
             raise
 
     return attachments

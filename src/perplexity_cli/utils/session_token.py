@@ -21,7 +21,8 @@ def extract_session_token(raw_token: str) -> str:
         return raw_token
 
     if not _is_str_dict(token_data):
-        raise AuthenticationError("Stored token has invalid session data format")
+        msg = "Stored token has invalid session data format"
+        raise AuthenticationError(msg)
 
     return _extract_access_token_from_json(token_data, raw_token)
 
@@ -33,7 +34,8 @@ def _extract_access_token_from_json(token_data: dict[str, object], raw_token: st
         return raw_token
 
     if not _is_str_dict(user_data):
-        raise AuthenticationError("Stored token has invalid session user data")
+        msg = "Stored token has invalid session user data"
+        raise AuthenticationError(msg)
 
     return _validate_access_token(user_data, raw_token)
 
@@ -45,6 +47,7 @@ def _validate_access_token(user_data: dict[str, object], raw_token: str) -> str:
         return raw_token
 
     if not isinstance(access_token, str) or not access_token:
-        raise AuthenticationError("Stored token has invalid access token data")
+        msg = "Stored token has invalid access token data"
+        raise AuthenticationError(msg)
 
     return access_token

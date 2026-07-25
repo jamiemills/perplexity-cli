@@ -45,9 +45,11 @@ class URLConfig(BaseModel):
     def validate_urls(cls, v: str) -> str:
         """Validate that URLs are non-empty strings."""
         if not v:
-            raise ValueError("URLs must be non-empty strings")
+            msg = "URLs must be non-empty strings"
+            raise ValueError(msg)
         if not v.strip():
-            raise ValueError("URLs cannot be empty or whitespace-only")
+            msg = "URLs cannot be empty or whitespace-only"
+            raise ValueError(msg)
         return v
 
 

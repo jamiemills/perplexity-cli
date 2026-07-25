@@ -190,7 +190,8 @@ def _validate_s3_object_url(upload_data: Mapping[str, object]) -> None:
     """
     s3_object_url = upload_data.get("s3_object_url", "")
     if s3_object_url and not isinstance(s3_object_url, str):
-        raise UpstreamSchemaError("Malformed S3 object URL in upload response")
+        msg = "Malformed S3 object URL in upload response"
+        raise UpstreamSchemaError(msg)
 
 
 class AttachmentUploader:
@@ -323,7 +324,8 @@ class AttachmentUploader:
                 cookies=to_curl_cffi_cookies(self.cookies),
             )
         except RequestException as e:
-            raise AttachmentUploadError(f"Failed to request upload URLs: {e}") from e
+            msg = f"Failed to request upload URLs: {e}"
+            raise AttachmentUploadError(msg) from e
 
         if not response.ok:
             logger.error(
@@ -341,7 +343,8 @@ class AttachmentUploader:
                 "Malformed upload URL response from upstream API",
             )
         except ValueError as e:
-            raise UpstreamSchemaError("Malformed upload URL response from upstream API") from e
+            msg = "Malformed upload URL response from upstream API"
+            raise UpstreamSchemaError(msg) from e
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -398,7 +401,7 @@ class AttachmentUploader:
         results = _extract_upload_results(response_json)
         if not results:
             return
-        for _file_uuid, upload_data in results.items():
+        for upload_data in results.values():
             if upload_data.get("fields") and upload_data.get("s3_object_url"):
                 continue
             error_msg = _diagnose_upload_entry_error(upload_data)
@@ -487,8 +490,9 @@ class AttachmentUploader:
             async with async_client_factory(timeout=upload_timeout) as client:
                 return await client.post(s3_bucket_url, files=files_dict)
         except Exception as e:
-            logger.error("S3 upload error: %s", e)
-            raise AttachmentUploadError(f"Failed to upload {attachment.filename} to S3: {e}") from e
+            logger.exception("S3 upload error: %s", e)
+            msg = f"Failed to upload {attachment.filename} to S3: {e}"
+            raise AttachmentUploadError(msg) from e
 
     @staticmethod
     def _handle_s3_response(
@@ -513,7 +517,8 @@ class AttachmentUploader:
         if response.status_code == _S3_UPLOAD_SUCCESS_STATUS:
             s3_url = upload_data.get("s3_object_url", "")
             if not isinstance(s3_url, str):
-                raise UpstreamSchemaError("Malformed S3 object URL in upload response")
+                msg = "Malformed S3 object URL in upload response"
+                raise UpstreamSchemaError(msg)
             logger.info("Successfully uploaded to: %s", s3_url)
             return s3_url
 
@@ -523,6 +528,5 @@ class AttachmentUploader:
             response.status_code,
             redact_response_text(response_text),
         )
-        raise AttachmentUploadError(
-            f"S3 upload failed for {attachment.filename}: status {response.status_code}"
-        )
+        msg = f"S3 upload failed for {attachment.filename}: status {response.status_code}"
+        raise AttachmentUploadError(msg)

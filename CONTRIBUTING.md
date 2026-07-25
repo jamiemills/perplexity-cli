@@ -6,6 +6,7 @@
 git clone https://github.com/jamiemills/perplexity-cli.git
 cd perplexity-cli
 make setup
+make configure-opencode
 source .venv/bin/activate
 ```
 
@@ -122,12 +123,16 @@ make ci
 make release V=X.Y.Z
 ```
 
-`make ci` runs the full local verification pipeline. `make release` updates `pyproject.toml` and `uv.lock`, runs CI checks, creates the release commit, tags `vX.Y.Z`, and pushes `master` plus the tag. The tag triggers `.github/workflows/publish-to-pypi.yml`, which publishes to PyPI via OIDC trusted publishing.
+`make ci` runs the credential-free pipeline used by every PR. `make ci-trusted`
+adds fail-closed authenticated Safety and is required by `make release`. The
+release target updates `pyproject.toml` and `uv.lock`, runs trusted CI, creates
+the release commit, tags `vX.Y.Z`, and pushes `master` plus the tag. The tag
+triggers `.github/workflows/publish-to-pypi.yml`, which publishes to PyPI via
+OIDC trusted publishing.
 
 ## Python and Dependency Policy
 
-- Supported Python versions: `3.12`, `3.13`
-- Do not assume Python `3.14` support until CI and release validation include it.
+- Supported Python versions: `3.12`, `3.13`, `3.14`
 - Keep `uv.lock` current and validate with `uv sync --locked`.
 - Validate dependency updates with the safe default test suite, build checks, and installed-package smoke test.
 

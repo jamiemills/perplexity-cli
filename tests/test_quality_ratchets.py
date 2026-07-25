@@ -10,7 +10,9 @@ not re-run here to keep the default test suite fast.
 from __future__ import annotations
 
 import subprocess
+from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -55,3 +57,13 @@ def test_ratchet_baselines_exist() -> None:
         "Missing ratchet baseline(s); initialise with `<gate> --update-baseline`: "
         + ", ".join(sorted(missing))
     )
+
+
+def test_semgrep_architecture_fails_closed_on_tool_error(monkeypatch) -> None:
+    """A Semgrep process failure cannot be interpreted as zero findings."""
+    module = import_module("scripts.check_semgrep_architecture")
+    failed = SimpleNamespace(returncode=2, stdout="", stderr="configuration failed")
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: failed)
+
+    with pytest.raises(RuntimeError, match="configuration failed"):
+        module.collect_findings()

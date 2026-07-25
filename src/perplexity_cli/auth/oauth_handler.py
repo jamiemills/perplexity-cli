@@ -52,7 +52,8 @@ class ChromeDevToolsClient:
 
         ws_url = page_target.get("webSocketDebuggerUrl")
         if not ws_url:
-            raise AuthenticationError("Could not get WebSocket debugger URL")
+            msg = "Could not get WebSocket debugger URL"
+            raise AuthenticationError(msg)
 
         self.ws = await websockets.connect(str(ws_url))
 
@@ -71,14 +72,16 @@ class ChromeDevToolsClient:
             response.raise_for_status()
             targets = response.json()
         except (json.JSONDecodeError, httpx.HTTPError) as e:
-            raise AuthenticationError(
+            msg = (
                 f"Failed to connect to Chrome on port {self.port}. "
                 f"Ensure Chrome is running with --remote-debugging-port={self.port}. "
                 f"Error: {e}"
-            ) from e
+            )
+            raise AuthenticationError(msg) from e
 
         if not isinstance(targets, list):
-            raise AuthenticationError("Chrome returned an invalid targets payload")
+            msg = "Chrome returned an invalid targets payload"
+            raise AuthenticationError(msg)
 
         return cast(list[object], targets)
 
@@ -98,7 +101,8 @@ class ChromeDevToolsClient:
         for t in targets:
             if _is_str_dict(t) and t.get("type") == "page":
                 return t
-        raise AuthenticationError("No page target found in Chrome")
+        msg = "No page target found in Chrome"
+        raise AuthenticationError(msg)
 
     async def send_command(
         self, method: str, params: dict[str, Any] | None = None
@@ -116,7 +120,8 @@ class ChromeDevToolsClient:
             RuntimeError: If not connected or Chrome returns an error.
         """
         if not self.ws:
-            raise AuthenticationError("Not connected to Chrome")
+            msg = "Not connected to Chrome"
+            raise AuthenticationError(msg)
 
         self.message_id += 1
         command = self._build_command(method, params)
@@ -148,13 +153,15 @@ class ChromeDevToolsClient:
             AuthenticationError: If Chrome returns an error or not connected.
         """
         if self.ws is None:
-            raise AuthenticationError("Not connected to Chrome")
+            msg = "Not connected to Chrome"
+            raise AuthenticationError(msg)
         while True:
             response = await self.ws.recv()
             cdp_message = json.loads(response)
             if cdp_message.get("id") == self.message_id:
                 if "error" in cdp_message:
-                    raise AuthenticationError(f"Chrome error: {cdp_message['error']}")
+                    msg = f"Chrome error: {cdp_message['error']}"
+                    raise AuthenticationError(msg)
                 return cdp_message.get("result", {})
 
     async def close(self) -> None:
@@ -271,10 +278,11 @@ async def _poll_for_auth_data(
     while True:
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > timeout:
-            raise TimeoutError(
+            msg = (
                 f"Authentication timeout after {timeout} seconds. "
                 "Please ensure you have logged in to Perplexity.ai in Chrome."
             )
+            raise TimeoutError(msg)
 
         cookies_result = await client.send_command("Network.getAllCookies")
         cookies = cookies_result.get("cookies", [])
@@ -373,7 +381,8 @@ async def _wait_for_page_load(
     while True:
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > timeout:
-            raise TimeoutError(f"Page load timeout after {timeout} seconds")
+            msg = f"Page load timeout after {timeout} seconds"
+            raise TimeoutError(msg)
 
         if await _check_page_loaded(client, logger):
             return

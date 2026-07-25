@@ -9,7 +9,15 @@ from unittest.mock import Mock
 import pytest
 from curl_cffi.requests import Session
 
-from perplexity_cli.api.client import SSEClient, SSEParser
+from perplexity_cli.api.client import (
+    SSEClient,
+    SSEParser,
+    _require_bool,
+    _require_bytes_or_str,
+    _require_int,
+    _require_json_object_or_none,
+    _require_str,
+)
 from perplexity_cli.api.models import Block, QueryParams, QueryRequest, SSEMessage, WebResult
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.utils.exceptions import (
@@ -326,6 +334,26 @@ class TestSSEClient:
         """Test malformed SSE payloads raise UpstreamSchemaError."""
         with pytest.raises(UpstreamSchemaError, match="Malformed SSE blocks"):
             SSEMessage.model_validate({"blocks": {}})
+
+    @pytest.mark.parametrize(
+        ("validator", "invalid_value"),
+        [
+            (_require_str, 1),
+            (_require_int, "1"),
+            (_require_bool, 1),
+            (_require_bytes_or_str, object()),
+            (_require_json_object_or_none, []),
+        ],
+    )
+    def test_transport_validators_reject_invalid_shapes(self, validator, invalid_value):
+        """Untyped transport attributes fail closed when their shape is invalid."""
+        with pytest.raises(RuntimeError, match=r"Expected .* transport attribute"):
+            validator(invalid_value, "test.attribute")
+
+    def test_sse_event_must_decode_to_object(self):
+        """SSE arrays are rejected instead of leaking an invalid event shape."""
+        with pytest.raises(UpstreamSchemaError, match="must decode to a JSON object"):
+            SSEParser._yield_event(["[]"])
 
     def test_stream_post_success(self):
         """Test successful POST request with SSE streaming."""

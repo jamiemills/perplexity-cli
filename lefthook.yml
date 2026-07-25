@@ -53,11 +53,33 @@ pre-commit:
             run: make complexity-mi
 
           - name: semgrep
-            glob: "*.py"
+            glob: "*.{py,yml,yaml,ts}"
             run: make semgrep
 
+          - name: opencode-check
+            glob: "{.opencode/**/*.ts,.opencode/**/*.json,.opencode/**/*.md,opencode.jsonc}"
+            run: make opencode-check
+
+          - name: make-recipe-syntax
+            glob: "Makefile"
+            run: make -n safety-gate | bash -n
+
+          - name: shell-syntax
+            glob: "scripts/*.sh"
+            run: bash -n {staged_files}
+
+          - name: workflow-policy
+            glob: ".github/workflows/*.{yml,yaml}"
+            run: uv run pytest tests/test_workflow_configuration.py -q
+
+          - name: plan-compliance
+            run: |
+              if [ -f .claude/plans/quality-plan.md ]; then
+                make plan-check PLAN=.claude/plans/quality-plan.md
+              fi
+
           - name: check-yaml
-            glob: "*.yml|*.yaml"
+            glob: "*.{yml,yaml}"
             run: uvx --from pre-commit-hooks check-yaml {staged_files}
 
           - name: check-json

@@ -1,15 +1,27 @@
-# quality-plan-reviewer
+---
+description: Reviews the canonical quality plan and reports compliance failures without modifying files.
+mode: subagent
+permission:
+  edit: deny
+  bash:
+    "*": deny
+    "make plan-check PLAN=.claude/plans/quality-plan.md": allow
+  task: deny
+  webfetch: deny
+  external_directory: deny
+---
+
+# Quality Plan Reviewer
 
 A read-only subagent that validates a quality plan against the prevention rules.
 
 ## Purpose
 
-Review the latest quality plan under `.claude/plans/` and verify it adheres
-to the Analyzer Compliance Review contract: every rule category must be
+Review `.claude/plans/quality-plan.md` and verify it adheres
+to the Analyser Compliance Review contract: every rule category must be
 present, marked `[PASS]` or `[FAIL]`, with a consistent `Result:` line and
-a Plan Self-Review section.  The subagent may also re-run the plan generator
-(`make quality-plan`) and plan validator (`make plan-check`) to produce an
-up-to-date compliance verdict.
+a Plan Self-Review section. The subagent may run only the canonical validator,
+`make plan-check PLAN=.claude/plans/quality-plan.md`, to produce a compliance verdict.
 
 ## When to Use
 
@@ -22,14 +34,14 @@ up-to-date compliance verdict.
 
 ## Instructions
 
-1. **Locate the plan.**  Read the newest `.md` file under `.claude/plans/`.
-   If none exists, report "No plan found" and exit.
+1. **Locate the plan.** Read `.claude/plans/quality-plan.md`.
+   If it does not exist, report "No plan found" and exit.
 
-2. **Run the analysers.**  Execute `make plan-check`.  If it passes, report
+2. **Run the analyser.** Execute `make plan-check PLAN=.claude/plans/quality-plan.md`. If it passes, report
    the plan is compliant and stop.
 
 3. **Categorise failures.**  For each `[FAIL]` or missing category in the
-   Analyzer Compliance Review:
+   Analyser Compliance Review:
    - file-size / file sprawl
    - type boundaries (Any/unknown)
    - complexity / parameters
@@ -38,20 +50,11 @@ up-to-date compliance verdict.
    - suppressions
 
 4. **Suggest fixes.**  For each failing category, consult the plan's Fix Plan
-   section.  If no fix is described, suggest:
-   - File-size: run `make file-size --update-baseline` after splitting files.
-   - Type boundaries: run `make typecheck-strict-ratchet --update-baseline`
-     after fixing strict Pyright diagnostics.
-   - Complexity/params: run `make ruff-architecture --update-baseline`
-     after refactoring.
-   - Layering/coupling: run `make coupling-check` to see flagged modules,
-     then reduce dependencies or update the baseline.
-   - Structural patterns: run `make semgrep-architecture --update-baseline`
-     after fixing findings.
-   - Suppressions: run `make suppression-ratchet --update-baseline` after
-     removing unused suppressions.
+   section. If no fix is described, identify the affected files and recommend
+   the required refactoring or suppression removal without suggesting baseline updates.
 
-5. **Re-validate.**  After suggesting fixes, run `make plan-check` again to
+5. **Re-validate.** After the caller has applied fixes, run
+   `make plan-check PLAN=.claude/plans/quality-plan.md` again to
    confirm the plan is now compliant.  If it passes, report success.
    Otherwise, report the remaining failures.
 
@@ -60,5 +63,5 @@ up-to-date compliance verdict.
 
 ## Tools
 
-The agent has access to: Read, Bash (for running `make plan-check`,
-`make quality-plan`, etc.), Grep, and Glob.  It must not edit or write files.
+The agent has access to Read, Grep, Glob, and Bash solely for
+`make plan-check PLAN=.claude/plans/quality-plan.md`. It must not edit or write files.

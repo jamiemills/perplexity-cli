@@ -1,0 +1,18 @@
+{
+  "semgrep_version": "1.171.0",
+  "captured_on": "2026-07-24",
+  "packs": {
+    "p/python": {
+      "file": ".semgrep-community-python.yml",
+      "sha256": "595e42e6cdb8afea3a6e6e2a1e686be0eb8a213e369f05cbb2cc3973ce21161d"
+    },
+    "p/comment": {
+      "file": ".semgrep-community-comment.yml",
+      "sha256": "8c9ba4930bd06934ab969b936e272f77589056288d33763fb01e22c70aab1ee2"
+    },
+    "p/r2c-best-practices": {
+      "file": ".semgrep-community-best-practices.yml",
+      "sha256": "53fe313a6e5bdf3a9a522f67589806945c6187b4bf9eeb84aacba97f9c6188c0"
+    }
+  }
+}

@@ -131,7 +131,7 @@ def resolve_attachment_urls(
         return _resolve_and_upload(query_text, attachment_list, auth, logger)
     except (FileNotFoundError, AttachmentError, ValueError) as e:
         click.echo(f"[ERROR] Failed to load attachments: {e}", err=True)
-        logger.error("Attachment loading failed: %s", e)
+        logger.exception("Attachment loading failed: %s", e)
         raise SystemExit(1) from e
 
 
@@ -247,7 +247,7 @@ def _do_s3_upload(
         attachment_urls = run_async(uploader.upload_files(file_attachments))
     except AttachmentUploadError as e:
         click.echo(f"[ERROR] Failed to upload attachments: {e}", err=True)
-        logger.error("Attachment upload failed: %s", e)
+        logger.exception("Attachment upload failed: %s", e)
         raise SystemExit(1) from e
 
     logger.debug("S3 upload complete: %s file(s) uploaded", len(attachment_urls))
@@ -268,7 +268,7 @@ def get_query_formatter(output_format: str | None) -> tuple[str, Formatter]:
         click.echo(f"[ERROR] {e}", err=True)
         available = ", ".join(list_formatters())
         click.echo(f"Available formats: {available}", err=True)
-        logger.error("Invalid formatter: %s", resolved_output_format)
+        logger.exception("Invalid formatter: %s", resolved_output_format)
         raise SystemExit(1) from e
 
     return resolved_output_format, formatter
@@ -523,14 +523,16 @@ def _parse_request_param_override(raw_override: str) -> tuple[str, str]:
     """Parse a single request parameter override."""
     key, separator, value = raw_override.partition("=")
     if not separator or not key or not value:
-        raise ValueError("Request parameter overrides must use the form key=value")
+        msg = "Request parameter overrides must use the form key=value"
+        raise ValueError(msg)
     return key, value
 
 
 def _check_for_duplicate_request_param(parsed: dict[str, str], key: str) -> None:
     """Reject duplicate request parameter override keys."""
     if key in parsed:
-        raise ValueError(f"Duplicate request parameter override: {key}")
+        msg = f"Duplicate request parameter override: {key}"
+        raise ValueError(msg)
 
 
 def _handle_query_error(
