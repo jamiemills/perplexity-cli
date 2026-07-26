@@ -1,0 +1,16 @@
+{
+  "event_sequence": 9,
+  "event_type": "wave_completed",
+  "run_id": "20260726-201025",
+  "wave": 2,
+  "integration_sha": "293bd3a89e5be5dbbb351d4528b79f19a2b999cc",
+  "tasks": {
+    "B1-ANALYSER-CONTRACTS": {"status": "integrated", "candidate": "940f564", "tests": "26 passed"},
+    "B2-PY-QUALITY": {"status": "integrated", "candidate": "5f7f485", "tests": "ruff 0 errors"},
+    "B3-PY-QUALITY": {"status": "integrated", "candidate": "1776ed3", "tests": "ruff 0 errors"}
+  },
+  "scope_changes": ["ruff format-check expanded to scripts/", "ruff lint expanded to scripts/", "typecheck-scripts target added (standalone)", "bandit kept on src/ only until nosec annotations"],
+  "make_check": "pass",
+  "make_lint": "pass (scripts/ clean)",
+  "deferred": ["bandit on scripts/ (32 subprocess findings need nosec)", "pyright on scripts/ (275 errors, standalone target only)"]
+}
