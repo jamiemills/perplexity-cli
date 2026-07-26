@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quality/schemas/mutation-report.json",
+  "title": "Mutation Testing Report",
+  "description": "Machine-readable mutation testing report emitted by scripts/mutation_policy.py after classifying mutmut 3.x result output. The wrapper runs `mutmut results --all`, parses the text output, classifies each mutant, and emits this report before returning a classified exit code.",
+  "type": "object",
+  "required": [
+    "tool",
+    "version",
+    "total_mutants",
+    "categories",
+    "status",
+    "survivors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tool": {
+      "type": "string",
+      "const": "mutmut",
+      "description": "Name of the mutation testing tool whose results were classified."
+    },
+    "version": {
+      "type": "string",
+      "description": "Detected mutmut version string, or 'unknown' when the tool could not be invoked.",
+      "minLength": 1
+    },
+    "total_mutants": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of mutants observed in the mutmut results output."
+    },
+    "categories": {
+      "type": "object",
+      "description": "Per-category counts of mutant outcomes.",
+      "required": [
+        "killed",
+        "survived",
+        "timeout",
+        "suspicious",
+        "skipped",
+        "not_checked"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "killed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Mutants detected by the test suite (good outcome)."
+        },
+        "survived": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Mutants not detected by the test suite (actionable)."
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Mutants whose test run timed out (actionable)."
+        },
+        "suspicious": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Mutants with a suspicious outcome (actionable)."
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Mutants explicitly skipped (informational)."
+        },
+        "not_checked": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Mutants never checked (informational)."
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["clean", "findings", "tool-error"],
+      "description": "Aggregate policy status. 'clean' = no actionable mutants; 'findings' = at least one survived/timeout/suspicious mutant; 'tool-error' = mutmut was unavailable or its output was unparseable."
+    },
+    "survivors": {
+      "type": "array",
+      "description": "Actionable mutant entries (categories survived, timeout, suspicious). Empty unless status is 'findings'.",
+      "items": {
+        "type": "object",
+        "required": ["key", "status", "category"],
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Fully-qualified mutant key reported by mutmut."
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The raw mutmut status string (e.g. 'survived', 'timeout', 'suspicious')."
+          },
+          "category": {
+            "type": "string",
+            "enum": ["survived", "timeout", "suspicious"],
+            "description": "The normalised policy category for this actionable mutant."
+          }
+        }
+      }
+    },
+    "error": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Diagnostic message populated only when status is 'tool-error'."
+    }
+  }
+}

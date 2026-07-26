@@ -1,0 +1,4 @@
+    perplexity_cli.commands._examples.x__versioned__mutmut_1: killed
+    perplexity_cli.commands._examples.x__versioned__mutmut_2: killed
+    perplexity_cli.commands._examples.x__versioned__mutmut_3: killed
+    perplexity_cli.commands._examples.x__versioned__mutmut_4: killed

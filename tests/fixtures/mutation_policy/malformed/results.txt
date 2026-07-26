@@ -1,0 +1,4 @@
+This is not valid mutmut output.
+Random log line that does not start with four spaces.
+  wrong indent
+no indent at all: with colon
