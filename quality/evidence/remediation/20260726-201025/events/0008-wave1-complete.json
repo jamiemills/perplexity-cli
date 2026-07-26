@@ -1,0 +1,15 @@
+{
+  "event_sequence": 8,
+  "event_type": "wave_completed",
+  "run_id": "20260726-201025",
+  "wave": 1,
+  "timestamp": "2026-07-26T21:40:00Z",
+  "integration_sha": "8364159633294d26fd7d21a53d19ab3187268542",
+  "tasks": {
+    "A1-SEMGREP": {"status": "integrated", "candidate": "06ec5fa", "tests": "29 passed"},
+    "A2-OPENCODE": {"status": "integrated", "candidate": "7c6b048", "tests": "eslint 0, vitest 109/109, tsc 0"},
+    "A3-MUTATION-POLICY": {"status": "integrated", "candidate": "d09ed6e", "tests": "35 passed"}
+  },
+  "coordinator_changes": [".opencode/package.json", ".opencode/package-lock.json", "Makefile"],
+  "make_check": "pass"
+}
