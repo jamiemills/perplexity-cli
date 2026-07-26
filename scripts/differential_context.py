@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf892b69e8b9e75fe"
 ZERO_BEFORE_SHA = "0000000000000000000000000000000000000000"
+_MIN_SHA_LENGTH = 40
 
 DiffMode = Literal["local", "pr", "push", "dispatch", "ci"]
 
@@ -113,7 +114,7 @@ class DiffContext:
 
 
 def _is_zero_before(sha: str) -> bool:
-    if not sha or len(sha) < 40:
+    if not sha or len(sha) < _MIN_SHA_LENGTH:
         return False
     return sha == ZERO_BEFORE_SHA
 
@@ -125,7 +126,7 @@ def _run_git(
 ) -> tuple[int, str, str]:
     import subprocess
 
-    cmd = ["git"] + args
+    cmd = ["git", *args]
     logger.debug("Running: %s", " ".join(cmd))
     try:
         proc = subprocess.run(
@@ -134,6 +135,7 @@ def _run_git(
             capture_output=True,
             text=True,
             timeout=timeout_s,
+            check=False,
         )
         return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
     except FileNotFoundError:
@@ -180,7 +182,7 @@ def _files_from_empty_tree(to_sha, cwd=None):
         )
     if not out:
         return DiffResult(is_empty=True)
-    changed = tuple(l.strip() for l in out.split(chr(10)) if l.strip())
+    changed = tuple(line.strip() for line in out.split(chr(10)) if line.strip())
     return DiffResult(changed_files=changed, is_empty=len(changed) == 0)
 
 
@@ -278,26 +280,21 @@ def compute_pr_context(
     )
 
 
-def compute_push_context(
+def _push_zero_before_context(
     base_tip: str,
     before_sha: str,
     after_sha: str,
-    cwd: Path | None = None,
-) -> DiffContext:
-    if _is_zero_before(before_sha):
-        diff_result = compute_diff(EMPTY_TREE_HASH, after_sha, cwd=cwd)
-        if diff_result.git_error:
-            return DiffContext(
-                mode="push",
-                base_tip=base_tip,
-                event_head=after_sha,
-                merge_base=EMPTY_TREE_HASH,
-                zero_before=True,
-                empty_tree_hash=EMPTY_TREE_HASH,
-                git_error=True,
-                git_error_details=diff_result.error_details,
-                is_empty_diff=True,
-            )
+    cwd: Path | None,
+) -> DiffContext | None:
+    """Build the DiffContext for a push when *before_sha* is the zero SHA.
+
+    Returns None when *before_sha* is not the zero SHA, signalling the
+    caller should fall back to the merge-base logic.
+    """
+    if not _is_zero_before(before_sha):
+        return None
+    diff_result = compute_diff(EMPTY_TREE_HASH, after_sha, cwd=cwd)
+    if diff_result.git_error:
         return DiffContext(
             mode="push",
             base_tip=base_tip,
@@ -305,9 +302,31 @@ def compute_push_context(
             merge_base=EMPTY_TREE_HASH,
             zero_before=True,
             empty_tree_hash=EMPTY_TREE_HASH,
-            is_empty_diff=diff_result.is_empty,
-            changed_files=diff_result.changed_files,
+            git_error=True,
+            git_error_details=diff_result.error_details,
+            is_empty_diff=True,
         )
+    return DiffContext(
+        mode="push",
+        base_tip=base_tip,
+        event_head=after_sha,
+        merge_base=EMPTY_TREE_HASH,
+        zero_before=True,
+        empty_tree_hash=EMPTY_TREE_HASH,
+        is_empty_diff=diff_result.is_empty,
+        changed_files=diff_result.changed_files,
+    )
+
+
+def compute_push_context(
+    base_tip: str,
+    before_sha: str,
+    after_sha: str,
+    cwd: Path | None = None,
+) -> DiffContext:
+    zero_ctx = _push_zero_before_context(base_tip, before_sha, after_sha, cwd)
+    if zero_ctx is not None:
+        return zero_ctx
     merge_base = compute_merge_base(before_sha, after_sha, cwd=cwd)
     if not merge_base.found:
         return DiffContext(
@@ -398,26 +417,20 @@ def compute_dispatch_context(
     )
 
 
-def compute_ci_context(
+def _ci_zero_before_context(
     base_sha: str,
     tested_sha: str,
-    cwd: Path | None = None,
-) -> DiffContext:
-    if _is_zero_before(base_sha):
-        diff_result = compute_diff(EMPTY_TREE_HASH, tested_sha, cwd=cwd)
-        if diff_result.git_error:
-            return DiffContext(
-                mode="ci",
-                base_tip=base_sha,
-                event_head=tested_sha,
-                tested_sha=tested_sha,
-                merge_base=EMPTY_TREE_HASH,
-                zero_before=True,
-                empty_tree_hash=EMPTY_TREE_HASH,
-                git_error=True,
-                git_error_details=diff_result.error_details,
-                is_empty_diff=True,
-            )
+    cwd: Path | None,
+) -> DiffContext | None:
+    """Build the DiffContext for CI when *base_sha* is the zero SHA.
+
+    Returns None when *base_sha* is not the zero SHA, signalling the
+    caller should fall back to the merge-base logic.
+    """
+    if not _is_zero_before(base_sha):
+        return None
+    diff_result = compute_diff(EMPTY_TREE_HASH, tested_sha, cwd=cwd)
+    if diff_result.git_error:
         return DiffContext(
             mode="ci",
             base_tip=base_sha,
@@ -426,9 +439,31 @@ def compute_ci_context(
             merge_base=EMPTY_TREE_HASH,
             zero_before=True,
             empty_tree_hash=EMPTY_TREE_HASH,
-            is_empty_diff=diff_result.is_empty,
-            changed_files=diff_result.changed_files,
+            git_error=True,
+            git_error_details=diff_result.error_details,
+            is_empty_diff=True,
         )
+    return DiffContext(
+        mode="ci",
+        base_tip=base_sha,
+        event_head=tested_sha,
+        tested_sha=tested_sha,
+        merge_base=EMPTY_TREE_HASH,
+        zero_before=True,
+        empty_tree_hash=EMPTY_TREE_HASH,
+        is_empty_diff=diff_result.is_empty,
+        changed_files=diff_result.changed_files,
+    )
+
+
+def compute_ci_context(
+    base_sha: str,
+    tested_sha: str,
+    cwd: Path | None = None,
+) -> DiffContext:
+    zero_ctx = _ci_zero_before_context(base_sha, tested_sha, cwd)
+    if zero_ctx is not None:
+        return zero_ctx
     merge_base = compute_merge_base(base_sha, tested_sha, cwd=cwd)
     if not merge_base.found:
         return DiffContext(
@@ -485,7 +520,7 @@ def _resolve_head_sha(cwd: Path | None = None) -> str | None:
 
 
 def _is_worktree_dirty(cwd: Path | None = None) -> bool:
-    returncode, stdout, stderr = _run_git(["diff-index", "--quiet", "HEAD"], cwd=cwd)
+    returncode, _stdout, stderr = _run_git(["diff-index", "--quiet", "HEAD"], cwd=cwd)
     if returncode == 0:
         return False
     if returncode == 1:

@@ -96,7 +96,7 @@ def _run_tool(spec: ToolSpec) -> bool:
             check=False,
         )
     except FileNotFoundError:
-        logger.error("%s: command not found — is it installed?", spec.name)
+        logger.exception("%s: command not found — is it installed?", spec.name)
         return False
 
     if _report_exists(spec.output):

@@ -57,7 +57,7 @@ from import_graph import (  # noqa: E402
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 _gates = load_gates()
 DEFAULT_DISTANCE_THRESHOLD = _gates.get_float("DISTANCE_THRESHOLD", 0.3)
@@ -713,6 +713,58 @@ def _parse_arg_int(args: list[str], idx: int, opt: str) -> int:
         sys.exit(_EXIT_CONFIG_ERROR)
 
 
+def _ensure_value_present(args: list[str], idx: int, message: str) -> None:
+    """Exit with a config error if no positional value exists at *idx*."""
+    if idx >= len(args):
+        print(f"ERROR: {message}", file=sys.stderr)
+        sys.exit(_EXIT_CONFIG_ERROR)
+
+
+def _handle_json_flag(_args: list[str], _idx: int, state: dict) -> int:
+    """Enable JSON output mode in *state*."""
+    state["json_mode"] = True
+    return 0
+
+
+def _handle_threshold_flag(args: list[str], idx: int, state: dict) -> int:
+    """Parse and store the --threshold value in *state*."""
+    val = _parse_arg_float(args, idx + 1, "--threshold")
+    _ensure_threshold_range(val)
+    state["threshold"] = val
+    return 1
+
+
+def _handle_max_flagged_flag(args: list[str], idx: int, state: dict) -> int:
+    """Parse and store the --max-flagged value in *state*."""
+    _ensure_value_present(args, idx + 1, "--max-flagged requires an integer value")
+    state["max_flagged"] = _parse_arg_int(args, idx + 1, "--max-flagged")
+    return 1
+
+
+def _handle_trend_compare_flag(args: list[str], idx: int, state: dict) -> int:
+    """Store the --trend-compare file path in *state*."""
+    _ensure_value_present(args, idx + 1, "--trend-compare requires a file path")
+    state["trend_compare"] = Path(args[idx + 1])
+    return 1
+
+
+def _handle_module_flag(args: list[str], idx: int, state: dict) -> int:
+    """Store the --module name in *state*."""
+    arg = args[idx]
+    _ensure_value_present(args, idx + 1, f"{arg} requires a module name")
+    state["module"] = args[idx + 1]
+    return 1
+
+
+_FLAG_HANDLERS: dict[str, Callable[[list[str], int, dict], int]] = {
+    "--json": _handle_json_flag,
+    "--threshold": _handle_threshold_flag,
+    "--max-flagged": _handle_max_flagged_flag,
+    "--trend-compare": _handle_trend_compare_flag,
+    "--module": _handle_module_flag,
+}
+
+
 def _handle_flag(
     args: list[str],
     idx: int,
@@ -722,34 +774,10 @@ def _handle_flag(
 
     Returns the number of extra positional args consumed (0 or 1).
     """
-    arg = args[idx]
-    if arg == "--json":
-        state["json_mode"] = True
+    handler = _FLAG_HANDLERS.get(args[idx])
+    if handler is None:
         return 0
-    if arg == "--threshold":
-        val = _parse_arg_float(args, idx + 1, "--threshold")
-        _ensure_threshold_range(val)
-        state["threshold"] = val
-        return 1
-    if arg == "--max-flagged":
-        if idx + 1 >= len(args):
-            print("ERROR: --max-flagged requires an integer value", file=sys.stderr)
-            sys.exit(_EXIT_CONFIG_ERROR)
-        state["max_flagged"] = _parse_arg_int(args, idx + 1, "--max-flagged")
-        return 1
-    if arg == "--trend-compare":
-        if idx + 1 >= len(args):
-            print("ERROR: --trend-compare requires a file path", file=sys.stderr)
-            sys.exit(_EXIT_CONFIG_ERROR)
-        state["trend_compare"] = Path(args[idx + 1])
-        return 1
-    if arg in ("--module",):
-        if idx + 1 >= len(args):
-            print(f"ERROR: {arg} requires a module name", file=sys.stderr)
-            sys.exit(_EXIT_CONFIG_ERROR)
-        state["module"] = args[idx + 1]
-        return 1
-    return 0
+    return handler(args, idx, state)
 
 
 def _parse_args(
@@ -825,6 +853,96 @@ def _print_single_module(module_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _emit_error(
+    prefix: str,
+    exc: BaseException,
+    json_mode: bool,
+    threshold: float,
+) -> None:
+    """Print *prefix* and *exc* to stderr, and a JSON report in JSON mode."""
+    print(f"{prefix}: {exc}", file=sys.stderr)
+    if json_mode:
+        print(_format_error_report(threshold, str(exc)))
+
+
+def _build_graph_or_exit(
+    json_mode: bool,
+    threshold: float,
+) -> tuple[dict[str, set[str]], dict[str, set[str]], set[str]] | int:
+    """Build the coupling graph or return an exit code on failure."""
+    try:
+        return _build_coupling_graph()
+    except SyntaxErrorInSource as exc:
+        _emit_error("SYNTAX ERROR", exc, json_mode, threshold)
+        return _EXIT_SYNTAX_ERROR
+    except FileReadError as exc:
+        _emit_error("READ ERROR", exc, json_mode, threshold)
+        return _EXIT_READ_ERROR
+    except Exception as exc:
+        _emit_error("GRAPH ERROR", exc, json_mode, threshold)
+        return _EXIT_GRAPH_ERROR
+
+
+def _compute_abstractness_or_exit(
+    all_modules: set[str],
+) -> dict[str, tuple[int, int]] | int:
+    """Compute abstractness or return an exit code on failure."""
+    try:
+        return _compute_abstractness(all_modules)
+    except SyntaxErrorInSource as exc:
+        print(f"SYNTAX ERROR: {exc}", file=sys.stderr)
+        return _EXIT_SYNTAX_ERROR
+    except FileReadError as exc:
+        print(f"READ ERROR: {exc}", file=sys.stderr)
+        return _EXIT_READ_ERROR
+
+
+def _compare_trends_or_exit(
+    flagged_identities: set[str],
+    trend_compare_path: Path,
+    json_mode: bool,
+    threshold: float,
+) -> dict | int:
+    """Compare trends or return an exit code on failure."""
+    try:
+        return _compare_trends(flagged_identities, trend_compare_path)
+    except FileReadError as exc:
+        _emit_error("READ ERROR", exc, json_mode, threshold)
+        return _EXIT_READ_ERROR
+
+
+def _emit_report(
+    json_mode: bool,
+    metrics: list[ModuleMetrics],
+    threshold: float,
+    trend: dict | None,
+) -> None:
+    """Print the report in JSON or advisory-text form."""
+    if json_mode:
+        print(_format_json_report(metrics, threshold, trend))
+        return
+    print(_format_advisory_text(metrics, threshold, trend))
+
+
+def _emit_budget_advisory(
+    json_mode: bool,
+    flagged: list[ModuleMetrics],
+    max_flagged: int | None,
+) -> None:
+    """Print the budget advisory when flagged count exceeds the budget."""
+    if max_flagged is None:
+        return
+    if len(flagged) <= max_flagged:
+        return
+    msg = (
+        f"\nADVISORY: {len(flagged)} flagged modules exceeds "
+        f"--max-flagged budget of {max_flagged}.  "
+        f"This is informational only."
+    )
+    if not json_mode:
+        print(msg)
+
+
 def _generate_report(
     json_mode: bool,
     threshold: float,
@@ -836,32 +954,15 @@ def _generate_report(
     Returns:
         Exit code: 0 for success, non-zero for graph/parse/config errors.
     """
-    try:
-        efferent, afferent, all_modules = _build_coupling_graph()
-    except SyntaxErrorInSource as exc:
-        print(f"SYNTAX ERROR: {exc}", file=sys.stderr)
-        if json_mode:
-            print(_format_error_report(threshold, str(exc)))
-        return _EXIT_SYNTAX_ERROR
-    except FileReadError as exc:
-        print(f"READ ERROR: {exc}", file=sys.stderr)
-        if json_mode:
-            print(_format_error_report(threshold, str(exc)))
-        return _EXIT_READ_ERROR
-    except Exception as exc:
-        print(f"GRAPH ERROR: {exc}", file=sys.stderr)
-        if json_mode:
-            print(_format_error_report(threshold, str(exc)))
-        return _EXIT_GRAPH_ERROR
+    graph_result = _build_graph_or_exit(json_mode, threshold)
+    if isinstance(graph_result, int):
+        return graph_result
+    efferent, afferent, all_modules = graph_result
 
-    try:
-        abstractness_map = _compute_abstractness(all_modules)
-    except SyntaxErrorInSource as exc:
-        print(f"SYNTAX ERROR: {exc}", file=sys.stderr)
-        return _EXIT_SYNTAX_ERROR
-    except FileReadError as exc:
-        print(f"READ ERROR: {exc}", file=sys.stderr)
-        return _EXIT_READ_ERROR
+    abstractness_result = _compute_abstractness_or_exit(all_modules)
+    if isinstance(abstractness_result, int):
+        return abstractness_result
+    abstractness_map = abstractness_result
 
     metrics = _compute_metrics(all_modules, efferent, afferent, abstractness_map)
     flagged = _flagged_metrics(metrics, threshold)
@@ -869,27 +970,15 @@ def _generate_report(
 
     trend: dict | None = None
     if trend_compare_path:
-        try:
-            trend = _compare_trends(flagged_identities, trend_compare_path)
-        except FileReadError as exc:
-            print(f"READ ERROR: {exc}", file=sys.stderr)
-            if json_mode:
-                print(_format_error_report(threshold, str(exc)))
-            return _EXIT_READ_ERROR
-
-    if json_mode:
-        print(_format_json_report(metrics, threshold, trend))
-    else:
-        print(_format_advisory_text(metrics, threshold, trend))
-
-    if max_flagged is not None and len(flagged) > max_flagged:
-        msg = (
-            f"\nADVISORY: {len(flagged)} flagged modules exceeds "
-            f"--max-flagged budget of {max_flagged}.  "
-            f"This is informational only."
+        trend_result = _compare_trends_or_exit(
+            flagged_identities, trend_compare_path, json_mode, threshold
         )
-        if not json_mode:
-            print(msg)
+        if isinstance(trend_result, int):
+            return trend_result
+        trend = trend_result
+
+    _emit_report(json_mode, metrics, threshold, trend)
+    _emit_budget_advisory(json_mode, flagged, max_flagged)
 
     return 0
 
