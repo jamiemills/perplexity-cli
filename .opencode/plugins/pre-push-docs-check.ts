@@ -45,7 +45,7 @@ If either needs updating, make the changes and then retry the push.`;
 // Plugin
 // ---------------------------------------------------------------------------
 
-export const PrePushDocsCheckPlugin: Plugin = async ({ client }) => {
+export const PrePushDocsCheckPlugin: Plugin = ({ client }) => {
   /**
    * Tracks whether the docs-check reminder has been issued for the
    * current push cycle.  Reset after a push is allowed through so
@@ -54,11 +54,12 @@ export const PrePushDocsCheckPlugin: Plugin = async ({ client }) => {
    */
   let pushPending = false;
 
-  return {
+  return Promise.resolve({
     "tool.execute.before": async (input, output) => {
       if (input.tool !== "bash") return;
 
-      const command: string = output.args.command ?? "";
+      const args = output.args as Record<string, unknown>;
+      const command = typeof args.command === "string" ? args.command : "";
       if (!isGitPush(command)) return;
 
       if (pushPending) {
@@ -89,5 +90,5 @@ export const PrePushDocsCheckPlugin: Plugin = async ({ client }) => {
 
       throw new Error(DOCS_CHECK_MESSAGE);
     },
-  };
+  });
 };

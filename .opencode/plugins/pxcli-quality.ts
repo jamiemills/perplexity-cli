@@ -91,7 +91,11 @@ export function isDependencyFile(filePath: string): boolean {
 
 export function getFilePath(args: Record<string, unknown> | undefined): string | null {
   if (!args) return null;
-  return (args.filePath as string) ?? (args.file_path as string) ?? (args.path as string) ?? null;
+  const candidates = [args.filePath, args.file_path, args.path];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") return candidate;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,17 +122,45 @@ export function formatFindings(findings: Finding[]): string {
 // Output parsers
 // ---------------------------------------------------------------------------
 
+type JsonObject = Record<string, unknown>;
+
+function asObject(value: unknown): JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as JsonObject)
+    : {};
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function asStringOptional(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asNumber(value: unknown): number {
+  return typeof value === "number" ? value : 0;
+}
+
+function parseJson(stdout: string): unknown {
+  return JSON.parse(stdout);
+}
+
 export function parseRuffJson(stdout: string): Finding[] | null {
   try {
-    const items = JSON.parse(stdout);
+    const items = parseJson(stdout);
     if (!Array.isArray(items)) return null;
-    return items.map((item: any) => ({
-      tool: "ruff",
-      line: item.location?.row ?? 0,
-      code: item.code ?? "",
-      message: item.message ?? "",
-      severity: "warning" as const,
-    }));
+    return items.map((item: unknown): Finding => {
+      const obj = asObject(item);
+      const location = asObject(obj.location);
+      return {
+        tool: "ruff",
+        line: asNumber(location.row),
+        code: asString(obj.code),
+        message: asString(obj.message),
+        severity: "warning",
+      };
+    });
   } catch {
     return null;
   }
@@ -136,21 +168,23 @@ export function parseRuffJson(stdout: string): Finding[] | null {
 
 export function parseRadonJson(stdout: string): Finding[] | null {
   try {
-    const data = JSON.parse(stdout);
+    const data = parseJson(stdout);
     if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
     const findings: Finding[] = [];
     for (const blocks of Object.values(data)) {
       if (!Array.isArray(blocks)) continue;
-      for (const block of blocks as any[]) {
-        if (block.rank && block.rank !== "A") {
-          findings.push({
-            tool: "radon",
-            line: block.lineno ?? 0,
-            code: `CC=${block.complexity}`,
-            message: `${block.type} '${block.name}' ${block.rank}-grade (complexity ${block.complexity}, target <=5)`,
-            severity: "warning",
-          });
-        }
+      for (const block of blocks) {
+        const obj = asObject(block);
+        const rank = asString(obj.rank);
+        if (!rank || rank === "A") continue;
+        const complexity = asNumber(obj.complexity);
+        findings.push({
+          tool: "radon",
+          line: asNumber(obj.lineno),
+          code: `CC=${complexity}`,
+          message: `${asString(obj.type)} '${asString(obj.name)}' ${rank}-grade (complexity ${complexity}, target <=5)`,
+          severity: "warning",
+        });
       }
     }
     return findings;
@@ -161,16 +195,20 @@ export function parseRadonJson(stdout: string): Finding[] | null {
 
 export function parseBanditJson(stdout: string): Finding[] | null {
   try {
-    const data = JSON.parse(stdout);
+    const data = asObject(parseJson(stdout));
     const results = data.results;
     if (!Array.isArray(results)) return null;
-    return results.map((r: any) => ({
-      tool: "bandit",
-      line: r.line_number ?? 0,
-      code: `${r.test_id ?? ""} (${r.issue_severity ?? "?"})`,
-      message: r.issue_text ?? "",
-      severity: r.issue_severity === "HIGH" ? ("error" as const) : ("warning" as const),
-    }));
+    return results.map((r: unknown): Finding => {
+      const obj = asObject(r);
+      const severity = asString(obj.issue_severity);
+      return {
+        tool: "bandit",
+        line: asNumber(obj.line_number),
+        code: `${asString(obj.test_id)} (${severity || "?"})`,
+        message: asString(obj.issue_text),
+        severity: severity === "HIGH" ? "error" : "warning",
+      };
+    });
   } catch {
     return null;
   }
@@ -187,7 +225,7 @@ export function parseTyText(stdout: string): Finding[] {
     const match = diagnosticRe.exec(currentLine);
     if (!match) continue;
 
-    const severity = match[1] === "error" ? ("error" as const) : ("warning" as const);
+    const severity = match[1] === "error" ? "error" : "warning";
     const code = match[2] ?? "";
     const message = match[3] ?? "";
     let line = 0;
@@ -206,19 +244,35 @@ export function parseTyText(stdout: string): Finding[] {
 
 export function parseSafetyJson(stdout: string): Finding[] | null {
   try {
-    const data = JSON.parse(stdout);
-    const findings: Finding[] = [];
-    const projects = data.scan_results?.projects;
+    const data = asObject(parseJson(stdout));
+    const scanResults = asObject(data.scan_results);
+    const projects = scanResults.projects;
     if (!Array.isArray(projects)) return null;
+    const findings: Finding[] = [];
     for (const project of projects) {
-      for (const file of project.files ?? []) {
-        for (const dep of file.results?.dependencies ?? []) {
-          for (const v of dep.known_vulnerabilities ?? []) {
+      const projectObj = asObject(project);
+      const files = projectObj.files;
+      if (!Array.isArray(files)) continue;
+      for (const file of files) {
+        const resultsObj = asObject(asObject(file).results);
+        const deps = resultsObj.dependencies;
+        if (!Array.isArray(deps)) continue;
+        for (const dep of deps) {
+          const depObj = asObject(dep);
+          const vulns = depObj.known_vulnerabilities;
+          if (!Array.isArray(vulns)) continue;
+          for (const v of vulns) {
+            const vObj = asObject(v);
+            const name = asString(depObj.name);
+            const advisory =
+              asStringOptional(vObj.advisory)
+              ?? asStringOptional(vObj.vulnerability_id)
+              ?? "vulnerability found";
             findings.push({
               tool: "safety",
               line: 0,
-              code: v.vulnerability_id ?? v.CVE ?? "",
-              message: `${dep.name} — ${v.advisory ?? v.vulnerability_id ?? "vulnerability found"}`,
+              code: asStringOptional(vObj.vulnerability_id) ?? asString(vObj.CVE),
+              message: `${name} — ${advisory}`,
               severity: "error",
             });
           }
@@ -233,16 +287,22 @@ export function parseSafetyJson(stdout: string): Finding[] | null {
 
 export function parsePyrightJson(stdout: string): Finding[] | null {
   try {
-    const data = JSON.parse(stdout);
+    const data = asObject(parseJson(stdout));
     const diagnostics = data.generalDiagnostics;
     if (!Array.isArray(diagnostics)) return null;
-    return diagnostics.map((d: any) => ({
-      tool: "pyright",
-      line: (d.range?.start?.line ?? -1) + 1,
-      code: d.rule ?? "",
-      message: d.message ?? "",
-      severity: d.severity === "error" ? ("error" as const) : ("warning" as const),
-    }));
+    return diagnostics.map((d: unknown): Finding => {
+      const obj = asObject(d);
+      const range = asObject(obj.range);
+      const start = asObject(range.start);
+      const startLine = typeof start.line === "number" ? start.line : -1;
+      return {
+        tool: "pyright",
+        line: startLine + 1,
+        code: asString(obj.rule),
+        message: asString(obj.message),
+        severity: asString(obj.severity) === "error" ? "error" : "warning",
+      };
+    });
   } catch {
     return null;
   }
@@ -250,20 +310,27 @@ export function parsePyrightJson(stdout: string): Finding[] | null {
 
 export function parseSemgrepJson(stdout: string): Finding[] | null {
   try {
-    const data = JSON.parse(stdout);
-    if (!Array.isArray(data.results)) return null;
-    return data.results.map((r: any) => ({
-      tool: "semgrep",
-      line: r.start?.line ?? 0,
-      code: r.check_id ?? "",
-      message: r.extra?.message ?? "",
-      severity:
-        r.extra?.severity === "ERROR"
-          ? ("error" as const)
-          : r.extra?.severity === "WARNING"
-            ? ("warning" as const)
-            : ("info" as const),
-    }));
+    const data = asObject(parseJson(stdout));
+    const results = data.results;
+    if (!Array.isArray(results)) return null;
+    return results.map((r: unknown): Finding => {
+      const obj = asObject(r);
+      const start = asObject(obj.start);
+      const extra = asObject(obj.extra);
+      const severity = asString(extra.severity);
+      return {
+        tool: "semgrep",
+        line: asNumber(start.line),
+        code: asString(obj.check_id),
+        message: asString(extra.message),
+        severity:
+          severity === "ERROR"
+            ? "error"
+            : severity === "WARNING"
+              ? "warning"
+              : "info",
+      };
+    });
   } catch {
     return null;
   }
@@ -273,7 +340,7 @@ export function parseSemgrepJson(stdout: string): Finding[] | null {
 // Plugin
 // ---------------------------------------------------------------------------
 
-export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
+export const PxcliQualityPlugin: Plugin = ({ client, $, directory }) => {
   /** Python files modified during this session, consumed by session-idle analysis. */
   const modifiedFiles = new Set<string>();
 
@@ -352,7 +419,7 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
       const r = await $`uv run ruff check ${filePath} --output-format=json --no-fix`
         .quiet()
         .nothrow();
-      return checkedFindings("ruff", r.exitCode, r.stderr.toString(), parseRuffJson(r.stdout.toString()));
+      return await checkedFindings("ruff", r.exitCode, r.stderr.toString(), parseRuffJson(r.stdout.toString()));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       await markUnavailable("ruff", message);
@@ -365,7 +432,7 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
     if (priorFailure) return priorFailure;
     try {
       const r = await $`uv run radon cc ${filePath} -j`.quiet().nothrow();
-      return checkedFindings("radon", r.exitCode, r.stderr.toString(), parseRadonJson(r.stdout.toString()));
+      return await checkedFindings("radon", r.exitCode, r.stderr.toString(), parseRadonJson(r.stdout.toString()));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       await markUnavailable("radon", message);
@@ -380,7 +447,7 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
       const r = await $`uv run bandit ${filePath} -f json -c pyproject.toml`
         .quiet()
         .nothrow();
-      return checkedFindings("bandit", r.exitCode, r.stderr.toString(), parseBanditJson(r.stdout.toString()));
+      return await checkedFindings("bandit", r.exitCode, r.stderr.toString(), parseBanditJson(r.stdout.toString()));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       await markUnavailable("bandit", message);
@@ -394,7 +461,7 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
     try {
       const r = await $`uv run ty check ${filePath}`.quiet().nothrow();
       const combined = `${r.stdout.toString()}\n${r.stderr.toString()}`;
-      return checkedFindings("ty", r.exitCode, r.stderr.toString(), parseTyText(combined));
+      return await checkedFindings("ty", r.exitCode, r.stderr.toString(), parseTyText(combined));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       await markUnavailable("ty", message);
@@ -413,7 +480,7 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
       const r = await $`uvx --from safety==3.8.1 safety scan --target ${directory} --output json`
         .quiet()
         .nothrow();
-      return checkedFindings("safety", r.exitCode, r.stderr.toString(), parseSafetyJson(r.stdout.toString()));
+      return await checkedFindings("safety", r.exitCode, r.stderr.toString(), parseSafetyJson(r.stdout.toString()));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       await markUnavailable("safety", message);
@@ -435,7 +502,7 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
         .cwd(directory)
         .quiet()
         .nothrow();
-      return checkedFindings("semgrep", r.exitCode, r.stderr.toString(), parseSemgrepJson(r.stdout.toString()));
+      return await checkedFindings("semgrep", r.exitCode, r.stderr.toString(), parseSemgrepJson(r.stdout.toString()));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       await markUnavailable("semgrep", message);
@@ -449,7 +516,7 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
     if (priorFailure) return priorFailure;
     try {
       const r = await $`uv run pyright --outputjson ${files}`.quiet().nothrow();
-      return checkedFindings("pyright", r.exitCode, r.stderr.toString(), parsePyrightJson(r.stdout.toString()));
+      return await checkedFindings("pyright", r.exitCode, r.stderr.toString(), parsePyrightJson(r.stdout.toString()));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       await markUnavailable("pyright", message);
@@ -461,12 +528,13 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
   // Hook implementations
   // -----------------------------------------------------------------------
 
-  return {
+  return Promise.resolve({
     /**
      * Inject coding conventions into the system prompt.
      */
-    "experimental.chat.system.transform": async (_input, output) => {
+    "experimental.chat.system.transform": (_input, output) => {
       output.system.push(CONVENTIONS_BLOCK);
+      return Promise.resolve();
     },
 
     /**
@@ -476,7 +544,7 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
     "tool.execute.after": async (input, output) => {
       if (input.tool !== "write" && input.tool !== "edit") return;
 
-      const filePath = getFilePath(input.args);
+      const filePath = getFilePath(input.args as Record<string, unknown> | undefined);
       if (!filePath) return;
 
       // --- Python file quality checks ---
@@ -568,5 +636,5 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
         });
       }
     },
-  };
+  });
 };

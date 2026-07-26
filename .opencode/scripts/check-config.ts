@@ -20,9 +20,9 @@ const projectRoot = resolve(__dirname, "..", "..");
 const configPath = resolve(projectRoot, "opencode.jsonc");
 const errors: ParseError[] = [];
 const raw = readFileSync(configPath, "utf8");
-const config = parse(raw, errors, {
+const parsed: unknown = parse(raw, errors, {
   allowTrailingComma: true,
-}) as PluginConfig;
+});
 
 if (errors.length > 0) {
   const details = errors
@@ -33,9 +33,10 @@ if (errors.length > 0) {
   throw new Error(`Invalid opencode.jsonc:\n${details}`);
 }
 
-if (typeof config !== "object" || config === null || Array.isArray(config)) {
+if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
   throw new Error("opencode.jsonc must contain an object.");
 }
+const config = parsed as PluginConfig;
 if (config.$schema !== "https://opencode.ai/config.json") {
   throw new Error(
     "opencode.jsonc must reference the OpenCode configuration schema.",

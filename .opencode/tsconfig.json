@@ -16,5 +16,12 @@
     "target": "ES2022",
     "types": ["node"]
   },
-  "include": ["plugins/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "plugins/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "*.config.ts",
+    "*.config.mjs",
+    "tests/*.d.ts"
+  ]
 }

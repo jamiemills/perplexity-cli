@@ -194,7 +194,7 @@ describe("parseRuffJson", () => {
     ]);
     const findings = parseRuffJson(json);
     expect(findings).toHaveLength(2);
-    expect(findings![0]).toMatchObject({
+    expect(findings?.[0]).toMatchObject({
       tool: "ruff",
       line: 10,
       code: "F401",
@@ -209,7 +209,7 @@ describe("parseRuffJson", () => {
     ]);
     const findings = parseRuffJson(json);
     expect(findings).toHaveLength(1);
-    expect(findings![0]!.line).toBe(0);
+    expect(findings?.[0]?.line).toBe(0);
   });
 
   it("returns null for malformed JSON", () => {
@@ -244,7 +244,7 @@ describe("parseRadonJson", () => {
     });
     const findings = parseRadonJson(json);
     expect(findings).toHaveLength(1);
-    expect(findings![0]).toMatchObject({
+    expect(findings?.[0]).toMatchObject({
       tool: "radon",
       line: 10,
       code: "CC=6",
@@ -304,13 +304,13 @@ describe("parseBanditJson", () => {
     });
     const findings = parseBanditJson(json);
     expect(findings).toHaveLength(2);
-    expect(findings![0]).toMatchObject({
+    expect(findings?.[0]).toMatchObject({
       tool: "bandit",
       line: 15,
       code: "B101 (HIGH)",
       severity: "error",
     });
-    expect(findings![1]!.severity).toBe("warning");
+    expect(findings?.[1]?.severity).toBe("warning");
   });
 
   it("returns null for malformed JSON", () => {
@@ -367,7 +367,7 @@ warning[W002]: unused variable
 something else`;
     const findings = parseTyText(output);
     expect(findings).toHaveLength(1);
-    expect(findings[0]!.line).toBe(0);
+    expect(findings[0]?.line).toBe(0);
   });
 });
 
@@ -404,7 +404,7 @@ describe("parseSafetyJson", () => {
     });
     const findings = parseSafetyJson(json);
     expect(findings).toHaveLength(1);
-    expect(findings![0]).toMatchObject({
+    expect(findings?.[0]).toMatchObject({
       tool: "safety",
       code: "CVE-2024-001",
       severity: "error",
@@ -470,13 +470,13 @@ describe("parsePyrightJson", () => {
     });
     const findings = parsePyrightJson(json);
     expect(findings).toHaveLength(2);
-    expect(findings![0]).toMatchObject({
+    expect(findings?.[0]).toMatchObject({
       tool: "pyright",
       line: 5,
       code: "reportUnknownMemberType",
       severity: "error",
     });
-    expect(findings![1]!.severity).toBe("warning");
+    expect(findings?.[1]?.severity).toBe("warning");
   });
 
   it("returns null for malformed JSON", () => {
@@ -528,14 +528,14 @@ describe("parseSemgrepJson", () => {
     });
     const findings = parseSemgrepJson(json);
     expect(findings).toHaveLength(3);
-    expect(findings![0]).toMatchObject({
+    expect(findings?.[0]).toMatchObject({
       tool: "semgrep",
       line: 15,
       code: "python.lang.security.use-defusedxml",
       severity: "error",
     });
-    expect(findings![1]!.severity).toBe("warning");
-    expect(findings![2]!.severity).toBe("info");
+    expect(findings?.[1]?.severity).toBe("warning");
+    expect(findings?.[2]?.severity).toBe("info");
   });
 
   it("returns null for malformed JSON", () => {
@@ -561,7 +561,7 @@ describe("parseSemgrepJson", () => {
     });
     const findings = parseSemgrepJson(json);
     expect(findings).toHaveLength(1);
-    expect(findings![0]!.line).toBe(0);
+    expect(findings?.[0]?.line).toBe(0);
   });
 
   it("handles severity defaulting to info", () => {
@@ -576,6 +576,6 @@ describe("parseSemgrepJson", () => {
     });
     const findings = parseSemgrepJson(json);
     expect(findings).toHaveLength(1);
-    expect(findings![0]!.severity).toBe("info");
+    expect(findings?.[0]?.severity).toBe("info");
   });
 });

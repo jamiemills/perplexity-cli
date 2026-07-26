@@ -332,8 +332,8 @@ describe("constants", () => {
   });
 
   it("BYPASS_PATTERNS regexes match expected strings", () => {
-    expect(BYPASS_PATTERNS[0]!.re.test("--exclude foo")).toBe(true);
-    expect(BYPASS_PATTERNS[2]!.re.test("# nosec")).toBe(true);
-    expect(BYPASS_PATTERNS[2]!.re.test("# nosec B608")).toBe(true);
+    expect(BYPASS_PATTERNS[0]?.re.test("--exclude foo")).toBe(true);
+    expect(BYPASS_PATTERNS[2]?.re.test("# nosec")).toBe(true);
+    expect(BYPASS_PATTERNS[2]?.re.test("# nosec B608")).toBe(true);
   });
 });

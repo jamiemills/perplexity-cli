@@ -40,7 +40,7 @@ export function isProtectedFile(filePath: string): boolean {
 // ---------------------------------------------------------------------------
 
 export const BYPASS_PATTERNS: readonly { re: RegExp; label: string }[] = [
-  { re: /--exclude\b/,              label: "--exclude" },
+  { re: /--exclude(?!-)\b/,          label: "--exclude" },
   { re: /--exclude-rule\b/,          label: "--exclude-rule" },
   { re: /#\s*nosec\b/i,              label: "# nosec" },
   { re: /#\s*pragma:\s*no\s*cover/i, label: "# pragma: no cover" },
@@ -60,7 +60,7 @@ export const GATE_REFERENCES: readonly { re: RegExp; label: string }[] = [
 ];
 
 export function countMatches(text: string, re: RegExp): number {
-  return (text.match(new RegExp(re.source, re.flags.replace("g", "") + "g")) || []).length;
+  return (text.match(new RegExp(re.source, re.flags.replace("g", "") + "g")) ?? []).length;
 }
 
 export function isAddingBypass(oldStr: string, newStr: string): string | null {
@@ -76,8 +76,8 @@ export function isAddingBypass(oldStr: string, newStr: string): string | null {
     }
   }
 
-  const oldSev = oldStr.match(/--severity\s+(\w+)/g) || [];
-  const newSev = newStr.match(/--severity\s+(\w+)/g) || [];
+  const oldSev = oldStr.match(/--severity\s+(\w+)/g) ?? [];
+  const newSev = newStr.match(/--severity\s+(\w+)/g) ?? [];
   if (oldSev.length > newSev.length) {
     return "removed severity level(s) from --severity flag";
   }
@@ -217,8 +217,28 @@ async function verifyGateIntact(
 // Plugin
 // ---------------------------------------------------------------------------
 
-export const QualityGatePlugin: Plugin = async ({ client, $, directory }) => {
-  if (process.env.OPENCODE_DISABLE_QUALITY_GATE === "1") return {};
+// ---------------------------------------------------------------------------
+// Tool argument helpers
+// ---------------------------------------------------------------------------
+
+type ToolArgs = Record<string, unknown>;
+
+function argString(args: ToolArgs, key: string): string {
+  return typeof args[key] === "string" ? args[key] : "";
+}
+
+function argStringOrElse(args: ToolArgs, primary: string, fallback: string): string {
+  return argString(args, primary) || argString(args, fallback);
+}
+
+// ---------------------------------------------------------------------------
+// Plugin
+// ---------------------------------------------------------------------------
+
+export const QualityGatePlugin: Plugin = ({ client, $, directory }) => {
+  if (process.env.OPENCODE_DISABLE_QUALITY_GATE === "1") {
+    return Promise.resolve({});
+  }
 
   async function block(filePath: string, reason: string): Promise<never> {
     await client.app.log({
@@ -231,16 +251,18 @@ export const QualityGatePlugin: Plugin = async ({ client, $, directory }) => {
     throw new Error(blockMessage(reason));
   }
 
-  return {
+  return Promise.resolve({
     // --- Pre-turn ---
 
     "tool.execute.before": async (input, output) => {
+      const args = output.args as ToolArgs;
+
       // --- write: read current content, compare with new, check for bypasses ---
       if (input.tool === "write") {
-        const filePath: string = output.args.filePath ?? "";
+        const filePath = argString(args, "filePath");
         if (!isProtectedFile(filePath)) return;
 
-        const newContent: string = output.args.content ?? "";
+        const newContent = argString(args, "content");
         if (!newContent) return;
 
         const oldContent = await readCurrentContent(directory, filePath);
@@ -252,11 +274,11 @@ export const QualityGatePlugin: Plugin = async ({ client, $, directory }) => {
 
       // --- edit: semantic bypass detection ---
       if (input.tool === "edit") {
-        const filePath: string = output.args.filePath ?? "";
+        const filePath = argString(args, "filePath");
         if (!isProtectedFile(filePath)) return;
 
-        const oldStr: string = output.args.oldString ?? "";
-        const newStr: string = output.args.newString ?? "";
+        const oldStr = argString(args, "oldString");
+        const newStr = argString(args, "newString");
         if (!oldStr && !newStr) return;
 
         const reason = isAddingBypass(oldStr, newStr);
@@ -266,7 +288,7 @@ export const QualityGatePlugin: Plugin = async ({ client, $, directory }) => {
       }
 
       if (input.tool === "apply_patch") {
-        const patchText: string = output.args.patchText ?? output.args.patch ?? "";
+        const patchText = argStringOrElse(args, "patchText", "patch");
         for (const [filePath, change] of protectedPatchChanges(patchText)) {
           const reason = isAddingBypass(change.removed.join("\n"), change.added.join("\n"));
           if (reason) await block(filePath, reason);
@@ -306,5 +328,5 @@ export const QualityGatePlugin: Plugin = async ({ client, $, directory }) => {
         },
       });
     },
-  };
+  });
 };
