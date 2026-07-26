@@ -1,0 +1,13 @@
+{
+  "event_sequence": 7,
+  "event_type": "candidate_submitted",
+  "run_id": "20260726-201025",
+  "task_id": "A3-MUTATION-POLICY",
+  "attempt": 1,
+  "candidate_sha": "d09ed6eea97a596037da5a003b2437ae78bf6889",
+  "base_sha": "ac6b35f524fd7852eefc1555dd13df4c6928be46",
+  "changed_paths": ["quality/schemas/mutation-report.json", "scripts/mutation_policy.py", "tests/fixtures/mutation_policy/all-killed/results.txt", "tests/fixtures/mutation_policy/empty/results.txt", "tests/fixtures/mutation_policy/malformed/results.txt", "tests/fixtures/mutation_policy/survived/results.txt", "tests/fixtures/mutation_policy/suspicious/results.txt", "tests/fixtures/mutation_policy/timeout/results.txt", "tests/fixtures/mutation_policy/unknown-status/results.txt", "tests/test_mutation_policy.py"],
+  "tests": "35 passed",
+  "lease_validated": true,
+  "shared_requests": [{"request_id": "a3-1", "target": "Makefile", "operation": "add-target", "target_name": "mutate-full-policy"}]
+}

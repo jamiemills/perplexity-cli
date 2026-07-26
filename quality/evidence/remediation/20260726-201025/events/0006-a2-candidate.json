@@ -1,0 +1,13 @@
+{
+  "event_sequence": 6,
+  "event_type": "candidate_submitted",
+  "run_id": "20260726-201025",
+  "task_id": "A2-OPENCODE",
+  "attempt": 1,
+  "candidate_sha": "7c6b048b35384022dffea5f1b0c0ab0995e7b53a",
+  "base_sha": "ac6b35f524fd7852eefc1555dd13df4c6928be46",
+  "changed_paths": [".opencode/eslint.config.mjs", ".opencode/plugins/pre-push-docs-check.ts", ".opencode/plugins/pxcli-quality.ts", ".opencode/plugins/quality-gate.ts", ".opencode/scripts/check-config.ts", ".opencode/tests/pxcli-quality.test.ts", ".opencode/tests/quality-gate.test.ts", ".opencode/tsconfig.json"],
+  "tests": "eslint 0 errors, vitest 109/109, tsc exit 0",
+  "lease_validated": true,
+  "shared_requests": [{"request_id": "a2-1", "target": ".opencode/package.json", "operation": "update-scripts"}]
+}

@@ -1,0 +1,13 @@
+{
+  "event_sequence": 5,
+  "event_type": "candidate_submitted",
+  "run_id": "20260726-201025",
+  "task_id": "A1-SEMGREP",
+  "attempt": 1,
+  "candidate_sha": "06ec5fac09fa2b0c8a3a2775848de6244bc4a487",
+  "base_sha": "ac6b35f524fd7852eefc1555dd13df4c6928be46",
+  "changed_paths": ["scripts/semgrep_policy.py", "tests/fixtures/semgrep/raise_no_from.py", "tests/fixtures/semgrep/test-rules.yml", "tests/test_semgrep_policy.py"],
+  "tests": "29 passed, 0 skipped",
+  "lease_validated": true,
+  "shared_requests": []
+}
