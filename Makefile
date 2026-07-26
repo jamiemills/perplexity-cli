@@ -235,10 +235,15 @@ dependency-hygiene: deptry  ## Run all dependency hygiene checks
 # Mutation testing
 # ---------------------------------------------------------------------------
 
-.PHONY: mutate mutate-results mutate-module mutate-diff mutate-estimate mutate-browse
+.PHONY: mutate mutate-results mutate-module mutate-diff mutate-estimate mutate-browse mutate-full-policy
 
 mutate:  ## Run mutation testing on the full source tree
 	uv run mutmut run
+
+mutate-full-policy:  ## Run full mutation testing then enforce the canonical policy
+	uv run mutmut run
+	uv run python scripts/mutation_policy.py \
+		--report-path quality/evidence/mutation-report.json
 
 mutate-estimate:  ## Estimate how long a full mutation run would take
 	uv run mutmut print-time-estimates

@@ -1,8 +1,10 @@
 {
   "private": true,
   "scripts": {
-    "check": "npm run typecheck && npm run check:config",
-    "check:config": "node scripts/check-config.mjs",
+    "check": "npm run lint && npm run test && npm run typecheck && npm run check:config",
+    "check:config": "tsx scripts/check-config.ts",
+    "lint": "eslint \"{plugins,scripts,tests}/**/*.ts\"",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -13,6 +15,7 @@
     "@types/node": "24.12.2",
     "eslint": "^10.8.0",
     "jsonc-parser": "3.3.1",
+    "tsx": "^4.19.0",
     "typescript": "5.8.2",
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.10"
