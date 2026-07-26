@@ -46,6 +46,9 @@ _STRICT_CONFIG = {
     "reportMissingTypeStubs": "none",
 }
 
+# Pyright exit codes: 0 = no findings, 1 = findings present, >=2 = tool crash.
+_TOOL_ERROR_EXIT_THRESHOLD = 2
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=DESCRIPTION)
@@ -90,7 +93,9 @@ def collect_findings() -> list[str]:
         raise RuntimeError(detail) from exc
     # Pyright can exit non-zero for findings — that is expected.
     # Only exit >=2 signals a tool crash.
-    is_tool_error = result.returncode is not None and result.returncode >= 2
+    is_tool_error = (
+        result.returncode is not None and result.returncode >= _TOOL_ERROR_EXIT_THRESHOLD
+    )
     if is_tool_error:
         raise RuntimeError(
             result.stderr.strip() or f"Pyright exited with status {result.returncode}."

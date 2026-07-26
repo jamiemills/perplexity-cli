@@ -25,6 +25,9 @@ SRC_DIR = "src/perplexity_cli"
 
 DEFAULT_REVISIONS = 10
 
+# Git log format ``%H|%ad|%s`` yields three pipe-delimited fields per commit.
+_EXPECTED_PIPE_PARTS = 3
+
 
 # ---------------------------------------------------------------------------
 # Data types
@@ -79,7 +82,7 @@ def _git_log(revisions: int) -> list[tuple[str, str, str]]:
         if not line:
             continue
         parts = line.split("|", 2)
-        if len(parts) == 3:
+        if len(parts) == _EXPECTED_PIPE_PARTS:
             entries.append((parts[0], parts[1], parts[2]))
 
     return entries
@@ -111,7 +114,7 @@ def _git_since(since_date: str) -> list[tuple[str, str, str]]:
         if not line:
             continue
         parts = line.split("|", 2)
-        if len(parts) == 3:
+        if len(parts) == _EXPECTED_PIPE_PARTS:
             entries.append((parts[0], parts[1], parts[2]))
 
     return entries

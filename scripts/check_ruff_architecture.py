@@ -38,6 +38,9 @@ BASELINE_NAME = "ruff-architecture.json"
 DESCRIPTION = "Ruff architecture ratchet: block new complexity/parameter findings."
 _SCRIPT = Path(__file__).name
 
+# Ruff exit codes: 0 = no findings, 1 = findings present, >=2 = tool error.
+_TOOL_ERROR_EXIT_THRESHOLD = 2
+
 _RULES = ["C901", "PLR0913", "PLR0904", "PLR2004", "ARG001", "ARG002"]
 _CONFIG_FLAGS = [
     "--config",
@@ -92,7 +95,9 @@ def collect_findings() -> list[str]:
     )
     # Ruff exits 0 = no findings, 1 = findings, 2+ = tool error.
     # All three are valid for JSON parsing; only exit >=2 is a tool failure.
-    is_tool_error = result.returncode >= 2 if result.returncode is not None else False
+    is_tool_error = (
+        result.returncode >= _TOOL_ERROR_EXIT_THRESHOLD if result.returncode is not None else False
+    )
     try:
         items = json.loads(result.stdout or "[]")
     except json.JSONDecodeError as exc:
