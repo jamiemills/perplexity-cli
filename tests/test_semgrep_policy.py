@@ -6,8 +6,6 @@ import json
 import subprocess
 from pathlib import Path
 
-import pytest
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = PROJECT_ROOT / "tests" / "fixtures" / "semgrep"
 SEMGREP_VERSION = "1.171.0"
@@ -177,12 +175,19 @@ class TestHardcodedMagicNumber:
 
 class TestRaiseWithoutFrom:
     def test_finds_raise_no_from(self) -> None:
-        pytest.skip("Rule ID mismatch after Semgrep config update")
-
-    def _skipped_test_finds_raise_no_from(self) -> None:
         rule_ids = _results_for(FIXTURES / "raise_no_from.py")
         assert _rule_id("raise-without-from-in-except") in rule_ids
 
     def test_ignores_raise_with_from(self) -> None:
         rule_ids = _results_for(FIXTURES / "raise_with_from.py")
         assert _rule_id("raise-without-from-in-except") not in rule_ids
+
+
+class TestCredentialLogging:
+    def test_finds_credential_logging(self) -> None:
+        rule_ids = _results_for(FIXTURES / "credential_logger.py")
+        assert _rule_id("custom.credential-logging-vendored") in rule_ids
+
+    def test_ignores_safe_logging(self) -> None:
+        rule_ids = _results_for(FIXTURES / "safe_logger.py")
+        assert _rule_id("custom.credential-logging-vendored") not in rule_ids
