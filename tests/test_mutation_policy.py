@@ -221,9 +221,7 @@ class TestRunPolicy:
         """Report file is written for the clean case."""
         mod = _import_module()
         report_path = tmp_path / "report.json"
-        exit_code = mod.run_policy(
-            "3.5.0", _fixture_text("all-killed"), report_path
-        )
+        exit_code = mod.run_policy("3.5.0", _fixture_text("all-killed"), report_path)
         assert exit_code == mod.EXIT_CLEAN
         assert report_path.exists()
         payload = json.loads(report_path.read_text())
@@ -233,9 +231,7 @@ class TestRunPolicy:
         """Report file is written before the non-zero findings exit code."""
         mod = _import_module()
         report_path = tmp_path / "report.json"
-        exit_code = mod.run_policy(
-            "3.5.0", _fixture_text("survived"), report_path
-        )
+        exit_code = mod.run_policy("3.5.0", _fixture_text("survived"), report_path)
         assert exit_code == mod.EXIT_FINDINGS
         assert report_path.exists()
         payload = json.loads(report_path.read_text())
@@ -246,9 +242,7 @@ class TestRunPolicy:
         """Report file (status tool-error) is written before exit code 2."""
         mod = _import_module()
         report_path = tmp_path / "report.json"
-        exit_code = mod.run_policy(
-            "3.5.0", _fixture_text("malformed"), report_path
-        )
+        exit_code = mod.run_policy("3.5.0", _fixture_text("malformed"), report_path)
         assert exit_code == mod.EXIT_TOOL_ERROR
         assert report_path.exists()
         payload = json.loads(report_path.read_text())
@@ -284,9 +278,7 @@ class TestReportSchema:
         payload = json.loads(report_path.read_text())
         jsonschema.validate(payload, schema)
 
-    def test_tool_error_report_matches_schema(
-        self, tmp_path: Path, schema: dict
-    ) -> None:
+    def test_tool_error_report_matches_schema(self, tmp_path: Path, schema: dict) -> None:
         """Tool-error reports are also schema-valid."""
         jsonschema = pytest.importorskip("jsonschema")
         mod = _import_module()

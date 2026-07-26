@@ -56,9 +56,7 @@ STATUS_FINDINGS: str = "findings"
 STATUS_TOOL_ERROR: str = "tool-error"
 
 # Actionable categories (cause findings).
-ACTIONABLE_CATEGORIES: frozenset[str] = frozenset(
-    {"survived", "timeout", "suspicious"}
-)
+ACTIONABLE_CATEGORIES: frozenset[str] = frozenset({"survived", "timeout", "suspicious"})
 
 # Canonical category order used in the report.
 CATEGORY_ORDER: tuple[str, ...] = (
@@ -139,9 +137,7 @@ class MutationReport:
 # Matches lines of the form "    <key>: <status>" (four-space indent).
 _LINE_PATTERN: re.Pattern[str] = re.compile(r"^    (?P<key>.+): (?P<status>.+)$")
 # Matches the output of `mutmut --version`, e.g. "mutmut, version 3.5.0".
-_VERSION_PATTERN: re.Pattern[str] = re.compile(
-    r"^mutmut, version (?P<version>\S+)\s*$"
-)
+_VERSION_PATTERN: re.Pattern[str] = re.compile(r"^mutmut, version (?P<version>\S+)\s*$")
 
 
 def _parse_line(line: str) -> tuple[str, str] | None:
@@ -245,9 +241,7 @@ def _pick_survivors(entries: list[MutantEntry]) -> tuple[MutantEntry, ...]:
     Returns:
         Tuple of entries whose category is survived, timeout or suspicious.
     """
-    return tuple(
-        entry for entry in entries if entry.category in ACTIONABLE_CATEGORIES
-    )
+    return tuple(entry for entry in entries if entry.category in ACTIONABLE_CATEGORIES)
 
 
 def build_report(version: str, entries: list[MutantEntry]) -> MutationReport:
@@ -380,9 +374,7 @@ def _run_mutmut(args: tuple[str, ...]) -> str:
         raise MutmutUnavailableError(str(exc)) from exc
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
-        raise MutmutUnavailableError(
-            f"mutmut exited {result.returncode}: {detail}"
-        )
+        raise MutmutUnavailableError(f"mutmut exited {result.returncode}: {detail}")
     return result.stdout
 
 
