@@ -70,9 +70,7 @@ def _validate_install() -> None:
             check=False,
         )
     except subprocess.TimeoutExpired:
-        sys.stderr.write(
-            f"Semgrep version probe timed out after {INSTALL_TIMEOUT}s.\n"
-        )
+        sys.stderr.write(f"Semgrep version probe timed out after {INSTALL_TIMEOUT}s.\n")
         sys.exit(EXIT_INTERNAL_ERROR)
     except OSError as exc:
         sys.stderr.write(f"Failed to invoke Semgrep version probe: {exc}\n")
@@ -153,9 +151,7 @@ def _register_rule(
     if rule_id in lookup:
         _fail_internal(f"Duplicate policy ID '{rule_id}' in policy manifest.\n")
     if "blocking" not in rule:
-        _fail_internal(
-            f"Policy entry '{rule_id}' missing 'blocking' attribute.\n"
-        )
+        _fail_internal(f"Policy entry '{rule_id}' missing 'blocking' attribute.\n")
     lookup[rule_id] = rule
 
 
@@ -193,9 +189,7 @@ def _classify(
     for result in results:
         rule_id = result.get("check_id", "")
         if rule_id not in policy:
-            sys.stderr.write(
-                f"Unknown rule ID '{rule_id}' not in policy manifest.\n"
-            )
+            sys.stderr.write(f"Unknown rule ID '{rule_id}' not in policy manifest.\n")
             sys.exit(EXIT_INTERNAL_ERROR)
         rule_policy = policy[rule_id]
         if rule_policy.get("blocking", False):
@@ -223,10 +217,7 @@ def _print_summary(
 ) -> None:
     """Print the finding-count summary and per-mode detail blocks."""
     unique_rules = sorted({r.get("check_id", "?") for r in all_findings})
-    print(
-        f"Semgrep: {len(all_findings)} finding(s) across "
-        f"{len(unique_rules)} rule(s)."
-    )
+    print(f"Semgrep: {len(all_findings)} finding(s) across {len(unique_rules)} rule(s).")
     if blocking:
         _print_blocking(blocking)
     if advisory:
@@ -253,10 +244,7 @@ def _check_returncode(result: subprocess.CompletedProcess[str]) -> None:
     acceptable = {EXIT_CLEAN, SEMGREP_FINDINGS_EXIT}
     if result.returncode in acceptable:
         return
-    sys.stderr.write(
-        f"Semgrep exited with code {result.returncode} "
-        f"(not a findings exit).\n"
-    )
+    sys.stderr.write(f"Semgrep exited with code {result.returncode} (not a findings exit).\n")
     if result.stderr:
         sys.stderr.write(f"stderr: {result.stderr}\n")
     sys.exit(EXIT_INTERNAL_ERROR)

@@ -98,11 +98,11 @@ opencode-check:  ## Type-check OpenCode plugins and validate resolved config whe
 .PHONY: format-check format-fix
 
 format-check:  ## Check code formatting (ruff)
-	uv run ruff format --check src tests
+	uv run ruff format --check src tests scripts
 
 format-fix:  ## Auto-fix formatting and lint issues (ruff)
-	uv run ruff format src tests
-	uv run ruff check --fix src tests
+	uv run ruff format src tests scripts
+	uv run ruff check --fix src tests scripts
 
 # ---------------------------------------------------------------------------
 # Linting
@@ -111,13 +111,13 @@ format-fix:  ## Auto-fix formatting and lint issues (ruff)
 .PHONY: lint
 
 lint:  ## Run linter (ruff check)
-	uv run ruff check src tests
+	uv run ruff check src tests scripts
 
 # ---------------------------------------------------------------------------
 # Type checking
 # ---------------------------------------------------------------------------
 
-.PHONY: typecheck typecheck-pyright typecheck-all
+.PHONY: typecheck typecheck-pyright typecheck-scripts typecheck-all
 
 typecheck:  ## Run type checker (ty)
 	uv run ty check src
@@ -125,7 +125,10 @@ typecheck:  ## Run type checker (ty)
 typecheck-pyright:  ## Run type checker (pyright, strict mode)
 	uv run pyright src/
 
-typecheck-all: typecheck typecheck-pyright  ## Run all type checkers
+typecheck-scripts:  ## Run pyright on quality scripts (strict mode)
+	uv run pyright scripts/
+
+typecheck-all: typecheck typecheck-pyright typecheck-scripts  ## Run all type checkers
 
 # ---------------------------------------------------------------------------
 # Security and dead-code analysis
@@ -134,7 +137,7 @@ typecheck-all: typecheck typecheck-pyright  ## Run all type checkers
 .PHONY: bandit vulture gitleaks gitleaks-ci security
 
 bandit:  ## Run bandit security linter
-	uv run bandit -c pyproject.toml -r src/
+	uv run bandit -c pyproject.toml -r src/ scripts/
 
 vulture:  ## Run vulture dead-code detector
 	uv run vulture src/ vulture_whitelist.py --min-confidence $(MIN_CONFIDENCE)
