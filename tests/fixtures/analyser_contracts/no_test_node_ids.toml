@@ -1,0 +1,19 @@
+[schema]
+version = 1
+
+# An active analyser with no test_node_ids — should produce a coverage-gap
+# warning but not a validation error.
+[[analysers]]
+id = "untested-analyser"
+target = "untested-analyser"
+phase = 1
+status = "active"
+description = "Active analyser with no tests"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1

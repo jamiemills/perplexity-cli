@@ -1,0 +1,28 @@
+[schema]
+version = 1
+
+# A multi-state analyser with clean, findings, timeout, and internal-error.
+[[analysers]]
+id = "semgrep"
+target = "semgrep"
+phase = 1
+status = "active"
+description = "Immutable blocking Semgrep ruleset"
+test_node_ids = ["tests/test_semgrep_wrapper.py"]
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[analysers.states.timeout]
+exit_min = -1
+exit_max = -1
+signal = "SIGTERM"
+
+[analysers.states.internal-error]
+exit_min = 5
+exit_max = 5

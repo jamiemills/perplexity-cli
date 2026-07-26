@@ -1,0 +1,21 @@
+[schema]
+version = 1
+
+[[analysers]]
+id = "with-tests"
+target = "with-tests"
+phase = 1
+status = "active"
+description = "Has test_node_ids declared"
+test_node_ids = [
+    "tests/test_with_tests.py::test_one",
+    "tests/test_with_tests.py::test_two",
+]
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1

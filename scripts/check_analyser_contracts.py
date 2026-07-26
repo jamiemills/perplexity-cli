@@ -74,6 +74,7 @@ class AnalyserContract:
     status: str
     description: str
     states: dict[str, StateContract]
+    test_node_ids: tuple[str, ...] = ()
 
 
 @dataclass
@@ -103,6 +104,7 @@ class RunReport:
     results: list[ContractResult] = field(default_factory=list)
     schema_errors: list[str] = field(default_factory=list)
     skipped_pending: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def all_contracts_honoured(self) -> bool:
@@ -225,14 +227,33 @@ def _check_field_description(entry: dict[str, Any], prefix: str, errors: list[st
         errors.append(f"{prefix}: 'description' must be a non-empty string")
 
 
+def _check_test_node_id_item(item: Any, idx: int, prefix: str, errors: list[str]) -> None:
+    """Validate a single test_node_ids entry."""
+    if not isinstance(item, str) or not item:
+        errors.append(f"{prefix}: 'test_node_ids[{idx}]' must be a non-empty string")
+
+
+def _check_field_test_node_ids(entry: dict[str, Any], prefix: str, errors: list[str]) -> None:
+    """Validate the optional 'test_node_ids' field if present."""
+    if "test_node_ids" not in entry:
+        return
+    raw = entry.get("test_node_ids")
+    if not isinstance(raw, list):
+        errors.append(f"{prefix}: 'test_node_ids' must be an array of strings")
+        return
+    for i, item in enumerate(raw):
+        _check_test_node_id_item(item, i, prefix, errors)
+
+
 def _validate_scalar_fields(entry: dict[str, Any], idx: int, errors: list[str]) -> None:
-    """Validate id, target, phase, status, description fields."""
+    """Validate id, target, phase, status, description, test_node_ids fields."""
     prefix = f"analysers[{idx}]"
     _check_field_id(entry, prefix, errors)
     _check_field_target(entry, prefix, errors)
     _check_field_phase(entry, prefix, errors)
     _check_field_status(entry, prefix, errors)
     _check_field_description(entry, prefix, errors)
+    _check_field_test_node_ids(entry, prefix, errors)
 
 
 def _parse_single_analyser(entry: Any, idx: int) -> tuple[AnalyserContract | None, list[str]]:
@@ -264,8 +285,16 @@ def _parse_single_analyser(entry: Any, idx: int) -> tuple[AnalyserContract | Non
         status=str(entry["status"]),
         description=str(entry["description"]),
         states=states,
+        test_node_ids=_coerce_test_node_ids(entry.get("test_node_ids")),
     )
     return contract, errors
+
+
+def _coerce_test_node_ids(raw: Any) -> tuple[str, ...]:
+    """Coerce the raw test_node_ids value into a tuple of strings."""
+    if not isinstance(raw, list):
+        return ()
+    return tuple(str(item) for item in raw)
 
 
 def _check_exit_bounds_present(exit_min: Any, exit_max: Any, full_prefix: str) -> str | None:
@@ -404,6 +433,26 @@ def validate_contracts(contracts: list[AnalyserContract]) -> list[str]:
     return errors
 
 
+def collect_coverage_gap_warnings(contracts: list[AnalyserContract]) -> list[str]:
+    """Return informational warnings for active analysers without test coverage.
+
+    A warning (not an error) is emitted for every active analyser that
+    declares no ``test_node_ids`` so coverage gaps remain visible without
+    failing the gate.
+
+    Args:
+        contracts: Parsed analyser contracts to inspect.
+
+    Returns:
+        A list of human-readable warning strings.
+    """
+    warnings: list[str] = []
+    for c in contracts:
+        if c.status == "active" and not c.test_node_ids:
+            warnings.append(f"active analyser '{c.id}' declares no test_node_ids (coverage gap)")
+    return warnings
+
+
 # ---------------------------------------------------------------------------
 # Analyser execution
 # ---------------------------------------------------------------------------
@@ -532,6 +581,16 @@ def _format_schema_errors(errors: list[str]) -> str:
     return "\n".join(lines)
 
 
+def _format_warnings(warnings: list[str]) -> list[str]:
+    """Format informational warnings as text lines."""
+    if not warnings:
+        return []
+    lines = [f"  WARNINGS ({len(warnings)}):"]
+    for w in warnings:
+        lines.append(f"    - {w}")
+    return lines
+
+
 def _format_summary(result_count: int, passed: int, failed: int, skipped: list[str]) -> list[str]:
     """Format the summary section."""
     lines = [
@@ -597,6 +656,7 @@ def _format_report(report: RunReport, contracts_path: Path) -> str:
     if not report.results:
         if not report.skipped_pending:
             lines.append("  No analysers to run.")
+        lines.extend(_format_warnings(report.warnings))
         return "\n".join(lines)
 
     lines.append("")
@@ -607,6 +667,7 @@ def _format_report(report: RunReport, contracts_path: Path) -> str:
 
     lines.append("-" * 72)
     lines.append(f"  Final: {passed} passed, {failed} failed")
+    lines.extend(_format_warnings(report.warnings))
     return "\n".join(lines)
 
 
@@ -618,6 +679,7 @@ def _format_json(report: RunReport, contracts_path: Path) -> str:
         "contracts_path": str(contracts_path),
         "schema_valid": len(report.schema_errors) == 0,
         "schema_errors": report.schema_errors,
+        "warnings": report.warnings,
         "analyser_count": len(report.results),
         "passed": passed,
         "failed": failed,
@@ -738,11 +800,14 @@ def main(argv: list[str] | None = None) -> None:
         _output_and_exit(RunReport(schema_errors=schema_errors), args)
         sys.exit(_EXIT_SCHEMA_FAIL)
 
+    warnings = collect_coverage_gap_warnings(contracts)
+
     if not _should_run(args):
-        _output_and_exit(RunReport(), args)
+        _output_and_exit(RunReport(warnings=warnings), args)
         sys.exit(_EXIT_ALL_PASS)
 
     report = _build_report(contracts, args)
+    report.warnings.extend(warnings)
     _output_and_exit(report, args)
     _exit_on_result(report)
 

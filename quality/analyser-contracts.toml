@@ -9,8 +9,8 @@
 # their canonical target.
 #
 # Schema: [[analysers]] array with id, target, phase, status, description,
-#         and [analysers.states.<state>] tables declaring exit_min, exit_max,
-#         and optional signal.
+#         optional test_node_ids, and [analysers.states.<state>] tables
+#         declaring exit_min, exit_max, and optional signal.
 # =============================================================================
 
 [schema]
@@ -26,6 +26,7 @@ target = "format-check"
 phase = 1
 status = "active"
 description = "Code formatting verification via ruff format --check"
+test_node_ids = []
 
 [analysers.states.clean]
 exit_min = 0
@@ -41,6 +42,7 @@ target = "lint"
 phase = 1
 status = "active"
 description = "Lint violations via ruff check"
+test_node_ids = []
 
 [analysers.states.clean]
 exit_min = 0
@@ -56,6 +58,7 @@ target = "typecheck-pyright"
 phase = 1
 status = "active"
 description = "Type checking via pyright"
+test_node_ids = []
 
 [analysers.states.clean]
 exit_min = 0
@@ -71,6 +74,7 @@ target = "typecheck"
 phase = 1
 status = "active"
 description = "Type checking via ty"
+test_node_ids = []
 
 [analysers.states.clean]
 exit_min = 0
@@ -86,6 +90,7 @@ target = "bandit"
 phase = 1
 status = "active"
 description = "Security linting via bandit"
+test_node_ids = []
 
 [analysers.states.clean]
 exit_min = 0
@@ -101,6 +106,7 @@ target = "vulture"
 phase = 1
 status = "active"
 description = "Dead-code detection via vulture"
+test_node_ids = ["tests/test_vulture_dead_code.py"]
 
 [analysers.states.clean]
 exit_min = 0
@@ -116,6 +122,11 @@ target = "semgrep"
 phase = 1
 status = "active"
 description = "Immutable blocking Semgrep ruleset"
+test_node_ids = [
+    "tests/test_semgrep_clean_code.py",
+    "tests/test_semgrep_policy.py",
+    "tests/test_semgrep_wrapper.py",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -125,12 +136,27 @@ exit_max = 0
 exit_min = 1
 exit_max = 1
 
+# Semgrep itself may time out per-rule (exit 3) or be killed by the runner
+# (SIGTERM). The schema models a single dominant case here; the runner kills
+# the process with SIGTERM on subprocess.TimeoutExpired.
+[analysers.states.timeout]
+exit_min = -1
+exit_max = -1
+signal = "SIGTERM"
+
+[analysers.states.internal-error]
+exit_min = 5
+exit_max = 5
+
 [[analysers]]
 id = "complexity-cc"
 target = "complexity-cc"
 phase = 1
 status = "active"
 description = "Cyclomatic-complexity ceilings via radon"
+test_node_ids = [
+    "tests/test_cyclomatic_complexity.py::test_cyclomatic_complexity_all_a_grade",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -146,6 +172,9 @@ target = "complexity-mi"
 phase = 1
 status = "active"
 description = "Maintainability-index floors via radon"
+test_node_ids = [
+    "tests/test_cyclomatic_complexity.py::test_maintainability_index_all_a_grade",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -165,6 +194,7 @@ target = "arch-check"
 phase = 2
 status = "active"
 description = "Layer-boundary and import-direction enforcement"
+test_node_ids = ["tests/test_architecture.py"]
 
 [analysers.states.clean]
 exit_min = 0
@@ -180,6 +210,7 @@ target = "arch-check-dynamic"
 phase = 2
 status = "active"
 description = "Dynamic-import architecture enforcement"
+test_node_ids = ["tests/test_dynamic_imports.py"]
 
 [analysers.states.clean]
 exit_min = 0
@@ -195,6 +226,7 @@ target = "coupling-check"
 phase = 2
 status = "active"
 description = "Advisory coupling and stability metrics"
+test_node_ids = ["tests/test_coupling_metrics.py"]
 
 [analysers.states.clean]
 exit_min = 0
@@ -222,6 +254,7 @@ target = "import-linter"
 phase = 2
 status = "active"
 description = "Import-contract enforcement via lint-imports"
+test_node_ids = []
 
 [analysers.states.clean]
 exit_min = 0
@@ -237,6 +270,7 @@ target = "deptry"
 phase = 2
 status = "active"
 description = "Dependency hygiene via deptry"
+test_node_ids = []
 
 [analysers.states.clean]
 exit_min = 0
@@ -256,18 +290,22 @@ target = "gitleaks-ci"
 phase = 3
 status = "pending"
 description = "Secret detection via gitleaks (pending integration)"
+test_node_ids = [
+    "tests/test_gitleaks.py",
+    "tests/test_gitleaks_integration.py",
+]
 
 [analysers.states.clean]
 exit_min = 0
 exit_max = 0
 
 [analysers.states.secrets-found]
-exit_min = 1
-exit_max = 1
+exit_min = 10
+exit_max = 10
 
 [analysers.states.unavailable]
 exit_min = 2
-exit_max = 2
+exit_max = 3
 
 # ---------------------------------------------------------------------------
 # Phase 4 — Coverage and mutation testing
@@ -279,6 +317,7 @@ target = "module-coverage"
 phase = 4
 status = "pending"
 description = "Per-module coverage enforcement (pending integration)"
+test_node_ids = ["tests/test_module_coverage.py"]
 
 [analysers.states.clean]
 exit_min = 0
@@ -294,12 +333,16 @@ target = "mutate"
 phase = 4
 status = "pending"
 description = "Mutation testing via mutmut (pending integration)"
+test_node_ids = [
+    "tests/test_mutate_diff_files.py",
+    "tests/test_mutation_policy.py",
+]
 
 [analysers.states.clean]
 exit_min = 0
 exit_max = 0
 
-[analysers.states.mutants-survived]
+[analysers.states.findings]
 exit_min = 1
 exit_max = 1
 
@@ -313,6 +356,9 @@ target = "file-size"
 phase = 5
 status = "active"
 description = "File-size ratchet gate (blocks new or grown oversized files)"
+test_node_ids = [
+    "tests/test_quality_ratchets.py::test_ratchet_gate_passes[check_file_size.py]",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -332,6 +378,10 @@ target = "suppression-ratchet"
 phase = 5
 status = "active"
 description = "Inline-suppression ratchet (blocks new or grown suppressions)"
+test_node_ids = [
+    "tests/test_suppressions.py",
+    "tests/test_quality_ratchets.py::test_ratchet_gate_passes[check_suppressions.py]",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -347,6 +397,9 @@ target = "ruff-architecture"
 phase = 5
 status = "active"
 description = "Ruff-complexity ratchet (blocks new complexity/parameter findings)"
+test_node_ids = [
+    "tests/test_quality_ratchets.py::test_ratchet_gate_passes[check_ruff_architecture.py]",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -362,6 +415,7 @@ target = "typecheck-strict-ratchet"
 phase = 5
 status = "active"
 description = "Pyright-strict ratchet (blocks new Any/unknown diagnostics)"
+test_node_ids = []
 
 [analysers.states.clean]
 exit_min = 0
@@ -377,6 +431,9 @@ target = "semgrep-architecture"
 phase = 5
 status = "active"
 description = "Semgrep structural-prevention ratchet (blocks new structural findings)"
+test_node_ids = [
+    "tests/test_quality_ratchets.py::test_semgrep_architecture_fails_closed_on_tool_error",
+]
 
 [analysers.states.clean]
 exit_min = 0

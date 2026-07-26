@@ -275,3 +275,75 @@ def test_run_report_schema_errors_fails():
     mod = _load_check_module()
     report = mod.RunReport(schema_errors=["bad schema"])
     assert report.all_contracts_honoured is False
+
+
+# ---------------------------------------------------------------------------
+# test_node_ids field tests
+# ---------------------------------------------------------------------------
+
+
+def test_test_node_ids_parsed_and_validated():
+    """A valid test_node_ids array is parsed into the contract."""
+    mod = _load_check_module()
+    contracts, errors = mod.load_contracts(_FIXTURES / "with_test_node_ids.toml")
+    assert errors == []
+    assert len(contracts) == 1
+    ids = contracts[0].test_node_ids
+    assert ids == (
+        "tests/test_with_tests.py::test_one",
+        "tests/test_with_tests.py::test_two",
+    )
+
+
+def test_invalid_test_node_ids_rejected():
+    """A non-array test_node_ids value produces a schema error."""
+    mod = _load_check_module()
+    _contracts, errors = mod.load_contracts(_FIXTURES / "invalid_test_node_ids.toml")
+    assert len(errors) > 0
+    assert any("test_node_ids" in err and "array" in err for err in errors)
+
+
+def test_multi_state_contract_validates():
+    """An expanded multi-state analyser (clean/findings/timeout/error) validates."""
+    mod = _load_check_module()
+    contracts, schema_errors = mod.load_contracts(_FIXTURES / "multi_state.toml")
+    assert schema_errors == []
+    assert len(contracts) == 1
+    validation_errors = mod.validate_contracts(contracts)
+    assert validation_errors == []
+    states = contracts[0].states
+    assert {"clean", "findings", "timeout", "internal-error"} <= set(states.keys())
+
+
+def test_coverage_gap_warning_for_active_analyser():
+    """An active analyser with empty test_node_ids produces a coverage warning."""
+    mod = _load_check_module()
+    contracts, _errors = mod.load_contracts(_FIXTURES / "no_test_node_ids.toml")
+    warnings = mod.collect_coverage_gap_warnings(contracts)
+    assert len(warnings) == 1
+    assert "untested-analyser" in warnings[0]
+    assert "coverage gap" in warnings[0]
+
+
+def test_coverage_gap_warning_silent_for_pending():
+    """Pending analysers with empty test_node_ids do not produce warnings."""
+    mod = _load_check_module()
+    contracts, _errors = mod.load_contracts(_FIXTURES / "pending.toml")
+    warnings = mod.collect_coverage_gap_warnings(contracts)
+    assert warnings == []
+
+
+def test_coverage_gap_warning_absent_when_tests_declared():
+    """Active analysers with declared tests produce no coverage warning."""
+    mod = _load_check_module()
+    contracts, _errors = mod.load_contracts(_FIXTURES / "with_test_node_ids.toml")
+    warnings = mod.collect_coverage_gap_warnings(contracts)
+    assert warnings == []
+
+
+def test_run_report_carries_warnings():
+    """RunReport carries the warnings list without affecting pass/fail state."""
+    mod = _load_check_module()
+    report = mod.RunReport(warnings=["coverage gap: foo"])
+    assert report.warnings == ["coverage gap: foo"]
+    assert report.all_contracts_honoured is True

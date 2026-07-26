@@ -1,0 +1,18 @@
+[schema]
+version = 1
+
+[[analysers]]
+id = "bad-node-ids"
+target = "bad-node-ids"
+phase = 1
+status = "active"
+description = "Has a non-array test_node_ids"
+test_node_ids = "not-an-array"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
