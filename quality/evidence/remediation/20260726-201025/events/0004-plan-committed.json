@@ -1,0 +1,8 @@
+{
+  "event_sequence": 4,
+  "event_type": "plan_committed",
+  "run_id": "20260726-201025",
+  "timestamp": "2026-07-26T20:15:00Z",
+  "plan_path": "quality/remediation/selected-ranks-plan.md",
+  "plan_digest": "cc23d80e092d910f136fcca0dba2737b3120e0dc867c97c106e7f2fb032c77bb"
+}

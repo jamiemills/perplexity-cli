@@ -1,0 +1,52 @@
+{
+  "event_sequence": 3,
+  "event_type": "baseline_captured",
+  "run_id": "20260726-201025",
+  "timestamp": "2026-07-26T20:14:00Z",
+  "base_sha": "88595a4ac30bcfd9586f37e26aad2430b04bf84e",
+  "tool_versions": {
+    "python": "3.12.3",
+    "uv": "0.9.26",
+    "ruff": "0.15.16",
+    "pyright": "1.1.410",
+    "bandit": "1.9.4",
+    "gitleaks": "8.30.1",
+    "node": "v20.20.2",
+    "npm": "10.8.2",
+    "actionlint": "NOT_INSTALLED"
+  },
+  "commands": {
+    "make_format_check": {"exit": 0, "detail": "233 files already formatted"},
+    "make_lint": {"exit": 0, "detail": "All checks passed"},
+    "make_check": {"exit": 0, "detail": "format, lint, ty, pyright, bandit, vulture all pass"},
+    "eslint_opencode": {"exit": 1, "errors": 130, "detail": "no-non-null-assertion errors plus vitest.config.ts parsing error"},
+    "vitest": {"exit": 1, "passed": 108, "failed": 1, "detail": "quality-gate.test.ts:89 regex overlap: --exclude matches --exclude-rule"},
+    "pytest_collection": {"exit": 0, "collected": 2151, "deselected": 81}
+  },
+  "disabled_gates": [
+    "CHECK_SEMGREP",
+    "CHECK_ARCH",
+    "CHECK_COUPLING",
+    "CHECK_RATCHETS",
+    "CHECK_DEPTRY",
+    "CHECK_IMPORT_LINTER",
+    "CHECK_DYNAMIC_IMPORTS"
+  ],
+  "known_issues": {
+    "opencode_package_check": "Invokes deleted check-config.mjs; only check-config.ts exists",
+    "opencode_missing_scripts": "No lint, test, or audit scripts in package.json",
+    "semgrep_wrapper_bypassed": "Make targets invoke semgrep directly, not scripts/semgrep_policy.py",
+    "semgrep_wrapper_bugs": "Ignores returncode, defaults missing output to {}, print with %s args, unknown rules default blocking",
+    "semgrep_skipped_test": "TestRaiseWithoutFrom.test_finds_raise_no_from permanently skipped",
+    "ci_monolithic": "Full make ci runs in every lane; no job split",
+    "ci_no_concurrency": "No workflow-level concurrency group",
+    "ci_no_timeout": "No job timeouts",
+    "ci_gitleaks_action": "Uses gitleaks-action not canonical make gitleaks-ci",
+    "lefthook_flat_parallel": "11-way parallel pre-push; no piped stages",
+    "mutation_workflow_raw": "Runs raw make mutate; no policy wrapper",
+    "mutation_workflow_continue_on_error": "Result step has continue-on-error",
+    "semgrep_advisory_continue_on_error": "Job-level continue-on-error hides errors",
+    "scorecard_no_publish": "Missing publish_results: true",
+    "stale_docs": "README references make quality-plan and make plan-check (deleted); QUALITY_GATES.md claims 4 plugins, OpenCode CI job"
+  }
+}

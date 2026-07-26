@@ -1,0 +1,14 @@
+{
+  "event_sequence": 1,
+  "event_type": "run_started",
+  "run_id": "20260726-201025",
+  "timestamp": "2026-07-26T20:10:25Z",
+  "base_sha": "88595a4ac30bcfd9586f37e26aad2430b04bf84e",
+  "plan_digest": "pending",
+  "integration_branch": "remediation/20260726-201025/integration",
+  "worktree_root": "/home/jamiemills/code/projects/perplexity-cli-remediation-worktrees/20260726-201025",
+  "scope": ["rank-16", "rank-17", "rank-21", "rank-25", "rank-26", "rank-29", "rank-10-prereq", "rank-18-prereq"],
+  "max_parallel_writers": 3,
+  "delivery": "fast-forward-local-master",
+  "push_ authorised": false
+}

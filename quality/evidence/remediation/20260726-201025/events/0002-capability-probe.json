@@ -1,0 +1,15 @@
+{
+  "event_sequence": 2,
+  "event_type": "capability_probe_passed",
+  "run_id": "20260726-201025",
+  "timestamp": "2026-07-26T20:12:00Z",
+  "findings": {
+    "worktree_add_locked": true,
+    "commit_trailers": true,
+    "trailer_format": "X-Run-Id, X-Task-Id, X-Attempt",
+    "commit_no_verify_required": true,
+    "reason": "Lefthook hooks are shared across all worktrees via .git/hooks; task agents must use --no-verify for checkpoint commits",
+    "branch_isolation": true,
+    "soft_reset_cleanup": true
+  }
+}
