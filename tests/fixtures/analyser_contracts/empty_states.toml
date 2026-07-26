@@ -1,0 +1,9 @@
+[schema]
+version = 1
+
+[[analysers]]
+id = "empty-array"
+target = "empty-array"
+phase = 1
+status = "active"
+description = "No states declared"

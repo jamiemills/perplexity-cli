@@ -1,246 +1,196 @@
-"""End-to-end tests for file attachment functionality.
+"""Component-level tests for attachment URL inclusion in API query requests.
 
-These tests verify that file attachments are properly attached to threads
-by checking the thread response data.
+These tests verify the mapping from ``attachment_urls`` in
+:class:`~perplexity_cli.api.models.QueryInput` to the ``attachments``
+field in the outbound ``QueryRequest`` JSON payload.  The SSE transport
+is mocked so the test is deterministic and network-independent.
+
+.. note::
+
+    These are **not** end-to-end tests; they exercise the API-layer
+    request-serialization scope only.  For hermetic protocol integration
+    through the loopback harness, see
+    ``tests/test_attachment_protocol_integration.py``.
 """
 
+from __future__ import annotations
+
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.api.models import QueryInput
 
-
-def _make_thread_response_with_attachments(attachment_urls: list[str]) -> dict:
-    """Create a mock thread response with attachments."""
-    return {
-        "status": "success",
-        "entries": [
-            {
-                "backend_uuid": "test-backend",
-                "context_uuid": "test-context",
-                "uuid": "test-uuid",
-                "frontend_context_uuid": "test-frontend-context",
-                "frontend_uuid": "test-frontend",
-                "status": "COMPLETED",
-                "thread_title": "Test query",
-                "display_model": "turbo",
-                "user_selected_model": "turbo",
-                "mode": "COPILOT",
-                "query_str": "Test query",
-                "search_focus": "internet",
-                "source": "default",
-                "attachments": attachment_urls,
-                "blocks": [
-                    {
-                        "intended_usage": "ask_text",
-                        "markdown_block": {
-                            "progress": "DONE",
-                            "chunks": ["Test answer"],
-                            "answer": "Test answer",
-                        },
-                    }
-                ],
-                "final_sse_message": True,
-                "thread_url_slug": "test-slug",
-                "read_write_token": "test-token",
-            }
-        ],
-    }
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
-class TestFileAttachmentE2E:
-    """End-to-end tests for file attachment feature."""
+def _make_sse_final_with_attachments(
+    attachment_urls: list[str],
+) -> list[dict[str, object]]:
+    """Return a single SSE final message with the given *attachment_urls*."""
+    return [
+        {
+            "backend_uuid": "be-1",
+            "context_uuid": "ctx-1",
+            "uuid": "req-1",
+            "frontend_context_uuid": "fctx-1",
+            "display_model": "turbo",
+            "mode": "COPILOT",
+            "status": "COMPLETED",
+            "text_completed": True,
+            "final_sse_message": True,
+            "blocks": [
+                {
+                    "intended_usage": "ask_text",
+                    "markdown_block": {
+                        "chunks": ["Test response"],
+                        "answer": "Test response",
+                    },
+                }
+            ],
+            "attachments": attachment_urls,
+        },
+    ]
 
-    def test_single_file_attachment_appears_in_thread(self):
-        """Test that a single file attachment appears in the thread response."""
-        # Test data: S3 URL for the attachment
-        s3_url = "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test_single_attach.txt"
 
-        with patch("perplexity_cli.api.endpoints.SSEClient") as mock_client_class:
-            mock_client = MagicMock()
-            mock_client_class.return_value = mock_client
+def _extract_sent_attachments(mock_client: MagicMock) -> list[str]:
+    """Return the ``attachments`` list from the request body captured by
+    the mocked ``SSEClient.stream_post`` call."""
+    call_args = mock_client.stream_post.call_args
+    assert call_args is not None, "stream_post was not called"
+    request_data = call_args[0][1]
+    return request_data["params"]["attachments"]
 
-            # Mock the SSE stream to return the final message with attachment info
-            mock_client.stream_post.return_value = iter(
-                [
-                    {
-                        "backend_uuid": "test-backend",
-                        "context_uuid": "test-context",
-                        "uuid": "test-uuid",
-                        "frontend_context_uuid": "test-frontend-context",
-                        "display_model": "turbo",
-                        "mode": "COPILOT",
-                        "status": "COMPLETED",
-                        "text_completed": True,
-                        "final_sse_message": True,
-                        "blocks": [
-                            {
-                                "intended_usage": "ask_text",
-                                "markdown_block": {
-                                    "chunks": ["Test response"],
-                                    "answer": "Test response",
-                                },
-                            }
-                        ],
-                    }
-                ]
-            )
 
-            # Create API and submit query with S3 URL attachment
-            api = PerplexityAPI(token="test-token")
-            messages = list(api.submit_query(QueryInput(query="Test", attachment_urls=[s3_url])))
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
-            # Verify the attachment was passed through
-            assert len(messages) > 0
-            call_args = mock_client.stream_post.call_args
-            assert call_args is not None
 
-            # Verify request contains attachment
-            request_data = call_args[0][1]
-            assert "params" in request_data
-            assert "attachments" in request_data["params"]
-            assert len(request_data["params"]["attachments"]) == 1
+class TestAttachmentQueryRequestComposition:
+    """Tests that attachment URLs flow from QueryInput into the outbound
+    query request body at the API endpoint layer."""
 
-            # Verify attachment is the S3 URL
-            att = request_data["params"]["attachments"][0]
-            assert att == s3_url
+    @pytest.fixture(autouse=True)
+    def _mock_sse_transport(self) -> Generator[MagicMock, None, None]:
+        """Patch SSEClient so API calls never touch the network."""
+        patcher = patch("perplexity_cli.api.endpoints.SSEClient")
+        mock_client_class = patcher.start()
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        self._mock_client = mock_client
+        yield mock_client
+        patcher.stop()
 
-    def test_multiple_files_attachment_appears_in_thread(self):
-        """Test that multiple file attachments appear in the thread response."""
-        # Test data: S3 URLs for attachments
-        s3_urls = [
-            "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test_file1.txt",
-            "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test_file2.md",
-        ]
+    # -- Single file --------------------------------------------------------
 
-        with patch("perplexity_cli.api.endpoints.SSEClient") as mock_client_class:
-            mock_client = MagicMock()
-            mock_client_class.return_value = mock_client
+    def test_single_attachment_url_included_in_request(self) -> None:
+        s3_url = "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test_single.txt"
 
-            # Mock the SSE stream
-            mock_client.stream_post.return_value = iter(
-                [
-                    {
-                        "backend_uuid": "test-backend",
-                        "context_uuid": "test-context",
-                        "uuid": "test-uuid",
-                        "frontend_context_uuid": "test-frontend-context",
-                        "display_model": "turbo",
-                        "mode": "COPILOT",
-                        "status": "COMPLETED",
-                        "text_completed": True,
-                        "final_sse_message": True,
-                        "blocks": [
-                            {
-                                "intended_usage": "ask_text",
-                                "markdown_block": {
-                                    "chunks": ["Test response"],
-                                    "answer": "Test response",
-                                },
-                            }
-                        ],
-                    }
-                ]
-            )
+        self._mock_client.stream_post.return_value = iter(
+            _make_sse_final_with_attachments([s3_url]),
+        )
 
-            # Create API and submit query with S3 URL attachments
-            api = PerplexityAPI(token="test-token")
-            list(api.submit_query(QueryInput(query="Test", attachment_urls=s3_urls)))
+        api = PerplexityAPI(token="test-token")
+        list(api.submit_query(QueryInput(query="Test", attachment_urls=[s3_url])))
 
-            # Verify both attachments were passed
-            call_args = mock_client.stream_post.call_args
-            request_data = call_args[0][1]
-            attachments = request_data["params"]["attachments"]
+        attachments = _extract_sent_attachments(self._mock_client)
+        assert attachments == [s3_url]
 
-            assert len(attachments) == 2
-            assert attachments == s3_urls
+    # -- Multiple files -----------------------------------------------------
 
-    def test_directory_attachment_appears_in_thread(self):
-        """Test that directory attachments (multiple files) appear in thread response."""
-        # Test data: S3 URLs for attachments
+    def test_multiple_attachment_urls_included_in_request(self) -> None:
         s3_urls = [
             "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file1.txt",
-            "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file2.txt",
-            "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file3.txt",
+            "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file2.md",
         ]
 
-        with patch("perplexity_cli.api.endpoints.SSEClient") as mock_client_class:
-            mock_client = MagicMock()
-            mock_client_class.return_value = mock_client
+        self._mock_client.stream_post.return_value = iter(
+            _make_sse_final_with_attachments(s3_urls),
+        )
 
-            # Mock the SSE stream
-            mock_client.stream_post.return_value = iter(
-                [
-                    {
-                        "backend_uuid": "test-backend",
-                        "context_uuid": "test-context",
-                        "uuid": "test-uuid",
-                        "frontend_context_uuid": "test-frontend-context",
-                        "display_model": "turbo",
-                        "mode": "COPILOT",
-                        "status": "COMPLETED",
-                        "text_completed": True,
-                        "final_sse_message": True,
-                        "blocks": [
-                            {
-                                "intended_usage": "ask_text",
-                                "markdown_block": {
-                                    "chunks": ["Test response"],
-                                    "answer": "Test response",
-                                },
-                            }
-                        ],
-                    }
-                ]
-            )
+        api = PerplexityAPI(token="test-token")
+        list(api.submit_query(QueryInput(query="Test", attachment_urls=s3_urls)))
 
-            # Create API and submit query with S3 URL attachments
-            api = PerplexityAPI(token="test-token")
-            list(api.submit_query(QueryInput(query="Test", attachment_urls=s3_urls)))
+        attachments = _extract_sent_attachments(self._mock_client)
+        assert attachments == s3_urls
 
-            # Verify all attachments were passed
-            call_args = mock_client.stream_post.call_args
-            request_data = call_args[0][1]
-            req_attachments = request_data["params"]["attachments"]
+    # -- Order preservation -------------------------------------------------
 
-            assert len(req_attachments) == 3
-            assert req_attachments == s3_urls
+    def test_attachment_url_order_preserved(self) -> None:
+        ordered_urls = [f"https://s3.example.com/file_{i}.txt" for i in range(3)]
 
-    def test_attachment_request_structure_matches_api_spec(self):
-        """Test that attachment request structure matches Perplexity API specification."""
-        # Test data: S3 URL for attachment
+        self._mock_client.stream_post.return_value = iter(
+            _make_sse_final_with_attachments(ordered_urls),
+        )
+
+        api = PerplexityAPI(token="test-token")
+        list(api.submit_query(QueryInput(query="Test", attachment_urls=ordered_urls)))
+
+        attachments = _extract_sent_attachments(self._mock_client)
+        assert attachments == ordered_urls
+        assert attachments[0] == "https://s3.example.com/file_0.txt"
+        assert attachments[2] == "https://s3.example.com/file_2.txt"
+
+    # -- Request structure --------------------------------------------------
+
+    def test_query_request_top_level_keys(self) -> None:
         s3_url = "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test_api_spec.txt"
 
-        with patch("perplexity_cli.api.endpoints.SSEClient") as mock_client_class:
-            mock_client = MagicMock()
-            mock_client_class.return_value = mock_client
+        self._mock_client.stream_post.return_value = iter([])
 
-            # Mock the SSE stream
-            mock_client.stream_post.return_value = iter([])
+        api = PerplexityAPI(token="test-token")
+        try:
+            list(api.submit_query(QueryInput(query="Test", attachment_urls=[s3_url])))
+        except StopIteration:
+            pass
 
-            api = PerplexityAPI(token="test-token")
-            try:
-                list(api.submit_query(QueryInput(query="Test", attachment_urls=[s3_url])))
-            except StopIteration:
-                pass
+        call_args = self._mock_client.stream_post.call_args
+        assert call_args is not None
+        request_data = call_args[0][1]
 
-            # Verify request structure
-            call_args = mock_client.stream_post.call_args
-            request_data = call_args[0][1]
+        assert "query_str" in request_data
+        assert "params" in request_data
+        assert request_data["query_str"] == "Test"
 
-            # Verify top-level structure
-            assert "query_str" in request_data
-            assert "params" in request_data
+    def test_query_params_structure_with_attachments(self) -> None:
+        s3_url = "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test_api_spec.txt"
 
-            # Verify params structure
-            params = request_data["params"]
-            assert "attachments" in params
-            assert isinstance(params["attachments"], list)
-            assert "language" in params
-            assert "timezone" in params
+        self._mock_client.stream_post.return_value = iter([])
 
-            # Verify attachment is the S3 URL string
-            att = params["attachments"][0]
-            assert isinstance(att, str)
-            assert att == s3_url
-            assert att.startswith("https://ppl-ai-file-upload.s3.amazonaws.com/")
+        api = PerplexityAPI(token="test-token")
+        try:
+            list(api.submit_query(QueryInput(query="Test", attachment_urls=[s3_url])))
+        except StopIteration:
+            pass
+
+        call_args = self._mock_client.stream_post.call_args
+        request_data = call_args[0][1]
+        params = request_data["params"]
+
+        assert "attachments" in params
+        assert isinstance(params["attachments"], list)
+        assert "language" in params
+        assert "timezone" in params
+
+        attachment = params["attachments"][0]
+        assert isinstance(attachment, str)
+        assert attachment == s3_url
+        assert attachment.startswith("https://")
+
+    # -- Empty attachments --------------------------------------------------
+
+    def test_empty_attachment_urls_sends_empty_list(self) -> None:
+        self._mock_client.stream_post.return_value = iter(
+            _make_sse_final_with_attachments([]),
+        )
+
+        api = PerplexityAPI(token="test-token")
+        list(api.submit_query(QueryInput(query="Test", attachment_urls=[])))
+
+        attachments = _extract_sent_attachments(self._mock_client)
+        assert attachments == []

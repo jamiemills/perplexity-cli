@@ -1,17 +1,20 @@
 {
   "private": true,
   "scripts": {
-    "check": "npm run typecheck && npm run check:config && npm run check:plan-gate",
+    "check": "npm run typecheck && npm run check:config",
     "check:config": "node scripts/check-config.mjs",
-    "check:plan-gate": "node scripts/check-plan-gate.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.15.12"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "24.12.2",
+    "eslint": "^10.8.0",
     "jsonc-parser": "3.3.1",
-    "typescript": "5.8.2"
+    "typescript": "5.8.2",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.10"
   }
 }

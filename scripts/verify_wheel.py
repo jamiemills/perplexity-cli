@@ -1,4 +1,11 @@
-"""Verify that the built wheel contains all required packaged resources."""
+"""Verify that the built wheel contains all required packaged resources.
+
+Usage::
+
+    python scripts/verify_wheel.py
+"""
+
+from __future__ import annotations
 
 from pathlib import Path
 from zipfile import ZipFile

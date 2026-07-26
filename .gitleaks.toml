@@ -1,37 +1,47 @@
 # Gitleaks configuration for perplexity-cli
-# Extends default rules with project-specific path exclusions.
+# Schema version: 8.30.1
+#
+# Extends the default gitleaks rule set with project-specific path and
+# rule exceptions.  Every allow is documented with owner / path / reason
+# so future maintainers can audit each exception in isolation.
+#
 # See https://github.com/gitleaks/gitleaks#configuration for reference.
 
 title = "perplexity-cli gitleaks config"
 
 # ---------------------------------------------------------------------------
-# Allowlist — known false positives that should not block push.
+# Inherit all built-in rules (G001 – Gxxx)
+# ---------------------------------------------------------------------------
+[extend]
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# Allowlist — project-specific exceptions
+#
+# Policy: no global semantic word allowlists.  Every exception is either
+# path-scoped (tests / fixtures) or rule-specific with a documented reason.
 # ---------------------------------------------------------------------------
 [allowlist]
-  description = "Project-specific false positive allowlist"
+description = "Project-specific false-positive allowlist – audited per entry"
 
-  # Test fixtures may contain example keys/tokens for unit tests.
-  # These are intentionally not real secrets.
-  regexes = [
-    '''fake|example|test[-_]token|placeholder|REPLACE_ME|dummy''',
-  ]
-
-  # Stopwords — specific strings that are benign in this project.
-  stopwords = [
-    # mutmut mutation test identifiers (e.g. x__derive_encryption_key__mutmut_6).
-    # These are auto-generated function names with high entropy, not secrets.
-    '''__mutmut_''',
-  ]
-
-# ---------------------------------------------------------------------------
-# Rules — extend default rules; no custom rules needed.
-# ---------------------------------------------------------------------------
-# The built-in rule set (G001-Gxxx) is comprehensive for common secret
-# patterns.  If we need to suppress a specific rule, add it here:
+# ---- Path-scoped exceptions -------------------------------------------------
+# Owner: jamie.mills@gmail.com (project maintainer)
 #
-# [[rules]]
-#   id = "generic-api-key"
-#   [rules.allowlist]
-#     paths = ['''\.claudeCode/''']
+# Reason: tests/ and its fixture subdirectories contain deliberately non-secret
+# synthetic strings (e.g. "test-token", "fake-api-key", "placeholder-key")
+# used exclusively for unit and integration testing.  These are never real
+# credentials and are committed intentionally.
+paths = [
+  '''tests/''',
+]
+
+# ---- Stopword exceptions ----------------------------------------------------
+# Owner: jamie.mills@gmail.com (project maintainer)
 #
-# NOTE: .gitignore is already respected by default for path exclusions.
+# Reason: mutmut auto-generates function names with the ``__mutmut_`` infix
+# (e.g. ``x__derive_encryption_key__mutmut_6``).  These identifiers contain
+# high-entropy substrings that can match generic-api-key patterns, but they
+# are mechanically-produced mutation suffixes — never secrets.
+stopwords = [
+  '''__mutmut_''',
+]

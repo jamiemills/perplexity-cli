@@ -1,0 +1,10 @@
+[schema]
+version = 1
+
+# Malformed: id is missing
+[[analysers]]
+target = "format-check"
+phase = 1
+status = "active"
+description = "Missing id"
+states = {}

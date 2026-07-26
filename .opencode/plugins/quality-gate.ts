@@ -14,17 +14,19 @@
  * Human override: set OPENCODE_DISABLE_QUALITY_GATE=1.
  */
 
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
+
+type BunShell = PluginInput["$"];
 
 // ---------------------------------------------------------------------------
 // Protected files
 // ---------------------------------------------------------------------------
 
-const PROTECTED_DIRS = ["scripts/", "Makefile"];
+export const PROTECTED_DIRS = ["scripts/", "Makefile"];
 
-function isProtectedFile(filePath: string): boolean {
+export function isProtectedFile(filePath: string): boolean {
   const normalised = filePath.replace(/\\/g, "/").replace(/^\.\//, "");
   return PROTECTED_DIRS.some((path) =>
     path.endsWith("/")
@@ -37,7 +39,7 @@ function isProtectedFile(filePath: string): boolean {
 // Bypass detection
 // ---------------------------------------------------------------------------
 
-const BYPASS_PATTERNS: { re: RegExp; label: string }[] = [
+export const BYPASS_PATTERNS: readonly { re: RegExp; label: string }[] = [
   { re: /--exclude\b/,              label: "--exclude" },
   { re: /--exclude-rule\b/,          label: "--exclude-rule" },
   { re: /#\s*nosec\b/i,              label: "# nosec" },
@@ -45,7 +47,7 @@ const BYPASS_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /#\s*type:\s*ignore/i,       label: "# type: ignore" },
 ];
 
-const GATE_REFERENCES: { re: RegExp; label: string }[] = [
+export const GATE_REFERENCES: readonly { re: RegExp; label: string }[] = [
   { re: /--max-flagged\b/, label: "--max-flagged" },
   { re: /--min-coverage\b/, label: "--min-coverage" },
   { re: /--min-confidence\b/, label: "--min-confidence" },
@@ -57,11 +59,11 @@ const GATE_REFERENCES: { re: RegExp; label: string }[] = [
   { re: /\$\(SEMGREP_SEVERITY\)/, label: "SEMGREP_SEVERITY locked threshold" },
 ];
 
-function countMatches(text: string, re: RegExp): number {
+export function countMatches(text: string, re: RegExp): number {
   return (text.match(new RegExp(re.source, re.flags.replace("g", "") + "g")) || []).length;
 }
 
-function isAddingBypass(oldStr: string, newStr: string): string | null {
+export function isAddingBypass(oldStr: string, newStr: string): string | null {
   for (const { re, label } of BYPASS_PATTERNS) {
     const additions = newStr
       .split("\n")
@@ -89,7 +91,7 @@ function isAddingBypass(oldStr: string, newStr: string): string | null {
   return null;
 }
 
-function isJustifiedSuppression(line: string, label: string): boolean {
+export function isJustifiedSuppression(line: string, label: string): boolean {
   if (label === "# nosec") {
     return /#\s*nosec\s+[A-Z]\d{3}\s+(?:-|\u2014|:)\s*\S/i.test(line);
   }
@@ -102,12 +104,12 @@ function isJustifiedSuppression(line: string, label: string): boolean {
   return false;
 }
 
-interface PatchChange {
+export interface PatchChange {
   added: string[];
   removed: string[];
 }
 
-function protectedPatchChanges(patchText: string): Map<string, PatchChange> {
+export function protectedPatchChanges(patchText: string): Map<string, PatchChange> {
   const changes = new Map<string, PatchChange>();
   let current: PatchChange | null = null;
 
@@ -160,8 +162,8 @@ async function readCurrentContent(
   try {
     const resolvedPath = isAbsolute(filePath) ? filePath : resolve(directory, filePath);
     return await readFile(resolvedPath, "utf8");
-  } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+  } catch (error: unknown) {
+    if (typeof error === "object" && error !== null && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
       return "";
     }
     throw error;
@@ -173,7 +175,7 @@ async function readCurrentContent(
 // ---------------------------------------------------------------------------
 
 async function getModifiedProtected(
-  $: any,
+  $: BunShell,
   directory: string,
 ): Promise<string[]> {
   try {
@@ -194,7 +196,7 @@ async function getModifiedProtected(
 }
 
 async function verifyGateIntact(
-  $: any,
+  $: BunShell,
   directory: string,
 ): Promise<string | null> {
   try {
@@ -206,7 +208,7 @@ async function verifyGateIntact(
     if (r.exitCode === 0) return null;
     const detail = r.stderr.toString().trim() || r.stdout.toString().trim();
     return `coupling-check FAILED${detail ? `: ${detail}` : ""}`;
-  } catch (error) {
+  } catch (error: unknown) {
     return `coupling-check could not run: ${String(error)}`;
   }
 }

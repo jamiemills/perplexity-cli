@@ -72,7 +72,7 @@ rules:
         - '**/tests/**'
     message: "Vague name '$VAR' — convey intent, not category (Ch.2)."
     languages: [python]
-    severity: INFO
+    severity: WARNING
 
   # ────────────────────────────────────────────────────────────────────────────
   # Ch.3 — Functions: small, do one thing
@@ -138,7 +138,7 @@ rules:
         - '**/conftest.py'
     message: "Boolean flag in '$F' signals two responsibilities — split it (Ch.3)."
     languages: [python]
-    severity: INFO
+    severity: WARNING
 
   # ────────────────────────────────────────────────────────────────────────────
   # Ch.4 — Comments: code should be self-explanatory
@@ -287,7 +287,7 @@ rules:
           regex: '^([2-9]|[1-9][0-9]+)$'
     message: "Magic number '$N' — extract to a named constant."
     languages: [python]
-    severity: INFO
+    severity: WARNING
 
   # ────────────────────────────────────────────────────────────────────────────
   # Ch.17 — Smells & Heuristics
@@ -341,7 +341,7 @@ rules:
       - pattern: len($X) >= 1
     message: "Use truthiness — 'if x:' / 'if not x:' is more Pythonic than len() comparisons."
     languages: [python]
-    severity: INFO
+    severity: WARNING
 
   - id: range-len-instead-of-enumerate
     # for i in range(len(items)): items[i] ...  →  for i, item in enumerate(items): ...
@@ -354,7 +354,7 @@ rules:
               ...
     message: "Iterate with enumerate(): 'for i, item in enumerate(x):' is clearer than range(len(x))."
     languages: [python]
-    severity: INFO
+    severity: WARNING
 
   - id: eval-or-exec
     pattern-either:
@@ -373,35 +373,181 @@ rules:
       - pattern: setattr($O, "...", ...)
     message: "String-based attribute access — prefer explicit access or polymorphism (Ch.17)."
     languages: [python]
-    severity: INFO
+    severity: WARNING
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Architecture — layer isolation and dependency direction
+  # Architecture — structural and security prevention rules
+  #
+  # Layer-direction rules (domain-framework-import, application-framework-import)
+  # have been removed.  Import Linter owns layer-boundary enforcement via the
+  # canonical .importlinter contract.  Once equivalence is proven by the
+  # coordinator, those rules are permanently retired.
   # ────────────────────────────────────────────────────────────────────────────
-  - id: domain-framework-import
-    pattern-regex: '(?m)^(import (click|rich|httpx|curl_cffi|websockets|mcp|cryptography|tenacity)\b|from (click|rich|httpx|curl_cffi|websockets|mcp|cryptography|tenacity)\b)'
-    paths:
-      include:
-        - '/src/perplexity_cli/envelope.py'
-        - '/src/perplexity_cli/exit_codes.py'
-        - '/src/perplexity_cli/ndjson.py'
-        - '/src/perplexity_cli/models/**'
-        - '/src/perplexity_cli/config/models.py'
-        - '/src/perplexity_cli/config/defaults.py'
-    message: "Domain layer must not import framework libraries — extract to an infrastructure adapter."
-    languages: [python]
-    severity: ERROR
 
-  - id: application-framework-import
-    pattern-regex: '(?m)^(import (click|rich|httpx|curl_cffi|websockets|mcp)\b|from (click|rich|httpx|curl_cffi|websockets|mcp)\b)'
+  - id: function-local-import
+    patterns:
+      - pattern-inside: |
+          def $F(...):
+              ...
+      - pattern-either:
+          - pattern: import $M
+          - pattern: from $M import $N
     paths:
-      include:
-        - 'src/perplexity_cli/services/**'
-        - 'src/perplexity_cli/runners/**'
-        - 'src/perplexity_cli/query_runner.py'
-    message: "Application layer imports a framework library — prefer dependency injection or a port interface."
+      exclude:
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+        - "**/conftest.py"
+    message: "Import inside function — move to module top level or behind TYPE_CHECKING (review §6)."
     languages: [python]
     severity: INFO
+
+  - id: retry-sleep-outside-canonical
+    pattern: time.sleep(...)
+    paths:
+      exclude:
+        - "**/utils/retry.py"
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "time.sleep outside the canonical retry module — centralise backoff (review §2a)."
+    languages: [python]
+    severity: WARNING
+
+  - id: ad-hoc-http-status-classification
+    pattern-either:
+      - pattern: $STATUS == 401
+      - pattern: $STATUS == 403
+      - pattern: $STATUS == 429
+      - pattern: $STATUS == 500
+      - pattern: $STATUS == 502
+      - pattern: $STATUS == 503
+    paths:
+      exclude:
+        - "**/utils/http_errors.py"
+        - "**/utils/http_headers.py"
+        - "**/api/client.py"
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "Ad-hoc HTTP status classification — route through the canonical error policy (review §4)."
+    languages: [python]
+    severity: WARNING
+
+  - id: sys-exit-outside-boundary
+    pattern: sys.exit(...)
+    paths:
+      exclude:
+        - "**/cli.py"
+        - "**/commands.py"
+        - "**/completion_commands.py"
+        - "**/error_handler.py"
+        - "**/runners/**"
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "sys.exit outside an approved CLI/error boundary — centralise process control (review §2b)."
+    languages: [python]
+    severity: WARNING
+
+  - id: http-client-outside-transport
+    pattern-either:
+      - pattern: httpx.AsyncClient(...)
+      - pattern: httpx.Client(...)
+      - pattern: curl_cffi.requests.Session(...)
+      - pattern: urllib.request.urlopen(...)
+    paths:
+      exclude:
+        - "**/api/**"
+        - "**/utils/session_factory.py"
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "HTTP client construction outside transport layer — confine to api/ or session factory (review §6)."
+    languages: [python]
+    severity: WARNING
+
+  - id: write-then-chmod-toctou
+    patterns:
+      - pattern: os.chmod($PATH, ...)
+      - pattern-inside: |
+          def $F(...):
+              ...
+              open($PATH, "w", ...)
+              ...
+              os.chmod($PATH, ...)
+              ...
+    paths:
+      exclude:
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "TOCTOU: open(w) then os.chmod — use os.open with mode or temp+replace (review §2c)."
+    languages: [python]
+    severity: WARNING
+
+  - id: getter-with-side-effects
+    patterns:
+      - pattern-inside: |
+          def $F(...):
+              ...
+      - metavariable-regex:
+          metavariable: $F
+          regex: ^get_.+
+      - pattern-either:
+          - pattern: $PATH.mkdir(...)
+          - pattern: os.makedirs(...)
+          - pattern: $PATH.write_text(...)
+          - pattern: $PATH.touch()
+    paths:
+      exclude:
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+    message: "Getter with side effects — get_* must not create/write state (review §7)."
+    languages: [python]
+    severity: WARNING
+
+  - id: click-echo-outside-presentation
+    pattern: click.echo(...)
+    paths:
+      exclude:
+        - "**/cli.py"
+        - "**/commands.py"
+        - "**/completion_commands.py"
+        - "**/formatting/**"
+        - "**/runners/**"
+        - "**/test_*.py"
+        - "**/tests/**"
+        - "**/scripts/**"
+        - "**/error_handler.py"
+        - "**/auth/utils.py"
+        - "**/utils/http_errors.py"
+        - "**/query_runner.py"
+        - "**/query_streaming.py"
+    message: "click.echo outside presentation layer — keep CLI output in commands/cli (review §4)."
+    languages: [python]
+    severity: WARNING
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Security — vendored credential-logging rule
+  # ────────────────────────────────────────────────────────────────────────────
+  - id: custom.credential-logging-vendored
+    patterns:
+      - pattern: |
+          $LOGGER_OBJ.$LOGGER_CALL($FORMAT_STRING,...)
+      - metavariable-regex:
+          metavariable: $LOGGER_OBJ
+          regex: (?i)(_logger|logger|self.logger|log)
+      - metavariable-regex:
+          metavariable: $LOGGER_CALL
+          regex: (debug|info|warn|warning|error|exception|critical)
+      - metavariable-regex:
+          metavariable: $FORMAT_STRING
+          regex: (?i).*(api.key|secret|credential|token|password).*\%s.*
+    message: "Potential credential disclosure in log statement — redact sensitive data before logging."
+    languages: [python]
+    severity: WARNING
 
   # NOTE: God-class detection removed — the previous regex was unreliable
   # against decorators, nested classes and varied indentation.

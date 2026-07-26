@@ -9,9 +9,12 @@ minimal counterexamples.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
+import warnings
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -44,6 +47,7 @@ from perplexity_cli.threads.date_parser import (
     to_iso8601,
 )
 from perplexity_cli.threads.exporter import ThreadRecord
+from perplexity_cli.utils.config import clear_feature_config_cache, get_feature_config
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
@@ -65,6 +69,10 @@ from tests.strategies import (
     utc_datetimes,
 )
 
+warnings.filterwarnings("ignore", message=".*Unknown pytest.mark.property.*")
+
+pytestmark = [pytest.mark.property]
+
 # ---------------------------------------------------------------------------
 # Encryption round-trip
 # ---------------------------------------------------------------------------
@@ -75,10 +83,16 @@ from tests.strategies import (
 @example(token="café—日本語🎉")
 @settings(deadline=1000)
 def test_encrypt_decrypt_roundtrip(token: str) -> None:
-    """encrypt_token then decrypt_token returns the original token."""
+    """encrypt_token then decrypt_token returns the original token.
+
+    Also verifies that ciphertext always differs from plaintext
+    (encryption is not a no-op for non-empty input).
+    """
     encrypted = encrypt_token(token)
     decrypted = decrypt_token(encrypted)
     assert decrypted == token
+    if token:
+        assert encrypted != token
 
 
 @given(token=st.text(min_size=1, max_size=500))
@@ -1111,12 +1125,13 @@ def test_merge_threads_idempotent(
 def test_merge_threads_empty_lists_merge_to_empty(
     lists: tuple[list[ThreadRecord], list[ThreadRecord]],
 ) -> None:
-    """Empty cached + empty new produces empty result."""
+    """Merge result is always a superset of cached threads."""
     cached, new = lists
     manager = ThreadCacheManager()
     merged = manager.merge_threads(cached, new)
-    if not cached and not new:
-        assert merged == []
+    cached_urls = {t.url for t in cached}
+    merged_urls = {t.url for t in merged}
+    assert cached_urls <= merged_urls
 
 
 # ---------------------------------------------------------------------------
@@ -1348,3 +1363,107 @@ def test_rate_limiter_sleep_durations_match_wait_times(
         assert len(fake_sleep.durations) == len(non_zero_waits)
         for expected, actual in zip(non_zero_waits, fake_sleep.durations, strict=True):
             assert actual == pytest.approx(expected)
+
+
+# ---------------------------------------------------------------------------
+# Schema stability — independent invariants replacing round-trip tests
+# ---------------------------------------------------------------------------
+
+
+@given(
+    mode=st.sampled_from(["standard", "multi_step"]),
+    language=st.text(min_size=1, max_size=10, alphabet=st.characters(codec="ascii")),
+    timezone=st.text(min_size=1, max_size=30, alphabet=st.characters(codec="ascii")),
+    model_preference=st.text(min_size=1, max_size=20, alphabet=st.characters(codec="ascii")),
+)
+@settings()
+def test_query_params_model_schema_stability(
+    mode: str, language: str, timezone: str, model_preference: str
+) -> None:
+    """QueryParams JSON Schema has stable top-level keys regardless of field values."""
+    params = QueryParams(
+        search_implementation_mode=mode,
+        language=language,
+        timezone=timezone,
+        model_preference=model_preference,
+    )
+    schema = params.model_json_schema()
+    assert "properties" in schema
+    assert "type" in schema
+    assert schema["type"] == "object"
+    assert "search_implementation_mode" in schema["properties"]
+    assert "language" in schema["properties"]
+
+
+@given(
+    name=st.text(max_size=100),
+    url=st.text(max_size=200),
+    snippet=st.none() | st.text(max_size=200),
+)
+@example(name="", url="", snippet=None)
+@settings()
+def test_web_result_schema_stability(name: str, url: str, snippet: str | None) -> None:
+    """WebResult JSON Schema defines name, url, snippet fields."""
+    result = WebResult(name=name, url=url, snippet=snippet)
+    schema = result.model_json_schema()
+    assert "properties" in schema
+    assert "name" in schema["properties"]
+    assert "url" in schema["properties"]
+    assert "snippet" in schema["properties"]
+
+
+# ---------------------------------------------------------------------------
+# Config precedence — env > file > default
+# ---------------------------------------------------------------------------
+
+
+@given(
+    file_val=st.booleans(),
+    env_val=st.booleans(),
+)
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_feature_config_env_overrides_file(
+    file_val: bool,
+    env_val: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Environment variable values take precedence over config file values."""
+    config_dir = tmp_path / "perplexity-cli-config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_json = config_dir / "config.json"
+    config_content = {
+        "version": 1,
+        "features": {"save_cookies": file_val, "debug_mode": file_val},
+    }
+    config_json.write_text(json.dumps(config_content))
+    monkeypatch.setenv("PERPLEXITY_SAVE_COOKIES", str(env_val).lower())
+    monkeypatch.setenv("PERPLEXITY_DEBUG_MODE", str(env_val).lower())
+    clear_feature_config_cache()
+    config = get_feature_config()
+    assert config.save_cookies == env_val
+    assert config.debug_mode == env_val
+
+
+@given(file_val=st.booleans())
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_feature_config_file_overrides_defaults(
+    file_val: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Config file values take precedence over hardcoded defaults."""
+    config_dir = tmp_path / "perplexity-cli-config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_json = config_dir / "config.json"
+    config_content = {
+        "version": 1,
+        "features": {"save_cookies": file_val, "debug_mode": file_val},
+    }
+    config_json.write_text(json.dumps(config_content))
+    for env_var in ("PERPLEXITY_SAVE_COOKIES", "PERPLEXITY_DEBUG_MODE"):
+        monkeypatch.delenv(env_var, raising=False)
+    clear_feature_config_cache()
+    config = get_feature_config()
+    assert config.save_cookies == file_val
+    assert config.debug_mode == file_val

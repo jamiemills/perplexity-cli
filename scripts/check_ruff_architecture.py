@@ -54,6 +54,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _fingerprint(item: dict) -> str:
+    """Create a stable identifier from a Ruff JSON diagnostic."""
     location = item.get("location", {})
     filename = item.get("filename", "?")
     root_prefix = str(PROJECT_ROOT) + "/"
@@ -81,16 +82,29 @@ def collect_findings() -> list[str]:
         "--no-fix",
         "src",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=PROJECT_ROOT,
+        timeout=120,
+        check=False,
+    )
+    # Ruff exits 0 = no findings, 1 = findings, 2+ = tool error.
+    # All three are valid for JSON parsing; only exit >=2 is a tool failure.
+    is_tool_error = result.returncode >= 2 if result.returncode is not None else False
     try:
         items = json.loads(result.stdout or "[]")
-    except json.JSONDecodeError:
-        print("Ruff produced unparseable output:\n" + result.stderr, file=sys.stderr)
-        return []
+    except json.JSONDecodeError as exc:
+        detail = result.stderr.strip() or "Ruff produced unparseable output."
+        raise RuntimeError(detail) from exc
+    if is_tool_error:
+        raise RuntimeError(result.stderr.strip() or f"Ruff exited with status {result.returncode}.")
     return sorted({_fingerprint(item) for item in items})
 
 
 def _report_pass(diff: FingerprintDiff, count: int) -> None:
+    """Print a passing summary with optional shrinkage note."""
     print(f"Ruff architecture ratchet passed: {count} baselined finding(s); no new findings.")
     if diff.removed:
         print(
@@ -100,6 +114,7 @@ def _report_pass(diff: FingerprintDiff, count: int) -> None:
 
 
 def _report_regression(diff: FingerprintDiff) -> int:
+    """Print a regression report and return exit code 1."""
     print("Ruff architecture ratchet FAILED: new findings.\n", file=sys.stderr)
     for fingerprint in diff.new:
         print(f"  NEW  {fingerprint}", file=sys.stderr)
@@ -112,8 +127,13 @@ def _report_regression(diff: FingerprintDiff) -> int:
 
 
 def main() -> None:
+    """Entry point: collect findings, ratchet, and report."""
     args = _parse_args()
-    current = collect_findings()
+    try:
+        current = collect_findings()
+    except (RuntimeError, subprocess.TimeoutExpired) as exc:
+        print(f"Ruff architecture gate could not run: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     if args.update_baseline:
         path = save_fingerprints(BASELINE_NAME, current)

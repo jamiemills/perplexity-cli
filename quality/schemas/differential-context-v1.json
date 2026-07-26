@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "quality/schemas/differential-context-v1.json",
+  "title": "Differential Context v1",
+  "description": "Structured result of computing a differential (diff) context between two git references. Supports PR, push, dispatch, local, and CI modes. Never returns raw strings; all results are typed objects that distinguish git failures from empty diffs.",
+  "type": "object",
+  "required": ["schema_version", "mode", "git_error"],
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Schema version for forward compatibility."
+    },
+    "mode": {
+      "enum": ["local", "pr", "push", "dispatch", "ci"],
+      "description": "The computation mode that produced this context."
+    },
+    "base_tip": {
+      "type": "string",
+      "description": "The base branch or commit reference (e.g. 'main', 'origin/main')."
+    },
+    "event_head": {
+      "type": "string",
+      "description": "The head commit for the triggering event."
+    },
+    "merge_base": {
+      "type": "string",
+      "description": "The computed merge-base commit SHA between base_tip and event_head. null when computation failed or is inapplicable."
+    },
+    "tested_sha": {
+      "type": "string",
+      "description": "The commit SHA under test (e.g. from CI --tested-sha)."
+    },
+    "zero_before": {
+      "type": "boolean",
+      "description": "True when the push before-sha is all-zeros (new branch / force-push to new ref)."
+    },
+    "empty_tree_hash": {
+      "type": "string",
+      "description": "The git empty-tree hash (4b825dc642cb6eb9a060e54bf892b69e8b9e75fe), used as merge-base when zero_before is True."
+    },
+    "git_error": {
+      "type": "boolean",
+      "description": "True if any git command failed with a non-zero exit code."
+    },
+    "git_error_details": {
+      "type": "object",
+      "description": "Details about git command failures, present only when git_error is True.",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "The git command that failed."
+        },
+        "returncode": {
+          "type": "integer",
+          "description": "Non-zero exit code from git."
+        },
+        "stderr": {
+          "type": "string",
+          "description": "Standard error output from the failed command."
+        }
+      }
+    },
+    "is_empty_diff": {
+      "type": "boolean",
+      "description": "True when the diff between merge_base and head is empty (no changes). Distinct from git_error."
+    },
+    "changed_files": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of changed file paths (relative) when a non-empty diff exists. null when diff computation failed."
+    },
+    "diff_raw": {
+      "type": "string",
+      "description": "Raw unified diff output. null when diff computation failed or is empty."
+    },
+    "local_head": {
+      "type": "string",
+      "description": "HEAD commit SHA for local mode."
+    },
+    "local_dirty": {
+      "type": "boolean",
+      "description": "True when local worktree has uncommitted changes."
+    }
+  }
+}

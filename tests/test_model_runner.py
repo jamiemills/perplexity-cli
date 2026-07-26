@@ -138,8 +138,7 @@ class TestFormatModelTable:
             if entry.is_accessible(SubscriptionLevel.PRO)
         ]
         output = format_model_table(entries)
-        # The default model should have a marker
-        assert "(default)" in output.lower() or "*" in output
+        assert "(default)" in output.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -233,18 +232,22 @@ class TestRunModelsListCommand:
             patch(
                 "perplexity_cli.runners.models._create_model_service",
                 return_value=mock_service,
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._resolve_auth",
                 return_value=("token", {}),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
                 return_value=MagicMock(),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._detect_subscription_level",
                 return_value=SubscriptionLevel.PRO,
+                autospec=True,
             ),
         ):
             run_models_list_command(ctx_obj=None)
@@ -252,6 +255,7 @@ class TestRunModelsListCommand:
         captured = capsys.readouterr()
         assert "MODEL ID" in captured.out
         assert "pplx_pro" in captured.out
+        assert "ERROR" not in captured.err
 
     def test_pro_user_does_not_see_max_models(
         self,
@@ -265,27 +269,31 @@ class TestRunModelsListCommand:
             patch(
                 "perplexity_cli.runners.models._create_model_service",
                 return_value=mock_service,
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._resolve_auth",
                 return_value=("token", {}),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
                 return_value=MagicMock(),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._detect_subscription_level",
                 return_value=SubscriptionLevel.PRO,
+                autospec=True,
             ),
         ):
             run_models_list_command(ctx_obj=None)
 
         captured = capsys.readouterr()
         assert "pplx_pro" in captured.out
-        assert "gpt54" in captured.out
-        # Max-only model should be excluded
+        assert "gpt54" in captured.out  # Pro-accessible model
         assert "gpt55" not in captured.out
+        assert "ERROR" not in captured.err
 
     def test_outputs_json_envelope_when_json_mode(
         self,
@@ -299,18 +307,22 @@ class TestRunModelsListCommand:
             patch(
                 "perplexity_cli.runners.models._create_model_service",
                 return_value=mock_service,
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._resolve_auth",
                 return_value=("token", {}),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
                 return_value=MagicMock(),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._detect_subscription_level",
                 return_value=SubscriptionLevel.PRO,
+                autospec=True,
             ),
         ):
             run_models_list_command(ctx_obj={"json": True, "schema": False})
@@ -320,6 +332,7 @@ class TestRunModelsListCommand:
         assert data["ok"] is True
         assert data["command"] == "pxcli models list"
         assert "models" in data["result"]
+        assert "ERROR" not in captured.err
 
     def test_exits_on_auth_failure(self, capsys) -> None:
         from perplexity_cli.runners.models import run_models_list_command
@@ -327,6 +340,7 @@ class TestRunModelsListCommand:
         with patch(
             "perplexity_cli.runners.models._resolve_auth",
             return_value=(None, None),
+            autospec=True,
         ):
             with pytest.raises(SystemExit) as exc_info:
                 run_models_list_command(ctx_obj=None)
@@ -351,18 +365,22 @@ class TestRunModelsListCommand:
             patch(
                 "perplexity_cli.runners.models._create_model_service",
                 return_value=mock_service,
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._resolve_auth",
                 return_value=("token", {}),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
                 return_value=MagicMock(),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._detect_subscription_level",
                 return_value=SubscriptionLevel.PRO,
+                autospec=True,
             ),
         ):
             with pytest.raises(SystemExit) as exc_info:
@@ -370,7 +388,7 @@ class TestRunModelsListCommand:
 
             assert exc_info.value.code == 1
             captured = capsys.readouterr()
-            assert "error" in captured.err.lower() or "ERROR" in captured.err
+            assert "error" in captured.err.lower()
 
     def test_exits_on_network_error(self, capsys) -> None:
         from perplexity_cli.runners.models import run_models_list_command
@@ -384,18 +402,22 @@ class TestRunModelsListCommand:
             patch(
                 "perplexity_cli.runners.models._create_model_service",
                 return_value=mock_service,
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._resolve_auth",
                 return_value=("token", {}),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
                 return_value=MagicMock(),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._detect_subscription_level",
                 return_value=SubscriptionLevel.PRO,
+                autospec=True,
             ),
         ):
             with pytest.raises(SystemExit) as exc_info:
@@ -412,18 +434,22 @@ class TestRunModelsListCommand:
             patch(
                 "perplexity_cli.runners.models._create_model_service",
                 return_value=mock_service,
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._resolve_auth",
                 return_value=("token", {}),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
                 return_value=MagicMock(),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._detect_subscription_level",
                 return_value=SubscriptionLevel.PRO,
+                autospec=True,
             ),
         ):
             with pytest.raises(SystemExit) as exc_info:
@@ -445,20 +471,24 @@ class TestRunModelsListCommand:
             patch(
                 "perplexity_cli.runners.models._create_model_service",
                 return_value=mock_service,
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._resolve_auth",
                 return_value=("token", {}),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
                 return_value=MagicMock(),
+                autospec=True,
             ),
             patch(
                 "perplexity_cli.runners.models._detect_subscription_level",
                 return_value=SubscriptionLevel.PRO,
+                autospec=True,
             ),
-            patch("perplexity_cli.error_handler.handle_error") as mock_handle,
+            patch("perplexity_cli.error_handler.handle_error", autospec=True) as mock_handle,
         ):
             # handle_error in json_mode calls sys.exit internally
             mock_handle.side_effect = SystemExit(1)
@@ -480,8 +510,8 @@ class TestResolveAuth:
         from perplexity_cli.runners.models import _resolve_auth
 
         with (
-            patch("perplexity_cli.auth.token_manager.TokenManager") as mock_tm_cls,
-            patch("perplexity_cli.auth.utils.load_token_optional") as mock_load,
+            patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True) as mock_tm_cls,
+            patch("perplexity_cli.auth.utils.load_token_optional", autospec=True) as mock_load,
         ):
             mock_load.return_value = ("tok-123", {"cf": "cookie"})
             result = _resolve_auth()
@@ -493,8 +523,8 @@ class TestResolveAuth:
         from perplexity_cli.runners.models import _resolve_auth
 
         with (
-            patch("perplexity_cli.auth.token_manager.TokenManager"),
-            patch("perplexity_cli.auth.utils.load_token_optional") as mock_load,
+            patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True),
+            patch("perplexity_cli.auth.utils.load_token_optional", autospec=True) as mock_load,
         ):
             mock_load.return_value = (None, None)
             result = _resolve_auth()
@@ -513,7 +543,7 @@ class TestCreateRestClient:
     def test_creates_client_with_auth_context(self) -> None:
         from perplexity_cli.runners.models import _create_rest_client
 
-        with patch("perplexity_cli.api.rest_client.RestClient") as mock_client_cls:
+        with patch("perplexity_cli.api.rest_client.RestClient", autospec=True) as mock_client_cls:
             _create_rest_client("tok-123", {"cf": "cookie"})
 
         mock_client_cls.assert_called_once()
@@ -526,7 +556,9 @@ class TestCreateModelService:
         from perplexity_cli.runners.models import _create_model_service
 
         mock_client = MagicMock()
-        with patch("perplexity_cli.services.model_service.ModelService") as mock_svc_cls:
+        with patch(
+            "perplexity_cli.services.model_service.ModelService", autospec=True
+        ) as mock_svc_cls:
             _create_model_service(mock_client, SubscriptionLevel.PRO)
 
         call_kwargs = mock_svc_cls.call_args
@@ -536,7 +568,9 @@ class TestCreateModelService:
         from perplexity_cli.runners.models import _create_model_service
 
         mock_client = MagicMock()
-        with patch("perplexity_cli.services.model_service.ModelService") as mock_svc_cls:
+        with patch(
+            "perplexity_cli.services.model_service.ModelService", autospec=True
+        ) as mock_svc_cls:
             _create_model_service(mock_client, SubscriptionLevel.MAX)
 
         call_kwargs = mock_svc_cls.call_args

@@ -1,0 +1,12 @@
+{
+    "exit_code_by_key": {
+        "perplexity_cli.threads.scraper.x__scrape_threads__mutmut_1": 36,
+        "perplexity_cli.threads.scraper.x__scrape_threads__mutmut_2": 36
+    },
+    "durations_by_key": {
+        "perplexity_cli.threads.scraper.x__scrape_threads__mutmut_1": 30.0,
+        "perplexity_cli.threads.scraper.x__scrape_threads__mutmut_2": 30.0
+    },
+    "type_check_error_by_key": {},
+    "estimated_durations_by_key": {}
+}

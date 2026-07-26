@@ -1,0 +1,1 @@
+"""Shared pure utility module."""

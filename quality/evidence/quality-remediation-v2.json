@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "head": "adf4a74a3376b4e939fc555a086d8a836dfa8f26",
+  "captured_on": "2026-07-25T21:55:00Z",
+  "tool_versions": {
+    "python": "Python 3.12.3",
+    "uv": "uv 0.9.26",
+    "gitleaks": "8.30.1",
+    "ruff": "ruff 0.15.16"
+  },
+  "baseline": {
+    "check": "PASS (71.7s)",
+    "test_collection": {
+      "total": 1770,
+      "integration": 33,
+      "fuzz": 17,
+      "real_api": 12,
+      "default_deselected": 54
+    },
+    "architecture": "0 errors, 0 warnings, 81 files",
+    "coupling": "82 modules, 9 flagged (D >= 0.3)",
+    "pip_audit": "clean",
+    "import_linter": "FAILS (pre-existing violations, disabled in check)",
+    "gitleaks": "clean (0 commits scanned in local mode)",
+    "fuzz": "all 17 skipped (atheris not installed)",
+    "semgrep": "276 rules, 159 files, 0 findings",
+    "diff_coverage": "FAILS (origin/main does not exist)",
+    "production_files": 93,
+    "fuzz_false_green": true,
+    "import_linter_disabled": true
+  }
+}

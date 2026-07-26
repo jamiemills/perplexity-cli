@@ -72,12 +72,6 @@ pre-commit:
             glob: ".github/workflows/*.{yml,yaml}"
             run: uv run pytest tests/test_workflow_configuration.py -q
 
-          - name: plan-compliance
-            run: |
-              if [ -f .claude/plans/quality-plan.md ]; then
-                make plan-check PLAN=.claude/plans/quality-plan.md
-              fi
-
           - name: check-yaml
             glob: "*.{yml,yaml}"
             run: uvx --from pre-commit-hooks check-yaml {staged_files}

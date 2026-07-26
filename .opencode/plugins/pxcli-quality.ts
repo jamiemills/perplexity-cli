@@ -15,7 +15,7 @@ import type { Plugin } from "@opencode-ai/plugin";
 // Types
 // ---------------------------------------------------------------------------
 
-interface Finding {
+export interface Finding {
   tool: string;
   line: number;
   code: string;
@@ -77,28 +77,28 @@ const DEPENDENCY_FILES = ["pyproject.toml", "requirements.txt", "requirements-de
 // File classification helpers
 // ---------------------------------------------------------------------------
 
-function isPythonFile(filePath: string): boolean {
+export function isPythonFile(filePath: string): boolean {
   return filePath.endsWith(".py");
 }
 
-function isSkippedFile(filePath: string): boolean {
+export function isSkippedFile(filePath: string): boolean {
   return SKIPPED_PATHS.some((pattern) => filePath.includes(pattern));
 }
 
-function isDependencyFile(filePath: string): boolean {
+export function isDependencyFile(filePath: string): boolean {
   return DEPENDENCY_FILES.some((name) => filePath.endsWith(name));
 }
 
-function getFilePath(args: any): string | null {
+export function getFilePath(args: Record<string, unknown> | undefined): string | null {
   if (!args) return null;
-  return args.filePath ?? args.file_path ?? args.path ?? null;
+  return (args.filePath as string) ?? (args.file_path as string) ?? (args.path as string) ?? null;
 }
 
 // ---------------------------------------------------------------------------
 // Output formatting
 // ---------------------------------------------------------------------------
 
-function formatFindings(findings: Finding[]): string {
+export function formatFindings(findings: Finding[]): string {
   if (findings.length === 0) return "";
 
   const lines = findings.map((f) => {
@@ -118,7 +118,7 @@ function formatFindings(findings: Finding[]): string {
 // Output parsers
 // ---------------------------------------------------------------------------
 
-function parseRuffJson(stdout: string): Finding[] | null {
+export function parseRuffJson(stdout: string): Finding[] | null {
   try {
     const items = JSON.parse(stdout);
     if (!Array.isArray(items)) return null;
@@ -134,7 +134,7 @@ function parseRuffJson(stdout: string): Finding[] | null {
   }
 }
 
-function parseRadonJson(stdout: string): Finding[] | null {
+export function parseRadonJson(stdout: string): Finding[] | null {
   try {
     const data = JSON.parse(stdout);
     if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
@@ -159,7 +159,7 @@ function parseRadonJson(stdout: string): Finding[] | null {
   }
 }
 
-function parseBanditJson(stdout: string): Finding[] | null {
+export function parseBanditJson(stdout: string): Finding[] | null {
   try {
     const data = JSON.parse(stdout);
     const results = data.results;
@@ -176,7 +176,7 @@ function parseBanditJson(stdout: string): Finding[] | null {
   }
 }
 
-function parseTyText(stdout: string): Finding[] {
+export function parseTyText(stdout: string): Finding[] {
   const findings: Finding[] = [];
   const diagnosticRe = /^(error|warning)\[([^\]]+)]:\s*(.+)/;
   const locationRe = /^\s*-->\s*.*?:(\d+):(\d+)/;
@@ -204,7 +204,7 @@ function parseTyText(stdout: string): Finding[] {
   return findings;
 }
 
-function parseSafetyJson(stdout: string): Finding[] | null {
+export function parseSafetyJson(stdout: string): Finding[] | null {
   try {
     const data = JSON.parse(stdout);
     const findings: Finding[] = [];
@@ -231,7 +231,7 @@ function parseSafetyJson(stdout: string): Finding[] | null {
   }
 }
 
-function parsePyrightJson(stdout: string): Finding[] | null {
+export function parsePyrightJson(stdout: string): Finding[] | null {
   try {
     const data = JSON.parse(stdout);
     const diagnostics = data.generalDiagnostics;
@@ -248,7 +248,7 @@ function parsePyrightJson(stdout: string): Finding[] | null {
   }
 }
 
-function parseSemgrepJson(stdout: string): Finding[] | null {
+export function parseSemgrepJson(stdout: string): Finding[] | null {
   try {
     const data = JSON.parse(stdout);
     if (!Array.isArray(data.results)) return null;
@@ -353,9 +353,10 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
         .quiet()
         .nothrow();
       return checkedFindings("ruff", r.exitCode, r.stderr.toString(), parseRuffJson(r.stdout.toString()));
-    } catch (err: any) {
-      await markUnavailable("ruff", err.message ?? "");
-      return toolFailure("ruff", err.message ?? String(err));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      await markUnavailable("ruff", message);
+      return toolFailure("ruff", message);
     }
   }
 
@@ -365,9 +366,10 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
     try {
       const r = await $`uv run radon cc ${filePath} -j`.quiet().nothrow();
       return checkedFindings("radon", r.exitCode, r.stderr.toString(), parseRadonJson(r.stdout.toString()));
-    } catch (err: any) {
-      await markUnavailable("radon", err.message ?? "");
-      return toolFailure("radon", err.message ?? String(err));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      await markUnavailable("radon", message);
+      return toolFailure("radon", message);
     }
   }
 
@@ -379,9 +381,10 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
         .quiet()
         .nothrow();
       return checkedFindings("bandit", r.exitCode, r.stderr.toString(), parseBanditJson(r.stdout.toString()));
-    } catch (err: any) {
-      await markUnavailable("bandit", err.message ?? "");
-      return toolFailure("bandit", err.message ?? String(err));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      await markUnavailable("bandit", message);
+      return toolFailure("bandit", message);
     }
   }
 
@@ -392,9 +395,10 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
       const r = await $`uv run ty check ${filePath}`.quiet().nothrow();
       const combined = `${r.stdout.toString()}\n${r.stderr.toString()}`;
       return checkedFindings("ty", r.exitCode, r.stderr.toString(), parseTyText(combined));
-    } catch (err: any) {
-      await markUnavailable("ty", err.message ?? "");
-      return toolFailure("ty", err.message ?? String(err));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      await markUnavailable("ty", message);
+      return toolFailure("ty", message);
     }
   }
 
@@ -410,9 +414,10 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
         .quiet()
         .nothrow();
       return checkedFindings("safety", r.exitCode, r.stderr.toString(), parseSafetyJson(r.stdout.toString()));
-    } catch (err: any) {
-      await markUnavailable("safety", err.message ?? "");
-      return toolFailure("safety", err.message ?? String(err));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      await markUnavailable("safety", message);
+      return toolFailure("safety", message);
     }
   }
 
@@ -431,9 +436,10 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
         .quiet()
         .nothrow();
       return checkedFindings("semgrep", r.exitCode, r.stderr.toString(), parseSemgrepJson(r.stdout.toString()));
-    } catch (err: any) {
-      await markUnavailable("semgrep", err.message ?? "");
-      return toolFailure("semgrep", err.message ?? String(err));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      await markUnavailable("semgrep", message);
+      return toolFailure("semgrep", message);
     }
   }
 
@@ -444,9 +450,10 @@ export const PxcliQualityPlugin: Plugin = async ({ client, $, directory }) => {
     try {
       const r = await $`uv run pyright --outputjson ${files}`.quiet().nothrow();
       return checkedFindings("pyright", r.exitCode, r.stderr.toString(), parsePyrightJson(r.stdout.toString()));
-    } catch (err: any) {
-      await markUnavailable("pyright", err.message ?? "");
-      return toolFailure("pyright", err.message ?? String(err));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      await markUnavailable("pyright", message);
+      return toolFailure("pyright", message);
     }
   }
 

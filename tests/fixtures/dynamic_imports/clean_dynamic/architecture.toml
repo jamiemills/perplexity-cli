@@ -1,0 +1,29 @@
+[schema]
+version = 1
+
+[[layers]]
+name = "domain"
+description = "Core business objects"
+allowed_deps = ["domain"]
+modules = [
+    "models",
+]
+
+[[layers]]
+name = "application"
+description = "Use cases"
+allowed_deps = ["domain", "application"]
+modules = [
+    "services",
+]
+
+[[layers]]
+name = "presentation"
+description = "CLI"
+allowed_deps = ["domain", "application", "presentation"]
+modules = [
+    "cli",
+]
+
+[dynamic_imports]
+services = ["models"]

@@ -66,14 +66,11 @@ configure-opencode:
 	@echo ""
 	@echo "Verifying plugin and agent wiring..."
 	@ok=true; \
-	for f in quality-gate.ts pxcli-quality.ts pre-push-docs-check.ts plan-compliance-gate.ts; do \
+	for f in quality-gate.ts pxcli-quality.ts pre-push-docs-check.ts; do \
 		if [ ! -f .opencode/plugins/$$f ]; then \
 			echo "  MISSING: .opencode/plugins/$$f"; ok=false; \
 		else echo "  OK: .opencode/plugins/$$f"; fi; \
 	done; \
-	if [ ! -f .opencode/agents/quality-plan-reviewer.md ]; then \
-		echo "  MISSING: .opencode/agents/quality-plan-reviewer.md"; ok=false; \
-	else echo "  OK: .opencode/agents/quality-plan-reviewer.md"; fi; \
 	if [ ! -f opencode.jsonc ]; then \
 		echo "  MISSING: opencode.jsonc"; ok=false; \
 	else echo "  OK: opencode.jsonc"; fi; \
@@ -146,7 +143,7 @@ gitleaks:  ## Run gitleaks secret detection (pre-push: skips when not installed)
 	scripts/gitleaks_check.sh
 
 gitleaks-ci:  ## Run gitleaks in CI (fails if not installed)
-	CI_NO_SKIP=1 scripts/gitleaks_check.sh
+	CI_NO_SKIP=1 scripts/gitleaks_check.sh ci-full
 
 security: bandit vulture  ## Run all security checks
 
@@ -200,16 +197,22 @@ semgrep-advisory:  ## Scan latest community packs without changing the blocking 
 # Architecture enforcement
 # ---------------------------------------------------------------------------
 
-.PHONY: coupling-check metrics-track arch-check arch-explain
+.PHONY: coupling-check coupling-report metrics-track arch-check arch-check-dynamic arch-explain
 
-coupling-check:  ## Measure coupling and stability metrics
+coupling-check:  ## Measure coupling and stability metrics (legacy, now advisory-only)
 	uv run python scripts/check_coupling.py --max-flagged $(MAX_FLAGGED)
+
+coupling-report:  ## Generate advisory coupling report with trend support
+	uv run python scripts/check_coupling.py --trend-compare quality/baselines/coupling-report.json
 
 metrics-track:  ## Track CC and MI trends over recent git revisions
 	uv run python scripts/track_metrics.py
 
 arch-check:  ## Check architecture layer boundaries (hard gate, no baseline)
 	uv run python scripts/check_architecture.py --no-baseline
+
+arch-check-dynamic:  ## Check dynamic import architecture enforcement
+	uv run python scripts/check_dynamic_imports.py --no-baseline
 
 arch-explain:  ## Display the architecture layer model
 	uv run python scripts/check_architecture.py --explain
@@ -432,6 +435,9 @@ endif
 ifeq ($(CHECK_IMPORT_LINTER),true)
 CHECK_PREREQS += import-linter
 endif
+ifeq ($(CHECK_DYNAMIC_IMPORTS),true)
+CHECK_PREREQS += arch-check-dynamic
+endif
 
 ifeq ($(CHECK_DEPTRY),true)
 CHECK_PREREQS += deptry
@@ -465,7 +471,7 @@ ci-trusted: ci safety-gate  ## Full CI plus authenticated Safety for trusted cod
 # Quality gates
 # ---------------------------------------------------------------------------
 
-.PHONY: file-size suppression-ratchet ruff-architecture typecheck-strict-ratchet semgrep-architecture quality-plan
+ratchets: file-size suppression-ratchet ruff-architecture typecheck-strict-ratchet semgrep-architecture  ## Run all quality gates
 
 file-size:  ## Hard gate: block oversized source files
 	@uv run python scripts/check_file_size.py --max-lines $(FILE_SIZE_CAP); \
@@ -495,15 +501,6 @@ typecheck-strict-ratchet:  ## Hard gate: pyright strict
 
 semgrep-architecture:  ## Ratchet: block new structural findings
 	uv run python scripts/check_semgrep_architecture.py
-
-quality-plan:  ## Run the canonical 20-gate analyser set and write a plan
-	uv run python scripts/generate_quality_plan.py \
-		--out "$${OUT:-.claude/plans/quality-plan.md}" --fail-on-violations
-
-plan-check:  ## Validate plan against prevention rules
-	uv run python scripts/check_plan_compliance.py $${PLAN:+--plan $$PLAN}
-
-ratchets: file-size suppression-ratchet ruff-architecture typecheck-strict-ratchet semgrep-architecture  ## Run all quality gates
 
 # ---------------------------------------------------------------------------
 # Sonar
@@ -558,4 +555,4 @@ refurb:  ## Run Refurb readability advisory checks
 
 .PHONY: quality-architecture
 
-quality-architecture: import-linter arch-check coupling-check  ## Run all architecture checks
+quality-architecture: import-linter arch-check coupling-report  ## Run all architecture checks

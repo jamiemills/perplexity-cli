@@ -287,8 +287,8 @@ class TestQueryAuthenticationErrors:
 
         # Should exit with error code
         assert result.exit_code == 1
-        # Should show authentication error message
-        assert "Unauthorized" in result.output or "ERROR" in result.output
+        assert "[ERROR] Authentication failed" in result.output
+        assert "Re-authenticate with" in result.output
 
     @patch("perplexity_cli.utils.style_manager.StyleManager")
     @patch("perplexity_cli.auth.token_manager.TokenManager")
@@ -322,8 +322,7 @@ class TestQueryAuthenticationErrors:
 
         # Should exit with error code
         assert result.exit_code == 1
-        # Should show rate limit error
-        assert "Rate limit" in result.output or "429" in result.output or "ERROR" in result.output
+        assert "[ERROR] Rate limit exceeded" in result.output
 
 
 class TestAttachmentAuthentication:

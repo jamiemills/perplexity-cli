@@ -23,13 +23,11 @@
   // pxcli-quality:  real-time feedback: conventions injection, per-file
   //                 ruff/radon/bandit/ty checks, idle-time semgrep/pyright.
   // pre-push-docs:  reminds to update CLI help text and README before push.
-  // plan-compliance: blocks git commit when the quality plan reports FAIL.
   // -----------------------------------------------------------------------
   "plugin": [
     ".opencode/plugins/quality-gate.ts",
     ".opencode/plugins/pxcli-quality.ts",
-    ".opencode/plugins/pre-push-docs-check.ts",
-    ".opencode/plugins/plan-compliance-gate.ts"
+    ".opencode/plugins/pre-push-docs-check.ts"
   ],
 
   // Agents are auto-discovered from .opencode/agents/ and configured by

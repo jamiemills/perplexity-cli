@@ -1,5 +1,17 @@
 {
-  "src/perplexity_cli/runners/skill.py": 2,
-  "src/perplexity_cli/utils/config.py": 2,
-  "src/perplexity_cli/utils/retry.py": 1
+  "fingerprints": [
+    "pyproject.toml:0:mutmut-do-not-mutate:**/formatting/registry.py",
+    "src/perplexity_cli/api/client.py:48:no-cover",
+    "src/perplexity_cli/attachments/upload_manager.py:31:no-cover",
+    "src/perplexity_cli/runners/skill.py:5:noqa:ERA001",
+    "src/perplexity_cli/runners/skill.py:5:nosemgrep:python.lang.compatibility.python37.python37-compatibility-importlib2",
+    "src/perplexity_cli/threads/scraper.py:49:no-cover",
+    "src/perplexity_cli/utils/config.py:10:noqa:ERA001",
+    "src/perplexity_cli/utils/config.py:10:nosemgrep:python.lang.compatibility.python37.python37-compatibility-importlib2",
+    "src/perplexity_cli/utils/retry.py:134:nosec",
+    "src/perplexity_cli/utils/session_factory.py:25:no-cover",
+    "src/perplexity_cli/utils/session_factory.py:26:no-cover",
+    "src/perplexity_cli/utils/session_factory.py:72:no-cover",
+    "src/perplexity_cli/utils/session_factory.py:96:no-cover"
+  ]
 }

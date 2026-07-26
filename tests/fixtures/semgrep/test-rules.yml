@@ -1,0 +1,168 @@
+# =============================================================================
+# Test-only Semgrep config — no path exclusions, used for policy fixture tests.
+# =============================================================================
+
+rules:
+  - id: no-single-letter-vars
+    patterns:
+      - pattern: $X = $VAL
+      - metavariable-regex:
+          metavariable: $X
+          regex: '^[a-dghl-mo-uwz]$'
+    message: "Single-letter name '$X' — use a descriptive name (Clean Code Ch.2)."
+    languages: [python]
+    severity: WARNING
+
+  - id: no-hungarian-prefix
+    patterns:
+      - pattern: $VAR = $VAL
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '^(str|int|lst|dct|arr|b)[A-Z].*'
+    message: "Drop type-prefix from '$VAR' (Ch.2)."
+    languages: [python]
+    severity: WARNING
+
+  - id: meaningless-name
+    patterns:
+      - pattern-either:
+          - pattern: $VAR = $VAL
+          - pattern: |
+              def $F(..., $VAR, ...):
+                  ...
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '^(data|info|manager|helper|handler|util|utils|tmp|temp|foo|bar|baz|stuff|thing|obj|item)$'
+    message: "Vague name '$VAR' — convey intent, not category (Ch.2)."
+    languages: [python]
+    severity: WARNING
+
+  - id: boolean-flag-argument
+    pattern-either:
+      - pattern: |
+          def $F(..., $FLAG: bool = ..., ...):
+              ...
+      - pattern: |
+          def $F(..., $FLAG: bool, ...):
+              ...
+      - pattern: |
+          def $F(..., $FLAG = True, ...):
+              ...
+      - pattern: |
+          def $F(..., $FLAG = False, ...):
+              ...
+    message: "Boolean flag in '$F' signals two responsibilities."
+    languages: [python]
+    severity: WARNING
+
+  - id: except-pass
+    pattern: |
+      try:
+          ...
+      except ...:
+          pass
+    message: "Silently swallowing exceptions hides bugs (Ch.7)."
+    languages: [python]
+    severity: ERROR
+
+  - id: eval-or-exec
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+    message: "eval/exec are dangerous."
+    languages: [python]
+    severity: ERROR
+
+  - id: wildcard-import
+    pattern: from $M import *
+    message: "Wildcard import pollutes namespace."
+    languages: [python]
+    severity: WARNING
+
+  - id: equality-with-none
+    pattern-either:
+      - pattern: $X == None
+      - pattern: $X != None
+    message: "Use 'is None' / 'is not None'."
+    languages: [python]
+    severity: WARNING
+
+  - id: equality-with-bool-literal
+    pattern-either:
+      - pattern: $X == True
+      - pattern: $X == False
+      - pattern: $X != True
+      - pattern: $X != False
+    message: "Compare truthiness directly."
+    languages: [python]
+    severity: WARNING
+
+  - id: commented-out-code
+    pattern-regex: '(?m)^\s*#\s*(if .+:|elif .+:|for .+ in .+:|while .+:|def \w+\(|class \w+[\(:]|return\b|import \w|from \w+ import)'
+    message: "Commented-out code — delete it."
+    languages: [python]
+    severity: WARNING
+
+  - id: fstring-in-logging
+    pattern-either:
+      - pattern: $LOG.debug(f"...")
+      - pattern: $LOG.info(f"...")
+      - pattern: $LOG.warning(f"...")
+      - pattern: $LOG.error(f"...")
+      - pattern: $LOG.critical(f"...")
+      - pattern: $LOG.exception(f"...")
+    message: "Use lazy logging args."
+    languages: [python]
+    severity: WARNING
+
+  - id: todo-fixme-without-ticket
+    pattern-regex: '#\s*(?P<TAG>TODO|FIXME|HACK|XXX)(?!\s*\()'
+    message: "Tag bare '$TAG' with a ticket reference."
+    languages: [python]
+    severity: INFO
+
+  - id: hardcoded-magic-number
+    patterns:
+      - pattern-either:
+          - pattern: |
+              if $X > $N:
+                  ...
+          - pattern: |
+              if $X < $N:
+                  ...
+          - pattern: |
+              if $X >= $N:
+                  ...
+          - pattern: |
+              if $X <= $N:
+                  ...
+      - metavariable-regex:
+          metavariable: $N
+          regex: '^([2-9]|[1-9][0-9]+)$'
+    message: "Magic number."
+    languages: [python]
+    severity: WARNING
+
+  - id: raise-without-from-in-except
+    patterns:
+      - pattern: |
+          try:
+              ...
+          except $E as $X:
+              ...
+              raise $NEW(...)
+      - pattern-not: |
+          try:
+              ...
+          except $E as $X:
+              ...
+              raise $NEW(...) from $Y
+      - pattern-not: |
+          try:
+              ...
+          except $E as $X:
+              ...
+              raise $NEW(...) from None
+    message: "Re-raising without 'from' loses traceback."
+    languages: [python]
+    severity: WARNING

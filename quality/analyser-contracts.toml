@@ -1,0 +1,391 @@
+# =============================================================================
+# quality/analyser-contracts.toml — stable inventory of quality analysers.
+#
+# Each analyser declares its canonical Make target, the phases it belongs to,
+# and the expected process-exit behaviour for every known outcome state.
+#
+# Contracts are used by scripts/check_analyser_contracts.py to verify that
+# analysers behave as expected (exit codes, signals) when invoked through
+# their canonical target.
+#
+# Schema: [[analysers]] array with id, target, phase, status, description,
+#         and [analysers.states.<state>] tables declaring exit_min, exit_max,
+#         and optional signal.
+# =============================================================================
+
+[schema]
+version = 1
+
+# ---------------------------------------------------------------------------
+# Phase 1 — Basic static analysis (format, lint, typecheck, security, dead-code)
+# ---------------------------------------------------------------------------
+
+[[analysers]]
+id = "format-check"
+target = "format-check"
+phase = 1
+status = "active"
+description = "Code formatting verification via ruff format --check"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "lint"
+target = "lint"
+phase = 1
+status = "active"
+description = "Lint violations via ruff check"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "typecheck-pyright"
+target = "typecheck-pyright"
+phase = 1
+status = "active"
+description = "Type checking via pyright"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "typecheck-ty"
+target = "typecheck"
+phase = 1
+status = "active"
+description = "Type checking via ty"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "bandit"
+target = "bandit"
+phase = 1
+status = "active"
+description = "Security linting via bandit"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "vulture"
+target = "vulture"
+phase = 1
+status = "active"
+description = "Dead-code detection via vulture"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "semgrep"
+target = "semgrep"
+phase = 1
+status = "active"
+description = "Immutable blocking Semgrep ruleset"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "complexity-cc"
+target = "complexity-cc"
+phase = 1
+status = "active"
+description = "Cyclomatic-complexity ceilings via radon"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "complexity-mi"
+target = "complexity-mi"
+phase = 1
+status = "active"
+description = "Maintainability-index floors via radon"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Architecture enforcement
+# ---------------------------------------------------------------------------
+
+[[analysers]]
+id = "architecture"
+target = "arch-check"
+phase = 2
+status = "active"
+description = "Layer-boundary and import-direction enforcement"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "dynamic-imports"
+target = "arch-check-dynamic"
+phase = 2
+status = "active"
+description = "Dynamic-import architecture enforcement"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "coupling"
+target = "coupling-check"
+phase = 2
+status = "active"
+description = "Advisory coupling and stability metrics"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.graph-error]
+exit_min = 1
+exit_max = 1
+
+[analysers.states.syntax-error]
+exit_min = 2
+exit_max = 2
+
+[analysers.states.read-error]
+exit_min = 3
+exit_max = 3
+
+[analysers.states.config-error]
+exit_min = 4
+exit_max = 4
+
+[[analysers]]
+id = "import-linter"
+target = "import-linter"
+phase = 2
+status = "active"
+description = "Import-contract enforcement via lint-imports"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "deptry"
+target = "deptry"
+phase = 2
+status = "active"
+description = "Dependency hygiene via deptry"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Secret detection
+# ---------------------------------------------------------------------------
+
+[[analysers]]
+id = "gitleaks"
+target = "gitleaks-ci"
+phase = 3
+status = "pending"
+description = "Secret detection via gitleaks (pending integration)"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.secrets-found]
+exit_min = 1
+exit_max = 1
+
+[analysers.states.unavailable]
+exit_min = 2
+exit_max = 2
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Coverage and mutation testing
+# ---------------------------------------------------------------------------
+
+[[analysers]]
+id = "module-coverage"
+target = "module-coverage"
+phase = 4
+status = "pending"
+description = "Per-module coverage enforcement (pending integration)"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "mutation"
+target = "mutate"
+phase = 4
+status = "pending"
+description = "Mutation testing via mutmut (pending integration)"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.mutants-survived]
+exit_min = 1
+exit_max = 1
+
+# ---------------------------------------------------------------------------
+# Phase 5 — Quality ratchets
+# ---------------------------------------------------------------------------
+
+[[analysers]]
+id = "file-size"
+target = "file-size"
+phase = 5
+status = "active"
+description = "File-size ratchet gate (blocks new or grown oversized files)"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.regression]
+exit_min = 1
+exit_max = 1
+
+[analysers.states.usage-error]
+exit_min = 2
+exit_max = 2
+
+[[analysers]]
+id = "suppression-ratchet"
+target = "suppression-ratchet"
+phase = 5
+status = "active"
+description = "Inline-suppression ratchet (blocks new or grown suppressions)"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.regression]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "ruff-architecture"
+target = "ruff-architecture"
+phase = 5
+status = "active"
+description = "Ruff-complexity ratchet (blocks new complexity/parameter findings)"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.regression]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "typecheck-strict-ratchet"
+target = "typecheck-strict-ratchet"
+phase = 5
+status = "active"
+description = "Pyright-strict ratchet (blocks new Any/unknown diagnostics)"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.regression]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "semgrep-architecture"
+target = "semgrep-architecture"
+phase = 5
+status = "active"
+description = "Semgrep structural-prevention ratchet (blocks new structural findings)"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.regression]
+exit_min = 1
+exit_max = 1
+
+[analysers.states.internal-error]
+exit_min = 2
+exit_max = 2

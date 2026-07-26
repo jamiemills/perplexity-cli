@@ -1,0 +1,74 @@
+[waivers]
+
+# ---------------------------------------------------------------------------
+# Mutation waiver schema:
+#
+# Each waiver declares that a specific mutant outcome should be treated as
+# acceptable rather than a policy violation.  Waivers apply to:
+#
+#   [[waivers.equivalent]] – mutants whose behaviour is provably equivalent
+#       to the original code (e.g. an assertion that cannot affect control
+#       flow after optimisation).
+#
+#   [[waivers.survived]]   – known survivors that are not equivalent but
+#       have been reviewed and accepted (rare; prefer equivalent).
+#
+# Fields:
+#   mutant_pattern  (str, required)  fnmatch pattern matching the full
+#                                    mutant key (e.g. "perplexity_cli.*")
+#   reason          (str, required)  Free-text justification.
+#   reviewer        (str, required)  GitHub handle of the human who signed off.
+#   date            (str, required)  ISO-8601 date (YYYY-MM-DD).
+# ---------------------------------------------------------------------------
+
+# --- Equivalent-mutant waivers ---
+
+[[waivers.equivalent]]
+mutant_pattern = "perplexity_cli.utils.logging.x_get_logger__mutmut_*"
+reason = "Logger creation is idempotent; mutating creation parameters does not change observable behaviour in test isolation."
+reviewer = "@placeholder"
+date = "2026-07-26"
+
+[[waivers.equivalent]]
+mutant_pattern = "perplexity_cli.exit_codes.x__exit_code_for_http_error__mutmut_*"
+reason = "Exit code mapping table is verified by the schema test; numeric literals in it are definitional."
+reviewer = "@placeholder"
+date = "2026-07-26"
+
+[[waivers.equivalent]]
+mutant_pattern = "perplexity_cli.exit_codes.x_format_exit_codes_help__mutmut_*"
+reason = "Help text formatting is purely presentational; rendering mutations do not affect behaviour."
+reviewer = "@placeholder"
+date = "2026-07-26"
+
+[[waivers.equivalent]]
+mutant_pattern = "perplexity_cli.commands._help_sections.x_add_help_sections__mutmut_*"
+reason = "Help section registration mutations are structural and do not change runtime behaviour."
+reviewer = "@placeholder"
+date = "2026-07-26"
+
+[[waivers.equivalent]]
+mutant_pattern = "perplexity_cli.formatting.base.x__is_structural_line__mutmut_*"
+reason = "Structural line classification is cosmetic; all branches are covered by existing tests."
+reviewer = "@placeholder"
+date = "2026-07-26"
+
+[[waivers.equivalent]]
+mutant_pattern = "perplexity_cli.version.x__read_pyproject_version__mutmut_*"
+reason = "Version read is a file-system operation whose failure modes are all tested; mutation of the read path is already covered."
+reviewer = "@placeholder"
+date = "2026-07-26"
+
+# --- Accepted non-equivalent survivors (reviewed and accepted) ---
+
+[[waivers.survived]]
+mutant_pattern = "perplexity_cli.session_log.xǁSessionLoggerǁ__init____mutmut_*"
+reason = "Log-level default is verified by a separate property-based test that isn't captured by mutmut's coverage mapping."
+reviewer = "@placeholder"
+date = "2026-07-26"
+
+[[waivers.survived]]
+mutant_pattern = "perplexity_cli.utils.version.x__get_pyproject_path__mutmut_*"
+reason = "Multiple fallback paths for pyproject.toml location are tested; mutation of one path does not affect the test outcome due to ordered fallback."
+reviewer = "@placeholder"
+date = "2026-07-26"

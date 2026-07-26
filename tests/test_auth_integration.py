@@ -1,5 +1,7 @@
 """Integration tests for authentication flow."""
 
+from __future__ import annotations
+
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -13,8 +15,9 @@ from perplexity_cli.auth.oauth_handler import (
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.utils.exceptions import AuthenticationError
 
+pytestmark = [pytest.mark.integration]
 
-@pytest.mark.integration
+
 class TestAuthenticationFlow:
     """Test complete authentication workflows."""
 
@@ -72,9 +75,12 @@ class TestAuthenticationFlow:
 
         client = ChromeDevToolsClient(port=9222)
 
-        with patch("perplexity_cli.auth.oauth_handler.urllib.request.urlopen") as mock_urlopen:
-            mock_response = mock_urlopen.return_value.__enter__.return_value
-            mock_response.read.return_value = b'{"not": "a list"}'
+        with patch(
+            "perplexity_cli.auth.oauth_handler.httpx.get",
+        ) as mock_get:
+            mock_response = mock_get.return_value
+            mock_response.raise_for_status.return_value = None
+            mock_response.json.return_value = {"not": "a list"}
 
             with pytest.raises(AuthenticationError, match="invalid targets payload"):
                 await client.connect()
@@ -91,7 +97,6 @@ class TestAuthenticationFlow:
             mock_run.call_args.args[0].close()
 
 
-@pytest.mark.integration
 class TestTokenLifecycle:
     """Test token lifecycle management."""
 
@@ -157,7 +162,6 @@ class TestTokenLifecycle:
             assert loaded == test_token
 
 
-@pytest.mark.integration
 class TestErrorRecovery:
     """Test error recovery scenarios."""
 

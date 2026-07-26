@@ -242,6 +242,9 @@ def _run_sequential(analysers: tuple[Analyser, ...], cwd: str) -> list[AnalyserR
 
 def _run_parallel(analysers: tuple[Analyser, ...], cwd: str) -> list[AnalyserResult]:
     """Run analysers in parallel, collecting all results."""
+    if not analysers:
+        return []
+
     from concurrent.futures import ThreadPoolExecutor
 
     results: list[AnalyserResult] = []

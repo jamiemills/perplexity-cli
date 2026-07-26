@@ -1,0 +1,11 @@
+[[waivers.equivalent]]
+mutant_pattern = "perplexity_cli.utils.logging.x_get_logger__mutmut_*"
+reason = "Logger creation is idempotent; mutating creation parameters does not change observable behaviour."
+reviewer = "@test"
+date = "2026-07-26"
+
+[[waivers.survived]]
+mutant_pattern = "perplexity_cli.session_log.x*SessionLogger*__init__*__mutmut_*"
+reason = "Log-level default is verified by a separate property-based test."
+reviewer = "@test"
+date = "2026-07-26"

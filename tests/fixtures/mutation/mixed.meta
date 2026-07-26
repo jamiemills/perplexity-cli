@@ -1,0 +1,14 @@
+{
+    "exit_code_by_key": {
+        "perplexity_cli.mcp_server.x__parse_args__mutmut_1": 0,
+        "perplexity_cli.mcp_server.x__parse_args__mutmut_2": 1,
+        "perplexity_cli.mcp_server.x__parse_args__mutmut_3": 1
+    },
+    "durations_by_key": {
+        "perplexity_cli.mcp_server.x__parse_args__mutmut_1": 0.4,
+        "perplexity_cli.mcp_server.x__parse_args__mutmut_2": 0.3,
+        "perplexity_cli.mcp_server.x__parse_args__mutmut_3": 0.3
+    },
+    "type_check_error_by_key": {},
+    "estimated_durations_by_key": {}
+}

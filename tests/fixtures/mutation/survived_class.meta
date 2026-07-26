@@ -1,0 +1,9 @@
+{
+    "exit_code_by_key": {
+        "perplexity_cli.session_log.x_SessionLogger___init____mutmut_1": 0,
+        "perplexity_cli.session_log.x_SessionLogger___init____mutmut_2": 0
+    },
+    "durations_by_key": {},
+    "type_check_error_by_key": {},
+    "estimated_durations_by_key": {}
+}

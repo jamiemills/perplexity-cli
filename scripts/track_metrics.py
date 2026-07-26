@@ -68,6 +68,7 @@ def _git_log(revisions: int) -> list[tuple[str, str, str]]:
         capture_output=True,
         text=True,
         cwd=str(PROJECT_ROOT),
+        check=False,
     )
     if result.returncode != 0:
         print("Failed to read git history", file=sys.stderr)
@@ -99,6 +100,7 @@ def _git_since(since_date: str) -> list[tuple[str, str, str]]:
         capture_output=True,
         text=True,
         cwd=str(PROJECT_ROOT),
+        check=False,
     )
     if result.returncode != 0:
         print("Failed to read git history", file=sys.stderr)
@@ -122,6 +124,7 @@ def _checkout_revision(rev: str, tmpdir: str) -> bool:
         capture_output=True,
         text=True,
         cwd=str(PROJECT_ROOT),
+        check=False,
     )
     if result.returncode != 0:
         return False
@@ -130,6 +133,7 @@ def _checkout_revision(rev: str, tmpdir: str) -> bool:
         ["tar", "-xf", f"{tmpdir}/src.tar", "-C", tmpdir],
         capture_output=True,
         text=True,
+        check=False,
     )
     return extract.returncode == 0
 
@@ -155,6 +159,7 @@ def _run_radon_cc(tmpdir: str) -> tuple[int, str]:
         capture_output=True,
         text=True,
         cwd=str(PROJECT_ROOT),
+        check=False,
     )
     output = result.stdout.strip()
     if not output:
@@ -182,6 +187,7 @@ def _run_radon_mi(tmpdir: str) -> tuple[int, str]:
         capture_output=True,
         text=True,
         cwd=str(PROJECT_ROOT),
+        check=False,
     )
     output = result.stdout.strip()
     if not output:

@@ -413,7 +413,8 @@ class TestQualityGatesMatchesRepo:
         assert "canonical immutable Semgrep" in text
         assert "Tool and parser failures become visible error findings" in text
         assert "reactive plugin does not record them" in text
-        assert "With no canonical plan, it allows the commit" in text
+        # Plan-compliance mechanism was deleted (Rank 15 remediation).
+        # The remaining 3 plugins are quality-gate, pxcli-quality, pre-push-docs-check.
 
     def test_trusted_safety_and_semgrep_snapshot_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
@@ -445,10 +446,8 @@ class TestQualityGatesMatchesRepo:
 
     def test_quality_plan_scope_and_check_toggles_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "canonical 20-gate planning set" in text
-        assert "does not represent every auxiliary" in text
         assert "`CHECK_DEPTRY` | true" in text
-        assert "`CHECK_IMPORT_LINTER` | false" in text
+        assert "`CHECK_IMPORT_LINTER` | true" in text
         assert "including enabled Deptry" in text
 
 

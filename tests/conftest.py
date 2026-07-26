@@ -69,3 +69,55 @@ def isolate_config_dir(tmp_path, monkeypatch, request):
         config_dir = tmp_path / "perplexity-cli-config"
         monkeypatch.setenv("PERPLEXITY_CONFIG_DIR", str(config_dir))
         yield
+
+
+# ---------------------------------------------------------------------------
+# Integration harness fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def harness_server():
+    """Provide a started local loopback ProtocolServer and stop it after.
+
+    Binds to a random free port on 127.0.0.1.  Tests configure canned
+    responses via ``server.query_response``, ``server.upload_url_response``,
+    and ``server.upload_put_response`` before issuing requests.
+    """
+    from tests.support.protocol_server import ProtocolServer
+
+    srv = ProtocolServer()
+    srv.start()
+    try:
+        yield srv
+    finally:
+        srv.stop()
+
+
+@pytest.fixture
+def fake_time(harness_server):
+    """Provide the harness server's fake clock for retry-timing tests.
+
+    Sets ``fake_now`` to a known epoch so tests can advance time
+    deterministically through ``harness_server.advance_clock()``.
+    """
+    from tests.support.protocol_server import fake_time_monotonic
+
+    return lambda: fake_time_monotonic(harness_server)
+
+
+@pytest.fixture
+def harness_config(harness_server, monkeypatch):
+    """Point the query endpoint at the local harness server.
+
+    Overrides ``PERPLEXITY_QUERY_ENDPOINT``, ``PERPLEXITY_UPLOAD_URL_ENDPOINT``,
+    and ``PERPLEXITY_S3_BUCKET_URL`` so integration tests never reach the
+    real internet.  The ``_guard_network`` fixture provides a second layer.
+    """
+    monkeypatch.setenv("PERPLEXITY_QUERY_ENDPOINT", f"{harness_server.url}/api/query")
+    monkeypatch.setenv(
+        "PERPLEXITY_UPLOAD_URL_ENDPOINT",
+        f"{harness_server.url}/api/upload-url",
+    )
+    monkeypatch.setenv("PERPLEXITY_S3_BUCKET_URL", f"{harness_server.url}/upload")
+    return harness_server

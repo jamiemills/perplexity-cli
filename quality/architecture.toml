@@ -1,0 +1,264 @@
+# =============================================================================
+# quality/architecture.toml — canonical module-to-layer classification
+#
+# Schema (documented):
+#   [schema]                  — schema version for validation
+#   [[layers]]                — architectural layer definitions
+#     name                    — layer identifier (domain, ports, application,
+#                               adapter, presentation, composition_root,
+#                               shared_pure)
+#     description             — human-readable description of the layer
+#     allowed_deps            — names of layers this layer may import from
+#     modules                 — list of dot-separated module paths relative to
+#                               the root package "perplexity_cli".  Each path
+#                               must be a single leaf module (not a package
+#                               glob).  Package __init__.py files use the
+#                               package name (e.g. "api" for api/__init__.py).
+#                               The root __init__.py is represented as ".".
+#
+#   [[adapter_independence]]  — groups of adapter modules that must remain
+#                               independent (may not import each other's
+#                               non-port modules).
+#     name                    — human-readable name for the group
+#     modules                 — list of module paths within this group
+#     may_import_from         — adapter group names this group is allowed to
+#                               import from
+#
+#   [[composition_roots]]     — modules that handle dependency wiring and are
+#                               allowed to import from any layer.
+#     modules                 — list of module paths
+#
+# Validation rules enforced by scripts/architecture_model.py:
+#   1. Every module listed under `git ls-files src/perplexity_cli/**.py`
+#      must be classified exactly once.
+#   2. No duplicate or overlapping module assignments.
+#   3. No invalid layer names in allowed_deps.
+#   4. No unknown modules referenced in allowed_deps or adapter_independence.
+# =============================================================================
+
+[schema]
+version = 1
+
+# ---------------------------------------------------------------------------
+# Layer definitions
+# ---------------------------------------------------------------------------
+
+[[layers]]
+name = "shared_pure"
+description = "Pure utility code importing only from the standard library and other shared_pure modules"
+allowed_deps = ["shared_pure"]
+modules = [
+    "utils.exceptions",
+]
+
+[[layers]]
+name = "domain"
+description = "Core business objects, value types, and domain rules — no framework imports beyond pydantic"
+allowed_deps = ["shared_pure", "domain"]
+modules = [
+    "_types",
+    "config.defaults",
+    "config.models",
+    "envelope",
+    "models",
+    "models.model_config",
+    "ndjson",
+]
+
+[[layers]]
+name = "ports"
+description = "Interface definitions, data contracts, and abstract base classes defining how the outside world connects to the domain"
+allowed_deps = ["shared_pure", "domain", "ports"]
+modules = [
+    "api.contracts",
+    "api.models",
+    "auth.models",
+    "threads.models",
+    "utils.attachment_models",
+    "utils.rate_limiter_models",
+    "utils.upstream_contracts",
+]
+
+[[layers]]
+name = "application"
+description = "Use cases, orchestration, and cross-cutting application concerns — depends on domain and ports, never on adapters or presentation"
+allowed_deps = ["shared_pure", "domain", "ports", "application"]
+modules = [
+    "exit_codes",
+    "query_runner",
+    "query_streaming",
+    "services",
+    "services.model_service",
+    "session_log",
+]
+
+[[layers]]
+name = "adapter"
+description = "Concrete infrastructure implementations — HTTP clients, auth flows, file I/O, encryption, logging, retry"
+allowed_deps = ["shared_pure", "domain", "ports", "adapter"]
+modules = [
+    "api",
+    "api.client",
+    "api.endpoints",
+    "api.rest_client",
+    "attachments",
+    "attachments.upload_manager",
+    "auth",
+    "auth.oauth_handler",
+    "auth.token_manager",
+    "auth.utils",
+    "config",
+    "threads",
+    "threads.cache_manager",
+    "threads.date_parser",
+    "threads.exporter",
+    "threads.scraper",
+    "threads.utils",
+    "utils",
+    "utils.async_bridge",
+    "utils.config",
+    "utils.cookies",
+    "utils.encryption",
+    "utils.file_handler",
+    "utils.file_permissions",
+    "utils.http_errors",
+    "utils.http_headers",
+    "utils.logging",
+    "utils.rate_limiter",
+    "utils.retry",
+    "utils.session_factory",
+    "utils.session_token",
+    "utils.style_manager",
+    "utils.version",
+]
+
+[[layers]]
+name = "presentation"
+description = "CLI user interface, command definitions, output formatting, error display — may depend on everything except adapter internals"
+allowed_deps = ["shared_pure", "domain", "ports", "application", "presentation", "composition_root"]
+modules = [
+    "commands",
+    "commands._ctx",
+    "commands._examples",
+    "commands._help_refs",
+    "commands._help_sections",
+    "commands._runner_adapter",
+    "commands._schemas",
+    "commands.auth_cmds",
+    "commands.config_cmds",
+    "commands.doctor_cmds",
+    "commands.models_cmds",
+    "commands.query_cmd",
+    "commands.schema_cmd",
+    "commands.skill_cmds",
+    "commands.style_cmds",
+    "commands.threads_cmds",
+    "completion_commands",
+    "error_handler",
+    "formatting",
+    "formatting.base",
+    "formatting.context",
+    "formatting.json",
+    "formatting.markdown",
+    "formatting.plain",
+    "formatting.registry",
+    "formatting.rich",
+    "help_json",
+    "mcp_server",
+    "runners",
+    "runners._utils",
+    "runners.auth",
+    "runners.config",
+    "runners.export",
+    "runners.models",
+    "runners.skill",
+    "runners.status",
+]
+
+[[layers]]
+name = "composition_root"
+description = "Dependency wiring — the root object graph is assembled here; may import from every layer"
+allowed_deps = ["shared_pure", "domain", "ports", "application", "adapter", "presentation", "composition_root"]
+modules = [
+    ".",
+    "cli",
+    "command_runner",
+]
+
+# ---------------------------------------------------------------------------
+# Adapter independence groups
+# ---------------------------------------------------------------------------
+
+[[adapter_independence]]
+name = "api_adapter"
+modules = [
+    "api.client",
+    "api.endpoints",
+    "api.rest_client",
+]
+may_import_from = ["utils_adapter"]
+
+[[adapter_independence]]
+name = "auth_adapter"
+modules = [
+    "auth.oauth_handler",
+    "auth.token_manager",
+    "auth.utils",
+]
+may_import_from = ["utils_adapter"]
+
+[[adapter_independence]]
+name = "attachments_adapter"
+modules = [
+    "attachments.upload_manager",
+]
+may_import_from = ["api_adapter", "utils_adapter"]
+
+[[adapter_independence]]
+name = "threads_adapter"
+modules = [
+    "threads.cache_manager",
+    "threads.date_parser",
+    "threads.exporter",
+    "threads.scraper",
+    "threads.utils",
+]
+may_import_from = ["utils_adapter"]
+
+[[adapter_independence]]
+name = "config_adapter"
+modules = [
+    "config",
+]
+may_import_from = ["utils_adapter"]
+
+[[adapter_independence]]
+name = "utils_adapter"
+modules = [
+    "utils.async_bridge",
+    "utils.config",
+    "utils.cookies",
+    "utils.encryption",
+    "utils.file_handler",
+    "utils.file_permissions",
+    "utils.http_errors",
+    "utils.http_headers",
+    "utils.logging",
+    "utils.rate_limiter",
+    "utils.retry",
+    "utils.session_factory",
+    "utils.session_token",
+    "utils.style_manager",
+    "utils.version",
+]
+may_import_from = []
+
+# ---------------------------------------------------------------------------
+# Composition roots
+# ---------------------------------------------------------------------------
+
+[[composition_roots]]
+modules = [
+    "cli",
+    "command_runner",
+]

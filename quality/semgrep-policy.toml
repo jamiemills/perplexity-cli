@@ -1,0 +1,382 @@
+# =============================================================================
+# quality/semgrep-policy.toml — canonical rule inventory and policy manifest
+#
+# Every custom rule in .semgrep.yml and .semgrep-architecture.yml is
+# registered here with its owner, severity, blocking/advisory status,
+# target paths, fixture references, and allowed suppression locations.
+# =============================================================================
+
+[schema]
+version = 1
+
+# ---------------------------------------------------------------------------
+# Clean Code rules (.semgrep.yml)
+# ---------------------------------------------------------------------------
+
+[[rules]]
+id = "no-single-letter-vars"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.2 — Meaningful Names"
+positive_fixture = "tests/fixtures/semgrep/single_letter_var.py"
+negative_fixture = "tests/fixtures/semgrep/descriptive_name.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "no-hungarian-prefix"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.2 — Meaningful Names"
+positive_fixture = "tests/fixtures/semgrep/hungarian_prefix.py"
+negative_fixture = "tests/fixtures/semgrep/descriptive_name.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "meaningless-name"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.2 — Meaningful Names"
+positive_fixture = "tests/fixtures/semgrep/meaningless_name.py"
+negative_fixture = "tests/fixtures/semgrep/descriptive_name.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "too-many-parameters"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.3 — Functions"
+positive_fixture = "tests/fixtures/semgrep/too_many_params.py"
+negative_fixture = "tests/fixtures/semgrep/few_params.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "boolean-flag-argument"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.3 — Functions"
+positive_fixture = "tests/fixtures/semgrep/boolean_flag.py"
+negative_fixture = "tests/fixtures/semgrep/no_bool_flag.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "todo-fixme-without-ticket"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "INFO"
+blocking = false
+chapter = "Ch.4 — Comments"
+positive_fixture = "tests/fixtures/semgrep/bare_todo.py"
+negative_fixture = "tests/fixtures/semgrep/ticketed_todo.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "commented-out-code"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.4 — Comments"
+positive_fixture = "tests/fixtures/semgrep/commented_out_code.py"
+negative_fixture = "tests/fixtures/semgrep/plain_comment.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "except-pass"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "ERROR"
+blocking = true
+chapter = "Ch.7 — Error Handling"
+positive_fixture = "tests/fixtures/semgrep/except_pass.py"
+negative_fixture = "tests/fixtures/semgrep/except_log.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "except-broad-exception"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.7 — Error Handling"
+positive_fixture = "tests/fixtures/semgrep/broad_except.py"
+negative_fixture = "tests/fixtures/semgrep/specific_except.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "raise-without-from-in-except"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.7 — Error Handling"
+positive_fixture = "tests/fixtures/semgrep/raise_no_from.py"
+negative_fixture = "tests/fixtures/semgrep/raise_with_from.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "print-as-logging"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.8/10 — Boundaries & SRP"
+positive_fixture = "tests/fixtures/semgrep/print_statement.py"
+negative_fixture = "tests/fixtures/semgrep/logging_usage.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "fstring-in-logging"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.8/10 — Boundaries & SRP"
+positive_fixture = "tests/fixtures/semgrep/fstring_log.py"
+negative_fixture = "tests/fixtures/semgrep/lazy_log.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "wildcard-import"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.8/10 — Boundaries & SRP"
+positive_fixture = "tests/fixtures/semgrep/wildcard_import.py"
+negative_fixture = "tests/fixtures/semgrep/explicit_import.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "hardcoded-magic-number"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.17 — Smells & Heuristics"
+positive_fixture = "tests/fixtures/semgrep/magic_number.py"
+negative_fixture = "tests/fixtures/semgrep/named_constant.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "equality-with-none"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.17 — Smells & Heuristics"
+positive_fixture = "tests/fixtures/semgrep/eq_none.py"
+negative_fixture = "tests/fixtures/semgrep/is_none.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "equality-with-bool-literal"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.17 — Smells & Heuristics"
+positive_fixture = "tests/fixtures/semgrep/eq_bool.py"
+negative_fixture = "tests/fixtures/semgrep/truthiness.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "equality-with-empty-container"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "INFO"
+blocking = false
+chapter = "Ch.17 — Smells & Heuristics"
+positive_fixture = "tests/fixtures/semgrep/eq_empty.py"
+negative_fixture = "tests/fixtures/semgrep/truthiness_empty.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "len-comparison-instead-of-truthiness"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.17 — Smells & Heuristics"
+positive_fixture = "tests/fixtures/semgrep/len_check.py"
+negative_fixture = "tests/fixtures/semgrep/truthiness_empty.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "range-len-instead-of-enumerate"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.17 — Smells & Heuristics"
+positive_fixture = "tests/fixtures/semgrep/range_len.py"
+negative_fixture = "tests/fixtures/semgrep/enumerate_usage.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "eval-or-exec"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "ERROR"
+blocking = true
+chapter = "Ch.17 — Smells & Heuristics"
+positive_fixture = "tests/fixtures/semgrep/eval_exec.py"
+negative_fixture = "tests/fixtures/semgrep/no_eval_exec.py"
+suppression_allowed = ["inline"]
+
+[[rules]]
+id = "getattr-with-string-literal"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "clean-code"
+severity = "WARNING"
+blocking = true
+chapter = "Ch.17 — Smells & Heuristics"
+positive_fixture = "tests/fixtures/semgrep/string_getattr.py"
+negative_fixture = "tests/fixtures/semgrep/explicit_access.py"
+suppression_allowed = ["inline"]
+
+# ---------------------------------------------------------------------------
+# Vendored credential-logging rule
+# ---------------------------------------------------------------------------
+
+[[rules]]
+id = "custom.credential-logging-vendored"
+source = ".semgrep.yml"
+owner = "semgrep"
+category = "security"
+severity = "WARNING"
+blocking = true
+chapter = "Security — credential disclosure via logging"
+positive_fixture = "tests/fixtures/semgrep/credential_logger.py"
+negative_fixture = "tests/fixtures/semgrep/safe_logger.py"
+suppression_allowed = ["inline"]
+
+# ---------------------------------------------------------------------------
+# Architecture rules (moved from .semgrep-architecture.yml)
+# ---------------------------------------------------------------------------
+
+[[rules]]
+id = "function-local-import"
+source = ".semgrep.yml"
+owner = "architecture"
+category = "structural"
+severity = "WARNING"
+blocking = false
+review_section = "§6 — tangled dependency graph"
+positive_fixture = "tests/fixtures/semgrep/local_import.py"
+negative_fixture = "tests/fixtures/semgrep/top_level_import.py"
+suppression_allowed = ["inline", "baseline"]
+
+[[rules]]
+id = "retry-sleep-outside-canonical"
+source = ".semgrep.yml"
+owner = "architecture"
+category = "structural"
+severity = "WARNING"
+blocking = false
+review_section = "§2a — retry backoff"
+positive_fixture = "tests/fixtures/semgrep/sleep_outside_retry.py"
+negative_fixture = "tests/fixtures/semgrep/sleep_in_retry.py"
+suppression_allowed = ["inline", "baseline"]
+
+[[rules]]
+id = "ad-hoc-http-status-classification"
+source = ".semgrep.yml"
+owner = "architecture"
+category = "structural"
+severity = "WARNING"
+blocking = false
+review_section = "§4 — divergent HTTP-status classification"
+positive_fixture = "tests/fixtures/semgrep/ad_hoc_status.py"
+negative_fixture = "tests/fixtures/semgrep/canonical_status.py"
+suppression_allowed = ["inline", "baseline"]
+
+[[rules]]
+id = "sys-exit-outside-boundary"
+source = ".semgrep.yml"
+owner = "architecture"
+category = "structural"
+severity = "WARNING"
+blocking = false
+review_section = "§2b — process control"
+positive_fixture = "tests/fixtures/semgrep/sys_exit_bad.py"
+negative_fixture = "tests/fixtures/semgrep/sys_exit_ok.py"
+suppression_allowed = ["inline", "baseline"]
+
+[[rules]]
+id = "http-client-outside-transport"
+source = ".semgrep.yml"
+owner = "architecture"
+category = "structural"
+severity = "WARNING"
+blocking = false
+review_section = "§6 — HTTP-client construction"
+positive_fixture = "tests/fixtures/semgrep/http_client_bad.py"
+negative_fixture = "tests/fixtures/semgrep/http_client_ok.py"
+suppression_allowed = ["inline", "baseline"]
+
+[[rules]]
+id = "write-then-chmod-toctou"
+source = ".semgrep.yml"
+owner = "architecture"
+category = "security"
+severity = "WARNING"
+blocking = false
+review_section = "§2c — TOCTOU"
+positive_fixture = "tests/fixtures/semgrep/toctou_bad.py"
+negative_fixture = "tests/fixtures/semgrep/toctou_safe.py"
+suppression_allowed = ["inline", "baseline"]
+
+[[rules]]
+id = "getter-with-side-effects"
+source = ".semgrep.yml"
+owner = "architecture"
+category = "structural"
+severity = "WARNING"
+blocking = false
+review_section = "§7 — getter with side effects"
+positive_fixture = "tests/fixtures/semgrep/getter_bad.py"
+negative_fixture = "tests/fixtures/semgrep/getter_ok.py"
+suppression_allowed = ["inline", "baseline"]
+
+[[rules]]
+id = "click-echo-outside-presentation"
+source = ".semgrep.yml"
+owner = "architecture"
+category = "structural"
+severity = "WARNING"
+blocking = false
+review_section = "§4 — presentation leaking"
+positive_fixture = "tests/fixtures/semgrep/click_echo_bad.py"
+negative_fixture = "tests/fixtures/semgrep/click_echo_ok.py"
+suppression_allowed = ["inline", "baseline"]

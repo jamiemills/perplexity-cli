@@ -24,9 +24,9 @@ def _parse_json_stdout(captured) -> dict:
 class TestAuthLoginJson:
     """JSON output from run_auth_command()."""
 
-    @patch("perplexity_cli.utils.config.get_save_cookies_enabled", return_value=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.auth.oauth_handler.authenticate_sync")
+    @patch("perplexity_cli.utils.config.get_save_cookies_enabled", return_value=True, autospec=True)
+    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.auth.oauth_handler.authenticate_sync", autospec=True)
     def test_json_output_has_envelope(self, mock_auth, mock_tm_class, _mock_cookies, capsys):
         """Success envelope is emitted with correct structure."""
         mock_auth.return_value = ("token-abc", {"__cf_bm": "val"})
@@ -40,9 +40,9 @@ class TestAuthLoginJson:
         assert envelope["ok"] is True
         assert envelope["command"] == "pxcli auth login"
 
-    @patch("perplexity_cli.utils.config.get_save_cookies_enabled", return_value=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.auth.oauth_handler.authenticate_sync")
+    @patch("perplexity_cli.utils.config.get_save_cookies_enabled", return_value=True, autospec=True)
+    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.auth.oauth_handler.authenticate_sync", autospec=True)
     def test_json_result_has_token_path(self, mock_auth, mock_tm_class, _mock_cookies, capsys):
         """Result contains token_path and cookies_stored."""
         mock_auth.return_value = ("token-abc", {"a": "1", "b": "2"})
@@ -60,7 +60,7 @@ class TestAuthLoginJson:
 class TestAuthLogoutJson:
     """JSON output from run_logout_command()."""
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
     def test_json_output_credentials_existed(self, mock_tm_class, capsys):
         """Envelope reports credentials_existed correctly."""
         mock_tm = Mock()
@@ -74,7 +74,7 @@ class TestAuthLogoutJson:
         assert envelope["command"] == "pxcli auth logout"
         assert envelope["result"]["credentials_existed"] is True
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
     def test_json_output_no_credentials(self, mock_tm_class, capsys):
         """Envelope reports credentials_existed=False when none found."""
         mock_tm = Mock()
@@ -90,7 +90,7 @@ class TestAuthLogoutJson:
 class TestAuthStatusJson:
     """JSON output from run_status_command()."""
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
     def test_json_output_authenticated(self, mock_tm_class, capsys):
         """Envelope shows authenticated=True when token exists."""
         mock_tm = Mock()
@@ -114,8 +114,8 @@ class TestAuthStatusJson:
 class TestConfigShowJson:
     """JSON output from run_show_config_command()."""
 
-    @patch("perplexity_cli.utils.config.get_feature_config_path")
-    @patch("perplexity_cli.utils.config.get_feature_config")
+    @patch("perplexity_cli.utils.config.get_feature_config_path", autospec=True)
+    @patch("perplexity_cli.utils.config.get_feature_config", autospec=True)
     def test_json_output_has_config(self, mock_get_config, mock_get_path, capsys, monkeypatch):
         """Envelope contains config fields."""
         monkeypatch.delenv("PERPLEXITY_SAVE_COOKIES", raising=False)
@@ -139,8 +139,8 @@ class TestConfigShowJson:
 class TestConfigSetJson:
     """JSON output from run_set_config_command()."""
 
-    @patch("perplexity_cli.utils.config.clear_feature_config_cache")
-    @patch("perplexity_cli.utils.config.set_feature")
+    @patch("perplexity_cli.utils.config.clear_feature_config_cache", autospec=True)
+    @patch("perplexity_cli.utils.config.set_feature", autospec=True)
     def test_json_output_has_key_value(self, mock_set, mock_clear, capsys):
         """Envelope contains key and value."""
         run_set_config_command("save_cookies", "true", output_format="json")
@@ -155,7 +155,7 @@ class TestConfigSetJson:
 class TestStyleSetJson:
     """JSON output from run_configure_command()."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
     def test_json_output_has_style(self, mock_sm_class, capsys):
         """Envelope contains the style string."""
         mock_sm = Mock()
@@ -172,7 +172,7 @@ class TestStyleSetJson:
 class TestStyleShowJson:
     """JSON output from run_view_style_command()."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
     def test_json_output_has_style(self, mock_sm_class, capsys):
         """Envelope contains the current style or null."""
         mock_sm = Mock()
@@ -190,7 +190,7 @@ class TestStyleShowJson:
 class TestStyleClearJson:
     """JSON output from run_clear_style_command()."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
     def test_json_output_has_had_style(self, mock_sm_class, capsys):
         """Envelope reports had_style correctly."""
         mock_sm = Mock()
@@ -208,9 +208,9 @@ class TestStyleClearJson:
 class TestDoctorSecurityJson:
     """JSON output from run_doctor_security_command()."""
 
-    @patch("perplexity_cli.utils.config.get_feature_config")
-    @patch("perplexity_cli.threads.cache_manager.ThreadCacheManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.utils.config.get_feature_config", autospec=True)
+    @patch("perplexity_cli.threads.cache_manager.ThreadCacheManager", autospec=True)
+    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
     def test_json_output_has_storage_info(
         self, mock_tm_class, mock_cm_class, mock_get_config, capsys
     ):
@@ -250,7 +250,7 @@ class TestSkillShowJson:
 
     def test_json_output_has_skill_md(self, capsys):
         """Envelope contains skill content under the skill_md field."""
-        with patch("perplexity_cli.runners.skill.files") as mock_files:
+        with patch("perplexity_cli.runners.skill.files", autospec=True) as mock_files:
             mock_files.return_value.joinpath.return_value.read_text.return_value = (
                 "# Skill\nContent here"
             )

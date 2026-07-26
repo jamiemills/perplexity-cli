@@ -1,0 +1,2179 @@
+{
+  "report_version": "1",
+  "total_modules": 94,
+  "flagged_count": 34,
+  "flagged_identities": [
+    "api.endpoints",
+    "api.models",
+    "api.rest_client",
+    "attachments",
+    "auth.token_manager",
+    "auth.utils",
+    "commands._examples",
+    "commands._help_sections",
+    "commands._runner_adapter",
+    "envelope",
+    "error_handler",
+    "exit_codes",
+    "formatting.context",
+    "formatting.json",
+    "formatting.markdown",
+    "formatting.plain",
+    "formatting.registry",
+    "formatting.rich",
+    "runners",
+    "runners.config",
+    "threads.cache_manager",
+    "threads.scraper",
+    "utils.config",
+    "utils.encryption",
+    "utils.file_permissions",
+    "utils.http_errors",
+    "utils.http_headers",
+    "utils.logging",
+    "utils.rate_limiter",
+    "utils.retry",
+    "utils.session_factory",
+    "utils.session_token",
+    "utils.style_manager",
+    "utils.upstream_contracts"
+  ],
+  "threshold": 0.3,
+  "graph_error": false,
+  "trend": null,
+  "findings": [
+    {
+      "module": "_types",
+      "ca": 11,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "_types",
+      "dependencies": [],
+      "dependents": [
+        "commands._runner_adapter",
+        "envelope",
+        "error_handler",
+        "query_runner",
+        "runners.auth",
+        "runners.config",
+        "runners.export",
+        "runners.models",
+        "runners.skill",
+        "runners.status",
+        "utils.http_errors"
+      ]
+    },
+    {
+      "module": "auth.models",
+      "ca": 5,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "auth.models",
+      "dependencies": [],
+      "dependents": [
+        "api.client",
+        "api.endpoints",
+        "api.rest_client",
+        "query_runner",
+        "runners.models"
+      ]
+    },
+    {
+      "module": "commands._ctx",
+      "ca": 10,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands._ctx",
+      "dependencies": [],
+      "dependents": [
+        "commands",
+        "commands.auth_cmds",
+        "commands.config_cmds",
+        "commands.doctor_cmds",
+        "commands.models_cmds",
+        "commands.query_cmd",
+        "commands.schema_cmd",
+        "commands.skill_cmds",
+        "commands.style_cmds",
+        "commands.threads_cmds"
+      ]
+    },
+    {
+      "module": "commands._help_refs",
+      "ca": 5,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands._help_refs",
+      "dependencies": [],
+      "dependents": [
+        "commands.auth_cmds",
+        "commands.models_cmds",
+        "commands.query_cmd",
+        "commands.style_cmds",
+        "commands.threads_cmds"
+      ]
+    },
+    {
+      "module": "commands._schemas",
+      "ca": 1,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands._schemas",
+      "dependencies": [],
+      "dependents": [
+        "commands.schema_cmd"
+      ]
+    },
+    {
+      "module": "completion_commands",
+      "ca": 1,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "completion_commands",
+      "dependencies": [],
+      "dependents": [
+        "commands"
+      ]
+    },
+    {
+      "module": "config.defaults",
+      "ca": 6,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "config.defaults",
+      "dependencies": [],
+      "dependents": [
+        "api.client",
+        "attachments.upload_manager",
+        "auth.oauth_handler",
+        "commands.auth_cmds",
+        "runners.status",
+        "utils.session_factory"
+      ]
+    },
+    {
+      "module": "config.models",
+      "ca": 4,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "config.models",
+      "dependencies": [],
+      "dependents": [
+        "config",
+        "runners.export",
+        "runners.status",
+        "utils.config"
+      ]
+    },
+    {
+      "module": "help_json",
+      "ca": 0,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "help_json",
+      "dependencies": [],
+      "dependents": []
+    },
+    {
+      "module": "models",
+      "ca": 0,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "models",
+      "dependencies": [],
+      "dependents": []
+    },
+    {
+      "module": "models.model_config",
+      "ca": 2,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "models.model_config",
+      "dependencies": [],
+      "dependents": [
+        "runners.models",
+        "services.model_service"
+      ]
+    },
+    {
+      "module": "ndjson",
+      "ca": 1,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "ndjson",
+      "dependencies": [],
+      "dependents": [
+        "query_streaming"
+      ]
+    },
+    {
+      "module": "runners._utils",
+      "ca": 2,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "runners._utils",
+      "dependencies": [],
+      "dependents": [
+        "runners.auth",
+        "runners.skill"
+      ]
+    },
+    {
+      "module": "services",
+      "ca": 0,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "services",
+      "dependencies": [],
+      "dependents": []
+    },
+    {
+      "module": "session_log",
+      "ca": 0,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "session_log",
+      "dependencies": [],
+      "dependents": []
+    },
+    {
+      "module": "threads.date_parser",
+      "ca": 1,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "threads.date_parser",
+      "dependencies": [],
+      "dependents": [
+        "threads.scraper"
+      ]
+    },
+    {
+      "module": "threads.exporter",
+      "ca": 5,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "threads.exporter",
+      "dependencies": [],
+      "dependents": [
+        "runners.export",
+        "threads",
+        "threads.cache_manager",
+        "threads.scraper",
+        "threads.utils"
+      ]
+    },
+    {
+      "module": "threads.models",
+      "ca": 1,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "threads.models",
+      "dependencies": [],
+      "dependents": [
+        "threads.cache_manager"
+      ]
+    },
+    {
+      "module": "utils",
+      "ca": 0,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils",
+      "dependencies": [],
+      "dependents": []
+    },
+    {
+      "module": "utils.async_bridge",
+      "ca": 3,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.async_bridge",
+      "dependencies": [],
+      "dependents": [
+        "auth.oauth_handler",
+        "query_runner",
+        "runners.export"
+      ]
+    },
+    {
+      "module": "utils.attachment_models",
+      "ca": 4,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.attachment_models",
+      "dependencies": [],
+      "dependents": [
+        "api.models",
+        "attachments.upload_manager",
+        "query_runner",
+        "utils.file_handler"
+      ]
+    },
+    {
+      "module": "utils.cookies",
+      "ca": 4,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.cookies",
+      "dependencies": [],
+      "dependents": [
+        "api.client",
+        "api.rest_client",
+        "attachments.upload_manager",
+        "threads.scraper"
+      ]
+    },
+    {
+      "module": "utils.exceptions",
+      "ca": 27,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.exceptions",
+      "dependencies": [],
+      "dependents": [
+        "api.client",
+        "api.endpoints",
+        "attachments.upload_manager",
+        "auth.oauth_handler",
+        "auth.token_manager",
+        "auth.utils",
+        "error_handler",
+        "exit_codes",
+        "mcp_server",
+        "query_runner",
+        "query_streaming",
+        "runners.auth",
+        "runners.config",
+        "runners.export",
+        "runners.models",
+        "runners.status",
+        "threads.cache_manager",
+        "threads.scraper",
+        "threads.utils",
+        "utils.config",
+        "utils.encryption",
+        "utils.file_handler",
+        "utils.file_permissions",
+        "utils.http_errors",
+        "utils.retry",
+        "utils.session_token",
+        "utils.upstream_contracts"
+      ]
+    },
+    {
+      "module": "utils.rate_limiter_models",
+      "ca": 1,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.rate_limiter_models",
+      "dependencies": [],
+      "dependents": [
+        "utils.rate_limiter"
+      ]
+    },
+    {
+      "module": "utils.version",
+      "ca": 7,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.version",
+      "dependencies": [],
+      "dependents": [
+        "",
+        "api.models",
+        "cli",
+        "commands._examples",
+        "query_runner",
+        "query_streaming",
+        "threads.scraper"
+      ]
+    },
+    {
+      "module": "envelope",
+      "ca": 13,
+      "ce": 1,
+      "instability": 0.071,
+      "abstractness": 0.0,
+      "distance": 0.929,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "envelope",
+      "dependencies": [
+        "_types"
+      ],
+      "dependents": [
+        "commands._help_sections",
+        "commands.schema_cmd",
+        "error_handler",
+        "query_runner",
+        "query_streaming",
+        "runners.auth",
+        "runners.config",
+        "runners.export",
+        "runners.models",
+        "runners.skill",
+        "runners.status",
+        "threads.scraper",
+        "utils.http_errors"
+      ]
+    },
+    {
+      "module": "runners.config",
+      "ca": 1,
+      "ce": 13,
+      "instability": 0.929,
+      "abstractness": 1.0,
+      "distance": 0.929,
+      "zone_of_pain": false,
+      "zone_of_uselessness": true,
+      "advisory": true,
+      "finding_id": "runners.config",
+      "dependencies": [
+        "_types",
+        "envelope",
+        "error_handler",
+        "utils.config",
+        "utils.config.FeatureConfig",
+        "utils.config.clear_feature_config_cache",
+        "utils.config.get_feature_config",
+        "utils.config.get_feature_config_path",
+        "utils.config.set_feature",
+        "utils.exceptions",
+        "utils.logging",
+        "utils.style_manager",
+        "utils.style_manager.StyleManager"
+      ],
+      "dependents": [
+        "runners"
+      ]
+    },
+    {
+      "module": "utils.logging",
+      "ca": 18,
+      "ce": 2,
+      "instability": 0.1,
+      "abstractness": 0.0,
+      "distance": 0.9,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.logging",
+      "dependencies": [
+        "utils.config",
+        "utils.config.get_config_paths"
+      ],
+      "dependents": [
+        "api.client",
+        "api.rest_client",
+        "attachments.upload_manager",
+        "auth.oauth_handler",
+        "auth.token_manager",
+        "cli",
+        "mcp_server",
+        "query_runner",
+        "query_streaming",
+        "runners.auth",
+        "runners.config",
+        "runners.export",
+        "runners.models",
+        "runners.status",
+        "services.model_service",
+        "threads.cache_manager",
+        "threads.scraper",
+        "utils.file_handler"
+      ]
+    },
+    {
+      "module": "utils.config",
+      "ca": 17,
+      "ce": 2,
+      "instability": 0.105,
+      "abstractness": 0.0,
+      "distance": 0.895,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.config",
+      "dependencies": [
+        "config.models",
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "api.endpoints",
+        "attachments.upload_manager",
+        "auth.oauth_handler",
+        "auth.token_manager",
+        "cli",
+        "query_runner",
+        "runners.auth",
+        "runners.config",
+        "runners.export",
+        "runners.models",
+        "runners.status",
+        "services.model_service",
+        "threads.cache_manager",
+        "threads.scraper",
+        "utils.http_headers",
+        "utils.logging",
+        "utils.style_manager"
+      ]
+    },
+    {
+      "module": "commands._examples",
+      "ca": 8,
+      "ce": 1,
+      "instability": 0.111,
+      "abstractness": 0.0,
+      "distance": 0.889,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands._examples",
+      "dependencies": [
+        "utils.version"
+      ],
+      "dependents": [
+        "commands.auth_cmds",
+        "commands.config_cmds",
+        "commands.doctor_cmds",
+        "commands.models_cmds",
+        "commands.query_cmd",
+        "commands.skill_cmds",
+        "commands.style_cmds",
+        "commands.threads_cmds"
+      ]
+    },
+    {
+      "module": "utils.upstream_contracts",
+      "ca": 4,
+      "ce": 1,
+      "instability": 0.2,
+      "abstractness": 0.0,
+      "distance": 0.8,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.upstream_contracts",
+      "dependencies": [
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "api.contracts",
+        "api.models",
+        "attachments.upload_manager",
+        "threads.scraper"
+      ]
+    },
+    {
+      "module": "api.models",
+      "ca": 11,
+      "ce": 3,
+      "instability": 0.214,
+      "abstractness": 0.0,
+      "distance": 0.786,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "api.models",
+      "dependencies": [
+        "utils.attachment_models",
+        "utils.upstream_contracts",
+        "utils.version"
+      ],
+      "dependents": [
+        "api",
+        "api.client",
+        "api.endpoints",
+        "formatting.base",
+        "formatting.json",
+        "formatting.markdown",
+        "formatting.plain",
+        "formatting.rich",
+        "mcp_server",
+        "query_runner",
+        "query_streaming"
+      ]
+    },
+    {
+      "module": "commands._runner_adapter",
+      "ca": 3,
+      "ce": 1,
+      "instability": 0.25,
+      "abstractness": 0.0,
+      "distance": 0.75,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands._runner_adapter",
+      "dependencies": [
+        "_types"
+      ],
+      "dependents": [
+        "commands.auth_cmds",
+        "commands.query_cmd",
+        "commands.threads_cmds"
+      ]
+    },
+    {
+      "module": "commands._help_sections",
+      "ca": 10,
+      "ce": 5,
+      "instability": 0.333,
+      "abstractness": 0.0,
+      "distance": 0.667,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands._help_sections",
+      "dependencies": [
+        "envelope",
+        "envelope.Envelope",
+        "envelope.ErrorEnvelope",
+        "exit_codes",
+        "exit_codes.format_exit_codes_help"
+      ],
+      "dependents": [
+        "commands",
+        "commands.auth_cmds",
+        "commands.config_cmds",
+        "commands.doctor_cmds",
+        "commands.models_cmds",
+        "commands.query_cmd",
+        "commands.schema_cmd",
+        "commands.skill_cmds",
+        "commands.style_cmds",
+        "commands.threads_cmds"
+      ]
+    },
+    {
+      "module": "exit_codes",
+      "ca": 2,
+      "ce": 1,
+      "instability": 0.333,
+      "abstractness": 0.0,
+      "distance": 0.667,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "exit_codes",
+      "dependencies": [
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "commands._help_sections",
+        "error_handler"
+      ]
+    },
+    {
+      "module": "formatting.context",
+      "ca": 2,
+      "ce": 1,
+      "instability": 0.333,
+      "abstractness": 0.0,
+      "distance": 0.667,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "formatting.context",
+      "dependencies": [
+        "formatting.base"
+      ],
+      "dependents": [
+        "query_runner",
+        "query_streaming"
+      ]
+    },
+    {
+      "module": "utils.encryption",
+      "ca": 2,
+      "ce": 1,
+      "instability": 0.333,
+      "abstractness": 0.0,
+      "distance": 0.667,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.encryption",
+      "dependencies": [
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "auth.token_manager",
+        "threads.cache_manager"
+      ]
+    },
+    {
+      "module": "utils.file_permissions",
+      "ca": 2,
+      "ce": 1,
+      "instability": 0.333,
+      "abstractness": 0.0,
+      "distance": 0.667,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.file_permissions",
+      "dependencies": [
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "auth.token_manager",
+        "threads.cache_manager"
+      ]
+    },
+    {
+      "module": "utils.http_errors",
+      "ca": 8,
+      "ce": 4,
+      "instability": 0.333,
+      "abstractness": 0.0,
+      "distance": 0.667,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.http_errors",
+      "dependencies": [
+        "_types",
+        "envelope",
+        "envelope.ErrorCode",
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "api.client",
+        "api.rest_client",
+        "attachments.upload_manager",
+        "query_runner",
+        "query_streaming",
+        "runners.auth",
+        "runners.export",
+        "threads.scraper"
+      ]
+    },
+    {
+      "module": "utils.session_token",
+      "ca": 2,
+      "ce": 1,
+      "instability": 0.333,
+      "abstractness": 0.0,
+      "distance": 0.667,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.session_token",
+      "dependencies": [
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "auth.utils",
+        "threads.scraper"
+      ]
+    },
+    {
+      "module": "utils.style_manager",
+      "ca": 2,
+      "ce": 1,
+      "instability": 0.333,
+      "abstractness": 0.0,
+      "distance": 0.667,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.style_manager",
+      "dependencies": [
+        "utils.config"
+      ],
+      "dependents": [
+        "query_runner",
+        "runners.config"
+      ]
+    },
+    {
+      "module": "utils.http_headers",
+      "ca": 3,
+      "ce": 2,
+      "instability": 0.4,
+      "abstractness": 0.0,
+      "distance": 0.6,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.http_headers",
+      "dependencies": [
+        "utils.config",
+        "utils.config.get_perplexity_base_url"
+      ],
+      "dependents": [
+        "api.client",
+        "api.rest_client",
+        "attachments.upload_manager"
+      ]
+    },
+    {
+      "module": "auth.token_manager",
+      "ca": 8,
+      "ce": 6,
+      "instability": 0.429,
+      "abstractness": 0.0,
+      "distance": 0.571,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "auth.token_manager",
+      "dependencies": [
+        "utils.config",
+        "utils.config.get_save_cookies_enabled",
+        "utils.encryption",
+        "utils.exceptions",
+        "utils.file_permissions",
+        "utils.logging"
+      ],
+      "dependents": [
+        "auth",
+        "auth.utils",
+        "mcp_server",
+        "query_runner",
+        "runners.auth",
+        "runners.export",
+        "runners.models",
+        "runners.status"
+      ]
+    },
+    {
+      "module": "error_handler",
+      "ca": 5,
+      "ce": 4,
+      "instability": 0.444,
+      "abstractness": 0.0,
+      "distance": 0.556,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "error_handler",
+      "dependencies": [
+        "_types",
+        "envelope",
+        "exit_codes",
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "query_runner",
+        "runners.auth",
+        "runners.config",
+        "runners.export",
+        "runners.models"
+      ]
+    },
+    {
+      "module": "api.endpoints",
+      "ca": 5,
+      "ce": 5,
+      "instability": 0.5,
+      "abstractness": 0.0,
+      "distance": 0.5,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "api.endpoints",
+      "dependencies": [
+        "api.client",
+        "api.models",
+        "auth.models",
+        "utils.config",
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "api",
+        "mcp_server",
+        "query_runner",
+        "query_streaming",
+        "runners.status"
+      ]
+    },
+    {
+      "module": "attachments",
+      "ca": 1,
+      "ce": 1,
+      "instability": 0.5,
+      "abstractness": 0.0,
+      "distance": 0.5,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "attachments",
+      "dependencies": [
+        "attachments.upload_manager"
+      ],
+      "dependents": [
+        "query_runner"
+      ]
+    },
+    {
+      "module": "auth.utils",
+      "ca": 3,
+      "ce": 3,
+      "instability": 0.5,
+      "abstractness": 0.0,
+      "distance": 0.5,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "auth.utils",
+      "dependencies": [
+        "auth.token_manager",
+        "utils.exceptions",
+        "utils.session_token"
+      ],
+      "dependents": [
+        "mcp_server",
+        "query_runner",
+        "runners.models"
+      ]
+    },
+    {
+      "module": "formatting.registry",
+      "ca": 1,
+      "ce": 1,
+      "instability": 0.5,
+      "abstractness": 0.0,
+      "distance": 0.5,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "formatting.registry",
+      "dependencies": [
+        "formatting.base"
+      ],
+      "dependents": [
+        "formatting"
+      ]
+    },
+    {
+      "module": "runners",
+      "ca": 6,
+      "ce": 6,
+      "instability": 0.5,
+      "abstractness": 0.0,
+      "distance": 0.5,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "runners",
+      "dependencies": [
+        "runners.auth",
+        "runners.config",
+        "runners.export",
+        "runners.models",
+        "runners.skill",
+        "runners.status"
+      ],
+      "dependents": [
+        "command_runner",
+        "commands.auth_cmds",
+        "commands.config_cmds",
+        "commands.doctor_cmds",
+        "commands.skill_cmds",
+        "commands.style_cmds"
+      ]
+    },
+    {
+      "module": "utils.rate_limiter",
+      "ca": 1,
+      "ce": 1,
+      "instability": 0.5,
+      "abstractness": 0.0,
+      "distance": 0.5,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.rate_limiter",
+      "dependencies": [
+        "utils.rate_limiter_models"
+      ],
+      "dependents": [
+        "runners.export"
+      ]
+    },
+    {
+      "module": "utils.retry",
+      "ca": 1,
+      "ce": 1,
+      "instability": 0.5,
+      "abstractness": 0.0,
+      "distance": 0.5,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.retry",
+      "dependencies": [
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "api.client"
+      ]
+    },
+    {
+      "module": "threads.scraper",
+      "ca": 2,
+      "ce": 17,
+      "instability": 0.895,
+      "abstractness": 0.5,
+      "distance": 0.395,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "threads.scraper",
+      "dependencies": [
+        "envelope",
+        "envelope.ErrorCode",
+        "threads.date_parser",
+        "threads.date_parser.is_in_date_range",
+        "threads.date_parser.to_iso8601",
+        "threads.exporter",
+        "threads.exporter.ThreadRecord",
+        "utils.config",
+        "utils.cookies",
+        "utils.exceptions",
+        "utils.http_errors",
+        "utils.logging",
+        "utils.session_factory",
+        "utils.session_factory.AsyncSession",
+        "utils.session_token",
+        "utils.upstream_contracts",
+        "utils.version"
+      ],
+      "dependents": [
+        "runners.export",
+        "threads"
+      ]
+    },
+    {
+      "module": "api.rest_client",
+      "ca": 1,
+      "ce": 5,
+      "instability": 0.833,
+      "abstractness": 0.5,
+      "distance": 0.333,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "api.rest_client",
+      "dependencies": [
+        "auth.models",
+        "utils.cookies",
+        "utils.http_errors",
+        "utils.http_headers",
+        "utils.logging"
+      ],
+      "dependents": [
+        "runners.models"
+      ]
+    },
+    {
+      "module": "formatting.json",
+      "ca": 1,
+      "ce": 2,
+      "instability": 0.667,
+      "abstractness": 0.0,
+      "distance": 0.333,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "formatting.json",
+      "dependencies": [
+        "api.models",
+        "formatting.base"
+      ],
+      "dependents": [
+        "formatting"
+      ]
+    },
+    {
+      "module": "formatting.markdown",
+      "ca": 1,
+      "ce": 2,
+      "instability": 0.667,
+      "abstractness": 0.0,
+      "distance": 0.333,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "formatting.markdown",
+      "dependencies": [
+        "api.models",
+        "formatting.base"
+      ],
+      "dependents": [
+        "formatting"
+      ]
+    },
+    {
+      "module": "formatting.plain",
+      "ca": 1,
+      "ce": 2,
+      "instability": 0.667,
+      "abstractness": 0.0,
+      "distance": 0.333,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "formatting.plain",
+      "dependencies": [
+        "api.models",
+        "formatting.base"
+      ],
+      "dependents": [
+        "formatting"
+      ]
+    },
+    {
+      "module": "formatting.rich",
+      "ca": 1,
+      "ce": 2,
+      "instability": 0.667,
+      "abstractness": 0.0,
+      "distance": 0.333,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "formatting.rich",
+      "dependencies": [
+        "api.models",
+        "formatting.base"
+      ],
+      "dependents": [
+        "formatting"
+      ]
+    },
+    {
+      "module": "utils.session_factory",
+      "ca": 1,
+      "ce": 2,
+      "instability": 0.667,
+      "abstractness": 0.0,
+      "distance": 0.333,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.session_factory",
+      "dependencies": [
+        "config.defaults",
+        "config.defaults.DEFAULT_REQUEST_TIMEOUT"
+      ],
+      "dependents": [
+        "threads.scraper"
+      ]
+    },
+    {
+      "module": "threads.cache_manager",
+      "ca": 3,
+      "ce": 7,
+      "instability": 0.7,
+      "abstractness": 0.0,
+      "distance": 0.3,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "threads.cache_manager",
+      "dependencies": [
+        "threads.exporter",
+        "threads.models",
+        "utils.config",
+        "utils.encryption",
+        "utils.exceptions",
+        "utils.file_permissions",
+        "utils.logging"
+      ],
+      "dependents": [
+        "runners.export",
+        "runners.status",
+        "threads"
+      ]
+    },
+    {
+      "module": "attachments.upload_manager",
+      "ca": 1,
+      "ce": 15,
+      "instability": 0.938,
+      "abstractness": 0.333,
+      "distance": 0.271,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "attachments.upload_manager",
+      "dependencies": [
+        "config.defaults",
+        "config.defaults.DEFAULT_REQUEST_TIMEOUT",
+        "config.defaults.DEFAULT_UPLOAD_TIMEOUT",
+        "config.defaults.PERPLEXITY_SETTINGS_URL",
+        "utils.attachment_models",
+        "utils.config",
+        "utils.config.get_perplexity_base_url",
+        "utils.config.get_s3_bucket_url",
+        "utils.config.get_upload_url_endpoint",
+        "utils.cookies",
+        "utils.exceptions",
+        "utils.http_errors",
+        "utils.http_headers",
+        "utils.logging",
+        "utils.upstream_contracts"
+      ],
+      "dependents": [
+        "attachments"
+      ]
+    },
+    {
+      "module": "formatting",
+      "ca": 2,
+      "ce": 6,
+      "instability": 0.75,
+      "abstractness": 0.0,
+      "distance": 0.25,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "formatting",
+      "dependencies": [
+        "formatting.base",
+        "formatting.json",
+        "formatting.markdown",
+        "formatting.plain",
+        "formatting.registry",
+        "formatting.rich"
+      ],
+      "dependents": [
+        "mcp_server",
+        "query_runner"
+      ]
+    },
+    {
+      "module": "runners.skill",
+      "ca": 1,
+      "ce": 3,
+      "instability": 0.75,
+      "abstractness": 0.0,
+      "distance": 0.25,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "runners.skill",
+      "dependencies": [
+        "_types",
+        "envelope",
+        "runners._utils"
+      ],
+      "dependents": [
+        "runners"
+      ]
+    },
+    {
+      "module": "utils.file_handler",
+      "ca": 1,
+      "ce": 3,
+      "instability": 0.75,
+      "abstractness": 0.0,
+      "distance": 0.25,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.file_handler",
+      "dependencies": [
+        "utils.attachment_models",
+        "utils.exceptions",
+        "utils.logging"
+      ],
+      "dependents": [
+        "query_runner"
+      ]
+    },
+    {
+      "module": "services.model_service",
+      "ca": 1,
+      "ce": 4,
+      "instability": 0.8,
+      "abstractness": 0.0,
+      "distance": 0.2,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "services.model_service",
+      "dependencies": [
+        "models.model_config",
+        "services.ports",
+        "utils.config",
+        "utils.logging"
+      ],
+      "dependents": [
+        "runners.models"
+      ]
+    },
+    {
+      "module": "auth.oauth_handler",
+      "ca": 2,
+      "ce": 10,
+      "instability": 0.833,
+      "abstractness": 0.0,
+      "distance": 0.167,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "auth.oauth_handler",
+      "dependencies": [
+        "config.defaults",
+        "config.defaults.DEFAULT_AUTH_POLL_INTERVAL",
+        "config.defaults.DEFAULT_AUTH_TIMEOUT",
+        "config.defaults.DEFAULT_CHROME_DEBUG_PORT",
+        "config.defaults.DEFAULT_PAGE_LOAD_TIMEOUT",
+        "utils.async_bridge",
+        "utils.config",
+        "utils.exceptions",
+        "utils.logging",
+        "utils.logging.get_logger"
+      ],
+      "dependents": [
+        "auth",
+        "runners.auth"
+      ]
+    },
+    {
+      "module": "commands.doctor_cmds",
+      "ca": 1,
+      "ce": 5,
+      "instability": 0.833,
+      "abstractness": 0.0,
+      "distance": 0.167,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands.doctor_cmds",
+      "dependencies": [
+        "commands._ctx",
+        "commands._examples",
+        "commands._help_sections",
+        "runners",
+        "runners.run_doctor_security_command"
+      ],
+      "dependents": [
+        "commands"
+      ]
+    },
+    {
+      "module": "commands.query_cmd",
+      "ca": 1,
+      "ce": 5,
+      "instability": 0.833,
+      "abstractness": 0.0,
+      "distance": 0.167,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands.query_cmd",
+      "dependencies": [
+        "commands._ctx",
+        "commands._examples",
+        "commands._help_refs",
+        "commands._help_sections",
+        "commands._runner_adapter"
+      ],
+      "dependents": [
+        "commands"
+      ]
+    },
+    {
+      "module": "commands.skill_cmds",
+      "ca": 1,
+      "ce": 5,
+      "instability": 0.833,
+      "abstractness": 0.0,
+      "distance": 0.167,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands.skill_cmds",
+      "dependencies": [
+        "commands._ctx",
+        "commands._examples",
+        "commands._help_sections",
+        "runners",
+        "runners.run_show_skill_command"
+      ],
+      "dependents": [
+        "commands"
+      ]
+    },
+    {
+      "module": "commands.threads_cmds",
+      "ca": 1,
+      "ce": 5,
+      "instability": 0.833,
+      "abstractness": 0.0,
+      "distance": 0.167,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands.threads_cmds",
+      "dependencies": [
+        "commands._ctx",
+        "commands._examples",
+        "commands._help_refs",
+        "commands._help_sections",
+        "commands._runner_adapter"
+      ],
+      "dependents": [
+        "commands"
+      ]
+    },
+    {
+      "module": "api.client",
+      "ca": 2,
+      "ce": 12,
+      "instability": 0.857,
+      "abstractness": 0.0,
+      "distance": 0.143,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "api.client",
+      "dependencies": [
+        "api.models",
+        "auth.models",
+        "config.defaults",
+        "config.defaults.DEFAULT_DEEP_RESEARCH_TIMEOUT",
+        "config.defaults.DEFAULT_MAX_RETRIES",
+        "config.defaults.DEFAULT_REQUEST_TIMEOUT",
+        "utils.cookies",
+        "utils.exceptions",
+        "utils.http_errors",
+        "utils.http_headers",
+        "utils.logging",
+        "utils.retry"
+      ],
+      "dependents": [
+        "api",
+        "api.endpoints"
+      ]
+    },
+    {
+      "module": "commands.config_cmds",
+      "ca": 1,
+      "ce": 6,
+      "instability": 0.857,
+      "abstractness": 0.0,
+      "distance": 0.143,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands.config_cmds",
+      "dependencies": [
+        "commands._ctx",
+        "commands._examples",
+        "commands._help_sections",
+        "runners",
+        "runners.run_set_config_command",
+        "runners.run_show_config_command"
+      ],
+      "dependents": [
+        "commands"
+      ]
+    },
+    {
+      "module": "commands.models_cmds",
+      "ca": 1,
+      "ce": 6,
+      "instability": 0.857,
+      "abstractness": 0.0,
+      "distance": 0.143,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands.models_cmds",
+      "dependencies": [
+        "commands._ctx",
+        "commands._examples",
+        "commands._help_refs",
+        "commands._help_sections",
+        "runners.models",
+        "runners.models.run_models_list_command"
+      ],
+      "dependents": [
+        "commands"
+      ]
+    },
+    {
+      "module": "commands.schema_cmd",
+      "ca": 1,
+      "ce": 6,
+      "instability": 0.857,
+      "abstractness": 0.0,
+      "distance": 0.143,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands.schema_cmd",
+      "dependencies": [
+        "commands._ctx",
+        "commands._help_sections",
+        "commands._schemas",
+        "envelope",
+        "envelope.Envelope",
+        "envelope.ErrorEnvelope"
+      ],
+      "dependents": [
+        "commands"
+      ]
+    },
+    {
+      "module": "commands.style_cmds",
+      "ca": 1,
+      "ce": 8,
+      "instability": 0.889,
+      "abstractness": 0.0,
+      "distance": 0.111,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands.style_cmds",
+      "dependencies": [
+        "commands._ctx",
+        "commands._examples",
+        "commands._help_refs",
+        "commands._help_sections",
+        "runners",
+        "runners.run_clear_style_command",
+        "runners.run_configure_command",
+        "runners.run_view_style_command"
+      ],
+      "dependents": [
+        "commands"
+      ]
+    },
+    {
+      "module": "formatting.base",
+      "ca": 9,
+      "ce": 1,
+      "instability": 0.1,
+      "abstractness": 1.0,
+      "distance": 0.1,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "formatting.base",
+      "dependencies": [
+        "api.models"
+      ],
+      "dependents": [
+        "formatting",
+        "formatting.context",
+        "formatting.json",
+        "formatting.markdown",
+        "formatting.plain",
+        "formatting.registry",
+        "formatting.rich",
+        "mcp_server",
+        "query_runner"
+      ]
+    },
+    {
+      "module": "commands.auth_cmds",
+      "ca": 1,
+      "ce": 9,
+      "instability": 0.9,
+      "abstractness": 0.0,
+      "distance": 0.1,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands.auth_cmds",
+      "dependencies": [
+        "commands._ctx",
+        "commands._examples",
+        "commands._help_refs",
+        "commands._help_sections",
+        "commands._runner_adapter",
+        "config.defaults",
+        "runners",
+        "runners.run_logout_command",
+        "runners.run_status_command"
+      ],
+      "dependents": [
+        "commands"
+      ]
+    },
+    {
+      "module": "runners.export",
+      "ca": 1,
+      "ce": 20,
+      "instability": 0.952,
+      "abstractness": 0.125,
+      "distance": 0.077,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "runners.export",
+      "dependencies": [
+        "_types",
+        "auth.token_manager",
+        "auth.token_manager.TokenManager",
+        "config.models",
+        "envelope",
+        "error_handler",
+        "threads.cache_manager",
+        "threads.cache_manager.ThreadCacheManager",
+        "threads.exporter",
+        "threads.exporter.write_threads_csv",
+        "threads.scraper",
+        "threads.scraper.ThreadScraper",
+        "utils.async_bridge",
+        "utils.config",
+        "utils.config.get_rate_limiting_config",
+        "utils.exceptions",
+        "utils.http_errors",
+        "utils.logging",
+        "utils.rate_limiter",
+        "utils.rate_limiter.RateLimiter"
+      ],
+      "dependents": [
+        "runners"
+      ]
+    },
+    {
+      "module": "commands",
+      "ca": 1,
+      "ce": 12,
+      "instability": 0.923,
+      "abstractness": 0.0,
+      "distance": 0.077,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "commands",
+      "dependencies": [
+        "commands._ctx",
+        "commands._help_sections",
+        "commands.auth_cmds",
+        "commands.config_cmds",
+        "commands.doctor_cmds",
+        "commands.models_cmds",
+        "commands.query_cmd",
+        "commands.schema_cmd",
+        "commands.skill_cmds",
+        "commands.style_cmds",
+        "commands.threads_cmds",
+        "completion_commands"
+      ],
+      "dependents": [
+        "cli"
+      ]
+    },
+    {
+      "module": "query_streaming",
+      "ca": 1,
+      "ce": 12,
+      "instability": 0.923,
+      "abstractness": 0.0,
+      "distance": 0.077,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "query_streaming",
+      "dependencies": [
+        "api.endpoints",
+        "api.models",
+        "envelope",
+        "envelope.Meta",
+        "formatting.context",
+        "ndjson",
+        "ndjson.NDJSONWriter",
+        "utils.exceptions",
+        "utils.http_errors",
+        "utils.logging",
+        "utils.version",
+        "utils.version.get_version"
+      ],
+      "dependents": [
+        "query_runner"
+      ]
+    },
+    {
+      "module": "runners.models",
+      "ca": 2,
+      "ce": 24,
+      "instability": 0.923,
+      "abstractness": 0.0,
+      "distance": 0.077,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "runners.models",
+      "dependencies": [
+        "_types",
+        "api.rest_client",
+        "api.rest_client.RestClient",
+        "auth.models",
+        "auth.models.AuthContext",
+        "auth.token_manager",
+        "auth.token_manager.TokenManager",
+        "auth.utils",
+        "auth.utils.load_token_optional",
+        "envelope",
+        "envelope.success_envelope",
+        "envelope.write_envelope",
+        "error_handler",
+        "error_handler.handle_error",
+        "models.model_config",
+        "models.model_config.UserSettings",
+        "services.model_service",
+        "services.model_service.ModelService",
+        "utils.config",
+        "utils.config.get_user_settings_endpoint",
+        "utils.exceptions",
+        "utils.exceptions.PerplexityHTTPStatusError",
+        "utils.exceptions.PerplexityRequestError",
+        "utils.logging"
+      ],
+      "dependents": [
+        "commands.models_cmds",
+        "runners"
+      ]
+    },
+    {
+      "module": "runners.auth",
+      "ca": 1,
+      "ce": 14,
+      "instability": 0.933,
+      "abstractness": 0.0,
+      "distance": 0.067,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "runners.auth",
+      "dependencies": [
+        "_types",
+        "auth.oauth_handler",
+        "auth.oauth_handler.authenticate_sync",
+        "auth.token_manager",
+        "auth.token_manager.TokenManager",
+        "envelope",
+        "error_handler",
+        "runners._utils",
+        "utils.config",
+        "utils.config.get_perplexity_base_url",
+        "utils.config.get_save_cookies_enabled",
+        "utils.exceptions",
+        "utils.http_errors",
+        "utils.logging"
+      ],
+      "dependents": [
+        "runners"
+      ]
+    },
+    {
+      "module": "runners.status",
+      "ca": 1,
+      "ce": 15,
+      "instability": 0.938,
+      "abstractness": 0.0,
+      "distance": 0.062,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "runners.status",
+      "dependencies": [
+        "_types",
+        "api.endpoints",
+        "api.endpoints.PerplexityAPI",
+        "auth.token_manager",
+        "auth.token_manager.TokenManager",
+        "config.defaults",
+        "config.defaults.DEFAULT_STATUS_CHECK_TIMEOUT",
+        "config.models",
+        "envelope",
+        "threads.cache_manager",
+        "threads.cache_manager.ThreadCacheManager",
+        "utils.config",
+        "utils.config.get_feature_config",
+        "utils.exceptions",
+        "utils.logging"
+      ],
+      "dependents": [
+        "runners"
+      ]
+    },
+    {
+      "module": "",
+      "ca": 0,
+      "ce": 1,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "",
+      "dependencies": [
+        "utils.version"
+      ],
+      "dependents": []
+    },
+    {
+      "module": "api",
+      "ca": 0,
+      "ce": 3,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "api",
+      "dependencies": [
+        "api.client",
+        "api.endpoints",
+        "api.models"
+      ],
+      "dependents": []
+    },
+    {
+      "module": "api.contracts",
+      "ca": 0,
+      "ce": 1,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "api.contracts",
+      "dependencies": [
+        "utils.upstream_contracts"
+      ],
+      "dependents": []
+    },
+    {
+      "module": "auth",
+      "ca": 0,
+      "ce": 2,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "auth",
+      "dependencies": [
+        "auth.oauth_handler",
+        "auth.token_manager"
+      ],
+      "dependents": []
+    },
+    {
+      "module": "cli",
+      "ca": 0,
+      "ce": 5,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "cli",
+      "dependencies": [
+        "commands",
+        "utils.config",
+        "utils.config.get_debug_mode_enabled",
+        "utils.logging",
+        "utils.version"
+      ],
+      "dependents": []
+    },
+    {
+      "module": "command_runner",
+      "ca": 0,
+      "ce": 1,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "command_runner",
+      "dependencies": [
+        "runners"
+      ],
+      "dependents": []
+    },
+    {
+      "module": "config",
+      "ca": 0,
+      "ce": 1,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "config",
+      "dependencies": [
+        "config.models"
+      ],
+      "dependents": []
+    },
+    {
+      "module": "mcp_server",
+      "ca": 0,
+      "ce": 8,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "mcp_server",
+      "dependencies": [
+        "api.endpoints",
+        "api.models",
+        "auth.token_manager",
+        "auth.utils",
+        "formatting",
+        "formatting.base",
+        "utils.exceptions",
+        "utils.logging"
+      ],
+      "dependents": []
+    },
+    {
+      "module": "query_runner",
+      "ca": 0,
+      "ce": 42,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "query_runner",
+      "dependencies": [
+        "_types",
+        "api.endpoints",
+        "api.endpoints.PerplexityAPI",
+        "api.models",
+        "attachments",
+        "attachments.AttachmentUploader",
+        "auth.models",
+        "auth.token_manager",
+        "auth.token_manager.TokenManager",
+        "auth.utils",
+        "auth.utils.load_token_optional",
+        "envelope",
+        "envelope.Meta",
+        "envelope.envelope_to_dict",
+        "envelope.success_envelope",
+        "error_handler",
+        "error_handler.handle_error",
+        "formatting",
+        "formatting.base",
+        "formatting.context",
+        "formatting.get_formatter",
+        "formatting.list_formatters",
+        "query_streaming",
+        "query_streaming.stream_query_response",
+        "utils.async_bridge",
+        "utils.attachment_models",
+        "utils.config",
+        "utils.config.get_config_paths",
+        "utils.config.get_save_cookies_enabled",
+        "utils.exceptions",
+        "utils.file_handler",
+        "utils.file_handler.load_attachments",
+        "utils.file_handler.resolve_file_arguments",
+        "utils.http_errors",
+        "utils.http_errors.handle_http_error",
+        "utils.http_errors.handle_network_error",
+        "utils.http_errors.handle_unexpected_cli_error",
+        "utils.logging",
+        "utils.style_manager",
+        "utils.style_manager.StyleManager",
+        "utils.version",
+        "utils.version.get_version"
+      ],
+      "dependents": []
+    },
+    {
+      "module": "services.ports",
+      "ca": 1,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 1.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "services.ports",
+      "dependencies": [],
+      "dependents": [
+        "services.model_service"
+      ]
+    },
+    {
+      "module": "threads",
+      "ca": 0,
+      "ce": 3,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "threads",
+      "dependencies": [
+        "threads.cache_manager",
+        "threads.exporter",
+        "threads.scraper"
+      ],
+      "dependents": []
+    },
+    {
+      "module": "threads.utils",
+      "ca": 0,
+      "ce": 2,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "threads.utils",
+      "dependencies": [
+        "threads.exporter",
+        "utils.exceptions"
+      ],
+      "dependents": []
+    }
+  ],
+  "timestamp": "2026-07-26T07:52:18.361386+00:00"
+}

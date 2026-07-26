@@ -1,0 +1,34 @@
+[schema]
+version = 1
+
+[[layers]]
+name = "shared_pure"
+description = "Pure utility code"
+allowed_deps = ["shared_pure"]
+modules = [
+    "utils",
+]
+
+[[layers]]
+name = "domain"
+description = "Core business objects"
+allowed_deps = ["shared_pure", "domain"]
+modules = [
+    "models",
+]
+
+[[layers]]
+name = "ports"
+description = "Interface definitions"
+allowed_deps = ["shared_pure", "domain", "ports"]
+modules = [
+    "contracts",
+]
+
+[[layers]]
+name = "application"
+description = "Use cases and orchestration"
+allowed_deps = ["shared_pure", "domain", "ports", "application"]
+modules = [
+    "services",
+]

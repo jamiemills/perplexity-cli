@@ -1,0 +1,18 @@
+[schema]
+version = 1
+
+[[layers]]
+name = "shared_pure"
+description = "Pure utility code"
+allowed_deps = ["shared_pure"]
+modules = [
+    "utils",
+]
+
+[[layers]]
+name = "domain"
+description = "Core business objects"
+allowed_deps = ["shared_pure", "domain"]
+modules = [
+    "models",
+]

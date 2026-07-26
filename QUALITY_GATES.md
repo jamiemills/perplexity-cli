@@ -146,7 +146,7 @@ Two entries currently duplicate a value whose active source lives elsewhere
 | `CHECK_COUPLING` | true | Coupling and stability metrics |
 | `CHECK_RATCHETS` | true | Three baseline-aware ratchets plus two whole-tree hard gates |
 | `CHECK_DEPTRY` | true | Deptry dependency hygiene |
-| `CHECK_IMPORT_LINTER` | false | Import-linter contracts; available but excluded from `make check` by default |
+| `CHECK_IMPORT_LINTER` | true | Import-linter contracts; available but excluded from `make check` by default |
 
 ### How to Change Thresholds
 
@@ -240,7 +240,6 @@ They reject commits that are structurally unsafe before any formatter runs.
 | Make recipe syntax | `make -n safety-gate \| bash -n` | Bash |
 | Shell syntax | `bash -n {staged_files}` | Bash |
 | Workflow policy | targeted workflow tests | pytest |
-| Quality plan | `make plan-check PLAN=.claude/plans/quality-plan.md` when present | plan-compliance analyser |
 
 - **.env block:** newly added `.env` files are almost always secret-bearing;
   blocked before commit creation.
@@ -467,13 +466,11 @@ OpenCode after changing plugin, agent, or configuration files.
 | quality-gate | `.opencode/plugins/quality-gate.ts` | write/edit/apply_patch to scripts/ and Makefile | Uses the supported before-hook arguments, blocks added bypasses and removal of its enumerated threshold/gate references, honours `OPENCODE_DISABLE_QUALITY_GATE=1`, and verifies coupling only after protected changes. It is not a general semantic proof that every Make target remains wired. |
 | pxcli-quality | `.opencode/plugins/pxcli-quality.ts` | Session lifetime | Injects conventions; runs file-level ruff/radon/bandit/ty after `write` and `edit`, pinned Safety after dependency changes, and canonical immutable Semgrep plus pyright on idle for files recorded by those tools. `apply_patch` changes rely on Lefthook/Make because this reactive plugin does not record them. Tool and parser failures become visible error findings. |
 | pre-push-docs-check | `.opencode/plugins/pre-push-docs-check.ts` | `git push` | First push attempt blocked with doc-review checklist (CLI help text + README). Retry passes through. |
-| plan-compliance-gate | `.opencode/plugins/plan-compliance-gate.ts` | `git commit` | When `.claude/plans/quality-plan.md` exists, runs the canonical exact-path `make plan-check` on every detected commit attempt and blocks while it fails. With no canonical plan, it allows the commit. The reviewer is invoked manually; no unsupported SDK call or unchecked retry exists. |
 
 ### Agent (1)
 
 | Agent | File | Permissions | Behaviour |
 |-------|------|-------------|-----------|
-| quality-plan-reviewer | `.opencode/agents/quality-plan-reviewer.md` | Read-only; Bash allows only exact-path `make plan-check` | Categorises failures and suggests fixes without editing files or updating baselines. Invoke manually when the commit gate blocks. |
 
 ---
 
@@ -481,8 +478,6 @@ OpenCode after changing plugin, agent, or configuration files.
 
 ### Plan Generator
 
-`make quality-plan` runs the canonical 20-gate planning set and writes a
-deterministic Markdown plan to `.claude/plans/quality-plan.md` (override with
 `OUT=...`). The set covers formatting, lint, both type checkers, Bandit,
 Vulture, both Radon gates, blocking Semgrep, architecture, coupling, the five
 quality gates/ratchets, Deptry, pip-audit, and global/per-module coverage. It
@@ -494,10 +489,8 @@ both the compliance review and self-review report `PASS`.
 
 ### Plan Validator
 
-`make plan-check` validates every exact named gate, not merely broad
 categories. Every gate must appear exactly once as `[PASS]`; `[FAIL]`,
 `[SKIP]`, duplicates, a failing summary, or a missing/failing self-review
-rejects the plan. `make quality-plan` writes its report and exits non-zero on
 any analyser or self-review failure.
 
 ### Schema-drift Guard
@@ -522,8 +515,6 @@ inline where they need Git or event context.
 | `make ci-trusted` | Universal CI plus fail-closed authenticated Safety |
 | `make test` | Unit tests without coverage (fail-fast, xdist) |
 | `make test-coverage` | Unit tests with global + per-module coverage enforcement (xdist) |
-| `make quality-plan` | Run the canonical 20-gate planning set, generate compliance plan |
-| `make plan-check` | Validate plan against prevention rules |
 | `make release V=x.y.z` | Bump version, lock, CI, commit, tag, push |
 | `make diff-coverage` | Require `DIFF_COVERAGE_THRESHOLD` coverage on changed lines after generating `coverage.xml` |
 | `make dependency-hygiene` | Run the Deptry dependency-hygiene alias |
@@ -591,8 +582,6 @@ inline where they need Git or event context.
 | Semgrep architecture ratchet | Pre-push, CI | `scripts/check_semgrep_architecture.py` | `make semgrep-architecture` |
 | Diff mutation testing | Pre-push | mutmut | `make mutate-diff` |
 | Property tests | Pre-push, CI | hypothesis | `make test-property-push`, `make test-property-ci` |
-| Quality plan generator | On-demand | `scripts/generate_quality_plan.py` | `make quality-plan` |
-| Plan compliance check | On-demand | `scripts/check_plan_compliance.py` | `make plan-check` |
 | Build, verify, smoke | CI, release | uv, twine, custom | `make build verify smoke-test` |
 | Release publish | Release | GitHub Actions, OIDC | `.github/workflows/publish-to-pypi.yml` |
 | Release Drafter (draft notes) | Push/PR lifecycle | release-drafter v7.6.0 pinned by SHA | `.github/workflows/release-drafter.yml` |
@@ -603,7 +592,6 @@ inline where they need Git or event context.
 | OpenCode quality gate | Session | `.opencode/plugins/quality-gate.ts` | `make configure-opencode` |
 | OpenCode real-time quality | Session | `.opencode/plugins/pxcli-quality.ts` | `make configure-opencode` |
 | OpenCode pre-push docs | Session | `.opencode/plugins/pre-push-docs-check.ts` | `make configure-opencode` |
-| OpenCode plan compliance | Session | `.opencode/plugins/plan-compliance-gate.ts` + agent | `make configure-opencode` |
 | Complexity trend tracking | On-demand | `scripts/track_metrics.py` | `make metrics-track` |
 | OpenCode environment setup | On-demand | `make configure-opencode` | `make configure-opencode` |
 | Diff coverage | On-demand | diff-cover | `make diff-coverage` |

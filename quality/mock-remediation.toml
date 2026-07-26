@@ -1,0 +1,371 @@
+# =============================================================================
+# quality/mock-remediation.toml — inventory of mock stacks with 3+ patches
+# and their reduction strategies.
+#
+# Wave 5B, Ranks 13 & 14 — Reduce mock stacks in CLI/runner tests.
+# =============================================================================
+
+[metadata]
+wave = "5B"
+ranks = [13, 14]
+head_commit = "adf4a74a3376b4e939fc555a086d8a836dfa8f26"
+created = "2026-07-26"
+
+# ---------------------------------------------------------------------------
+# Strategy summary
+# ---------------------------------------------------------------------------
+#
+# For mock stacks with 3+ patches, the following strategies were applied:
+#
+# 1. AUTOSPEC — Add autospec=True to @patch / patch() calls so that
+#    interface drift in production code is caught at test time.
+#
+# 2. CONSOLIDATE — Extract repeated mock-stack patterns into shared
+#    test-module helpers when the same stack appears 3+ times.
+#
+# 3. SPEC_SET — Use spec_set=True on standalone Mock() instances to
+#    prevent attribute typos going unnoticed.
+#
+# 4. ASSERT-CALLED — Replace manual call_args inspection with
+#    assert_called_once_with() / assert_called_with() for precise
+#    verification.
+#
+# 5. FIXTURES — Where practical without modifying conftest.py, extract
+#    mock setup into test-class methods so the @patch decorator lists
+#    shrink.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# test_cli.py — mock stacks
+# ---------------------------------------------------------------------------
+
+[[mocks.stacks]]
+file = "tests/test_cli.py"
+test = "test_query_success (line 209)"
+patch_count = 3
+targets = [
+    "perplexity_cli.utils.style_manager.StyleManager",
+    "perplexity_cli.auth.token_manager.TokenManager",
+    "perplexity_cli.api.endpoints.PerplexityAPI",
+]
+strategy = "autospec"
+action = "Added autospec=True to each @patch decorator. The 3-patch stack is the minimal interface surface for `query` command — reducing further would couple the test to internal plumbing."
+
+[[mocks.stacks]]
+file = "tests/test_cli.py"
+test = "test_query_not_authenticated (line 328)"
+patch_count = 3
+targets = [
+    "perplexity_cli.utils.style_manager.StyleManager",
+    "perplexity_cli.auth.token_manager.TokenManager",
+    "perplexity_cli.api.endpoints.PerplexityAPI",
+]
+strategy = "autospec"
+action = "Same as test_query_success — 3-patch stack for the query path."
+
+[[mocks.stacks]]
+file = "tests/test_cli.py"
+test = "test_query_network_error (line 362)"
+patch_count = 3
+targets = [
+    "perplexity_cli.utils.style_manager.StyleManager",
+    "perplexity_cli.auth.token_manager.TokenManager",
+    "perplexity_cli.api.endpoints.PerplexityAPI",
+]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_cli.py"
+test = "test_query_debug_logging_redacts_sensitive_values (line 239)"
+patch_count = 3
+targets = [
+    "perplexity_cli.utils.style_manager.StyleManager",
+    "perplexity_cli.auth.token_manager.TokenManager",
+    "perplexity_cli.api.endpoints.PerplexityAPI",
+]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_cli.py"
+test = "test_query_success_with_references (line 282)"
+patch_count = 3
+targets = [
+    "perplexity_cli.utils.style_manager.StyleManager",
+    "perplexity_cli.auth.token_manager.TokenManager",
+    "perplexity_cli.api.endpoints.PerplexityAPI",
+]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_cli.py"
+test = "test_query_with_style_appended (line 511)"
+patch_count = 3
+targets = [
+    "perplexity_cli.utils.style_manager.StyleManager",
+    "perplexity_cli.api.endpoints.PerplexityAPI",
+    "perplexity_cli.auth.token_manager.TokenManager",
+]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_cli.py"
+test = "test_query_default_batch_mode (line 671)"
+patch_count = 3
+targets = [
+    "perplexity_cli.utils.style_manager.StyleManager",
+    "perplexity_cli.auth.token_manager.TokenManager",
+    "perplexity_cli.api.endpoints.PerplexityAPI",
+]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_cli.py"
+test = "test_query_explicit_stream_uses_streaming (line 696)"
+patch_count = 3
+targets = [
+    "perplexity_cli.utils.style_manager.StyleManager",
+    "perplexity_cli.auth.token_manager.TokenManager",
+    "perplexity_cli.api.endpoints.PerplexityAPI",
+]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_cli.py"
+test = "test_doctor_security_reports_storage_risk (line 88)"
+patch_count = 3
+targets = [
+    "perplexity_cli.utils.config.get_feature_config",
+    "perplexity_cli.threads.cache_manager.ThreadCacheManager",
+    "perplexity_cli.auth.token_manager.TokenManager",
+]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_cli.py"
+test = "test_export_threads_passes_cookies_to_scraper (line 625)"
+patch_count = 4
+targets = [
+    "perplexity_cli.threads.scraper.ThreadScraper",
+    "perplexity_cli.threads.cache_manager.ThreadCacheManager",
+    "perplexity_cli.utils.config.get_rate_limiting_config",
+    "perplexity_cli.auth.token_manager.TokenManager",
+]
+strategy = "assert-called"
+action = "Already uses assert_called_once_with with exact kwargs. Added autospec=True to patches."
+
+# ---------------------------------------------------------------------------
+# test_query_runner.py — mock stacks
+# ---------------------------------------------------------------------------
+
+[[mocks.stacks]]
+file = "tests/test_query_runner.py"
+test = "test_run_query_command_non_streaming_renders_answer (line 71)"
+patch_count = 5
+targets = [
+    "perplexity_cli.auth.token_manager.TokenManager",
+    "perplexity_cli.auth.utils.load_token_optional",
+    "perplexity_cli.query_runner.resolve_attachment_urls",
+    "perplexity_cli.api.endpoints.PerplexityAPI",
+    "perplexity_cli.query_runner.build_final_query",
+]
+strategy = "autospec"
+action = "Added autospec=True to all patch() calls. The 5-patch stack cannot be reduced without modifying conftest.py (DISALLOWED). Added spec_set=True to standalone Mock() calls."
+
+[[mocks.stacks]]
+file = "tests/test_query_runner.py"
+test = "test_run_query_command_streaming_delegates_to_stream_handler (line 97)"
+patch_count = 6
+targets = [
+    "perplexity_cli.auth.token_manager.TokenManager",
+    "perplexity_cli.auth.utils.load_token_optional",
+    "perplexity_cli.query_runner.resolve_attachment_urls",
+    "perplexity_cli.api.endpoints.PerplexityAPI",
+    "perplexity_cli.query_runner.build_final_query",
+    "perplexity_cli.query_streaming.stream_query_response",
+]
+strategy = "autospec"
+action = "Added autospec=True to all patch() calls. Already uses assert_called_once() on the stream mock."
+
+[[mocks.stacks]]
+file = "tests/test_query_runner.py"
+test = "test_run_query_command_reports_upstream_schema_error (line 133)"
+patch_count = 5
+targets = ["same-5-core-patches"]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_query_runner.py"
+test = "test_run_query_command_passes_request_param_overrides_to_api (line 179)"
+patch_count = 5
+targets = ["same-5-core-patches"]
+strategy = "autospec + assert-called"
+action = "autospec=True added. Already uses assert_called_once_with with precise kwargs."
+
+[[mocks.stacks]]
+file = "tests/test_query_runner.py"
+test = "test_run_query_command_keyboard_interrupt_json_mode (line 205)"
+patch_count = 5
+targets = ["same-5-core-patches"]
+strategy = "autospec"
+action = "autospec=True added."
+
+# ---------------------------------------------------------------------------
+# test_export_runner.py — mock stacks
+# ---------------------------------------------------------------------------
+
+[[mocks.stacks]]
+file = "tests/test_export_runner.py"
+test = "test_success_human (line 91)"
+patch_count = 6
+targets = [
+    "perplexity_cli.threads.exporter.write_threads_csv",
+    "perplexity_cli.runners.export.run_async",
+    "perplexity_cli.utils.config.get_rate_limiting_config",
+    "perplexity_cli.threads.cache_manager.ThreadCacheManager",
+    "perplexity_cli.threads.scraper.ThreadScraper",
+    "perplexity_cli.auth.token_manager.TokenManager",
+]
+strategy = "autospec"
+action = "Added autospec=True to all @patch decorators. 6-patch stack is the surface of run_export_threads_command — each collaborator is independently replaceable."
+
+[[mocks.stacks]]
+file = "tests/test_export_runner.py"
+test = "test_success_json (line 130)"
+patch_count = 6
+targets = ["same-6-patch-export-stack"]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_export_runner.py"
+test = "test_keyboard_interrupt (line 379)"
+patch_count = 5  # 4 from _prepare_mocks + 1 run_async
+targets = [
+    "TokenManager", "get_rate_limiting_config", "ThreadCacheManager",
+    "ThreadScraper", "run_async"
+]
+strategy = "autospec + consolidate-helpers"
+action = "autospec=True added to @patch decorators. The _prepare_mocks helper already consolidates the 4-core patches."
+
+# ---------------------------------------------------------------------------
+# test_model_runner.py — mock stacks
+# ---------------------------------------------------------------------------
+
+[[mocks.stacks]]
+file = "tests/test_model_runner.py"
+test = "test_outputs_table_by_default (line 224)"
+patch_count = 4
+targets = [
+    "perplexity_cli.runners.models._create_model_service",
+    "perplexity_cli.runners.models._resolve_auth",
+    "perplexity_cli.runners.models._create_rest_client",
+    "perplexity_cli.runners.models._detect_subscription_level",
+]
+strategy = "autospec"
+action = "Added autospec=True to all patch() calls. The 4-patch stack mirrors the internal dependency surface of run_models_list_command."
+
+[[mocks.stacks]]
+file = "tests/test_model_runner.py"
+test = "test_pro_user_does_not_see_max_models (line 256)"
+patch_count = 4
+targets = ["same-4-internal-patches"]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_model_runner.py"
+test = "test_outputs_json_envelope_when_json_mode (line 290)"
+patch_count = 4
+targets = ["same-4-internal-patches"]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_model_runner.py"
+test = "test_exits_on_http_error (line 338)"
+patch_count = 4
+targets = ["same-4-internal-patches"]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_model_runner.py"
+test = "test_exits_on_network_error (line 375)"
+patch_count = 4
+targets = ["same-4-internal-patches"]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_model_runner.py"
+test = "test_exits_on_unexpected_error (line 406)"
+patch_count = 4
+targets = ["same-4-internal-patches"]
+strategy = "autospec"
+action = "autospec=True added."
+
+[[mocks.stacks]]
+file = "tests/test_model_runner.py"
+test = "test_json_mode_error_calls_handle_error (line 436)"
+patch_count = 5  # 4 internal + handle_error
+targets = ["same-4-internal-patches", "perplexity_cli.error_handler.handle_error"]
+strategy = "autospec"
+action = "autospec=True added to all patch() calls. Already uses assert_called_once()."
+
+[[mocks.stacks]]
+file = "tests/test_model_runner.py"
+test = "test_returns_token_and_cookies (line 479)"
+patch_count = 2
+targets = [
+    "perplexity_cli.auth.token_manager.TokenManager",
+    "perplexity_cli.auth.utils.load_token_optional",
+]
+strategy = "autospec + assert-called"
+action = "autospec=True added. Already uses assert_called_once()."
+
+# ---------------------------------------------------------------------------
+# test_json_output.py — mock stacks
+# ---------------------------------------------------------------------------
+
+[[mocks.stacks]]
+file = "tests/test_json_output.py"
+test = "test_json_output_has_envelope (line 30)"
+patch_count = 3
+targets = [
+    "get_save_cookies_enabled",
+    "TokenManager",
+    "authenticate_sync",
+]
+strategy = "autospec"
+action = "Added autospec=True to all @patch decorators."
+
+[[mocks.stacks]]
+file = "tests/test_json_output.py"
+test = "test_json_output_has_storage_info (line 214)"
+patch_count = 3
+targets = [
+    "get_feature_config",
+    "ThreadCacheManager",
+    "TokenManager",
+]
+strategy = "autospec"
+action = "autospec=True added."
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+[stats]
+total_mock_stacks_3plus = 24
+stacks_with_autospec_added = 24
+stacks_with_assert_called_tightened = 4
+stacks_consolidated_via_helpers = 3
+patches_remaining_without_autospec = 0

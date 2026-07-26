@@ -7,19 +7,15 @@ user's subscription level, using the ``/rest/models/config`` and
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from perplexity_cli.models.model_config import (
     ModelConfigEntry,
     ModelConfigResponse,
     SubscriptionLevel,
     UserSettings,
 )
+from perplexity_cli.services.ports import QueryClient
 from perplexity_cli.utils.config import get_model_config_endpoint, get_user_settings_endpoint
 from perplexity_cli.utils.logging import get_logger
-
-if TYPE_CHECKING:
-    from perplexity_cli.api.rest_client import RestClient
 
 
 class ModelService:
@@ -32,13 +28,13 @@ class ModelService:
 
     def __init__(
         self,
-        rest_client: RestClient,
+        rest_client: QueryClient,
         subscription_level: SubscriptionLevel,
     ) -> None:
         """Initialise the model service.
 
         Args:
-            rest_client: HTTP client for REST API calls.
+            rest_client: HTTP query client satisfying the QueryClient port.
             subscription_level: The user's subscription level (FREE, PRO, MAX).
         """
         self._client = rest_client

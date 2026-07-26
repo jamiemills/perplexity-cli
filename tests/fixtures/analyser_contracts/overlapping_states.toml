@@ -1,0 +1,17 @@
+[schema]
+version = 1
+
+[[analysers]]
+id = "overlapping"
+target = "overlapping"
+phase = 1
+status = "active"
+description = "Has overlapping state ranges"
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 1
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 2

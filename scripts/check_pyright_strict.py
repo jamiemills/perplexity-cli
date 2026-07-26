@@ -54,6 +54,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _fingerprint(diag: dict) -> str:
+    """Create a stable identifier from a Pyright diagnostic."""
     start = diag.get("range", {}).get("start", {})
     file_path = diag.get("file", "?")
     root_prefix = str(PROJECT_ROOT) + "/"
@@ -72,19 +73,34 @@ def collect_findings() -> list[str]:
     TEMP_CONFIG.write_text(json.dumps(_STRICT_CONFIG), encoding="utf-8")
     cmd = ["uv", "run", "pyright", "-p", str(TEMP_CONFIG), "--outputjson"]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+            timeout=300,
+            check=False,
+        )
     finally:
         TEMP_CONFIG.unlink(missing_ok=True)
     try:
         data = json.loads(result.stdout or "{}")
-    except json.JSONDecodeError:
-        print("Pyright produced unparseable output:\n" + result.stderr, file=sys.stderr)
-        return []
+    except json.JSONDecodeError as exc:
+        detail = result.stderr.strip() or "Pyright produced unparseable output."
+        raise RuntimeError(detail) from exc
+    # Pyright can exit non-zero for findings — that is expected.
+    # Only exit >=2 signals a tool crash.
+    is_tool_error = result.returncode is not None and result.returncode >= 2
+    if is_tool_error:
+        raise RuntimeError(
+            result.stderr.strip() or f"Pyright exited with status {result.returncode}."
+        )
     diagnostics = data.get("generalDiagnostics", [])
     return sorted({_fingerprint(d) for d in diagnostics})
 
 
 def _report_pass(diff: FingerprintDiff, count: int) -> None:
+    """Print a passing summary with optional shrinkage note."""
     print(f"Pyright strict ratchet passed: {count} baselined diagnostic(s); no new findings.")
     if diff.removed:
         print(
@@ -94,6 +110,7 @@ def _report_pass(diff: FingerprintDiff, count: int) -> None:
 
 
 def _report_regression(diff: FingerprintDiff) -> int:
+    """Print a regression report and return exit code 1."""
     print("Pyright strict ratchet FAILED: new strict diagnostics.\n", file=sys.stderr)
     for fingerprint in diff.new:
         print(f"  NEW  {fingerprint}", file=sys.stderr)
@@ -106,8 +123,13 @@ def _report_regression(diff: FingerprintDiff) -> int:
 
 
 def main() -> None:
+    """Entry point: collect diagnostics, ratchet, and report."""
     args = _parse_args()
-    current = collect_findings()
+    try:
+        current = collect_findings()
+    except (RuntimeError, subprocess.TimeoutExpired) as exc:
+        print(f"Pyright strict gate could not run: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     if args.update_baseline:
         path = save_fingerprints(BASELINE_NAME, current)

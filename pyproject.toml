@@ -78,9 +78,11 @@ perplexity_cli = ["resources/skill.md", "config/urls.json"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+exclude = ["tests/fixtures/"]
 
 [tool.ruff.format]
 docstring-code-format = true
+exclude = ["tests/fixtures/"]
 
 [tool.ruff.lint]
 select = [
@@ -128,7 +130,9 @@ convention = "google"
     "PLW1510","PLR0913","C901",
     "ERA001",
     "PTH100","PTH118","PTH120","PLW0108","PLR1722",
+    "RUF059","RET504","RUF003","B011","F841","F821",
 ]
+"tests/fixtures/**/*.py" = ["ALL"]
 "vulture_whitelist.py" = ["B018", "D", "F821"]
 "scripts/**/*.py" = ["D", "T20"]
 

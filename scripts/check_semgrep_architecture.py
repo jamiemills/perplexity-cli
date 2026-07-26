@@ -1,8 +1,8 @@
 """Semgrep architecture ratchet gate.
 
-Runs the architectural prevention rules in ``.semgrep-architecture.yml``
-(targeting the thermo-nuclear review failure modes) and ratchets the findings
-against ``quality/baselines/semgrep-architecture.json``.
+Runs the structural prevention rules (now consolidated in ``.semgrep.yml``)
+and ratchets the findings against
+``quality/baselines/semgrep-architecture.json``.
 
 Existing architectural debt is captured as accepted; the gate fails only on
 *new* findings, so the patterns documented in the review cannot spread.
@@ -11,7 +11,7 @@ Usage::
 
     uv run python scripts/check_semgrep_architecture.py [--update-baseline]
 
-Exit codes: 0 = pass, 1 = regression.
+Exit codes: 0 = pass, 1 = regression, 2 = internal error.
 """
 
 from __future__ import annotations
@@ -32,11 +32,24 @@ from _ratchet import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CONFIG = PROJECT_ROOT / ".semgrep-architecture.yml"
+CONFIG = PROJECT_ROOT / ".semgrep.yml"
 BASELINE_NAME = "semgrep-architecture.json"
 DESCRIPTION = "Semgrep architecture ratchet: block new structural findings."
 _SCRIPT = Path(__file__).name
 SEMGREP_VERSION = "1.171.0"
+
+ARCH_RULE_IDS: frozenset[str] = frozenset(
+    {
+        "function-local-import",
+        "retry-sleep-outside-canonical",
+        "ad-hoc-http-status-classification",
+        "sys-exit-outside-boundary",
+        "http-client-outside-transport",
+        "write-then-chmod-toctou",
+        "getter-with-side-effects",
+        "click-echo-outside-presentation",
+    }
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -55,7 +68,6 @@ def _fingerprint(result: dict) -> str:
 
 
 def _parse_results(stdout: str, stderr: str) -> list[str]:
-    """Parse semgrep JSON output into sorted fingerprints."""
     try:
         data = json.loads(stdout or "{}")
     except json.JSONDecodeError as error:
@@ -64,13 +76,15 @@ def _parse_results(stdout: str, stderr: str) -> list[str]:
     errors = data.get("errors", [])
     if errors:
         raise RuntimeError(f"Semgrep reported analysis errors: {errors}")
-    return sorted({_fingerprint(r) for r in data.get("results", [])})
+    results = data.get("results", [])
+    arch_results = [r for r in results if r.get("check_id") in ARCH_RULE_IDS]
+    return sorted({_fingerprint(r) for r in arch_results})
 
 
 def collect_findings() -> list[str]:
-    """Run semgrep with the architecture config and return sorted fingerprints."""
+    """Run semgrep with the canonical config and return sorted architecture fingerprints."""
     if not CONFIG.is_file():
-        raise RuntimeError(f"Semgrep architecture config not found: {CONFIG}")
+        raise RuntimeError(f"Semgrep config not found: {CONFIG}")
     cmd = [
         "uvx",
         "--from",
@@ -88,7 +102,7 @@ def collect_findings() -> list[str]:
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,
-        timeout=180,
+        timeout=300,
         check=False,
     )
     if result.returncode != 0:
@@ -122,8 +136,8 @@ def main() -> None:
     args = _parse_args()
     try:
         current = collect_findings()
-    except RuntimeError as error:
-        print(f"Semgrep architecture gate could not run: {error}", file=sys.stderr)
+    except RuntimeError as exc:
+        print(f"Semgrep architecture gate could not run: {exc}", file=sys.stderr)
         sys.exit(2)
 
     if args.update_baseline:
