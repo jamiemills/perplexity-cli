@@ -195,8 +195,7 @@ class TestOidHandling:
             ["git", "rev-parse", "HEAD"], text=True, cwd=PROJECT_ROOT
         ).strip()
         stdin = (
-            "(delete) 0000000000000000000000000000000000000000 "
-            f"refs/heads/delete-me {head_sha}\n"
+            f"(delete) 0000000000000000000000000000000000000000 refs/heads/delete-me {head_sha}\n"
         )
         result = _run_script(
             "pre-push",

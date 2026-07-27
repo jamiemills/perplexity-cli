@@ -1,0 +1,16 @@
+{
+  "event_sequence": 17,
+  "event_type": "security_contract_corrected",
+  "run_id": "20260726-201025",
+  "task_id": "G2-GITLEAKS-CONTRACT",
+  "candidate_sha": "329b559a0ee8060751cc1d60d6ce180b76d11583",
+  "independent_review": "approved",
+  "prepush_field_order": "local-ref local-oid remote-ref remote-oid",
+  "gitleaks_version": "8.30.1",
+  "merge_diff_mode": "first-parent",
+  "exact_commit_union": true,
+  "new_ref_remote_reachability": "fail_closed",
+  "remote_url_redaction": true,
+  "tests_passed": 101,
+  "full_history_scan": "pass"
+}

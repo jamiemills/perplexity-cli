@@ -350,10 +350,7 @@ class TestPrePushRefHandling:
             text=True,
             cwd=str(repo),
         ).strip()
-        stdin = (
-            "(delete) 0000000000000000000000000000000000000000 "
-            f"refs/heads/delete-me {head}\n"
-        )
+        stdin = f"(delete) 0000000000000000000000000000000000000000 refs/heads/delete-me {head}\n"
         result = _run_gitleaks(
             repo,
             "pre-push",

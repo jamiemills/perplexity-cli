@@ -215,6 +215,13 @@ def test_lefthook_glob_alternatives_use_supported_braces() -> None:
     assert 'glob: ".github/workflows/*.{yml,yaml}"' in glob_lines
 
 
+def test_gitleaks_is_the_only_prepush_stdin_consumer() -> None:
+    """Pre-push must forward Git's remote arguments and stdin exactly once."""
+    pre_push = LEFTHOOK[LEFTHOOK.index("pre-push:") :]
+    assert pre_push.count("use_stdin: true") == 1
+    assert 'scripts/gitleaks_check.sh pre-push "{1}" "{2}"' in pre_push
+
+
 def test_mutmut_ignores_repository_infrastructure_tests() -> None:
     """Mutmut's isolated tree cannot collect tests requiring repository tooling."""
     config = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))

@@ -146,7 +146,10 @@ def test_only_exact_gitleaks_version_is_accepted(tmp_path: Path, version: str) -
         repo,
         ["ci-full"],
         shim_dir=shim,
-        env_extra={"FAKE_GITLEAKS_VERSION": version, "FAKE_GITLEAKS_RECORD": str(tmp_path / "record")},
+        env_extra={
+            "FAKE_GITLEAKS_VERSION": version,
+            "FAKE_GITLEAKS_RECORD": str(tmp_path / "record"),
+        },
     )
     assert result.returncode == 3
     assert "requires exactly 8.30.1" in result.stderr
@@ -161,7 +164,10 @@ def test_exact_version_allows_optional_v_and_whitespace(tmp_path: Path, version:
         repo,
         ["ci-full"],
         shim_dir=shim,
-        env_extra={"FAKE_GITLEAKS_VERSION": version, "FAKE_GITLEAKS_RECORD": str(tmp_path / "record")},
+        env_extra={
+            "FAKE_GITLEAKS_VERSION": version,
+            "FAKE_GITLEAKS_RECORD": str(tmp_path / "record"),
+        },
     )
     assert result.returncode == 0
 
@@ -221,7 +227,11 @@ def test_new_ref_subtracts_every_advertised_remote_commit(tmp_path: Path) -> Non
     local_oid = _add_commit(repo, "feature.txt")
     stdin = _fixture(
         "stdin-new-ref.txt",
-        {"LOCAL_REF": "refs/heads/feature", "LOCAL_OID": local_oid, "REMOTE_REF": "refs/heads/feature"},
+        {
+            "LOCAL_REF": "refs/heads/feature",
+            "LOCAL_OID": local_oid,
+            "REMOTE_REF": "refs/heads/feature",
+        },
     )
     result, commits = _run_fake(repo, tmp_path, stdin)
     assert result.returncode == 0
@@ -612,9 +622,7 @@ def test_real_binary_scans_merge_resolution_against_first_parent(tmp_path: Path)
         text=True,
     )
     assert merge.returncode != 0
-    (repo / "resolution.txt").write_text(
-        'API_SECRET = "c4a82c662a22c001b83142d1265c7fb8360b3aa"\n'
-    )
+    (repo / "resolution.txt").write_text('API_SECRET = "c4a82c662a22c001b83142d1265c7fb8360b3aa"\n')
     _git_run(repo, "add", "resolution.txt")
     _git_run(repo, "commit", "--no-edit")
     merge_oid = _git(repo, "rev-parse", "HEAD")

@@ -174,7 +174,7 @@ pre-push:
     # Gitleaks runs alone with use_stdin so it owns the git push stdin
     # pipe; no other job may set use_stdin.
     - name: gitleaks-detect
-      run: make gitleaks
+      run: scripts/gitleaks_check.sh pre-push "{1}" "{2}"
       use_stdin: true
 
     - name: static-checks
