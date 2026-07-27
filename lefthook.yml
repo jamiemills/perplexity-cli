@@ -155,45 +155,64 @@ pre-commit:
       run: make test
 
 # =============================================================================
-# Pre-push: expensive whole-project validations (parallel)
+# Pre-push: expensive whole-project validations (piped stages)
 #
-# Full test suite with coverage enforcement, supply-chain scanning, and
-# fuzz testing. These do not need per-commit granularity.
-# Wall time: ~24s (pytest+coverage is the bottleneck).
+# Staged sequence with bounded parallelism: each stage runs only if the
+# previous one passed. Gitleaks is the SOLE stdin consumer and runs first
+# so it owns the git push stdin pipe; no other job sets use_stdin.
+#
+#   Stage 1  gitleaks (stdin) + static checks    (1 + 4 parallel)
+#   Stage 2  pytest with coverage enforcement    (single)
+#   Stage 3  property tests + sonar reports      (2 parallel)
+#   Stage 4  mutation + safety + fuzz            (1 + 2 parallel)
 # =============================================================================
 
 pre-push:
-  parallel: true
+  piped: true
   jobs:
+    # Stage 1: Secret detection (sole stdin consumer) + static checks.
+    # Gitleaks runs alone with use_stdin so it owns the git push stdin
+    # pipe; no other job may set use_stdin.
     - name: gitleaks-detect
       run: make gitleaks
+      use_stdin: true
 
-    - name: agent-check
-      run: make agent-check-no-tests
+    - name: static-checks
+      group:
+        parallel: true
+        jobs:
+          - name: agent-check
+            run: make agent-check-no-tests
+          - name: arch-check
+            run: make arch-check
+          - name: coupling-check
+            run: make coupling-check
+          - name: quality-ratchets
+            run: make ratchets
 
+    # Stage 2: Coverage
     - name: pytest-coverage
       run: make test-coverage
 
-    - name: safety-scan
-      run: make safety
+    # Stage 3: Property + advisory
+    - name: property-and-advisory
+      group:
+        parallel: true
+        jobs:
+          - name: test-property
+            run: make test-property-push
+          - name: generate-sonar-reports
+            run: make sonar-reports
 
-    - name: fuzz-check
-      run: make test-fuzz
-
-    - name: generate-sonar-reports
-      run: make sonar-reports
-
-    - name: arch-check
-      run: make arch-check
-
-    - name: coupling-check
-      run: make coupling-check
-
-    - name: quality-ratchets
-      run: make ratchets
-
+    # Stage 4: Mutation + safety + fuzz (sequential, heavy)
     - name: mutate-diff
       run: make mutate-diff
 
-    - name: test-property
-      run: make test-property-push
+    - name: safety-and-fuzz
+      group:
+        parallel: true
+        jobs:
+          - name: safety-scan
+            run: make safety
+          - name: fuzz-check
+            run: make test-fuzz
