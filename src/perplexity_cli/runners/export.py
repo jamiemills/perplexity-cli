@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -159,6 +159,18 @@ def _is_dict_str_obj(value: object) -> TypeGuard[dict[str, object]]:
     return isinstance(value, dict)
 
 
+def _thread_attribute(
+    record: object,
+    getter: Callable[[ThreadRecordProtocol], object],
+) -> str:
+    """Read one string attribute from a thread-like object."""
+    try:
+        value = getter(cast(ThreadRecordProtocol, record))
+    except AttributeError:
+        return ""
+    return _string_or_empty(value)
+
+
 def _thread_payload(record: object) -> ThreadPayload:
     """Convert a thread-like object into JSON-envelope payload data."""
     if _is_dict_str_obj(record):
@@ -168,23 +180,10 @@ def _thread_payload(record: object) -> ThreadPayload:
             "url": _string_or_empty(record.get("url", "")),
         }
 
-    thread_record = cast(ThreadRecordProtocol, record)
-    try:
-        title = thread_record.title
-    except AttributeError:
-        title = ""
-    try:
-        created_at = thread_record.created_at
-    except AttributeError:
-        created_at = ""
-    try:
-        url = thread_record.url
-    except AttributeError:
-        url = ""
     return {
-        "title": title if isinstance(title, str) else "",
-        "created_at": created_at if isinstance(created_at, str) else "",
-        "url": url if isinstance(url, str) else "",
+        "title": _thread_attribute(record, lambda thread: thread.title),
+        "created_at": _thread_attribute(record, lambda thread: thread.created_at),
+        "url": _thread_attribute(record, lambda thread: thread.url),
     }
 
 

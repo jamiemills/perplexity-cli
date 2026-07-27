@@ -137,22 +137,35 @@ class _ResponseCandidateProtocol(Protocol):
     json: object
 
 
-def _is_response_protocol(response: object) -> TypeGuard[ResponseProtocol]:
-    """Return True when an object exposes the response attributes we rely on."""
+def _response_core_members(response: object) -> tuple[object, object] | None:
+    """Read response members required for every HTTP outcome."""
     response_candidate = cast(_ResponseCandidateProtocol, response)
     try:
-        ok_value = response_candidate.ok
-        json_method = response_candidate.json
+        return response_candidate.ok, response_candidate.json
     except AttributeError:
-        return False
-    if not isinstance(ok_value, bool) or not callable(json_method):
-        return False
-    if ok_value:
-        return True
+        return None
+
+
+def _has_integer_status_code(response: object) -> bool:
+    """Return whether a response exposes an integer status code."""
+    response_candidate = cast(_ResponseCandidateProtocol, response)
     try:
         return isinstance(response_candidate.status_code, int)
     except AttributeError:
         return False
+
+
+def _is_response_protocol(response: object) -> TypeGuard[ResponseProtocol]:
+    """Return True when an object exposes the response attributes we rely on."""
+    core_members = _response_core_members(response)
+    if core_members is None:
+        return False
+    ok_value, json_method = core_members
+    if not isinstance(ok_value, bool) or not callable(json_method):
+        return False
+    if ok_value:
+        return True
+    return _has_integer_status_code(response)
 
 
 def _get_cache_str_field(thread_dict: dict[str, object], field: str) -> str:

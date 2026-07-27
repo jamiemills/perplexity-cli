@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
 from typing import Literal, TypeGuard
 
 import click
@@ -16,6 +17,15 @@ from perplexity_cli.utils.http_errors import handle_unexpected_cli_error
 from perplexity_cli.utils.logging import get_logger, redact_path, redact_text
 
 _AUTH_LOGIN_COMMAND = "pxcli auth login"
+
+
+@dataclass(frozen=True, slots=True)
+class _AuthOutputOptions:
+    """Resolved output options for an authentication attempt."""
+
+    output_format: OutputFormat
+    schema_inclusion: SchemaInclusion
+    debug_level: DebugMode
 
 
 def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -150,16 +160,23 @@ def _handle_auth_os_config_error(
     )
 
 
+def _resolve_auth_output_options(ctx_flags: tuple[bool, bool, bool]) -> _AuthOutputOptions:
+    """Convert raw context flags to typed authentication output options."""
+    json_mode, include_schema, debug_mode = ctx_flags
+    return _AuthOutputOptions(
+        output_format="json" if json_mode else "human",
+        schema_inclusion="with_schema" if include_schema else "no_schema",
+        debug_level="debug" if debug_mode else "normal",
+    )
+
+
 def _execute_auth(
     port: int,
     ctx_flags: tuple[bool, bool, bool],
     base_url: str,
 ) -> None:
     """Perform authentication and handle domain-specific errors."""
-    json_mode, include_schema, debug_mode = ctx_flags
-    output_format: OutputFormat = "json" if json_mode else "human"
-    schema_inclusion: SchemaInclusion = "with_schema" if include_schema else "no_schema"
-    debug_level: DebugMode = "debug" if debug_mode else "normal"
+    options = _resolve_auth_output_options(ctx_flags)
     from perplexity_cli.auth.oauth_handler import authenticate_sync
 
     logger = get_logger()
@@ -171,11 +188,16 @@ def _execute_auth(
         logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
             "Token and %s cookies extracted successfully", len(cookies)
         )
-        _handle_auth_success(token, cookies, output_format, schema_inclusion)
+        _handle_auth_success(
+            token,
+            cookies,
+            options.output_format,
+            options.schema_inclusion,
+        )
     except (TimeoutError, AuthenticationError) as e:
-        _handle_auth_timeout_error(e, output_format, port, base_url)
+        _handle_auth_timeout_error(e, options.output_format, port, base_url)
     except (OSError, ConfigurationError) as e:
-        _handle_auth_os_config_error(e, output_format, debug_level)
+        _handle_auth_os_config_error(e, options.output_format, options.debug_level)
 
 
 def _resolve_logout_ctx(

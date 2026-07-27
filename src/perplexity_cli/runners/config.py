@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard
@@ -188,6 +189,43 @@ def _print_config_change_message(key: str, state: Literal["enabled", "disabled"]
         click.echo(msgs[1])
 
 
+def _output_config_change(
+    key: str,
+    state: Literal["enabled", "disabled"],
+    output_format: OutputFormat,
+    logger: logging.Logger,
+) -> None:
+    """Output a successful feature configuration change."""
+    bool_value = state == "enabled"
+    if output_format == "json":
+        env = success_envelope(
+            "pxcli config set",
+            {
+                "key": key,
+                "value": bool_value,
+            },
+        )
+        write_envelope(env, include_schema=_get_include_schema())
+        return
+
+    click.echo(f"[OK] Configuration updated: {key} = {bool_value}")
+    logger.info("Configuration updated: %s = %s", key, bool_value)
+    _print_config_change_message(key, state)
+
+
+def _handle_set_config_error(
+    e: ConfigurationError,
+    output_format: OutputFormat,
+    logger: logging.Logger,
+) -> None:
+    """Output a feature configuration failure and exit."""
+    if output_format == "json":
+        handle_error(e, "pxcli config set", output_format="json")
+    click.echo(f"[ERROR] Failed to update configuration: {e}", err=True)
+    logger.error("Configuration update failed: %s", e, exc_info=True)
+    sys.exit(1)
+
+
 def run_set_config_command(
     key: str, value: str, *, output_format: OutputFormat | None = None
 ) -> None:
@@ -203,28 +241,10 @@ def run_set_config_command(
         bool_value = value.lower() == "true"
         set_feature(key, bool_value)
         clear_feature_config_cache()
-
-        if output_format == "json":
-            env = success_envelope(
-                "pxcli config set",
-                {
-                    "key": key,
-                    "value": bool_value,
-                },
-            )
-            write_envelope(env, include_schema=_get_include_schema())
-            return
-
-        click.echo(f"[OK] Configuration updated: {key} = {bool_value}")
-        logger.info("Configuration updated: %s = %s", key, bool_value)
-        _print_config_change_message(key, "enabled" if bool_value else "disabled")
-
+        state: Literal["enabled", "disabled"] = "enabled" if bool_value else "disabled"
+        _output_config_change(key, state, output_format, logger)
     except ConfigurationError as e:
-        if output_format == "json":
-            handle_error(e, "pxcli config set", output_format="json")
-        click.echo(f"[ERROR] Failed to update configuration: {e}", err=True)
-        logger.error("Configuration update failed: %s", e, exc_info=True)
-        sys.exit(1)
+        _handle_set_config_error(e, output_format, logger)
 
 
 _ENV_OVERRIDE_KEYS = ("PERPLEXITY_SAVE_COOKIES", "PERPLEXITY_DEBUG_MODE")
