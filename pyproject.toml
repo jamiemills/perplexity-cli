@@ -197,6 +197,7 @@ dev = [
     "deptry>=0.20",
     "pip-audit>=2.7",
     "import-linter>=2.0",
+    "ruamel.yaml>=0.18",
 ]
 
 [tool.deptry.per_rule_ignores]
