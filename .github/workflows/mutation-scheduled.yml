@@ -8,6 +8,10 @@ name: Scheduled Mutation Testing
 permissions:
   contents: read
 
+concurrency:
+  group: mutation-${{ github.event_name == 'schedule' && 'scheduled' || format('dispatch-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
 jobs:
   mutation:
     runs-on: ubuntu-latest
@@ -27,10 +31,58 @@ jobs:
       - name: Sync dependencies
         run: uv sync --all-extras --locked --group dev
 
-      - name: Run full mutation testing
-        run: make mutate
+      - name: Run full mutation testing with policy wrapper
+        run: make mutate-full-policy
 
-      - name: Show results
+      - name: Job summary
         if: always()
-        run: make mutate-results
-        continue-on-error: true
+        run: |
+          REPORT="quality/evidence/mutation-report.json"
+          {
+            echo "## Scheduled Mutation Testing"
+            echo ""
+            if [ -f "$REPORT" ]; then
+              uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          try:
+              report = json.loads(Path("quality/evidence/mutation-report.json").read_text())
+          except Exception as exc:
+              print(f"_Failed to read mutation report: {exc}_")
+          else:
+              categories = report.get("categories", {})
+              print(f"- Status: **{report.get('status', 'unknown')}**")
+              print(f"- Total mutants: {report.get('total_mutants', 'N/A')}")
+              print(f"- Killed: {categories.get('killed', 0)}")
+              print(f"- Survived: {categories.get('survived', 0)}")
+              print(f"- Timeout: {categories.get('timeout', 0)}")
+              print(f"- Suspicious: {categories.get('suspicious', 0)}")
+              print(f"- Skipped: {categories.get('skipped', 0)}")
+              print(f"- Not checked: {categories.get('not_checked', 0)}")
+              error = report.get("error")
+              if error:
+                  print(f"- Error: {error}")
+          PY
+            else
+              echo "_No mutation report was produced (mutmut may have failed before policy evaluation)._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mutation-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: quality/evidence/mutation-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload mutmut cache
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mutmut-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .mutmut-cache
+          if-no-files-found: warn
+          retention-days: 30
