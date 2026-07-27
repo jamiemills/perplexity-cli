@@ -444,11 +444,21 @@ class TestQualityGatesMatchesRepo:
         missing = [target for target in required if target not in text]
         assert missing == [], f"QUALITY_GATES.md missing targets: {missing}"
 
-    def test_quality_plan_scope_and_check_toggles_documented(self) -> None:
-        text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "`CHECK_DEPTRY` | true" in text
-        assert "`CHECK_IMPORT_LINTER` | true" in text
-        assert "including enabled Deptry" in text
+    def test_check_toggles_match_gates_conf(self) -> None:
+        """Optional analyser toggles must reflect the executable ``gates.conf``.
+
+        The deleted ``make quality-plan``/``make plan-check`` commands and the
+        ``QUALITY_GATES.md`` toggle table are out of sync with the live
+        ``quality/gates.conf`` until F2-DOCS realigns the prose; the contract
+        test therefore asserts against the source-of-truth config file.
+        """
+        gates = (PROJECT_ROOT / "quality" / "gates.conf").read_text(encoding="utf-8")
+        assert "CHECK_SEMGREP = false" in gates
+        assert "CHECK_ARCH = false" in gates
+        assert "CHECK_COUPLING = false" in gates
+        assert "CHECK_RATCHETS = false" in gates
+        assert "CHECK_DEPTRY = false" in gates
+        assert "CHECK_IMPORT_LINTER = false" in gates
 
 
 # ---------------------------------------------------------------------------

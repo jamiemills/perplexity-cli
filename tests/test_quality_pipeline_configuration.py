@@ -181,9 +181,27 @@ def test_make_uses_locked_thresholds_and_trusted_ci_split() -> None:
 
 def test_blocking_semgrep_uses_only_local_snapshots() -> None:
     semgrep_body = MAKEFILE[MAKEFILE.index("semgrep:  ##") : MAKEFILE.index("semgrep-json:")]
+    assert "scripts/semgrep_policy.py --blocking" in semgrep_body
     assert "$(SEMGREP_CONFIGS)" in semgrep_body
     assert "p/python" not in semgrep_body
     assert "uvx --from semgrep==$(SEMGREP_VERSION)" in MAKEFILE
+
+
+def test_ci_targets_are_split() -> None:
+    """CI lanes must expose per-stage canonical targets owned by make."""
+    required = ("ci-static", "ci-test-coverage", "ci-test-compat", "ci-property", "ci-package")
+    missing = [target for target in required if f"\n{target}:" not in MAKEFILE]
+    assert missing == [], f"Makefile missing CI lane targets: {missing}"
+
+
+def test_analyser_contract_tests_target_exists() -> None:
+    """The analyser contract tests target must be a canonical make goal."""
+    assert "\nanalyser-contract-tests:" in MAKEFILE
+
+
+def test_opencode_audit_target_exists() -> None:
+    """The OpenCode npm-audit target must be a canonical make goal."""
+    assert "\nopencode-audit:" in MAKEFILE
 
 
 def test_lefthook_glob_alternatives_use_supported_braces() -> None:
