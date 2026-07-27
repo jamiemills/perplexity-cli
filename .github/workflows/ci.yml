@@ -10,36 +10,98 @@ name: CI
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 jobs:
-  security-scan:
-    name: Security Scan (gitleaks)
+  secret-scan:
+    name: Secret Scan (gitleaks)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: .gitleaks.toml
+      - name: Install gitleaks 8.30.1
+        run: |
+          set -euo pipefail
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
 
-  test:
-    name: Ubuntu / Python ${{ matrix.python-version }}
+      - name: Run gitleaks (full history)
+        run: make gitleaks-ci
+
+  static:
+    name: Static Analysis (Python 3.12)
     runs-on: ubuntu-latest
-    needs: security-scan
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --locked --group dev
+
+      - name: Install OpenCode dependencies
+        run: npm --prefix .opencode ci
+
+      - name: Static analysis lane
+        run: make ci-static
+
+      - name: OpenCode type-check
+        run: make opencode-check
+
+      - name: OpenCode audit
+        run: make opencode-audit
+
+      - name: Analyser contract tests
+        run: make analyser-contract-tests
+
+      - name: Semgrep blocking ruleset
+        run: make semgrep
+
+  test-coverage:
+    name: Test Coverage (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --locked --group dev
+
+      - name: Run tests with coverage
+        run: make ci-test-coverage
+
+  test-compat:
+    name: Compatibility (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - python-version: '3.12'
-            property-profile: push
-          - python-version: '3.13'
-            property-profile: ci
-          - python-version: '3.14'
-            property-profile: ci
+        python-version: ['3.13', '3.14']
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,17 +115,146 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Sync dependencies
-        run: uv sync --all-extras --locked
+        run: uv sync --all-extras --locked --group dev
 
-      - name: Run CI pipeline
+      - name: Run compatibility tests
+        run: make ci-test-compat
+
+  property:
+    name: Property Tests (Python 3.13)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --locked --group dev
+
+      - name: Run property tests
         env:
-          PROPERTY_PROFILE: ${{ matrix.property-profile }}
-        run: make ci
+          PROPERTY_PROFILE: ci
+        run: make ci-property
+
+  fuzz-status:
+    name: Fuzz Status (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --locked --group dev
+
+      - name: Run fuzz status
+        run: make ci-fuzz-status
+
+  package:
+    name: Build & Package (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --locked --group dev
+
+      - name: Build, verify, and smoke test
+        run: make ci-package
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: wheel-dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  wheel-smoke-linux:
+    name: Wheel Smoke (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [package]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download distributions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: wheel-dist
+          path: dist
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Run installed-wheel smoke test
+        run: make smoke-test
+
+  wheel-smoke-macos:
+    name: Wheel Smoke (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 5
+    needs: [package]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download distributions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: wheel-dist
+          path: dist
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Run installed-wheel smoke test
+        run: make smoke-test
 
   safety:
     name: Safety (trusted)
     runs-on: ubuntu-latest
-    needs: security-scan
+    timeout-minutes: 15
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository ||
@@ -81,7 +272,7 @@ jobs:
           python-version: '3.13'
 
       - name: Sync dependencies
-        run: uv sync --all-extras --locked
+        run: uv sync --all-extras --locked --group dev
 
       - name: Run Safety gate
         env:
@@ -89,9 +280,9 @@ jobs:
         run: make safety-gate
 
   test-macos:
-    name: macOS / Python 3.12
+    name: macOS (Python 3.12)
     runs-on: macos-latest
-    needs: security-scan
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -105,9 +296,7 @@ jobs:
           python-version: '3.12'
 
       - name: Sync dependencies
-        run: uv sync --all-extras --locked
+        run: uv sync --all-extras --locked --group dev
 
-      - name: Run CI pipeline
-        env:
-          PROPERTY_PROFILE: push
-        run: make ci
+      - name: Run compatibility tests
+        run: make ci-test-compat
