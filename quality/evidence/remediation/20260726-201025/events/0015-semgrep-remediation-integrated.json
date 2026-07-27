@@ -1,0 +1,29 @@
+{
+  "event_sequence": 15,
+  "event_type": "remediation_integrated",
+  "run_id": "20260726-201025",
+  "wave": 7,
+  "task_candidates": {
+    "S1-SEMGREP-SCRIPTS-A": "f7a706816bd3a062eebbfe5eb5ced2c26002c00c",
+    "S2-SEMGREP-SCRIPTS-B": "2717c817539e7d2bd97174415f173b695301e626",
+    "S3-SEMGREP-SOURCE": "90b10a99a7a86bbac809d927fbd780a2e49e29d1"
+  },
+  "independent_reviews": {
+    "implementation": "approved",
+    "policy_strength": "approved"
+  },
+  "semgrep_error_warning_results": 0,
+  "semgrep_errors": 0,
+  "suppression_baseline": {
+    "previous_count": 13,
+    "current_count": 55,
+    "scope_expanded_to_scripts": true,
+    "reviewed_exact_additions": true
+  },
+  "architecture_baseline": {
+    "previous_count": 112,
+    "current_count": 111,
+    "growth": -1,
+    "scope": "src/perplexity_cli"
+  }
+}

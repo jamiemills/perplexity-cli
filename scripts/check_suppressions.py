@@ -39,7 +39,7 @@ from _ratchet import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SRC = PROJECT_ROOT / "src"
+SOURCE_ROOTS = (PROJECT_ROOT / "src", PROJECT_ROOT / "scripts")
 PYPROJECT = PROJECT_ROOT / "pyproject.toml"
 BASELINE_NAME = "suppressions.json"
 DESCRIPTION = "Suppression ratchet: block new, moved, or broadened suppressions."
@@ -153,7 +153,8 @@ def _collect_mutmut_config_identities(pyproject: Path) -> list[str]:
 
 def collect_identities() -> list[str]:
     identities: list[str] = []
-    identities.extend(_collect_source_identities(SRC, PROJECT_ROOT))
+    for source_root in SOURCE_ROOTS:
+        identities.extend(_collect_source_identities(source_root, PROJECT_ROOT))
     identities.extend(_collect_coverage_config_identities(PYPROJECT))
     identities.extend(_collect_mutmut_config_identities(PYPROJECT))
     return sorted(identities)

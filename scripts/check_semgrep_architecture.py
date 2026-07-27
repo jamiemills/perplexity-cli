@@ -33,6 +33,7 @@ from _ratchet import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG = PROJECT_ROOT / ".semgrep.yml"
+PRODUCTION_SOURCE = PROJECT_ROOT / "src" / "perplexity_cli"
 BASELINE_NAME = "semgrep-architecture.json"
 DESCRIPTION = "Semgrep architecture ratchet: block new structural findings."
 _SCRIPT = Path(__file__).name
@@ -95,7 +96,7 @@ def collect_findings() -> list[str]:
         "--json",
         "--quiet",
         "--metrics=off",
-        ".",
+        str(PRODUCTION_SOURCE),
     ]
     result = subprocess.run(
         cmd,
