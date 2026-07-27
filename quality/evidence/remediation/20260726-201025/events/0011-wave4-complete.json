@@ -1,0 +1,14 @@
+{
+  "event_sequence": 11,
+  "event_type": "wave_completed",
+  "run_id": "20260726-201025",
+  "wave": 4,
+  "integration_sha": "1cc23c82c544483fd16714a85ec54a67271998b5",
+  "tasks": {
+    "D1-CI": {"status": "integrated", "candidate": "ac16127", "tests": "actionlint pass, 20 structural tests pass"},
+    "D2-HOOKS": {"status": "integrated", "candidate": "0fc9a0b", "tests": "lefthook validate pass"}
+  },
+  "make_check": "pass",
+  "actionlint": "pass",
+  "lefthook_validate": "pass"
+}
