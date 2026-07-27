@@ -34,20 +34,19 @@ CI: clean-room Ubuntu + macOS, full pipeline
 release: version validation, CI, publish
 
   (OpenCode session plugins run continuously across all stages)
-  (quality plan loop: generate -> review runs alongside pre-push/CI)
 ```
 
 ### Gate Categories at a Glance
 
 | Phase | Gates | Tools |
 |-------|-------|-------|
-| Pre-commit (stage 1) | Type, security, dead-code, complexity, Semgrep, OpenCode/workflow/shell/plan validation, secret scan, repo hygiene | pyright, ty, bandit, vulture, radon, semgrep, TypeScript, pytest, pre-commit-hooks, infisical |
+| Pre-commit (stage 1) | Type, security, dead-code, complexity, Semgrep, OpenCode/workflow/shell validation, secret scan, repo hygiene | pyright, ty, bandit, vulture, radon, semgrep, TypeScript, pytest, pre-commit-hooks, infisical |
 | Pre-commit (stage 2) | Formatting, lint auto-fix, whitespace fix | ruff, pre-commit-hooks |
 | Pre-commit (stage 3) | Unit tests (fail-fast, xdist) | pytest, pytest-xdist |
 | Pre-push | Secret scan, coverage, dependency vulns, fuzz, architecture, coupling, ratchets, mutation, property tests | gitleaks, pytest-cov, safety, atheris, custom scripts, mutmut, hypothesis |
 | CI | Universal static, audit, coverage, fuzz, property, build, verify and smoke gates; authenticated Safety for trusted code | GitHub Actions, same tools as above |
 | Release | Version validation, trusted CI, OIDC publish, GitHub Release | GitHub Actions, PyPI OIDC |
-| Session | Real-time quality feedback, commit/push interceptors | OpenCode plugins (4), agent (1) |
+| Session | Real-time quality feedback, commit/push interceptors | OpenCode plugins (3) |
 
 ---
 
@@ -92,7 +91,7 @@ make test                # verify everything works
 | Gate thresholds and toggles | `quality/gates.conf` | Numeric floors and check on/off switches |
 | Gate loader | `scripts/_gates.py` | Typed runtime accessor for `gates.conf` |
 | Hypothesis profiles | `tests/conftest.py` | dev (10), push (50), ci (1000), fast (3) |
-| Custom analysers | `scripts/` | Architecture, coupling, ratchets, plan checker, coverage, reports |
+| Custom analysers | `scripts/` | Architecture, coupling, ratchets, coverage, reports |
 | OpenCode wiring | `opencode.jsonc` | Plugin and agent registration, permissions |
 | CI workflows | `.github/workflows/*.yml` | Universal CI, trusted Safety, scheduled advisories and release automation |
 | Publish workflow | `.github/workflows/publish-to-pypi.yml` | Version validation, CI, OIDC publish |
@@ -134,6 +133,10 @@ Two entries currently duplicate a value whose active source lives elsewhere
 
 ### Check Toggles (control which analysers run in `make check`)
 
+These values mirror `quality/gates.conf`. Most heavy analysers are toggled
+off in `make check` to keep pre-commit feedback fast; they still run in
+pre-push and CI through their dedicated Make targets.
+
 | Key | Default | Gate |
 |-----|---------|------|
 | `CHECK_FORMAT` | true | Ruff format check |
@@ -141,12 +144,13 @@ Two entries currently duplicate a value whose active source lives elsewhere
 | `CHECK_TYPECHECK_ALL` | true | ty + pyright type checkers |
 | `CHECK_SECURITY` | true | Bandit + Vulture |
 | `CHECK_COMPLEXITY` | true | Radon CC + MI |
-| `CHECK_SEMGREP` | true | Semgrep static analysis |
-| `CHECK_ARCH` | true | Architecture layer check |
-| `CHECK_COUPLING` | true | Coupling and stability metrics |
-| `CHECK_RATCHETS` | true | Three baseline-aware ratchets plus two whole-tree hard gates |
-| `CHECK_DEPTRY` | true | Deptry dependency hygiene |
-| `CHECK_IMPORT_LINTER` | true | Import-linter contracts; available but excluded from `make check` by default |
+| `CHECK_SEMGREP` | false | Semgrep static analysis (runs in pre-commit stage 1 and the CI `static` job) |
+| `CHECK_ARCH` | false | Architecture layer check (runs in pre-push and on-demand) |
+| `CHECK_COUPLING` | false | Coupling and stability metrics (runs in pre-push and on-demand) |
+| `CHECK_RATCHETS` | false | Three baseline-aware ratchets plus two whole-tree hard gates (run in pre-push) |
+| `CHECK_DEPTRY` | false | Deptry dependency hygiene (runs on-demand via `make deptry`) |
+| `CHECK_IMPORT_LINTER` | false | Import-linter contracts; available but excluded from `make check` by default |
+| `CHECK_DYNAMIC_IMPORTS` | false | Dynamic import architecture enforcement |
 
 ### How to Change Thresholds
 
@@ -382,37 +386,75 @@ Hypothesis tests verify invariants over many generated examples. Profiles
 
 ## CI Gates
 
+### CI Topology
+
+The `ci.yml` workflow runs as a fan-out of focused jobs, each with its own
+timeout and concurrency group. Every job delegates to a Make target so the
+local `make ci-*` recipes stay authoritative for both pre-push and CI.
+
+| Job | Runner | Make target(s) | Notes |
+|-----|--------|----------------|-------|
+| Secret Scan (gitleaks) | ubuntu-latest | `make gitleaks-ci` | Full history scan; fails if gitleaks is missing |
+| Static Analysis (Python 3.12) | ubuntu-latest | `make ci-static`, `make opencode-check`, `make opencode-audit`, `make analyser-contract-tests`, `make semgrep` | Owns all OpenCode plugin/config checks plus the blocking Semgrep lane |
+| Test Coverage (Python 3.12) | ubuntu-latest | `make ci-test-coverage` | Per-module coverage enforcement |
+| Compatibility (Python 3.13, 3.14) | ubuntu-latest | `make ci-test-compat` | `fail-fast: false` matrix |
+| Property Tests (Python 3.13) | ubuntu-latest | `make ci-property` with `PROPERTY_PROFILE=ci` | 1000 Hypothesis examples |
+| Fuzz Status (Python 3.12) | ubuntu-latest | `make ci-fuzz-status` | `continue-on-error: true` — non-authoritative until rank 4 |
+| Build & Package (Python 3.12) | ubuntu-latest | `make ci-package` | Uploads `wheel-dist` artefact |
+| Wheel Smoke (Linux) | ubuntu-latest | `make smoke-test` | Consumes `wheel-dist` |
+| Wheel Smoke (macOS) | macos-latest | `make smoke-test` | Consumes `wheel-dist` |
+| Safety (trusted) | ubuntu-latest, Python 3.13 | `make safety-gate` | Skipped for external fork PRs |
+| macOS (Python 3.12) | macos-latest | `make ci-test-compat` | Darwin compatibility signal |
+
+The workflow declares a single `concurrency` group keyed on the pull-request
+number or ref, cancelling superseded runs except for `workflow_dispatch`.
+
 ### Universal Ubuntu Matrix
 
-Triggered for pushes to `master`, all pull requests, and manual dispatch. Runs
-`make ci` on `ubuntu-latest` for Python 3.12, 3.13, and 3.14.
-Uses `PROPERTY_PROFILE=push` (50 examples) for 3.12 (fast feedback) and
-`PROPERTY_PROFILE=ci` (1000 examples) for 3.13 and 3.14 (thorough,
-used by PyPI publish). Test execution uses `pytest-xdist -n auto`.
-
-`make ci` runs: `check` (including enabled Deptry), `test-coverage`, `test-fuzz`, `pip-audit`,
-`sonar-reports`, `test-property-$(PROPERTY_PROFILE)`, `build`, `verify`,
-`smoke-test`.
+Triggered for pushes to `master`, all pull requests, and manual dispatch.
+`make ci` runs the credential-free aggregate: `ci-static`,
+`ci-test-coverage`, `ci-fuzz-status`, `pip-audit`, `sonar-reports`,
+`ci-property`, and `ci-package`. The CI workflow splits these into separate
+jobs (above) so a single lane failure is isolated; locally `make ci` runs
+them sequentially in one shell. Test execution uses `pytest-xdist -n auto`.
 
 This credential-free pipeline is required for every PR, including external
 forks. A separate `Safety (trusted)` job runs `make safety-gate` for pushes,
 same-repository PRs and Dependabot PRs. External forks skip that job because
-GitHub correctly withholds repository and Dependabot secrets. A dedicated
-OpenCode job performs the reproducible plugin/config checks.
+GitHub correctly withholds repository and Dependabot secrets. The OpenCode
+plugin/config checks (`opencode-check`, `opencode-audit`) run inside the CI
+`static` job alongside `ci-static`, the analyser-contract tests, and the
+blocking Semgrep lane.
 
 ### macOS Full Pipeline
 
-Runs the same `make ci` pipeline on `macos-latest` for Python 3.12 with
-`PROPERTY_PROFILE=push`. Catches Darwin-specific path, filesystem, and
-packaging issues.
+Runs `make ci-test-compat` on `macos-latest` for Python 3.12 to catch
+Darwin-specific path, filesystem, and packaging issues. Wheel-level macOS
+coverage comes from the `wheel-smoke-macos` job.
 
 ### Scheduled Advisory Workflows
 
-- `mutation-scheduled.yml` runs full mutation testing weekly and always reports results.
-- `scorecard.yml` runs OpenSSF Scorecard weekly and uploads SARIF with least permissions.
-- `semgrep-advisory.yml` scans the latest community packs weekly without changing or blocking the reviewed rule snapshot.
-- All three can also be started manually with `workflow_dispatch`.
-- Every external action reference is pinned to a full 40-character commit SHA.
+Three scheduled workflows run on a weekly cadence with manual
+`workflow_dispatch` overrides. Each declares a `concurrency` group keyed on
+the event name (scheduled runs share one slot; dispatches are isolated),
+cancelling superseded scheduled runs but never an in-flight dispatch. Each
+workflow pins a `timeout-minutes` ceiling and uploads its outputs as both
+workflow artefacts (30-day retention) and SARIF to GitHub code scanning.
+Every external action reference is pinned to a full 40-character commit SHA.
+
+- `mutation-scheduled.yml` runs `make mutate-full-policy` weekly (Sunday
+  02:00 UTC, 6 h timeout). It uploads the mutation report and the mutmut
+  cache as artefacts and writes a job summary with the policy verdict. The
+  policy wrapper decides pass/fail; the job always reports results.
+- `scorecard.yml` runs OpenSSF Scorecard weekly (Monday 06:00 UTC) as a
+  two-job producer/validator pipeline. The producer publishes results and
+  uploads SARIF with least privileges; the validator parses the SARIF and
+  uploads it to code scanning under the `openssf-scorecard` category.
+- `semgrep-advisory.yml` scans the latest community packs weekly (Tuesday
+  07:00 UTC, 30 min timeout) via `make semgrep-advisory-report`, emitting
+  JSON and SARIF into `build/reports/`. Findings upload as artefacts and to
+  code scanning under the `semgrep-advisory` category. The reviewed blocking
+  snapshot in `quality/semgrep-snapshot.json` is not modified.
 
 ### Build, Verify, Smoke Test
 
@@ -453,7 +495,7 @@ remote publish workflow.
 
 ## OpenCode Integration
 
-### Plugins (4)
+### Plugins (3)
 
 All registered in `opencode.jsonc`. Installed via `make configure-opencode`.
 
@@ -467,33 +509,9 @@ OpenCode after changing plugin, agent, or configuration files.
 | pxcli-quality | `.opencode/plugins/pxcli-quality.ts` | Session lifetime | Injects conventions; runs file-level ruff/radon/bandit/ty after `write` and `edit`, pinned Safety after dependency changes, and canonical immutable Semgrep plus pyright on idle for files recorded by those tools. `apply_patch` changes rely on Lefthook/Make because this reactive plugin does not record them. Tool and parser failures become visible error findings. |
 | pre-push-docs-check | `.opencode/plugins/pre-push-docs-check.ts` | `git push` | First push attempt blocked with doc-review checklist (CLI help text + README). Retry passes through. |
 
-### Agent (1)
-
-| Agent | File | Permissions | Behaviour |
-|-------|------|-------------|-----------|
-
 ---
 
-## Quality Plan Pipeline
-
-### Plan Generator
-
-`OUT=...`). The set covers formatting, lint, both type checkers, Bandit,
-Vulture, both Radon gates, blocking Semgrep, architecture, coupling, the five
-quality gates/ratchets, Deptry, pip-audit, and global/per-module coverage. It
-does not represent every auxiliary, hook-only, release, mutation, property,
-fuzz, Safety, secret-scanning, OpenCode or reporting command. Includes:
-summary, Analyser Compliance Review checklist, findings by analyser, proposed
-work items, and self-review. A build phase must not consume the plan unless
-both the compliance review and self-review report `PASS`.
-
-### Plan Validator
-
-categories. Every gate must appear exactly once as `[PASS]`; `[FAIL]`,
-`[SKIP]`, duplicates, a failing summary, or a missing/failing self-review
-any analyser or self-review failure.
-
-### Schema-drift Guard
+## Schema-drift Guard
 
 `tests/test_schema_drift.py` fails if a new hand-written command-result schema
 dict appears. Schemas must derive from Pydantic models via `model_json_schema()`.
@@ -510,8 +528,14 @@ inline where they need Git or event context.
 |--------|---------|
 | `make setup` | Create venv, sync deps, install lefthook, verify CLI |
 | `make configure-opencode` | Reproducibly install and validate OpenCode plugins/config |
-| `make check` | Enabled static checks: format, lint, typecheck-all, security, complexity, semgrep, arch-check, coupling-check, ratchets, Deptry; import-linter only when toggled on |
-| `make ci` | Universal credential-free pipeline: check, coverage, fuzz, pip-audit, sonar, property, build, verify, smoke |
+| `make check` | Static checks whose `CHECK_*` toggle is `true` in `quality/gates.conf`. Format, lint, typecheck-all, security, and complexity are on by default; Semgrep, architecture, coupling, ratchets, Deptry, import-linter, and dynamic-imports are off and run via their own targets |
+| `make ci-static` | CI static lane: format-check, lint, typecheck-all, bandit, vulture, complexity |
+| `make ci-test-coverage` | CI test lane with per-module coverage enforcement (Python 3.12) |
+| `make ci-test-compat` | CI compatibility tests without coverage (Python 3.13/3.14, macOS) |
+| `make ci-fuzz-status` | CI fuzz status; `continue-on-error` in CI until rank 4 |
+| `make ci-property` | CI property tests (`$(PROPERTY_PROFILE)` examples) |
+| `make ci-package` | CI package build, verify, and smoke test |
+| `make ci` | Universal credential-free aggregate: `ci-static`, `ci-test-coverage`, `ci-fuzz-status`, `pip-audit`, `sonar-reports`, `ci-property`, `ci-package` |
 | `make ci-trusted` | Universal CI plus fail-closed authenticated Safety |
 | `make test` | Unit tests without coverage (fail-fast, xdist) |
 | `make test-coverage` | Unit tests with global + per-module coverage enforcement (xdist) |
@@ -570,7 +594,7 @@ inline where they need Git or event context.
 | Coverage + per-module (parallel) | Pre-push, CI | pytest-cov, pytest-xdist | `make test-coverage` |
 | Safety dependency scan | Pre-push (optional credentials), trusted CI/release (required) | safety | `make safety`, `make safety-gate` |
 | Credential-free dependency audit | All CI and PR contexts | pip-audit | `make pip-audit` |
-| Dependency declaration hygiene | CI, quality plan, on-demand | deptry | `make deptry` |
+| Dependency declaration hygiene | On-demand | deptry | `make deptry` |
 | Fuzz tests | Pre-push, CI | pytest, atheris | `make test-fuzz` |
 | Sonar reports | Pre-push, CI | `scripts/generate_sonar_reports.py` | `make sonar-reports` |
 | Architecture check | Pre-push, CI | `scripts/check_architecture.py` | `make arch-check` |

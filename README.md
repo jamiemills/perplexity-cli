@@ -1062,11 +1062,15 @@ The full catalogue of gates, what each defends against, and where it runs is
 documented in [`QUALITY_GATES.md`](QUALITY_GATES.md).
 
 ```bash
-make ci                         # credential-free CI pipeline used by every PR
+make ci                         # credential-free CI aggregate: ci-static,
+                                #   ci-test-coverage, ci-fuzz-status, pip-audit,
+                                #   sonar-reports, ci-property, ci-package
 make ci-trusted                 # make ci plus authenticated Safety
-make check                      # all static checks (no tests): ruff, ty/pyright,
-                                #   bandit, vulture, radon, semgrep, arch/coupling,
-                                #   and the quality ratchets
+make ci-static                  # format-check, lint, typecheck-all, bandit,
+                                #   vulture, complexity
+make check                      # all configured static checks (no tests); which
+                                #   analysers run is controlled by CHECK_* toggles
+                                #   in quality/gates.conf
 make lint                       # ruff check only
 make security                   # bandit + vulture
 make semgrep                    # custom + reviewed immutable community snapshots
@@ -1074,21 +1078,15 @@ make ratchets                   # baseline ratchets: block new/grown file-size,
                                 #   suppressions, complexity, strict-Any, structural findings
 make test                       # pytest (no coverage, fail-fast)
 make test-coverage              # pytest with per-module coverage enforcement (>=85%)
-make quality-plan OUT=...       # run every analyser, write a follow-up plan artefact
-make plan-check PLAN=...        # validate the latest plan against the prevention rules
 make build                      # build wheel and sdist
 ```
 
-Quality ratchets capture existing structural debt (documented in
-`.claude/thermo-nuclear-review.md`) as accepted baselines under
+Quality ratchets capture existing structural debt as accepted baselines under
 `quality/baselines/`, then fail only on *new* or *grown* findings — so the
-failure modes cannot spread while the debt is paid down incrementally.
-`make quality-plan` runs the plan-compliance analyser on its own output and
-returns non-zero if any named gate fails or is skipped. `make plan-check`
-requires every gate and the self-review to pass before a build phase consumes
-the plan. Latest community Semgrep packs run separately as a scheduled
-advisory; blocking scans use the reviewed hashes in
-`quality/semgrep-snapshot.json`.
+failure modes cannot spread while the debt is paid down incrementally. The
+latest community Semgrep packs run separately as a scheduled advisory;
+blocking scans use the reviewed community rule files whose hashes are
+recorded in `quality/semgrep-snapshot.json`.
 
 ### Releasing
 
