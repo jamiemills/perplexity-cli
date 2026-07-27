@@ -18,7 +18,6 @@ SEMGREP_CONFIGS := \
 SEMGREP_TARGETS ?= .
 SEMGREP_OPTIONS := \
 	$(SEMGREP_SEVERITY) \
-	--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
 	--exclude tests/ \
 	--exclude '.semgrep-community-*.yml' \
 	--metrics=off
@@ -27,7 +26,7 @@ SEMGREP_OPTIONS := \
 # Development setup
 # ---------------------------------------------------------------------------
 
-.PHONY: check-uv check-gitleaks setup configure-opencode opencode-check
+.PHONY: check-uv check-gitleaks setup configure-opencode opencode-check opencode-audit
 
 check-uv:  ## Verify uv is installed
 	@command -v uv >/dev/null 2>&1 || { \
@@ -89,6 +88,19 @@ opencode-check:  ## Type-check OpenCode plugins and validate resolved config whe
 		opencode debug config >/dev/null; \
 	else \
 		echo "OpenCode CLI not installed; resolved-config validation skipped."; \
+	fi
+
+opencode-audit:  ## Run npm audit for OpenCode dependencies (high/critical)
+	@npm --prefix .opencode audit --audit-level=high; \
+	status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		echo "npm audit: no high/critical vulnerabilities."; \
+	elif [ $$status -eq 1 ]; then \
+		echo "npm audit: HIGH/CRITICAL vulnerabilities found."; \
+		exit 1; \
+	else \
+		echo "npm audit: infrastructure error (exit $$status)."; \
+		exit 2; \
 	fi
 
 # ---------------------------------------------------------------------------
@@ -178,23 +190,39 @@ complexity: complexity-cc complexity-mi  ## Run all complexity checks
 # Semgrep
 # ---------------------------------------------------------------------------
 
-.PHONY: semgrep semgrep-json semgrep-advisory
+.PHONY: semgrep semgrep-json semgrep-advisory semgrep-advisory-local semgrep-advisory-report
 
-semgrep:  ## Run the immutable blocking Semgrep ruleset
-	@$(SEMGREP) $(SEMGREP_CONFIGS) $(SEMGREP_OPTIONS) --error $(SEMGREP_TARGETS)
+semgrep:  ## Run the immutable blocking Semgrep ruleset via policy wrapper
+	uv run python scripts/semgrep_policy.py --blocking \
+		$(SEMGREP_CONFIGS) $(SEMGREP_OPTIONS) $(SEMGREP_TARGETS)
 
 semgrep-json:  ## Run the immutable Semgrep ruleset with machine-readable output
 	@$(SEMGREP) $(SEMGREP_CONFIGS) $(SEMGREP_OPTIONS) --json $(SEMGREP_TARGETS)
 
-semgrep-advisory:  ## Scan latest community packs without changing the blocking gate
+semgrep-advisory:  ## Scan latest community packs (advisory, non-blocking)
 	uvx semgrep \
 		--config p/python \
 		--config p/comment \
 		--config p/r2c-best-practices \
 		$(SEMGREP_SEVERITY) \
-		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
 		--exclude tests/ \
 		--metrics=off .
+
+semgrep-advisory-local:  ## Run custom advisory Semgrep rules locally via wrapper
+	uv run python scripts/semgrep_policy.py --advisory \
+		$(SEMGREP_CONFIGS) $(SEMGREP_OPTIONS) $(SEMGREP_TARGETS)
+
+semgrep-advisory-report:  ## Generate advisory Semgrep SARIF and JSON report
+	@mkdir -p build/reports
+	@uvx semgrep \
+		--config p/python --config p/comment --config p/r2c-best-practices \
+		$(SEMGREP_SEVERITY) --exclude tests/ --metrics=off \
+		--json-output=build/reports/semgrep-advisory.json \
+		--sarif-output=build/reports/semgrep-advisory.sarif \
+		.; status=$$?; \
+	if [ $$status -eq 0 ]; then echo "Semgrep advisory: no findings."; \
+	elif [ $$status -eq 1 ]; then echo "Semgrep advisory: findings reported (advisory)."; \
+	else echo "Semgrep advisory: scanner error (exit $$status)."; exit $$status; fi
 
 # ---------------------------------------------------------------------------
 # Architecture enforcement
@@ -410,7 +438,7 @@ endif
 # Composite targets
 # ---------------------------------------------------------------------------
 
-.PHONY: check ci ci-trusted agent-check agent-check-push agent-check-no-tests
+.PHONY: check agent-check agent-check-push agent-check-no-tests
 
 CHECK_PREREQS :=
 ifeq ($(CHECK_FORMAT),true)
@@ -462,16 +490,24 @@ agent-check-no-tests:
 agent-check-push:
 	uv run python scripts/agent_check.py pre-push
 
-ci:  ## Full CI pipeline
-	$(MAKE) check
-	$(MAKE) test-coverage
-	$(MAKE) test-fuzz
-	$(MAKE) pip-audit
-	$(MAKE) sonar-reports
-	$(MAKE) test-property-$(PROPERTY_PROFILE)
-	$(MAKE) build
-	$(MAKE) verify
-	$(MAKE) smoke-test
+.PHONY: check ci ci-static ci-test-coverage ci-test-compat ci-fuzz-status ci-property ci-package ci-trusted analyser-contract-tests
+
+analyser-contract-tests:  ## Run analyser contract validation tests
+	uv run pytest tests/test_analyser_contracts.py -q
+
+ci-static: format-check lint typecheck-all bandit vulture complexity ## CI static analysis lane
+
+ci-test-coverage: test-coverage ## CI test lane with per-module coverage (Python 3.12)
+
+ci-test-compat: test ## CI compatibility tests without coverage (Python 3.13/3.14)
+
+ci-fuzz-status: test-fuzz ## CI fuzz status (non-authoritative until rank 4)
+
+ci-property: test-property-$(PROPERTY_PROFILE) ## CI property tests
+
+ci-package: build verify smoke-test ## CI package build, verify, and smoke test
+
+ci: ci-static ci-test-coverage ci-fuzz-status pip-audit sonar-reports ci-property ci-package  ## Full CI pipeline
 
 ci-trusted: ci safety-gate  ## Full CI plus authenticated Safety for trusted code
 
