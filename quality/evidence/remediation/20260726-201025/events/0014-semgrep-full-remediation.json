@@ -1,0 +1,25 @@
+{
+  "event_sequence": 14,
+  "event_type": "scope_expanded",
+  "run_id": "20260726-201025",
+  "wave": 7,
+  "reason": "The corrected Semgrep wrapper measured pre-existing findings that the prior direct command did not enforce.",
+  "decision": "fix_all_findings",
+  "approved_by": "user",
+  "finding_count": 175,
+  "file_count": 35,
+  "rule_counts": {
+    "meaningless-name": 58,
+    "getattr-with-string-literal": 38,
+    "boolean-flag-argument": 24,
+    "custom.credential-logging-vendored": 17,
+    "python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure": 17,
+    "len-comparison-instead-of-truthiness": 14,
+    "python.lang.correctness.common-mistakes.string-concat-in-list.string-concat-in-list": 4,
+    "range-len-instead-of-enumerate": 1,
+    "python.lang.correctness.tempfile.flush.tempfile-without-flush": 1,
+    "getter-with-side-effects": 1
+  },
+  "baseline_allowed": false,
+  "ci_activation_required": true
+}

@@ -181,18 +181,17 @@ def _classify(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Split findings into blocking/advisory using the policy manifest.
 
-    Unknown rule IDs are an internal error: every rule that can fire must be
-    registered in the manifest so that blocking behaviour is explicit.
+    Rules registered in the manifest use their declared blocking/advisory
+    status. Unknown rule IDs (typically community-pack rules) default to
+    blocking to maintain a safe security posture.
     """
     blocking: list[dict[str, Any]] = []
     advisory: list[dict[str, Any]] = []
     for result in results:
         rule_id = result.get("check_id", "")
-        if rule_id not in policy:
-            sys.stderr.write(f"Unknown rule ID '{rule_id}' not in policy manifest.\n")
-            sys.exit(EXIT_INTERNAL_ERROR)
-        rule_policy = policy[rule_id]
-        if rule_policy.get("blocking", False):
+        rule_policy = policy.get(rule_id)
+        is_blocking = rule_policy is None or rule_policy.get("blocking", False)
+        if is_blocking:
             blocking.append(result)
         else:
             advisory.append(result)

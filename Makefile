@@ -19,8 +19,7 @@ SEMGREP_TARGETS ?= .
 SEMGREP_OPTIONS := \
 	$(SEMGREP_SEVERITY) \
 	--exclude tests/ \
-	--exclude '.semgrep-community-*.yml' \
-	--metrics=off
+	--exclude '.semgrep-community-*.yml'
 
 # ---------------------------------------------------------------------------
 # Development setup
