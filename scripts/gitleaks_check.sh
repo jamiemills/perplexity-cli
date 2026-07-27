@@ -242,8 +242,19 @@ _pre_push_scan() {
     oldest="$(echo "$commit_list" | tail -n1)"
     newest="$(echo "$commit_list" | head -n1)"
 
+    # Build the union range.  When ``oldest`` is a root commit, ``${oldest}^``
+    # does not exist and ``${oldest}^..${newest}`` would be rejected by git
+    # (causing gitleaks to silently scan zero commits).  Fall back to scanning
+    # everything reachable from ``newest`` instead.
+    local scan_range
+    if git rev-parse --verify "${oldest}^" &>/dev/null; then
+        scan_range="${oldest}^..${newest}"
+    else
+        scan_range="${newest}"
+    fi
+
     echo "gitleaks: scanning union of ${#collected_ranges[@]} ref range(s) ($(echo "$commit_list" | wc -l) unique commits)"
-    _scan_range "${oldest}^..${newest}"
+    _scan_range "$scan_range"
 }
 
 # ---------------------------------------------------------------------------
