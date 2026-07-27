@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import stat
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeGuard, cast
 
 import click
 
@@ -26,19 +26,6 @@ if TYPE_CHECKING:
     from perplexity_cli.config.models import FeatureConfig
     from perplexity_cli.envelope import Envelope
     from perplexity_cli.threads.cache_manager import ThreadCacheManager
-
-
-class AuthenticationState(Enum):
-    """Authentication state represented in status output."""
-
-    AUTHENTICATED = "authenticated"
-    ANONYMOUS = "anonymous"
-
-
-class _StatResultProtocol(Protocol):
-    """File stat field needed for token age calculations."""
-
-    st_mtime: float
 
 
 def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -162,24 +149,12 @@ def _build_status_envelope(  # nosemgrep: boolean-flag-argument
     tm: TokenManager,
     token_info: tuple[object, object, object] = (None, 0, None),
 ) -> Envelope:
-    """Preserve the tested boolean status-envelope helper contract."""
-    authentication_state = (
-        AuthenticationState.AUTHENTICATED if authenticated else AuthenticationState.ANONYMOUS
-    )
-    return _build_status_envelope_for_state(authentication_state, tm, token_info)
-
-
-def _build_status_envelope_for_state(
-    authentication_state: AuthenticationState,
-    tm: TokenManager,
-    token_info: tuple[object, object, object] = (None, 0, None),
-) -> Envelope:
     """Build a status envelope dictionary."""
     token_age_days, cookies_stored, verified = token_info
     return success_envelope(
         "pxcli auth status",
         {
-            "authenticated": authentication_state is AuthenticationState.AUTHENTICATED,
+            "authenticated": authenticated,
             "token_path": str(tm.token_path),
             "token_age_days": token_age_days,
             "cookies_stored": cookies_stored,
@@ -217,7 +192,7 @@ def _verify_token(
 def _get_token_age_days(token_path: Any) -> int | None:
     """Compute the age of the token file in days."""
     try:
-        stat_result = cast(_StatResultProtocol, token_path.stat())
+        stat_result = cast(os.stat_result, token_path.stat())
         modified_time = datetime.fromtimestamp(int(stat_result.st_mtime))
         return (datetime.now() - modified_time).days
     except (OSError, AttributeError, TypeError, ValueError):
@@ -256,7 +231,7 @@ def _output_token_modified_time(token_path: Any, token_age_days: object) -> None
     if token_age_days is None:
         return
     try:
-        stat_result = cast(_StatResultProtocol, token_path.stat())
+        stat_result = cast(os.stat_result, token_path.stat())
         modified_time = datetime.fromtimestamp(int(stat_result.st_mtime))
         click.echo(f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}")
     except (OSError, AttributeError):

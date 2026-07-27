@@ -40,7 +40,7 @@
     "src/perplexity_cli/runners/export.py:334:nosemgrep:boolean-flag-argument",
     "src/perplexity_cli/runners/skill.py:5:noqa:ERA001",
     "src/perplexity_cli/runners/skill.py:5:nosemgrep:python.lang.compatibility.python37.python37-compatibility-importlib2",
-    "src/perplexity_cli/runners/status.py:160:nosemgrep:boolean-flag-argument",
+    "src/perplexity_cli/runners/status.py:147:nosemgrep:boolean-flag-argument",
     "src/perplexity_cli/threads/scraper.py:58:no-cover",
     "src/perplexity_cli/utils/attachment_models.py:27:nosemgrep:meaningless-name",
     "src/perplexity_cli/utils/config.py:10:noqa:ERA001",
