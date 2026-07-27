@@ -1,0 +1,14 @@
+{
+  "event_sequence": 12,
+  "event_type": "wave_completed",
+  "run_id": "20260726-201025",
+  "wave": 5,
+  "integration_sha": "2c1383afe90f712caf258eab452a644169424d00",
+  "tasks": {
+    "E1-MUTATION-SCHEDULED": {"status": "integrated", "candidate": "0b34a04"},
+    "E2-SEMGREP-SCHEDULED": {"status": "integrated", "candidate": "b00cca3"},
+    "E3-SCORECARD": {"status": "integrated", "candidate": "5a5de60"}
+  },
+  "actionlint": "pass (all workflows)",
+  "make_check": "pass"
+}
