@@ -564,3 +564,16 @@ refurb:  ## Run Refurb readability advisory checks
 .PHONY: quality-architecture
 
 quality-architecture: import-linter arch-check coupling-report  ## Run all architecture checks
+
+# ---------------------------------------------------------------------------
+# Workflow validation
+# ---------------------------------------------------------------------------
+
+.PHONY: actionlint
+
+actionlint:  ## Validate GitHub Actions workflows with actionlint
+	@command -v actionlint >/dev/null 2>&1 || { \
+		echo "actionlint is required. Install: curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash"; \
+		exit 1; \
+	}
+	actionlint
