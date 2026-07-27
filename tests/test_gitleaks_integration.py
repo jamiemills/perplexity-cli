@@ -126,6 +126,25 @@ def _commit_file(repo: Path, filename: str, content: str, message: str = "add fi
     ).strip()
 
 
+def _add_bare_remote(repo: Path, tmp_path: Path) -> Path:
+    """Clone ``repo`` as a local bare origin and configure it."""
+    remote = tmp_path / "origin.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(repo), str(remote)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "remote", "add", "origin", str(remote)],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=repo,
+    )
+    return remote
+
+
 # ---------------------------------------------------------------------------
 # Secret-bearing fixture content
 # These are NOT real secrets — they are synthetic strings that trigger
@@ -205,7 +224,7 @@ class TestCleanRepo:
             text=True,
             cwd=str(repo),
         ).strip()
-        stdin = f"{head} refs/heads/main {initial} refs/heads/main\n"
+        stdin = f"refs/heads/main {head} refs/heads/main {initial}\n"
         result = _run_gitleaks(
             repo,
             "pre-push",
@@ -259,7 +278,7 @@ class TestSecretDetection:
             text=True,
             cwd=str(repo),
         ).strip()
-        stdin = f"{head} refs/heads/main {initial} refs/heads/main\n"
+        stdin = f"refs/heads/main {head} refs/heads/main {initial}\n"
         result = _run_gitleaks(
             repo,
             "pre-push",
@@ -331,7 +350,10 @@ class TestPrePushRefHandling:
             text=True,
             cwd=str(repo),
         ).strip()
-        stdin = f"0000000000000000000000000000000000000000 refs/heads/delete-me {head} refs/heads/delete-me\n"
+        stdin = (
+            "(delete) 0000000000000000000000000000000000000000 "
+            f"refs/heads/delete-me {head}\n"
+        )
         result = _run_gitleaks(
             repo,
             "pre-push",
@@ -341,27 +363,28 @@ class TestPrePushRefHandling:
         )
         assert result.returncode == 0
 
-    def test_new_branch_with_no_remote_counterpart(self, tmp_path: Path) -> None:
-        """New branch where remote has no matching ref."""
+    def test_new_branch_uses_advertised_remote_refs(self, tmp_path: Path) -> None:
+        """A new branch subtracts commits advertised by a local bare remote."""
         repo = _init_tmp_repo(tmp_path)
+        _add_bare_remote(repo, tmp_path)
+        _commit_file(repo, "new-feature.py", _NON_SECRET_CONTENT)
         head = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
             text=True,
             cwd=str(repo),
         ).strip()
         stdin = (
-            f"{head} refs/heads/new-feature "
-            f"0000000000000000000000000000000000000000 refs/heads/new-feature\n"
+            f"refs/heads/new-feature {head} refs/heads/new-feature "
+            "0000000000000000000000000000000000000000\n"
         )
         result = _run_gitleaks(
             repo,
             "pre-push",
             "origin",
-            "https://nonexistent.example.com/repo.git",
+            str(tmp_path / "origin.git"),
             stdin_text=stdin,
         )
-        # Falls back to scanning from HEAD (no remote branches to compare).
-        assert result.returncode in (0, 10)
+        assert result.returncode == 0
 
     def test_multiple_refs_union_scan(self, tmp_path: Path) -> None:
         repo = _init_tmp_repo(tmp_path)
@@ -390,8 +413,8 @@ class TestPrePushRefHandling:
         ).strip()
 
         stdin = (
-            f"{main_head} refs/heads/main {base} refs/heads/main\n"
-            f"{feature_head} refs/heads/feature {base} refs/heads/feature\n"
+            f"refs/heads/main {main_head} refs/heads/main {base}\n"
+            f"refs/heads/feature {feature_head} refs/heads/feature {base}\n"
         )
         result = _run_gitleaks(
             repo,
@@ -410,8 +433,8 @@ class TestPrePushRefHandling:
             cwd=str(repo),
         ).strip()
         stdin = (
-            f"0000000000000000000000000000000000000000 refs/heads/a {head} refs/heads/a\n"
-            f"0000000000000000000000000000000000000000 refs/heads/b {head} refs/heads/b\n"
+            f"(delete) 0000000000000000000000000000000000000000 refs/heads/a {head}\n"
+            f"(delete) 0000000000000000000000000000000000000000 refs/heads/b {head}\n"
         )
         result = _run_gitleaks(
             repo,
@@ -431,7 +454,7 @@ class TestPrePushRefHandling:
             text=True,
             cwd=str(repo),
         ).strip()
-        stdin = f"{head} refs/heads/main {head} refs/heads/main\n"
+        stdin = f"refs/heads/main {head} refs/heads/main {head}\n"
         result = _run_gitleaks(
             repo,
             "pre-push",

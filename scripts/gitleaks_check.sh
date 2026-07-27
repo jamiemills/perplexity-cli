@@ -1,404 +1,277 @@
 #!/usr/bin/env bash
-# =============================================================================
-# gitleaks_check.sh — secret detection for pre-push and CI.
+# Secret detection for pre-push and CI.
 #
-# Three explicit modes:
-#   pre-push REMOTE_NAME REMOTE_URL   Reads 4-field ref updates from stdin.
-#   ci-full                           Scans the entire repository history.
-#   range OLD NEW                     Scans the OLD..NEW commit range.
+# Pre-push stdin is the format documented by githooks(5):
+#   <local-ref> <local-oid> <remote-ref> <remote-oid>
 #
-# Backward-compatible invocations (for the Makefile which must not change):
-#   scripts/gitleaks_check.sh               — pre-push via stdin or local range.
-#   CI_NO_SKIP=1 scripts/gitleaks_check.sh  — full-repo CI scan.
-#
-# Exit codes:
-#   0   — no secrets found (clean)
-#   10  — secrets detected (findings)
-#   other non-zero — scanning error (bad version, missing gitleaks, etc.)
-#
-# Pre-push stdin format (standard git pre-push hook):
-#   <local_oid> <local_ref> <remote_oid> <remote_ref>
-#   ... one row per ref being pushed ...
-#
-# Object-format-aware: zero-OID detection works for SHA-1 (40 zeros) and
-# future SHA-256 (64 zeros) refspecs.
-# =============================================================================
+# Exit codes are 0 for clean, 10 for findings, and another non-zero value for
+# input, Git, configuration, or scanner errors.
 
-readonly REQUIRED_GITLEAKS_VERSION="8.30"
+set -u
 
-# ---------------------------------------------------------------------------
-# Diagnostics — run inside a controlled status block so set -e
-# does not silence diagnostics.
-# ---------------------------------------------------------------------------
+readonly REQUIRED_GITLEAKS_VERSION="8.30.1"
 
 _die() {
     echo "gitleaks_check: ERROR: $*" >&2
     exit 3
 }
 
-# ---------------------------------------------------------------------------
-# Object-format-aware zero-OID detection.
-# Returns 0 (success) when the argument is an all-zeroes object ID.
-# ---------------------------------------------------------------------------
+_require_gitleaks() {
+    command -v gitleaks &>/dev/null || _die "gitleaks is required but not installed"
+}
+
+_check_version() {
+    local raw_version version
+    raw_version="$(gitleaks version 2>/dev/null)" || _die "failed to run 'gitleaks version'"
+
+    version="$raw_version"
+    version="${version#"${version%%[!$' \t\r\n']*}"}"
+    version="${version%"${version##*[!$' \t\r\n']}"}"
+    version="${version#v}"
+    if [[ "$version" != "$REQUIRED_GITLEAKS_VERSION" ]]; then
+        _die "unsupported gitleaks version '$version' (requires exactly $REQUIRED_GITLEAKS_VERSION)"
+    fi
+}
+
+_load_object_format_length() {
+    local output_name="$1" object_format
+    local -n output="$output_name"
+    object_format="$(git rev-parse --show-object-format 2>/dev/null)" || {
+        _die "unable to determine Git object format"
+    }
+    case "$object_format" in
+        sha1) output=40 ;;
+        sha256) output=64 ;;
+        *) _die "unsupported Git object format '$object_format'" ;;
+    esac
+}
+
+_validate_oid() {
+    local oid="$1" label="$2" expected_length="$3"
+    if [[ ${#oid} -ne $expected_length || ! "$oid" =~ ^[0-9a-fA-F]+$ ]]; then
+        _die "malformed $label OID (expected $expected_length hexadecimal characters)"
+    fi
+}
 
 _is_zero_oid() {
     local oid="$1"
     [[ "$oid" =~ ^0+$ ]]
 }
 
-# ---------------------------------------------------------------------------
-# Peel a ref (branches and tags) to a commit SHA.
-# ---------------------------------------------------------------------------
-
-_peel_ref() {
-    local ref="$1"
-    git rev-parse --verify "$ref^{commit}" 2>/dev/null
-}
-
-# ---------------------------------------------------------------------------
-# Version check — parse ``gitleaks version`` and reject unsupported versions.
-# ---------------------------------------------------------------------------
-
-_check_version() {
-    local raw_version
-    raw_version="$(gitleaks version 2>/dev/null)" || {
-        _die "failed to run 'gitleaks version'"
+_require_object() {
+    local oid="$1" label="$2"
+    git cat-file -e "$oid^{object}" 2>/dev/null || {
+        _die "$label object $oid is unavailable locally"
     }
+}
 
-    raw_version="${raw_version#v}"
-    raw_version="${raw_version##[[:space:]]}"
-    raw_version="${raw_version%%[[:space:]]}"
+_load_commit_oid() {
+    local output_name="$1" oid="$2" label="$3"
+    local -n output="$output_name"
+    _require_object "$oid" "$label"
+    output="$(git rev-parse --verify "$oid^{commit}" 2>/dev/null)" || {
+        _die "$label object $oid does not peel to a commit"
+    }
+}
 
-    if [[ "$raw_version" != "$REQUIRED_GITLEAKS_VERSION"* ]]; then
-        _die "unsupported gitleaks version '$raw_version' (requires $REQUIRED_GITLEAKS_VERSION.x)"
+_load_remote_query_target() {
+    local output_name="$1" requested="$2" location="$3" configured
+    local -n output="$output_name"
+    [[ -n "$requested" && "$requested" != *$'\n'* ]] || _die "invalid remote destination"
+    [[ -n "$location" && "$location" != *$'\n'* ]] || _die "invalid remote destination"
+    while IFS= read -r configured; do
+        if [[ "$configured" == "$requested" ]]; then
+            [[ "$requested" != -* ]] || _die "configured remote name must not begin with '-'"
+            output="$requested"
+            return 0
+        fi
+    done < <(git remote 2>/dev/null) || _die "unable to enumerate configured remotes"
+    output="$location"
+}
+
+_load_advertised_remote_commits() {
+    local output_name="$1" query_target="$2" expected_length="$3" advertisement
+    local -n output="$output_name"
+    local advertised_oid advertised_ref extra commit
+    local -A unique_commits=()
+
+    advertisement="$(git ls-remote -- "$query_target" 2>/dev/null)" || {
+        _die "failed to query advertised remote refs"
+    }
+    [[ -n "$advertisement" ]] || _die "remote unexpectedly advertised no refs"
+
+    while read -r advertised_oid advertised_ref extra; do
+        [[ -n "$advertised_oid" && -n "$advertised_ref" && -z "${extra:-}" ]] || {
+            _die "remote returned a malformed advertised ref"
+        }
+        _validate_oid "$advertised_oid" "advertised remote" "$expected_length"
+        _load_commit_oid commit "$advertised_oid" "advertised remote"
+        unique_commits["$commit"]=1
+    done <<< "$advertisement"
+
+    [[ ${#unique_commits[@]} -gt 0 ]] || _die "remote advertised no usable commit refs"
+    output=("${!unique_commits[@]}")
+}
+
+_append_reachable_difference() {
+    local output_name="$1"
+    shift
+    # shellcheck disable=SC2178  # The caller intentionally supplies an associative array.
+    local -n output="$output_name"
+    local reachable_commits
+
+    reachable_commits="$(git rev-list "$@" 2>/dev/null)" || {
+        _die "unable to establish commit reachability"
+    }
+    if [[ -n "$reachable_commits" ]]; then
+        while IFS= read -r commit; do
+            # shellcheck disable=SC2034  # Assignment updates the caller through the nameref.
+            output["$commit"]=1
+        done <<< "$reachable_commits"
     fi
 }
 
-# ---------------------------------------------------------------------------
-# Require gitleaks binary.  Hard failure — there is no silent skip path.
-# ---------------------------------------------------------------------------
+_scan_exact_commits() {
+    local -a exact_commits=("$@")
+    local log_opts="--no-walk=unsorted --diff-merges=first-parent"
+    local commit
 
-_require_gitleaks() {
-    if ! command -v gitleaks &>/dev/null; then
-        _die "gitleaks is required but not installed"
-    fi
+    for commit in "${exact_commits[@]}"; do
+        log_opts+=" $commit"
+    done
+    echo "gitleaks: scanning exact union of ${#exact_commits[@]} commit(s)"
+    gitleaks git --verbose --redact --exit-code 10 --log-opts="$log_opts"
 }
-
-# ---------------------------------------------------------------------------
-# Validate that a single stdin row has exactly 4 fields.
-# ---------------------------------------------------------------------------
-
-_validate_row() {
-    local local_oid="$1" local_ref="$2" remote_oid="$3" remote_ref="$4"
-
-    if [[ -z "$local_oid" || -z "$local_ref" || -z "$remote_oid" || -z "$remote_ref" ]]; then
-        _die "malformed pre-push row (expected 4 fields): $local_oid $local_ref $remote_oid $remote_ref"
-    fi
-}
-
-# ---------------------------------------------------------------------------
-# Normalise commit OIDs: peel tags to commit SHAs.
-# ---------------------------------------------------------------------------
-
-_to_commit_oid() {
-    local ref="$1"
-    local peeled
-    peeled="$(_peel_ref "$ref")" || true
-    if [[ -n "$peeled" ]]; then
-        echo "$peeled"
-    else
-        echo "$ref"
-    fi
-}
-
-# ---------------------------------------------------------------------------
-# Scan a commit range with gitleaks.
-# Returns gitleaks exit code (0 = clean, 10 = findings, other = error).
-# ---------------------------------------------------------------------------
-
-_scan_range() {
-    local range="$1"
-    echo "gitleaks: scanning commits in range '$range'..."
-
-    gitleaks git \
-        --verbose \
-        --redact \
-        --exit-code 10 \
-        --log-opts="$range"
-}
-
-# ---------------------------------------------------------------------------
-# Pre-push mode: collect commits-to-scan from stdin refspecs, then scan
-# the mathematical union via a single git rev-list pass.
-# ---------------------------------------------------------------------------
 
 _pre_push_scan() {
-    local remote_name="$1"
-    local remote_url="$2"
-    local collected_ranges=()
+    local remote_arg="$1" remote_location="$2" expected_length remote_query_target=""
+    local local_ref local_oid remote_ref remote_oid extra local_commit remote_commit
     local row_count=0
-    local deleted_count=0
+    local -A commits=()
+    local -a advertised_commits=()
+    local advertisements_loaded=false
 
-    while IFS=' ' read -r local_oid local_ref remote_oid remote_ref; do
-        local_oid="${local_oid##[[:space:]]}";  local_oid="${local_oid%%[[:space:]]}"
-        local_ref="${local_ref##[[:space:]]}";  local_ref="${local_ref%%[[:space:]]}"
-        remote_oid="${remote_oid##[[:space:]]}"; remote_oid="${remote_oid%%[[:space:]]}"
-        remote_ref="${remote_ref##[[:space:]]}"; remote_ref="${remote_ref%%[[:space:]]}"
+    _load_object_format_length expected_length
 
-        _validate_row "$local_oid" "$local_ref" "$remote_oid" "$remote_ref"
+    while read -r local_ref local_oid remote_ref remote_oid extra; do
+        [[ -n "$local_ref" && -n "$local_oid" && -n "$remote_ref" && -n "$remote_oid" && -z "${extra:-}" ]] || {
+            _die "malformed pre-push row (expected: local-ref local-oid remote-ref remote-oid)"
+        }
         row_count=$((row_count + 1))
+        _validate_oid "$local_oid" "local" "$expected_length"
+        _validate_oid "$remote_oid" "remote" "$expected_length"
 
-        # ---- Deleted ref (local = zeros): skip ---------------------------------
         if _is_zero_oid "$local_oid"; then
+            if ! _is_zero_oid "$remote_oid"; then
+                _require_object "$remote_oid" "remote"
+            fi
             echo "gitleaks: skipping deleted ref $remote_ref"
-            deleted_count=$((deleted_count + 1))
             continue
         fi
 
-        # ---- Existing ref (both non-zero): scan remote_oid..local_oid ----------
+        _load_commit_oid local_commit "$local_oid" "local"
         if ! _is_zero_oid "$remote_oid"; then
-            local local_commit remote_commit
-            local_commit="$(_to_commit_oid "$local_oid")"
-            remote_commit="$(_to_commit_oid "$remote_oid")"
-
-            if [[ "$local_commit" == "$remote_commit" ]]; then
-                echo "gitleaks: no new commits on $local_ref (local == remote)"
-                continue
-            fi
-
-            echo "gitleaks: existing ref $local_ref: scanning $remote_commit..$local_commit"
-            collected_ranges+=("$remote_commit..$local_commit")
+            _load_commit_oid remote_commit "$remote_oid" "remote"
+            echo "gitleaks: existing ref $local_ref"
+            _append_reachable_difference commits "$local_commit" --not "$remote_commit"
             continue
         fi
 
-        # ---- New ref (remote = zeros): query remote, scan local minus remote ---
-        if _is_zero_oid "$remote_oid"; then
-            local local_commit remote_tip
-            local_commit="$(_to_commit_oid "$local_oid")"
-
-            remote_tip="$(git ls-remote --refs "$remote_url" "$remote_ref" 2>/dev/null | awk '{print $1}')" || true
-
-            if [[ -n "$remote_tip" ]]; then
-                echo "gitleaks: new ref $local_ref with remote tip: scanning $remote_tip..$local_commit"
-                collected_ranges+=("$remote_tip..$local_commit")
-            else
-                echo "gitleaks: new ref $local_ref has no remote counterpart"
-                local remote_branches
-                remote_branches="$(git for-each-ref --format='%(refname)' 'refs/remotes/origin/' 2>/dev/null || true)"
-
-                if [[ -n "$remote_branches" ]]; then
-                    local candidate_base=""
-                    while IFS= read -r rb; do
-                        local mb
-                        mb="$(git merge-base "$local_commit" "$rb" 2>/dev/null)" || true
-                        if [[ -n "$mb" ]]; then
-                            if [[ -z "$candidate_base" ]] || git merge-base --is-ancestor "$candidate_base" "$mb" &>/dev/null; then
-                                candidate_base="$mb"
-                            fi
-                        fi
-                    done <<< "$remote_branches"
-
-                    if [[ -n "$candidate_base" ]]; then
-                        echo "gitleaks: new ref $local_ref: scanning $candidate_base..$local_commit"
-                        collected_ranges+=("$candidate_base..$local_commit")
-                    else
-                        echo "gitleaks: new ref $local_ref: no common ancestor — scanning ref history"
-                        collected_ranges+=("$local_commit")
-                    fi
-                else
-                    echo "gitleaks: new ref $local_ref: no remote branches — scanning reachable commits"
-                    collected_ranges+=("$local_commit")
-                fi
-            fi
-            continue
+        echo "gitleaks: new ref $local_ref"
+        if [[ "$advertisements_loaded" == false ]]; then
+            _load_remote_query_target remote_query_target "$remote_arg" "$remote_location"
+            _load_advertised_remote_commits advertised_commits "$remote_query_target" "$expected_length"
+            advertisements_loaded=true
         fi
+        _append_reachable_difference commits "$local_commit" --not "${advertised_commits[@]}"
     done
 
-    if [[ "$row_count" -eq 0 ]]; then
+    if [[ $row_count -eq 0 ]]; then
         echo "gitleaks: no refs received on stdin"
         return 0
     fi
-
-    if [[ "$deleted_count" -eq "$row_count" ]]; then
-        echo "gitleaks: all refs are deletions — nothing to scan"
+    if [[ ${#commits[@]} -eq 0 ]]; then
+        echo "gitleaks: no commits to scan"
         return 0
     fi
-
-    if [[ "${#collected_ranges[@]}" -eq 0 ]]; then
-        echo "gitleaks: no commits to scan after processing all refs"
-        return 0
-    fi
-
-    # Build the mathematical union: materialise all commits then scan.
-    local commit_list
-    commit_list="$(git rev-list "${collected_ranges[@]}" 2>/dev/null | sort -u)" || true
-
-    if [[ -z "$commit_list" ]]; then
-        echo "gitleaks: empty commit union — nothing to scan"
-        return 0
-    fi
-
-    local oldest newest
-    oldest="$(echo "$commit_list" | tail -n1)"
-    newest="$(echo "$commit_list" | head -n1)"
-
-    # Build the union range.  When ``oldest`` is a root commit, ``${oldest}^``
-    # does not exist and ``${oldest}^..${newest}`` would be rejected by git
-    # (causing gitleaks to silently scan zero commits).  Fall back to scanning
-    # everything reachable from ``newest`` instead.
-    local scan_range
-    if git rev-parse --verify "${oldest}^" &>/dev/null; then
-        scan_range="${oldest}^..${newest}"
-    else
-        scan_range="${newest}"
-    fi
-
-    echo "gitleaks: scanning union of ${#collected_ranges[@]} ref range(s) ($(echo "$commit_list" | wc -l) unique commits)"
-    _scan_range "$scan_range"
+    _scan_exact_commits "${!commits[@]}"
 }
 
-# ---------------------------------------------------------------------------
-# ci-full mode: scan the full repository history.
-# ---------------------------------------------------------------------------
+_scan_range() {
+    local range="$1"
+    echo "gitleaks: scanning commits in range '$range'"
+    gitleaks git --verbose --redact --exit-code 10 --log-opts="$range"
+}
 
 _ci_full_scan() {
     echo "gitleaks: CI full-history scan"
-    gitleaks detect \
-        --source . \
-        --verbose \
-        --redact \
-        --exit-code 10
+    gitleaks detect --source . --verbose --redact --exit-code 10
 }
-
-# ---------------------------------------------------------------------------
-# Range mode: scan OLD..NEW.
-# ---------------------------------------------------------------------------
 
 _range_scan_cmd() {
     local old_ref="$1" new_ref="$2"
-
-    if ! git rev-parse --verify "$old_ref^{commit}" &>/dev/null; then
-        _die "invalid old ref: $old_ref"
-    fi
-    if ! git rev-parse --verify "$new_ref^{commit}" &>/dev/null; then
-        _die "invalid new ref: $new_ref"
-    fi
-
+    git rev-parse --verify "$old_ref^{commit}" &>/dev/null || _die "invalid old ref: $old_ref"
+    git rev-parse --verify "$new_ref^{commit}" &>/dev/null || _die "invalid new ref: $new_ref"
     _scan_range "$old_ref..$new_ref"
 }
 
-# ---------------------------------------------------------------------------
-# Local-range scan: determine the appropriate range from current git state.
-# This is the fallback used by the backward-compat (no-mode) invocation.
-# ---------------------------------------------------------------------------
-
 _local_range_scan() {
-    local branch
-    branch="$(git rev-parse --abbrev-ref HEAD)"
-
-    local range
+    local branch range base
+    branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" || _die "unable to resolve HEAD"
     if [[ "$branch" == "HEAD" ]]; then
         range="HEAD"
+    elif git rev-parse --verify "origin/$branch" &>/dev/null; then
+        range="origin/$branch..HEAD"
     else
-        local remote_branch="origin/$branch"
-        if git rev-parse --verify "$remote_branch" &>/dev/null; then
-            range="$remote_branch..HEAD"
+        base="origin/main"
+        git rev-parse --verify "$base" &>/dev/null || base="origin/master"
+        if git rev-parse --verify "$base" &>/dev/null; then
+            range="$base..HEAD"
         else
-            local base="origin/main"
-            git rev-parse --verify "$base" &>/dev/null || base="origin/master"
-            if git rev-parse --verify "$base" &>/dev/null; then
-                range="$base..HEAD"
-            else
-                range="HEAD"
-            fi
+            range="HEAD"
         fi
     fi
-
     _scan_range "$range"
 }
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 main() {
-    if ! git rev-parse --git-dir &>/dev/null; then
-        _die "not a git repository"
-    fi
-
+    git rev-parse --git-dir &>/dev/null || _die "not a git repository"
     local mode="${1:-}"
-    shift || true
+    [[ $# -eq 0 ]] || shift
 
     case "$mode" in
         pre-push)
-            local remote_name="${1:-}"
-            local remote_url="${2:-}"
-            shift 2 || true
-            local extra="${1:-}"
-
-            if [[ -z "$remote_name" || -z "$remote_url" || -n "$extra" ]]; then
+            [[ $# -eq 2 && -n "$1" && -n "$2" ]] || {
                 _die "usage: $0 pre-push REMOTE_NAME REMOTE_URL"
-            fi
-
+            }
             _require_gitleaks
             _check_version
-            _pre_push_scan "$remote_name" "$remote_url"
+            _pre_push_scan "$1" "$2"
             ;;
-
         ci-full)
-            local extra="${1:-}"
-            if [[ -n "$extra" ]]; then
-                _die "usage: $0 ci-full"
-            fi
+            [[ $# -eq 0 ]] || _die "usage: $0 ci-full"
             _require_gitleaks
             _check_version
             _ci_full_scan
             ;;
-
         range)
-            local old_ref="${1:-}"
-            local new_ref="${2:-}"
-            shift 2 || true
-            local extra="${1:-}"
-
-            if [[ -z "$old_ref" || -z "$new_ref" || -n "$extra" ]]; then
-                _die "usage: $0 range OLD NEW"
-            fi
-
+            [[ $# -eq 2 && -n "$1" && -n "$2" ]] || _die "usage: $0 range OLD NEW"
             _require_gitleaks
             _check_version
-            _range_scan_cmd "$old_ref" "$new_ref"
+            _range_scan_cmd "$1" "$2"
             ;;
-
         "")
-            # Backward-compatible invocation (no explicit mode).
-            # If CI_NO_SKIP is set, behave as ci-full.
-            local ci_skip="${CI_NO_SKIP:-}"
-            if [[ "$ci_skip" == "1" || "$ci_skip" == "true" ]]; then
-                _require_gitleaks
-                _check_version
-                _ci_full_scan
-                return
-            fi
-
             _require_gitleaks
             _check_version
-
-            # Try reading pre-push refspecs from stdin first.
-            if [[ ! -t 0 ]]; then
-                local remote_url
-                remote_url="$(git remote get-url origin 2>/dev/null || true)"
-                _pre_push_scan "origin" "$remote_url"
-                return
+            if [[ "${CI_NO_SKIP:-}" == "1" || "${CI_NO_SKIP:-}" == "true" ]]; then
+                _ci_full_scan
+            elif [[ ! -t 0 ]]; then
+                _pre_push_scan "origin" "origin"
+            else
+                _local_range_scan
             fi
-
-            # Stdin is a terminal — fall back to local range scan.
-            _local_range_scan
             ;;
-
-        *)
-            _die "unknown mode '$mode' (expected: pre-push, ci-full, or range)"
-            ;;
+        *) _die "unknown mode '$mode' (expected: pre-push, ci-full, or range)" ;;
     esac
 }
 

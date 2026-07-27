@@ -15,6 +15,7 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PROJECT_ROOT / "scripts" / "gitleaks_check.sh"
+FIXTURES = PROJECT_ROOT / "tests" / "fixtures" / "gitleaks"
 
 
 @pytest.fixture(autouse=True)
@@ -33,13 +34,14 @@ def _run_script(
     *args: str,
     stdin_text: str | None = None,
     env_extra: dict[str, str] | None = None,
+    cwd: Path = PROJECT_ROOT,
 ) -> subprocess.CompletedProcess[str]:
     env = {**dict(__import__("os").environ), **(env_extra or {})}
     result = subprocess.run(
         ["bash", str(SCRIPT), *args],
         capture_output=True,
         text=True,
-        cwd=str(PROJECT_ROOT),
+        cwd=str(cwd),
         timeout=15,
         input=stdin_text,
         env=env,
@@ -189,7 +191,13 @@ class TestOidHandling:
 
     def test_sends_deleted_ref_to_skip_path(self) -> None:
         """A deleted ref (local=all-zeros) is skipped."""
-        stdin = "0000000000000000000000000000000000000000 refs/heads/delete-me abc123def456789 refs/heads/delete-me\n"
+        head_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True, cwd=PROJECT_ROOT
+        ).strip()
+        stdin = (
+            "(delete) 0000000000000000000000000000000000000000 "
+            f"refs/heads/delete-me {head_sha}\n"
+        )
         result = _run_script(
             "pre-push",
             "origin",
@@ -201,32 +209,49 @@ class TestOidHandling:
         combined = result.stdout + result.stderr
         assert "skipping deleted ref" in combined
 
-    def test_new_ref_remote_zeros_triggers_new_branch_path(self) -> None:
+    def test_new_ref_remote_zeros_triggers_new_branch_path(self, tmp_path: Path) -> None:
         """A new ref (remote=all-zeros) triggers new-branch detection."""
-        # We cannot guarantee what git ls-remote returns for the fake URL,
-        # but the zero-OID branch should be triggered.
-        stdin = (
-            "0000000000000000000000000000000000000000 refs/heads/nonexistent "
-            + "0000000000000000000000000000000000000000 refs/heads/nonexistent\n"
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["bash", str(FIXTURES / "clean-repo-setup.sh"), str(repo)],
+            check=True,
+            capture_output=True,
+            text=True,
         )
-        # Both are zeros — this row would skip as deleted. Let's test a proper new ref.
-        # For a new ref, local is non-zero, remote is zero.
+        remote = tmp_path / "origin.git"
+        subprocess.run(
+            ["git", "clone", "--bare", str(repo), str(remote)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "remote", "add", "origin", str(remote)],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=repo,
+        )
+        (repo / "new-feature.txt").write_text("clean feature\n")
+        subprocess.run(["git", "add", "new-feature.txt"], check=True, cwd=repo)
+        subprocess.run(["git", "commit", "-m", "new feature"], check=True, cwd=repo)
         head_sha = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], text=True, cwd=PROJECT_ROOT
+            ["git", "rev-parse", "HEAD"], text=True, cwd=repo
         ).strip()
         stdin_new = (
-            f"{head_sha} refs/heads/new-feature "
-            f"0000000000000000000000000000000000000000 refs/heads/new-feature\n"
+            f"refs/heads/new-feature {head_sha} refs/heads/new-feature "
+            "0000000000000000000000000000000000000000\n"
         )
         result = _run_script(
             "pre-push",
             "origin",
-            "https://example.com/repo.git",
+            str(remote),
             stdin_text=stdin_new,
+            cwd=repo,
         )
-        # Should try scanning; if the remote URL is fake, it falls back to
-        # scanning from merge-base or HEAD. Expect 0 or 10.
-        assert result.returncode in (0, 10)
+        # The configured origin is queried and the exact local difference is scanned.
+        assert result.returncode == 0
 
     def test_multiple_refs_build_union(self) -> None:
         """Multiple refs produce a union of commit ranges."""
@@ -237,8 +262,8 @@ class TestOidHandling:
             ["git", "rev-parse", "HEAD~2"], text=True, cwd=PROJECT_ROOT
         ).strip()
         stdin = (
-            f"{head} refs/heads/main {base} refs/heads/main\n"
-            f"{head} refs/heads/feature {base} refs/heads/feature\n"
+            f"refs/heads/main {head} refs/heads/main {base}\n"
+            f"refs/heads/feature {head} refs/heads/feature {base}\n"
         )
         result = _run_script(
             "pre-push",
