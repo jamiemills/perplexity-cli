@@ -173,8 +173,8 @@ def test_local_safety_propagates_authenticated_scan_failure(tmp_path: Path) -> N
 def test_make_uses_locked_thresholds_and_trusted_ci_split() -> None:
     assert "--min-coverage $(MIN_COVERAGE)" in MAKEFILE
     assert "--min-coverage 80" not in MAKEFILE
-    ci_start = MAKEFILE.index("\nci:  ##") + 1
-    ci_body = MAKEFILE[ci_start : MAKEFILE.index("ci-trusted:")]
+    ci_start = MAKEFILE.index("\nci:") + 1
+    ci_body = MAKEFILE[ci_start : MAKEFILE.index("\nci-trusted:")]
     assert "safety-gate" not in ci_body
     assert "ci-trusted: ci safety-gate" in MAKEFILE
 
