@@ -27,6 +27,7 @@ import argparse
 import json
 import subprocess
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -45,6 +46,13 @@ EXIT_INTERNAL_ERROR: int = 5
 # Semgrep exits 1 when run with ``--error`` and findings are present.
 # Any other non-zero code indicates an infrastructure failure.
 SEMGREP_FINDINGS_EXIT: int = 1
+
+
+class PolicyMode(Enum):
+    """Select blocking or advisory policy reporting."""
+
+    BLOCKING = "blocking"
+    ADVISORY = "advisory"
 
 
 def _validate_install() -> None:
@@ -124,9 +132,9 @@ def _parse_output(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
         _fail_malformed(f"Semgrep produced unparseable JSON: {exc}\n", result)
 
 
-def _check_errors(data: dict[str, Any]) -> None:
+def _check_errors(semgrep_output: dict[str, Any]) -> None:
     """Exit with internal-error if Semgrep reported any analysis errors."""
-    errors = data.get("errors", [])
+    errors = semgrep_output.get("errors", [])
     if errors:
         sys.stderr.write(f"Semgrep reported {len(errors)} analysis error(s):\n")
         for error in errors:
@@ -223,10 +231,21 @@ def _print_summary(
         print(f"  Advisory: {len(advisory)} finding(s)")
 
 
-def _report(
+# owner: quality-infrastructure; reason: stable tested helper contract
+def _report(  # nosemgrep: boolean-flag-argument
     blocking: list[dict[str, Any]],
     advisory: list[dict[str, Any]],
     is_blocking_mode: bool,
+) -> None:
+    """Convert the stable boolean contract and print the finding summary."""
+    mode = PolicyMode.BLOCKING if is_blocking_mode else PolicyMode.ADVISORY
+    _report_for_mode(blocking, advisory, mode)
+
+
+def _report_for_mode(
+    blocking: list[dict[str, Any]],
+    advisory: list[dict[str, Any]],
+    mode: PolicyMode,
 ) -> None:
     """Print the overall finding summary to stdout."""
     all_findings = blocking + advisory
@@ -234,7 +253,7 @@ def _report(
         print("Semgrep: no findings.")
         return
     _print_summary(all_findings, blocking, advisory)
-    if not is_blocking_mode:
+    if mode is PolicyMode.ADVISORY:
         print("Running in advisory mode — non-zero exit suppressed.")
 
 
@@ -269,11 +288,11 @@ def _run_and_classify(
         sys.exit(EXIT_INTERNAL_ERROR)
 
     _check_returncode(result)
-    data = _parse_output(result)
-    _check_errors(data)
+    semgrep_output = _parse_output(result)
+    _check_errors(semgrep_output)
 
     policy = _load_policy()
-    results = data.get("results", [])
+    results = semgrep_output.get("results", [])
     return _classify(results, policy)
 
 

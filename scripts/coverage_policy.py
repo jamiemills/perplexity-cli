@@ -110,7 +110,8 @@ def _validate_fragment_path(path: str, label: str) -> Path:
 def _copy_to_temp(src: Path, workdir: Path) -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".coverage", dir=str(workdir)) as tmp:
         tmp.write(src.read_bytes())
-        return tmp.name
+        tmp.flush()
+    return tmp.name
 
 
 def _combine_fragments(
@@ -226,7 +227,7 @@ def main() -> None:
 
         report = _build_report(
             _ReportInputs(
-                success=len(validation_errors) == 0,
+                success=not validation_errors,
                 errors=validation_errors,
                 overall_pct=overall_pct,
                 threshold=args.min_coverage,

@@ -32,7 +32,7 @@ def _prefix(module: str) -> str:
 
 def _prefix_modules(modules: list[str]) -> list[str]:
     """Add the root-package prefix to a list of internal module names."""
-    return [_prefix(m) for m in modules]
+    return [_prefix(module) for module in modules]
 
 
 def _deduplicate_modules(modules: list[str]) -> list[str]:
@@ -56,14 +56,14 @@ def _load_toml(path: Path) -> dict[str, Any]:
         import tomllib
     except ImportError:
         import tomli as tomllib
-    with path.open("rb") as f:
-        return tomllib.load(f)
+    with path.open("rb") as toml_file:
+        return tomllib.load(toml_file)
 
 
-def _classify_modules(data: dict[str, Any]) -> dict[str, set[str]]:
+def _classify_modules(architecture: dict[str, Any]) -> dict[str, set[str]]:
     """Build a mapping of layer_name -> set of module paths."""
     classification: dict[str, set[str]] = {}
-    for layer_entry in data.get("layers", []):
+    for layer_entry in architecture.get("layers", []):
         if not isinstance(layer_entry, dict):
             continue
         _classify_single_layer(layer_entry, classification)
@@ -121,8 +121,8 @@ def _build_forbidden_contracts(
 ) -> list[dict[str, Any]]:
     """Build forbidden contracts for each dependency direction violation."""
     contracts: list[dict[str, Any]] = []
-    data = _load_toml(TOML_PATH)
-    layers = data.get("layers", [])
+    architecture = _load_toml(TOML_PATH)
+    layers = architecture.get("layers", [])
     layer_allowed = _get_layer_allowed(layers)
     all_layers = set(layer_allowed.keys())
 
@@ -186,11 +186,11 @@ def _add_if_forbidden_adapter(
 
 
 def _build_independence_contracts(
-    data: dict[str, Any],
+    architecture: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Build independence contracts for adapter groups."""
     contracts: list[dict[str, Any]] = []
-    groups = data.get("adapter_independence", [])
+    groups = architecture.get("adapter_independence", [])
 
     for group in groups:
         if not isinstance(group, dict):
@@ -269,8 +269,8 @@ def _build_independence_sibling_contracts() -> list[dict[str, Any]]:
 
 def generate_importlinter_config() -> str:
     """Generate the complete .importlinter configuration string."""
-    data = _load_toml(TOML_PATH)
-    classification = _classify_modules(data)
+    architecture = _load_toml(TOML_PATH)
+    classification = _classify_modules(architecture)
 
     lines: list[str] = [
         "[importlinter]",
@@ -286,10 +286,10 @@ def generate_importlinter_config() -> str:
 
 def _append_contracts(lines: list[str], start_id: int, contracts: list[dict[str, Any]]) -> int:
     """Append formatted contracts to *lines*, returning the next contract ID."""
-    cid = start_id
+    contract_id = start_id
     for contract in contracts:
-        cid += 1
-        lines.append(f"[importlinter:contract:{cid}]")
+        contract_id += 1
+        lines.append(f"[importlinter:contract:{contract_id}]")
         lines.append(f"name = {contract['name']!s}")
         lines.append(f"type = {contract['type']!s}")
         if "modules" in contract:
@@ -301,7 +301,7 @@ def _append_contracts(lines: list[str], start_id: int, contracts: list[dict[str,
             lines.append("forbidden_modules =")
             lines.append(f"    {contract['forbidden_modules']!s}")
         lines.append("")
-    return cid
+    return contract_id
 
 
 def _check_mode() -> int:

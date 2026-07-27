@@ -172,18 +172,18 @@ def compute_merge_base(
     return MergeBase(sha=sha, found=True)
 
 
-def _files_from_empty_tree(to_sha, cwd=None):
-    rc, out, err = _run_git(["log", "--name-only", "--format=", to_sha], cwd=cwd)
-    if rc != 0:
+def _files_from_empty_tree(to_sha: str, cwd: Path | None = None) -> DiffResult:
+    returncode, stdout, stderr = _run_git(["log", "--name-only", "--format=", to_sha], cwd=cwd)
+    if returncode != 0:
         return DiffResult(
             is_empty=True,
             git_error=True,
-            error_details=GitErrorDetails("log --name-only " + to_sha, rc, err),
+            error_details=GitErrorDetails("log --name-only " + to_sha, returncode, stderr),
         )
-    if not out:
+    if not stdout:
         return DiffResult(is_empty=True)
-    changed = tuple(line.strip() for line in out.split(chr(10)) if line.strip())
-    return DiffResult(changed_files=changed, is_empty=len(changed) == 0)
+    changed = tuple(line.strip() for line in stdout.splitlines() if line.strip())
+    return DiffResult(changed_files=changed, is_empty=not changed)
 
 
 def compute_diff(
@@ -209,7 +209,7 @@ def compute_diff(
     if not stdout:
         return DiffResult(is_empty=True)
     changed = tuple(line.strip() for line in stdout.split("\n") if line.strip())
-    return DiffResult(changed_files=changed, is_empty=len(changed) == 0)
+    return DiffResult(changed_files=changed, is_empty=not changed)
 
 
 def compute_full_diff(

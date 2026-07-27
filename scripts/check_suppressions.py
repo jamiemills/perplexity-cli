@@ -119,11 +119,11 @@ def _collect_coverage_config_identities(pyproject: Path) -> list[str]:
     if not pyproject.is_file():
         return []
     try:
-        data = tomllib.loads(pyproject.read_text())
+        config = tomllib.loads(pyproject.read_text())
     except (OSError, tomllib.TOMLDecodeError):
         return []
 
-    coverage = data.get("tool", {}).get("coverage", {})
+    coverage = config.get("tool", {}).get("coverage", {})
     identities: list[str] = []
 
     for pattern in coverage.get("run", {}).get("omit", []):
@@ -139,11 +139,11 @@ def _collect_mutmut_config_identities(pyproject: Path) -> list[str]:
     if not pyproject.is_file():
         return []
     try:
-        data = tomllib.loads(pyproject.read_text())
+        config = tomllib.loads(pyproject.read_text())
     except (OSError, tomllib.TOMLDecodeError):
         return []
 
-    mutmut = data.get("tool", {}).get("mutmut", {})
+    mutmut = config.get("tool", {}).get("mutmut", {})
     identities: list[str] = []
 
     for pattern in mutmut.get("do_not_mutate", []):
@@ -179,12 +179,12 @@ def _cast_fingerprints(raw: Any) -> list[str]:
     return sorted(str(fp) for fp in raw)
 
 
-def _load_identities_from_data(data: Any) -> list[str] | None:
+def _load_identities_from_data(baseline: Any) -> list[str] | None:
     """Extract fingerprints from loaded baseline data, or None on legacy format."""
-    if isinstance(data, list):
-        return _cast_fingerprints(data)
+    if isinstance(baseline, list):
+        return _cast_fingerprints(baseline)
     try:
-        return _cast_fingerprints(data["fingerprints"])
+        return _cast_fingerprints(baseline["fingerprints"])
     except (KeyError, TypeError):
         return None
 
@@ -193,8 +193,8 @@ def _load_baseline_identities(name: str) -> list[str]:
     path = BASELINE_DIR / name
     if not path.is_file():
         return []
-    data = json.loads(path.read_text())
-    identities = _load_identities_from_data(data)
+    baseline = json.loads(path.read_text())
+    identities = _load_identities_from_data(baseline)
     if identities is not None:
         return identities
     return _migrate_legacy_baseline(name)

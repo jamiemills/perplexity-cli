@@ -32,8 +32,9 @@ import logging
 import re
 import sys
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
@@ -61,6 +62,25 @@ EXTERNAL_ACTION_PATTERN: re.Pattern[str] = re.compile(r"^(?P<repo>[^/\s]+/[^@\s]
 SHA_PATTERN: re.Pattern[str] = re.compile(r"^[0-9a-f]{40}$")
 
 FORBIDDEN_TRIGGER: str = "pull_request_target"
+FORBIDDEN_TRIGGER_MESSAGE = (
+    "workflow uses 'pull_request_target' which exposes secrets to untrusted code; "
+    "use 'pull_request' instead"
+)
+MISSING_PERMISSIONS_PREFIX = "workflow has no top-level 'permissions' and these jobs omit it too: "
+
+
+class ConcurrencyPolicy(Enum):
+    """Record whether workflow-level concurrency is configured."""
+
+    WORKFLOW = "workflow"
+    JOB = "job"
+
+
+class Strictness(Enum):
+    """Select normal or strict warning handling."""
+
+    NORMAL = "normal"
+    STRICT = "strict"
 
 
 # ---------------------------------------------------------------------------
@@ -161,9 +181,9 @@ def _parse_workflow(text: str, yaml_parser: YAML) -> tuple[dict[str, Any] | None
 # ---------------------------------------------------------------------------
 
 
-def _validate_workflow_name(data: dict[str, Any], file_name: str) -> list[Finding]:
+def _validate_workflow_name(workflow: dict[str, Any], file_name: str) -> list[Finding]:
     """Check the workflow has a top-level ``name`` field."""
-    if not data.get("name"):
+    if not workflow.get("name"):
         return [
             Finding(
                 severity=SEVERITY_ERROR,
@@ -175,10 +195,10 @@ def _validate_workflow_name(data: dict[str, Any], file_name: str) -> list[Findin
     return []
 
 
-def _validate_triggers(data: dict[str, Any], file_name: str) -> list[Finding]:
+def _validate_triggers(workflow: dict[str, Any], file_name: str) -> list[Finding]:
     """Check the ``on`` trigger exists and is not the forbidden target trigger."""
     findings: list[Finding] = []
-    if not any(key in data for key in TRIGGER_KEYS):
+    if not any(key in workflow for key in TRIGGER_KEYS):
         findings.append(
             Finding(
                 severity=SEVERITY_ERROR,
@@ -188,51 +208,45 @@ def _validate_triggers(data: dict[str, Any], file_name: str) -> list[Finding]:
             )
         )
         return findings
-    findings.extend(_check_forbidden_trigger(data, file_name))
+    findings.extend(_check_forbidden_trigger(workflow, file_name))
     return findings
 
 
-def _check_forbidden_trigger(data: dict[str, Any], file_name: str) -> list[Finding]:
+def _check_forbidden_trigger(workflow: dict[str, Any], file_name: str) -> list[Finding]:
     """Return a finding if ``pull_request_target`` appears anywhere in triggers."""
-    trigger = _get_trigger(data)
+    trigger = _get_trigger(workflow)
     if isinstance(trigger, dict) and FORBIDDEN_TRIGGER in trigger:
         return [
             Finding(
                 severity=SEVERITY_ERROR,
                 code="WF_FORBIDDEN_TRIGGER",
-                message=(
-                    "workflow uses 'pull_request_target' which exposes secrets "
-                    "to untrusted code; use 'pull_request' instead"
-                ),
+                message=FORBIDDEN_TRIGGER_MESSAGE,
                 file=file_name,
             )
         ]
     return []
 
 
-def _get_trigger(data: dict[str, Any]) -> Any:
+def _get_trigger(workflow: dict[str, Any]) -> Any:
     """Return the workflow trigger value, tolerating string-form triggers."""
     for key in TRIGGER_KEYS:
-        if key in data:
-            return data[key]
+        if key in workflow:
+            return workflow[key]
     return None
 
 
-def _validate_permissions(data: dict[str, Any], file_name: str) -> list[Finding]:
+def _validate_permissions(workflow: dict[str, Any], file_name: str) -> list[Finding]:
     """Check that ``permissions`` exists at workflow or every-job level."""
-    if "permissions" in data:
+    if "permissions" in workflow:
         return []
-    jobs = data.get("jobs") or {}
+    jobs = workflow.get("jobs") or {}
     missing = _jobs_missing_permissions(jobs)
     if missing:
         return [
             Finding(
                 severity=SEVERITY_ERROR,
                 code="WF_PERMISSIONS_MISSING",
-                message=(
-                    "workflow has no top-level 'permissions' and these jobs "
-                    "omit it too: " + ", ".join(sorted(missing))
-                ),
+                message=MISSING_PERMISSIONS_PREFIX + ", ".join(sorted(missing)),
                 file=file_name,
             )
         ]
@@ -246,10 +260,10 @@ def _jobs_missing_permissions(jobs: dict[str, Any]) -> list[str]:
     ]
 
 
-def _validate_action_pinning(data: dict[str, Any], file_name: str) -> list[Finding]:
+def _validate_action_pinning(workflow: dict[str, Any], file_name: str) -> list[Finding]:
     """Check every external ``uses:`` reference is pinned to a 40-char SHA."""
     findings: list[Finding] = []
-    for uses, job in _iter_uses(data):
+    for uses, job in _iter_uses(workflow):
         ref = _extract_uses_ref(uses)
         if ref is None:
             continue
@@ -278,10 +292,10 @@ def _extract_uses_ref(uses_value: Any) -> str | None:
     return match.group("ref")
 
 
-def _iter_uses(data: dict[str, Any]) -> list[tuple[Any, str | None]]:
+def _iter_uses(workflow: dict[str, Any]) -> list[tuple[Any, str | None]]:
     """Yield ``(uses_value, job_name)`` pairs for every step's ``uses`` key."""
     pairs: list[tuple[Any, str | None]] = []
-    jobs = data.get("jobs") or {}
+    jobs = workflow.get("jobs") or {}
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
             continue
@@ -303,11 +317,11 @@ def _iter_job_uses(job: dict[str, Any], job_name: str) -> list[tuple[Any, str]]:
 # ---------------------------------------------------------------------------
 
 
-def _validate_jobs(data: dict[str, Any], file_name: str) -> list[Finding]:
+def _validate_jobs(workflow: dict[str, Any], file_name: str) -> list[Finding]:
     """Validate every job's name, timeout, and concurrency."""
     findings: list[Finding] = []
-    jobs = data.get("jobs") or {}
-    if not isinstance(jobs, dict) or not jobs:
+    raw_jobs: object = workflow.get("jobs") or {}
+    if not isinstance(raw_jobs, dict) or not raw_jobs:
         return [
             Finding(
                 severity=SEVERITY_ERROR,
@@ -316,17 +330,32 @@ def _validate_jobs(data: dict[str, Any], file_name: str) -> list[Finding]:
                 file=file_name,
             )
         ]
-    has_workflow_concurrency = "concurrency" in data
+    jobs = cast(dict[str, Any], raw_jobs)
+    has_workflow_concurrency = "concurrency" in workflow
     for job_name, job in jobs.items():
         findings.extend(_validate_one_job(job, job_name, file_name, has_workflow_concurrency))
     return findings
 
 
-def _validate_one_job(
+# owner: quality-infrastructure; reason: stable tested helper contract
+def _validate_one_job(  # nosemgrep: boolean-flag-argument
     job: Any,
     job_name: str,
     file_name: str,
     has_workflow_concurrency: bool,
+) -> list[Finding]:
+    """Convert the stable boolean contract and validate one job."""
+    concurrency_policy = (
+        ConcurrencyPolicy.WORKFLOW if has_workflow_concurrency else ConcurrencyPolicy.JOB
+    )
+    return _validate_one_job_with_policy(job, job_name, file_name, concurrency_policy)
+
+
+def _validate_one_job_with_policy(
+    job: Any,
+    job_name: str,
+    file_name: str,
+    concurrency_policy: ConcurrencyPolicy,
 ) -> list[Finding]:
     """Validate a single job definition."""
     if not isinstance(job, dict):
@@ -339,10 +368,11 @@ def _validate_one_job(
                 job=job_name,
             )
         ]
+    job_mapping = cast(dict[str, Any], job)
     findings: list[Finding] = []
-    findings.extend(_check_job_name(job, job_name, file_name))
-    findings.extend(_check_job_timeout(job, job_name, file_name))
-    if not has_workflow_concurrency and "concurrency" not in job:
+    findings.extend(_check_job_name(job_mapping, job_name, file_name))
+    findings.extend(_check_job_timeout(job_mapping, job_name, file_name))
+    if concurrency_policy is ConcurrencyPolicy.JOB and "concurrency" not in job_mapping:
         findings.append(
             Finding(
                 severity=SEVERITY_WARNING,
@@ -409,15 +439,15 @@ def validate_file(path: Path, yaml_parser: YAML) -> FileReport:
     except OSError as exc:
         logger.warning("Could not read %s: %s", path, exc)
         return FileReport(file=file_name, parsed=False, parse_error=str(exc))
-    data, error = _parse_workflow(text, yaml_parser)
-    if data is None:
+    workflow, error = _parse_workflow(text, yaml_parser)
+    if workflow is None:
         return FileReport(file=file_name, parsed=False, parse_error=error)
     findings: list[Finding] = []
-    findings.extend(_validate_workflow_name(data, file_name))
-    findings.extend(_validate_triggers(data, file_name))
-    findings.extend(_validate_permissions(data, file_name))
-    findings.extend(_validate_action_pinning(data, file_name))
-    findings.extend(_validate_jobs(data, file_name))
+    findings.extend(_validate_workflow_name(workflow, file_name))
+    findings.extend(_validate_triggers(workflow, file_name))
+    findings.extend(_validate_permissions(workflow, file_name))
+    findings.extend(_validate_action_pinning(workflow, file_name))
+    findings.extend(_validate_jobs(workflow, file_name))
     return FileReport(file=file_name, parsed=True, findings=findings)
 
 
@@ -449,11 +479,20 @@ def _has_blocking_errors(report: PolicyReport) -> bool:
     return False
 
 
-def _finding_blocks(finding: Finding, strict: bool) -> bool:
+# owner: quality-infrastructure; reason: stable tested helper contract
+def _finding_blocks(  # nosemgrep: boolean-flag-argument
+    finding: Finding, strict: bool
+) -> bool:
+    """Convert the stable boolean contract and classify a finding."""
+    strictness = Strictness.STRICT if strict else Strictness.NORMAL
+    return _finding_blocks_with_strictness(finding, strictness)
+
+
+def _finding_blocks_with_strictness(finding: Finding, strictness: Strictness) -> bool:
     """Return True if a finding should fail the run."""
     if finding.severity == SEVERITY_ERROR:
         return True
-    return strict and finding.severity == SEVERITY_WARNING
+    return strictness is Strictness.STRICT and finding.severity == SEVERITY_WARNING
 
 
 # ---------------------------------------------------------------------------

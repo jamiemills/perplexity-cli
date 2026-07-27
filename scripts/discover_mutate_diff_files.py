@@ -27,6 +27,10 @@ import logging
 import sys
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from scripts.differential_context import DiffContext
 
 _PROJECT_ROOT_PATH = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT_PATH) not in sys.path:
@@ -37,6 +41,7 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT: Path = _PROJECT_ROOT_PATH
 SOURCE_ROOT: str = "src/perplexity_cli/"
 MANIFEST_SUFFIX: str = "mutation_manifest.json"
+
 
 EXIT_SOURCE_CHANGES = 0
 EXIT_NO_PRODUCTION_CHANGES = 1
@@ -116,8 +121,8 @@ def _write_temp_manifest(manifest: dict) -> Path:
     fd, tmp_path = tempfile.mkstemp(suffix=f".{MANIFEST_SUFFIX}", prefix="mutate_", text=True)
     path = Path(tmp_path)
     try:
-        data = json.dumps(manifest, indent=2)
-        path.write_text(data + "\n")
+        serialised_manifest = json.dumps(manifest, indent=2)
+        path.write_text(serialised_manifest + "\n")
         logger.info("Mutation manifest written to %s", tmp_path)
     finally:
         import os
@@ -310,7 +315,7 @@ def _make_empty_manifest() -> dict:
     return _build_manifest((), (), ())
 
 
-def _handle_git_error(ctx) -> tuple[dict, int]:
+def _handle_git_error(ctx: DiffContext) -> tuple[dict, int]:
     """Handle a git error from a DiffContext.
 
     Args:
@@ -336,7 +341,7 @@ def _filter_production_files(files: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(p for p in files if _is_production_python_source(p))
 
 
-def _resolve_diff_refs(ctx) -> tuple[str, str]:
+def _resolve_diff_refs(ctx: DiffContext) -> tuple[str, str]:
     """Extract base and head refs from a DiffContext.
 
     Args:
@@ -345,13 +350,13 @@ def _resolve_diff_refs(ctx) -> tuple[str, str]:
     Returns:
         A tuple of (base_ref, head_ref). Either may be empty.
     """
-    base_ref = getattr(ctx, "merge_base", "") or getattr(ctx, "base_tip", "") or ""
-    head_ref = getattr(ctx, "event_head", "") or ""
+    base_ref = ctx.merge_base or ctx.base_tip or ""
+    head_ref = ctx.event_head or ""
     return base_ref, head_ref
 
 
 def _collect_rename_details(
-    ctx,
+    ctx: DiffContext,
 ) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
     """Collect deletions and renames from a diff context.
 
@@ -369,12 +374,12 @@ def _collect_rename_details(
     return _process_git_diff_status(base_ref, head_ref)
 
 
-def _is_local_dirty(ctx) -> bool:
+def _is_local_dirty(ctx: DiffContext) -> bool:
     """Check if the DiffContext indicates dirty worktree."""
-    return bool(getattr(ctx, "local_dirty", False))
+    return ctx.local_dirty
 
 
-def _resolve_changed_files(ctx) -> tuple[str, ...]:
+def _resolve_changed_files(ctx: DiffContext) -> tuple[str, ...]:
     """Extract changed file paths from a DiffContext.
 
     Args:
@@ -388,7 +393,7 @@ def _resolve_changed_files(ctx) -> tuple[str, ...]:
     return ctx.changed_files
 
 
-def _process_diff_context(ctx) -> tuple[dict, int]:
+def _process_diff_context(ctx: DiffContext) -> tuple[dict, int]:
     """Process a DiffContext to extract mutation target files.
 
     Args:
@@ -410,7 +415,8 @@ def _process_diff_context(ctx) -> tuple[dict, int]:
     return _classify_result(production_files, deletions, renames)
 
 
-def discover_mutate_diff_files(
+# owner: quality-infrastructure; reason: backwards-compatible public discovery API
+def discover_mutate_diff_files(  # nosemgrep: boolean-flag-argument
     base_sha: str | None = None,
     tested_sha: str | None = None,
     local: bool = False,

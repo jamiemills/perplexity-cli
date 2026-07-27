@@ -32,6 +32,7 @@ import subprocess
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,13 @@ DEFAULT_DEPENDENCY_RULES: dict[str, tuple[str, ...]] = {
 DEFAULT_COMMAND_OWNERSHIP: dict[str, str] = {
     "pytest": "test",
 }
+
+
+class ReportFormat(Enum):
+    """Select machine-readable or human-readable report output."""
+
+    JSON = "json"
+    TEXT = "text"
 
 
 # ---------------------------------------------------------------------------
@@ -669,9 +677,18 @@ def _build_report_safely(makefile: Path) -> MakeReport | None:
         return None
 
 
-def _emit_report(report: MakeReport, json_mode: bool) -> None:
+# owner: quality-infrastructure; reason: stable tested helper contract
+def _emit_report(  # nosemgrep: boolean-flag-argument
+    report: MakeReport, json_mode: bool
+) -> None:
+    """Convert the stable boolean contract and emit the report."""
+    output_format = ReportFormat.JSON if json_mode else ReportFormat.TEXT
+    _emit_report_with_format(report, output_format)
+
+
+def _emit_report_with_format(report: MakeReport, output_format: ReportFormat) -> None:
     """Print the report in the requested format."""
-    if json_mode:
+    if output_format is ReportFormat.JSON:
         print(json.dumps(report_to_dict(report), indent=2))
     else:
         print(_format_text(report))
