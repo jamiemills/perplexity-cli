@@ -1,0 +1,12 @@
+{
+  "event_sequence": 13,
+  "event_type": "wave_completed",
+  "run_id": "20260726-201025",
+  "wave": 6,
+  "integration_sha": "4786bf772de373868db16c226d53be203e684cba",
+  "tasks": {
+    "F1-POLICY-COMPLETE": {"status": "integrated", "candidate": "10be5ae", "tests": "84 passed"},
+    "F2-DOCS": {"status": "integrated", "candidate": "ac384b8", "tests": "doc-drift tests pass"}
+  },
+  "make_check": "pass"
+}
