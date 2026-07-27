@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime
-from typing import Final
+from typing import Final, cast
 
 from perplexity_cli.utils.config import get_config_paths
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
 from perplexity_cli.utils.exceptions import AuthenticationError
 from perplexity_cli.utils.file_permissions import verify_secure_permissions
-from perplexity_cli.utils.logging import get_logger, redact_mapping_keys, redact_path
+from perplexity_cli.utils.logging import get_logger, redact_mapping_keys, redact_path, redact_text
 
 TOKEN_AGE_WARNING_DAYS = 30
 _MALFORMED_COOKIES_ERROR = "Token file contains malformed cookies data"
@@ -86,11 +86,19 @@ class TokenManager:
 
             saved_cookies = "cookies" in token_record
             cookie_count = len(cookies) if cookies else 0
-            cookie_msg = f" and {cookie_count} cookies" if saved_cookies else ""
-            self.logger.info("Token%s saved to %s", cookie_msg, redact_path(self.token_path))
+            saved_cookie_count = cookie_count if saved_cookies else 0
+            # owner: security - arguments are a redacted path and cookie count, never values.
+            self.logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                "Token saved to %s with %s cookies",
+                redact_path(self.token_path),
+                saved_cookie_count,
+            )
 
         except OSError as e:
-            self.logger.error("Failed to save token: %s", e, exc_info=True)
+            # owner: security - exception text is fully redacted before logging.
+            self.logger.error(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                "Failed to save token file: %s", redact_text(str(e), max_length=0)
+            )
             msg = f"Failed to save or set permissions on token file {self.token_path}: {e}"
             raise OSError(msg) from e
 
@@ -154,13 +162,21 @@ class TokenManager:
             token = decrypt_token(_extract_token_string(token_record))
             cookies = self._decrypt_cookies(token_record, _extract_version(token_record))
 
-            cookie_msg = f" and {len(cookies)} cookies" if cookies else ""
-            self.logger.info("Token%s loaded from %s", cookie_msg, redact_path(self.token_path))
+            cookie_count = len(cookies) if cookies else 0
+            # owner: security - arguments are a redacted path and cookie count, never values.
+            self.logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                "Token loaded from %s with %s cookies",
+                redact_path(self.token_path),
+                cookie_count,
+            )
 
             return (token, cookies)
 
         except (OSError, json.JSONDecodeError) as e:
-            self.logger.error("Failed to load token: %s", e, exc_info=True)
+            # owner: security - exception text is fully redacted before logging.
+            self.logger.error(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                "Failed to load token file: %s", redact_text(str(e), max_length=0)
+            )
             msg = f"Failed to load token from {self.token_path}: {e}"
             raise OSError(msg) from e
 
@@ -200,9 +216,15 @@ class TokenManager:
             created_at = datetime.fromisoformat(created_at_str)
             age_days = (datetime.now() - created_at).days
             if age_days > TOKEN_AGE_WARNING_DAYS:
-                self.logger.warning("Token is %s days old, may be expired", age_days)
+                # owner: security - the argument is an age count, not credential material.
+                self.logger.warning(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                    "Token is %s days old, may be expired", age_days
+                )
             else:
-                self.logger.debug("Token age: %s days", age_days)
+                # owner: security - the argument is an age count, not credential material.
+                self.logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                    "Token age: %s days", age_days
+                )
         except (ValueError, TypeError):
             self.logger.debug("Could not parse token creation timestamp")
 
@@ -254,7 +276,10 @@ class TokenManager:
         if version == _TOKEN_FORMAT_VERSION:
             self.logger.debug("Token is v2 format but no cookies stored")
         else:
-            self.logger.debug("Token is v%s format (no cookies)", version)
+            # owner: security - the argument is a public file-format version number.
+            self.logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                "Token is v%s format (no cookies)", version
+            )
 
     def _parse_and_validate_cookies(self, cookies_json: str) -> dict[str, str]:
         """Parse and validate decrypted cookie JSON.
@@ -291,10 +316,9 @@ class TokenManager:
         Raises:
             AuthenticationError: If cookie data is malformed.
         """
-        items_getter = getattr(cookies, "items", None)
-        if items_getter is None:
+        if not isinstance(cookies, dict):
             raise AuthenticationError(_MALFORMED_COOKIES_ERROR)
-        for key, value in items_getter():
+        for key, value in cast(dict[object, object], cookies).items():
             if not isinstance(key, str) or not isinstance(value, str):
                 raise AuthenticationError(_MALFORMED_COOKIES_ERROR)
 
@@ -322,9 +346,15 @@ class TokenManager:
             try:
                 self.token_path.unlink()
                 # Audit log: token cleared
-                self.logger.info("Token cleared from %s", redact_path(self.token_path))
+                # owner: security - the only argument is the redacted token-file path.
+                self.logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                    "Token cleared from %s", redact_path(self.token_path)
+                )
             except OSError as e:
-                self.logger.error("Failed to delete token file: %s", e, exc_info=True)
+                # owner: security - exception text is fully redacted before logging.
+                self.logger.error(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                    "Failed to delete token file: %s", redact_text(str(e), max_length=0)
+                )
                 msg = f"Failed to delete token file: {e}"
                 raise OSError(msg) from e
 

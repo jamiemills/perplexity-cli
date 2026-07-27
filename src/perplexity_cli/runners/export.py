@@ -6,8 +6,9 @@ import logging
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypedDict, TypeGuard
+from typing import TYPE_CHECKING, Protocol, TypedDict, TypeGuard, cast
 
 import click
 
@@ -64,6 +65,21 @@ class ThreadPayload(TypedDict):
     title: str
     created_at: str
     url: str
+
+
+class ThreadRecordProtocol(Protocol):
+    """Thread fields accepted by the envelope serialiser."""
+
+    title: object
+    created_at: object
+    url: object
+
+
+class CacheAction(Enum):
+    """Requested cache action for an export run."""
+
+    CLEAR = "clear"
+    PRESERVE = "preserve"
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,8 +154,9 @@ def _create_cache_manager() -> ThreadCacheManager:
     return ThreadCacheManager()
 
 
-def _is_dict_str_obj(v: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(v, dict)
+def _is_dict_str_obj(value: object) -> TypeGuard[dict[str, object]]:
+    """Return whether a value is a string-keyed dictionary."""
+    return isinstance(value, dict)
 
 
 def _thread_payload(record: object) -> ThreadPayload:
@@ -151,9 +168,19 @@ def _thread_payload(record: object) -> ThreadPayload:
             "url": _string_or_empty(record.get("url", "")),
         }
 
-    title = getattr(record, "title", "")
-    created_at = getattr(record, "created_at", "")
-    url = getattr(record, "url", "")
+    thread_record = cast(ThreadRecordProtocol, record)
+    try:
+        title = thread_record.title
+    except AttributeError:
+        title = ""
+    try:
+        created_at = thread_record.created_at
+    except AttributeError:
+        created_at = ""
+    try:
+        url = thread_record.url
+    except AttributeError:
+        url = ""
     return {
         "title": title if isinstance(title, str) else "",
         "created_at": created_at if isinstance(created_at, str) else "",
@@ -304,14 +331,26 @@ def _setup_rate_limiter(logger: logging.Logger) -> ExportRateLimiterProtocol | N
 # ---------------------------------------------------------------------------
 
 
-def _handle_cache_clear(
+# owner: api-contract - stable tested runner helper contract.
+def _handle_cache_clear(  # nosemgrep: boolean-flag-argument
     cache_manager: ThreadCacheManager,
     clear_cache: bool,
     output_format: OutputFormat,
     logger: logging.Logger,
 ) -> None:
+    """Preserve the tested boolean cache-clear helper contract."""
+    cache_action = CacheAction.CLEAR if clear_cache else CacheAction.PRESERVE
+    _handle_cache_action(cache_manager, cache_action, output_format, logger)
+
+
+def _handle_cache_action(
+    cache_manager: ThreadCacheManager,
+    cache_action: CacheAction,
+    output_format: OutputFormat,
+    logger: logging.Logger,
+) -> None:
     """Clear the thread cache if requested."""
-    if not clear_cache:
+    if cache_action is CacheAction.PRESERVE:
         return
     if not cache_manager.cache_exists():
         if output_format != "json":

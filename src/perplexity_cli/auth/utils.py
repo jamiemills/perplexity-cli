@@ -6,6 +6,7 @@ import click
 
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.utils.exceptions import AuthenticationError
+from perplexity_cli.utils.logging import redact_text
 from perplexity_cli.utils.session_token import extract_session_token
 
 __all__ = ["extract_session_token"]
@@ -38,7 +39,11 @@ def load_or_prompt_token(
     except AuthenticationError as e:
         click.echo(f"[ERROR] Authentication error: {e}", err=True)
         click.echo("\nPlease authenticate again with: pxcli auth login", err=True)
-        logger.warning("Authentication state invalid during %s: %s", command_context, e)
+        logger.warning(
+            "Authentication state invalid during %s: %s",
+            command_context,
+            redact_text(str(e), max_length=0),
+        )
         raise SystemExit(1) from e
 
     if not token:
@@ -77,7 +82,11 @@ def load_token_optional(
     try:
         token, cookies = tm.load_token()
     except AuthenticationError as e:
-        logger.warning("Stored authentication is unusable; proceeding without token: %s", e)
+        # owner: security - exception text is fully redacted before logging.
+        logger.warning(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            "Stored token is unusable; proceeding without authentication: %s",
+            redact_text(str(e), max_length=0),
+        )
         return None, None
 
     if token:

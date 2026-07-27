@@ -10,7 +10,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Final, Protocol, TypedDict, TypeGuard, Unpack, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Final,
+    Protocol,
+    TypeGuard,
+    TypedDict,
+    Unpack,
+    cast,
+    runtime_checkable,
+)
 
 from dateutil import parser as dateutil_parser
 
@@ -120,15 +129,30 @@ class ResponseProtocol(Protocol):
         ...
 
 
+class _ResponseCandidateProtocol(Protocol):
+    """Unvalidated response members inspected by the runtime guard."""
+
+    ok: object
+    status_code: object
+    json: object
+
+
 def _is_response_protocol(response: object) -> TypeGuard[ResponseProtocol]:
     """Return True when an object exposes the response attributes we rely on."""
-    ok_value = getattr(response, "ok", None)
-    json_method = getattr(response, "json", None)
+    response_candidate = cast(_ResponseCandidateProtocol, response)
+    try:
+        ok_value = response_candidate.ok
+        json_method = response_candidate.json
+    except AttributeError:
+        return False
     if not isinstance(ok_value, bool) or not callable(json_method):
         return False
     if ok_value:
         return True
-    return isinstance(getattr(response, "status_code", None), int)
+    try:
+        return isinstance(response_candidate.status_code, int)
+    except AttributeError:
+        return False
 
 
 def _get_cache_str_field(thread_dict: dict[str, object], field: str) -> str:

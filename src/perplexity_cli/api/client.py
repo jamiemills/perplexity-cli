@@ -16,8 +16,8 @@ import importlib
 import json
 import logging
 import threading
-from collections.abc import Iterator
-from typing import Final, TypeGuard
+from collections.abc import Callable, Iterator, Mapping, Sequence, Sized
+from typing import Final, Protocol, TypeGuard, cast
 
 from perplexity_cli.api.models import HttpRequestContext
 from perplexity_cli.auth.models import AuthContext
@@ -67,6 +67,55 @@ DEEP_RESEARCH_MODE_VALUES: Final[frozenset[str]] = frozenset(
 )
 
 type JsonObject = dict[str, object]
+
+
+class _ResponseProtocol(Protocol):
+    """Transport response attributes consumed by the client."""
+
+    status_code: object
+    headers: object
+    text: object
+    ok: object
+    reason: object
+    url: object
+    content: object
+
+    def iter_lines(self) -> object:
+        """Return streamed response lines."""
+
+
+class _ContextManagerProtocol(Protocol):
+    """Untyped context-manager surface returned by curl_cffi."""
+
+    def __enter__(self) -> object:
+        """Enter the stream context."""
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: object,
+    ) -> object:
+        """Exit the stream context."""
+
+
+class _SessionProtocol(Protocol):
+    """Transport session methods consumed by the client."""
+
+    def close(self) -> None:
+        """Close the session."""
+
+    def stream(self, *args: object, **kwargs: object) -> object:
+        """Open a streaming request context."""
+
+
+def _read_transport_value(value_factory: Callable[[], object], context: str) -> object:
+    """Read a required transport attribute with contextual failure reporting."""
+    try:
+        return value_factory()
+    except (AttributeError, TypeError) as exc:
+        msg = f"Expected transport attribute for {context}"
+        raise RuntimeError(msg) from exc
 
 
 def _require_str(value: object, context: str) -> str:
@@ -125,46 +174,47 @@ def _is_deep_research_request(params: JsonObject) -> bool:
 
 def _iter_object_values(value: object, context: str) -> Iterator[object]:
     """Yield objects from an untyped iterable transport value."""
-    iter_attr = getattr(value, "__iter__", None)
-    if not callable(iter_attr):
+    try:
+        iterator = iter(cast(Sequence[object], value))
+    except TypeError as exc:
         msg = f"Expected iterable transport value for {context}"
-        raise RuntimeError(msg)
-
-    iterator = iter_attr()
-    next_attr = getattr(iterator, "__next__", None)
-    if not callable(next_attr):
-        msg = f"Expected iterator transport value for {context}"
-        raise RuntimeError(msg)
+        raise RuntimeError(msg) from exc
 
     while True:
         try:
-            yield next_attr()
+            yield next(iterator)
         except StopIteration:
             return
+        except TypeError as exc:
+            msg = f"Expected iterator transport value for {context}"
+            raise RuntimeError(msg) from exc
 
 
-def _coerce_header_pair(item: object, context: str) -> tuple[str, str]:
+def _coerce_header_pair(header_entry: object, context: str) -> tuple[str, str]:
     """Coerce one header item into a string pair."""
-    len_attr = getattr(item, "__len__", None)
-    getitem_attr = getattr(item, "__getitem__", None)
-    if not callable(len_attr) or not callable(getitem_attr):
+    try:
+        size = len(cast(Sized, header_entry))
+    except TypeError as exc:
+        msg = f"Expected header pair items for {context}"
+        raise RuntimeError(msg) from exc
+    if size != HEADER_PAIR_SIZE:
         msg = f"Expected header pair items for {context}"
         raise RuntimeError(msg)
-    size = len_attr()
-    if not isinstance(size, int) or size != HEADER_PAIR_SIZE:
+    pair = cast(Sequence[object], header_entry)
+    try:
+        return str(pair[0]), str(pair[1])
+    except (AttributeError, IndexError, KeyError, TypeError) as exc:
         msg = f"Expected header pair items for {context}"
-        raise RuntimeError(msg)
-    return str(getitem_attr(0)), str(getitem_attr(1))
+        raise RuntimeError(msg) from exc
 
 
 def _coerce_header_mapping(value: object, context: str) -> dict[str, str]:
     """Coerce header-like items into a standard string dictionary."""
-    items_attr = getattr(value, "items", None)
-    if not callable(items_attr):
+    try:
+        items_result_object = cast(Mapping[object, object], value).items()
+    except (AttributeError, TypeError) as exc:
         msg = f"Expected mapping-like transport attribute for {context}"
-        raise RuntimeError(msg)
-
-    items_result_object = items_attr()
+        raise RuntimeError(msg) from exc
 
     headers: dict[str, str] = {}
     for raw_item in _iter_object_values(items_result_object, context):
@@ -177,43 +227,51 @@ class _ResponseAdapter:
     """Typed wrapper around an untyped curl_cffi response object."""
 
     def __init__(self, response: object) -> None:
-        self._response = response
+        self._response = cast(_ResponseProtocol, response)
 
     @property
     def status_code(self) -> int:
-        return _require_int(getattr(self._response, "status_code", None), "response.status_code")
+        value = _read_transport_value(lambda: self._response.status_code, "response.status_code")
+        return _require_int(value, "response.status_code")
 
     @property
     def headers(self) -> dict[str, str]:
-        return _coerce_header_mapping(getattr(self._response, "headers", None), "response.headers")
+        value = _read_transport_value(lambda: self._response.headers, "response.headers")
+        return _coerce_header_mapping(value, "response.headers")
 
     @property
     def text(self) -> str:
-        return _require_str(getattr(self._response, "text", None), "response.text")
+        value = _read_transport_value(lambda: self._response.text, "response.text")
+        return _require_str(value, "response.text")
 
     @property
     def ok(self) -> bool:
-        return _require_bool(getattr(self._response, "ok", None), "response.ok")
+        value = _read_transport_value(lambda: self._response.ok, "response.ok")
+        return _require_bool(value, "response.ok")
 
     @property
     def reason(self) -> str:
-        return _require_str(getattr(self._response, "reason", None), "response.reason")
+        value = _read_transport_value(lambda: self._response.reason, "response.reason")
+        return _require_str(value, "response.reason")
 
     @property
     def url(self) -> object:
-        return getattr(self._response, "url", None)
+        try:
+            return self._response.url
+        except (AttributeError, TypeError):
+            return None
 
     @property
     def content(self) -> bytes | str:
-        return _require_bytes_or_str(getattr(self._response, "content", None), "response.content")
+        value = _read_transport_value(lambda: self._response.content, "response.content")
+        return _require_bytes_or_str(value, "response.content")
 
     def iter_lines(self) -> Iterator[bytes | str]:
-        iter_lines_attr = getattr(self._response, "iter_lines", None)
-        if not callable(iter_lines_attr):
+        try:
+            lines_result_object = self._response.iter_lines()
+        except (AttributeError, TypeError) as exc:
             msg = "Expected callable response.iter_lines transport method"
-            raise RuntimeError(msg)
-
-        lines_result_object = iter_lines_attr()
+            raise RuntimeError(msg) from exc
         for raw_line in _iter_object_values(lines_result_object, "response.iter_lines"):
             if not isinstance(raw_line, bytes | str):
                 msg = "Expected bytes or string lines from response.iter_lines"
@@ -225,14 +283,14 @@ class _StreamContextAdapter:
     """Typed wrapper around the ``Session.stream`` context manager."""
 
     def __init__(self, context: object) -> None:
-        self._context = context
+        self._context = cast(_ContextManagerProtocol, context)
 
     def __enter__(self) -> _ResponseAdapter:
-        enter_attr = getattr(self._context, "__enter__", None)
-        if not callable(enter_attr):
+        try:
+            return _ResponseAdapter(self._context.__enter__())
+        except (AttributeError, TypeError) as exc:
             msg = "Expected __enter__ on stream context manager"
-            raise RuntimeError(msg)
-        return _ResponseAdapter(enter_attr())
+            raise RuntimeError(msg) from exc
 
     def __exit__(
         self,
@@ -240,11 +298,11 @@ class _StreamContextAdapter:
         exc_value: BaseException | None,
         traceback: object,
     ) -> bool | None:
-        exit_attr = getattr(self._context, "__exit__", None)
-        if not callable(exit_attr):
+        try:
+            result = self._context.__exit__(exc_type, exc_value, traceback)
+        except (AttributeError, TypeError) as exc:
             msg = "Expected __exit__ on stream context manager"
-            raise RuntimeError(msg)
-        result = exit_attr(exc_type, exc_value, traceback)
+            raise RuntimeError(msg) from exc
         if result is None or isinstance(result, bool):
             return result
         msg = "Expected bool-or-None return from stream context manager"
@@ -254,21 +312,20 @@ class _StreamContextAdapter:
 def _create_transport_session(timeout: int) -> object:
     """Create the underlying curl_cffi session as an untyped transport object."""
     session_factory_module = importlib.import_module("perplexity_cli.utils.session_factory")
-    create_sync_session = getattr(session_factory_module, "create_sync_session", None)
-    if not callable(create_sync_session):
+    try:
+        return session_factory_module.create_sync_session(timeout=timeout)
+    except (AttributeError, TypeError) as exc:
         msg = "Expected callable create_sync_session transport factory"
-        raise RuntimeError(msg)
-
-    return create_sync_session(timeout=timeout)
+        raise RuntimeError(msg) from exc
 
 
 def _close_transport_session(session: object) -> None:
     """Close the underlying transport session."""
-    close_attr = getattr(session, "close", None)
-    if not callable(close_attr):
+    try:
+        cast(_SessionProtocol, session).close()
+    except (AttributeError, TypeError) as exc:
         msg = "Expected callable session.close transport method"
-        raise RuntimeError(msg)
-    close_attr()
+        raise RuntimeError(msg) from exc
 
 
 def _open_stream_context(
@@ -277,21 +334,20 @@ def _open_stream_context(
     cookies: object,
 ) -> _StreamContextAdapter:
     """Open a typed stream context from the untyped transport session."""
-    stream_attr = getattr(session, "stream", None)
-    if not callable(stream_attr):
-        msg = "Expected callable session.stream transport method"
-        raise RuntimeError(msg)
-
-    return _StreamContextAdapter(
-        stream_attr(
-            "POST",
-            ctx.url,
-            headers=ctx.headers,
-            json=_require_json_object_or_none(ctx.json_data, "stream.json"),
-            cookies=cookies,
-            timeout=ctx.effective_timeout,
+    try:
+        return _StreamContextAdapter(
+            cast(_SessionProtocol, session).stream(
+                "POST",
+                ctx.url,
+                headers=ctx.headers,
+                json=_require_json_object_or_none(ctx.json_data, "stream.json"),
+                cookies=cookies,
+                timeout=ctx.effective_timeout,
+            )
         )
-    )
+    except (AttributeError, TypeError) as exc:
+        msg = "Expected callable session.stream transport method"
+        raise RuntimeError(msg) from exc
 
 
 def _is_json_object(value: object) -> TypeGuard[JsonObject]:
@@ -714,7 +770,10 @@ class SSEClient:
                 ctx.effective_timeout,
             )
 
-        self.logger.debug("Authentication: Bearer token present=%s", bool(self.auth.token))
+        # owner: security - the argument is only a presence boolean, never the token value.
+        self.logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            "Authentication: Bearer token present=%s", bool(self.auth.token)
+        )
         self._log_cookie_context()
 
     def _log_cookie_context(self) -> None:

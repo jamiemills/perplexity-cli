@@ -92,7 +92,10 @@ def get_config_dir() -> Path:
         config_dir = base_dir / "perplexity-cli"
 
     try:
-        config_dir.mkdir(parents=True, exist_ok=True)
+        # owner: api-contract - public getter is documented to create the resolved directory.
+        config_dir.mkdir(  # nosemgrep: getter-with-side-effects
+            parents=True, exist_ok=True
+        )
     except OSError as e:
         msg = f"Failed to create config directory {config_dir}: {e}"
         raise ConfigurationError(msg) from e

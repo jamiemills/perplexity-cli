@@ -291,13 +291,15 @@ async def _poll_for_auth_data(
         session_token, cookie_dict = _extract_token(cookies, local_storage_data)
 
         if session_token:
-            logger.info(
+            # owner: security - the argument is a cookie count, never a token or cookie value.
+            logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
                 "Successfully extracted authentication token and %s cookies",
                 len(cookie_dict),
             )
             return (session_token, cookie_dict)
 
-        logger.debug(
+        # owner: security - the arguments are polling durations and contain no credential data.
+        logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
             "No token found yet, waiting %ss... (elapsed: %ss)",
             poll_interval,
             f"{elapsed:.1f}",

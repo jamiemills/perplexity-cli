@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TypeGuard
+from typing import Literal, TypeGuard
 
 import click
 
@@ -13,7 +13,7 @@ from perplexity_cli.error_handler import handle_error
 from perplexity_cli.runners._utils import resolve_json_flag
 from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationError
 from perplexity_cli.utils.http_errors import handle_unexpected_cli_error
-from perplexity_cli.utils.logging import get_logger
+from perplexity_cli.utils.logging import get_logger, redact_path, redact_text
 
 _AUTH_LOGIN_COMMAND = "pxcli auth login"
 
@@ -56,7 +56,10 @@ def _handle_auth_success(
 
     tm = TokenManager()
     tm.save_token(token, cookies=cookies)
-    get_logger().info("Token and cookies saved to %s", tm.token_path)
+    # owner: security - the only argument is the redacted token-file path.
+    get_logger().info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        "Token and cookies saved to %s", redact_path(tm.token_path)
+    )
 
     if output_format == "json":
         env = success_envelope(
@@ -118,7 +121,10 @@ def _handle_auth_timeout_error(
     """Handle authentication timeout or authentication errors."""
     if output_format == "json":
         handle_error(e, _AUTH_LOGIN_COMMAND, output_format="json")
-    get_logger().debug("Authentication failed: %s", e, exc_info=True)
+    get_logger().debug(
+        "Authentication failed: %s",
+        redact_text(str(e), max_length=0),
+    )
     click.echo(f"[ERROR] Authentication failed: {e}", err=True)
     _print_auth_troubleshooting(port, base_url)
     sys.exit(1)
@@ -144,17 +150,6 @@ def _handle_auth_os_config_error(
     )
 
 
-def _resolve_auth_render_flags(
-    json_mode: bool, include_schema: bool, debug_mode: bool
-) -> tuple[OutputFormat, SchemaInclusion, DebugMode]:
-    """Convert boolean flags to Literal-typed render configuration."""
-    return (
-        "json" if json_mode else "human",
-        "with_schema" if include_schema else "no_schema",
-        "debug" if debug_mode else "normal",
-    )
-
-
 def _execute_auth(
     port: int,
     ctx_flags: tuple[bool, bool, bool],
@@ -162,9 +157,9 @@ def _execute_auth(
 ) -> None:
     """Perform authentication and handle domain-specific errors."""
     json_mode, include_schema, debug_mode = ctx_flags
-    output_format, schema_inclusion, debug_level = _resolve_auth_render_flags(
-        json_mode, include_schema, debug_mode
-    )
+    output_format: OutputFormat = "json" if json_mode else "human"
+    schema_inclusion: SchemaInclusion = "with_schema" if include_schema else "no_schema"
+    debug_level: DebugMode = "debug" if debug_mode else "normal"
     from perplexity_cli.auth.oauth_handler import authenticate_sync
 
     logger = get_logger()
@@ -172,7 +167,10 @@ def _execute_auth(
     try:
         logger.debug("Calling authenticate_sync")
         token, cookies = authenticate_sync(port=port)
-        logger.info("Token and %s cookies extracted successfully", len(cookies))
+        # owner: security - the argument is a cookie count, never a token or cookie value.
+        logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            "Token and %s cookies extracted successfully", len(cookies)
+        )
         _handle_auth_success(token, cookies, output_format, schema_inclusion)
     except (TimeoutError, AuthenticationError) as e:
         _handle_auth_timeout_error(e, output_format, port, base_url)
@@ -196,14 +194,16 @@ def _resolve_logout_ctx(
 def _logout_emit(
     output_format: OutputFormat,
     include_schema: SchemaInclusion,
-    existed: bool,
+    credential_state: Literal["present", "absent"],
 ) -> None:
     """Emit logout result in the appropriate format."""
     if output_format == "json":
-        env = success_envelope("pxcli auth logout", {"credentials_existed": existed})
+        env = success_envelope(
+            "pxcli auth logout", {"credentials_existed": credential_state == "present"}
+        )
         write_envelope(env, include_schema=include_schema)
         return
-    if not existed:
+    if credential_state == "absent":
         click.echo("No stored credentials found.")
     else:
         click.echo("[OK] Logged out successfully.")
@@ -218,12 +218,12 @@ def run_logout_command(*, json_mode: bool | None = None) -> None:
     tm = TokenManager()
 
     if not tm.token_exists():
-        _logout_emit(resolved_json, include_schema, existed=False)
+        _logout_emit(resolved_json, include_schema, credential_state="absent")
         return
 
     try:
         tm.clear_token()
-        _logout_emit(resolved_json, include_schema, existed=True)
+        _logout_emit(resolved_json, include_schema, credential_state="present")
     except OSError as e:
         if resolved_json == "json":
             handle_error(e, "pxcli auth logout", output_format="json")

@@ -90,8 +90,14 @@ def log_query_debug_context(
     logger.debug("Execution environment: %s", _detect_execution_environment())
 
     token_path = get_config_paths().token_path
-    logger.debug("Token path: %s", redact_path(token_path))
-    logger.debug("Token exists: %s", token_path.exists())
+    # owner: security - the argument is a redacted token-file path.
+    logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        "Token path: %s", redact_path(token_path)
+    )
+    # owner: security - the argument is only a token-file presence boolean.
+    logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        "Token exists: %s", token_path.exists()
+    )
     logger.debug("Cookie storage enabled: %s", get_save_cookies_enabled())
     logger.debug(
         "Query command invoked: query=%s, format=%s, stream=%s",
@@ -537,18 +543,17 @@ def _check_for_duplicate_request_param(parsed: dict[str, str], key: str) -> None
 
 def _handle_query_error(
     fn: Callable[[], None],
-    json_mode: bool,
+    output_format: OutputFormat,
     ctx_obj: dict[str, object] | None,
 ) -> None:
     """Wrap a callable with KeyboardInterrupt and general exception handling.
 
     Args:
         fn: The callable to execute within error handling.
-        json_mode: Whether JSON output mode is active.
+        output_format: Either ``"json"`` or ``"human"``.
         ctx_obj: The Click context object dictionary.
     """
     logger = get_logger()
-    output_format: OutputFormat = "json" if json_mode else "human"
     try:
         fn()
     except KeyboardInterrupt:
@@ -614,7 +619,7 @@ def run_query_command(
             else:
                 _fetch_and_render(api, query_input, render, trace)
 
-    _handle_query_error(_execute_query_body, json_mode, ctx_obj)
+    _handle_query_error(_execute_query_body, "json" if json_mode else "human", ctx_obj)
 
 
 def _handle_keyboard_interrupt(output_format: OutputFormat, logger: logging.Logger) -> None:

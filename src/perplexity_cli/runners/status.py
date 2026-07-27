@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 import stat
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, TypeGuard
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeGuard, cast
 
 import click
 
@@ -19,12 +20,25 @@ from perplexity_cli.utils.exceptions import (
     PerplexityRequestError,
     UpstreamSchemaError,
 )
-from perplexity_cli.utils.logging import get_logger
+from perplexity_cli.utils.logging import get_logger, redact_text
 
 if TYPE_CHECKING:
     from perplexity_cli.config.models import FeatureConfig
     from perplexity_cli.envelope import Envelope
     from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+
+class AuthenticationState(Enum):
+    """Authentication state represented in status output."""
+
+    AUTHENTICATED = "authenticated"
+    ANONYMOUS = "anonymous"
+
+
+class _StatResultProtocol(Protocol):
+    """File stat field needed for token age calculations."""
+
+    st_mtime: float
 
 
 def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -142,8 +156,21 @@ def run_doctor_security_command(*, output_format: OutputFormat | None = None) ->
     _output_doctor_security_text(tm, cache_manager, feature_config)
 
 
-def _build_status_envelope(
+# owner: api-contract - stable tested runner helper contract.
+def _build_status_envelope(  # nosemgrep: boolean-flag-argument
     authenticated: bool,
+    tm: TokenManager,
+    token_info: tuple[object, object, object] = (None, 0, None),
+) -> Envelope:
+    """Preserve the tested boolean status-envelope helper contract."""
+    authentication_state = (
+        AuthenticationState.AUTHENTICATED if authenticated else AuthenticationState.ANONYMOUS
+    )
+    return _build_status_envelope_for_state(authentication_state, tm, token_info)
+
+
+def _build_status_envelope_for_state(
+    authentication_state: AuthenticationState,
     tm: TokenManager,
     token_info: tuple[object, object, object] = (None, 0, None),
 ) -> Envelope:
@@ -152,7 +179,7 @@ def _build_status_envelope(
     return success_envelope(
         "pxcli auth status",
         {
-            "authenticated": authenticated,
+            "authenticated": authentication_state is AuthenticationState.AUTHENTICATED,
             "token_path": str(tm.token_path),
             "token_age_days": token_age_days,
             "cookies_stored": cookies_stored,
@@ -190,8 +217,8 @@ def _verify_token(
 def _get_token_age_days(token_path: Any) -> int | None:
     """Compute the age of the token file in days."""
     try:
-        stat_result: object = token_path.stat()
-        modified_time = datetime.fromtimestamp(int(getattr(stat_result, "st_mtime", 0)))
+        stat_result = cast(_StatResultProtocol, token_path.stat())
+        modified_time = datetime.fromtimestamp(int(stat_result.st_mtime))
         return (datetime.now() - modified_time).days
     except (OSError, AttributeError, TypeError, ValueError):
         return None
@@ -229,8 +256,8 @@ def _output_token_modified_time(token_path: Any, token_age_days: object) -> None
     if token_age_days is None:
         return
     try:
-        stat_result: object = token_path.stat()
-        modified_time = datetime.fromtimestamp(int(getattr(stat_result, "st_mtime", 0)))
+        stat_result = cast(_StatResultProtocol, token_path.stat())
+        modified_time = datetime.fromtimestamp(int(stat_result.st_mtime))
         click.echo(f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}")
     except (OSError, AttributeError):
         click.echo("Token last modified: unavailable")
@@ -255,7 +282,10 @@ def _handle_no_token(
 ) -> None:
     """Handle the case where no valid token is available."""
     if output_format == "json":
-        write_envelope(_build_status_envelope(False, tm), include_schema=_get_include_schema())
+        write_envelope(
+            _build_status_envelope(False, tm),
+            include_schema=_get_include_schema(),
+        )
         return
     click.echo("Perplexity CLI Status")
     click.echo("=" * 40)
@@ -313,4 +343,7 @@ def run_status_command(
         click.echo("Status: [INFO] Token file has insecure permissions")
         click.echo(f"Error: {e}")
         click.echo(f"\nFix with: chmod 0600 {tm.token_path}")
-        logger.exception("Token file has insecure permissions: %s", e)
+        # owner: security - exception text is fully redacted before logging.
+        logger.error(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            "Token file has insecure permissions: %s", redact_text(str(e), max_length=0)
+        )

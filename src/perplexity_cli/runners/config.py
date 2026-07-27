@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import TYPE_CHECKING, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard
 
 import click
 
@@ -35,8 +35,8 @@ def _get_ctx_obj_dict() -> object:
     ctx = click.get_current_context(silent=True)
     if ctx is None:
         return {}
-    obj: object = ctx.obj
-    return obj if obj is not None else {}
+    context_object: object = ctx.obj
+    return context_object if context_object is not None else {}
 
 
 def _read_ctx_bool(raw: object, attr: str) -> bool:
@@ -180,9 +180,8 @@ _CONFIG_CHANGE_MESSAGES: dict[tuple[str, str], tuple[str, str]] = {
 }
 
 
-def _print_config_change_message(key: str, bool_value: bool) -> None:
+def _print_config_change_message(key: str, state: Literal["enabled", "disabled"]) -> None:
     """Print contextual message after a configuration change."""
-    state = "enabled" if bool_value else "disabled"
     msgs = _CONFIG_CHANGE_MESSAGES.get((key, state))
     if msgs:
         click.echo(f"\n{msgs[0]}")
@@ -218,7 +217,7 @@ def run_set_config_command(
 
         click.echo(f"[OK] Configuration updated: {key} = {bool_value}")
         logger.info("Configuration updated: %s = %s", key, bool_value)
-        _print_config_change_message(key, bool_value)
+        _print_config_change_message(key, "enabled" if bool_value else "disabled")
 
     except ConfigurationError as e:
         if output_format == "json":

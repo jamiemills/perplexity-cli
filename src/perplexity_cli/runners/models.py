@@ -260,16 +260,16 @@ def _entry_to_dict(entry: ModelConfigEntry) -> dict[str, Any]:
 def _execute_models_list(
     token: str,
     cookies: dict[str, str] | None,
-    json_mode: bool,
-    include_schema: bool,
+    output_format: OutputFormat,
+    schema_inclusion: SchemaInclusion,
 ) -> None:
     """Fetch models and render output in the requested format.
 
     Args:
         token: Authentication token.
         cookies: Browser cookies.
-        json_mode: Whether to output JSON.
-        include_schema: Whether to include JSON schema.
+        output_format: Requested output format.
+        schema_inclusion: Whether to include JSON schema.
     """
     logger = get_logger()
     try:
@@ -278,11 +278,11 @@ def _execute_models_list(
         service = _create_model_service(client, level)
         entries = service.list_available_models()
     except Exception as exc:
-        _handle_list_error(exc, "json" if json_mode else "human", logger)
+        _handle_list_error(exc, output_format, logger)
         return  # unreachable; _handle_list_error always exits
 
-    if json_mode:
-        _output_json(entries, "with_schema" if include_schema else "no_schema")
+    if output_format == "json":
+        _output_json(entries, schema_inclusion)
     else:
         click.echo(format_model_table(entries))
 
@@ -311,7 +311,12 @@ def run_models_list_command(
         logger.error("Model listing attempted without authentication")
         sys.exit(1)
 
-    _execute_models_list(token, cookies, json_mode, include_schema)
+    _execute_models_list(
+        token,
+        cookies,
+        "json" if json_mode else "human",
+        "with_schema" if include_schema else "no_schema",
+    )
 
 
 def _output_json(

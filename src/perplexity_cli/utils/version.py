@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import TypeGuard
 
 
-def _is_str_dict(obj: object) -> TypeGuard[dict[str, object]]:
+def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
     """Narrow an object to ``dict[str, object]`` for pyright strict mode."""
-    return isinstance(obj, dict)
+    return isinstance(value, dict)
 
 
 def _get_pyproject_path() -> Path:

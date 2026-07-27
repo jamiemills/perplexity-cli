@@ -84,7 +84,8 @@ class NDJSONWriter:
         """Write a chunk event."""
         self.write_event(ChunkEvent(text=text))
 
-    def result(
+    # owner: api-contract - ``ok`` is part of the stable public event-writer API.
+    def result(  # nosemgrep: boolean-flag-argument
         self,
         ok: bool,
         command: str,
