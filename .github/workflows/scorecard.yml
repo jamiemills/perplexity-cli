@@ -8,9 +8,16 @@ name: OpenSSF Scorecard
 permissions:
   contents: read
 
+concurrency:
+  group: scorecard-${{ github.event_name == 'schedule' && 'scheduled' || format('dispatch-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
 jobs:
   scorecard:
+    name: Scorecard (producer)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always()
     permissions:
       contents: read
       id-token: write
@@ -24,9 +31,88 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
+          publish_results: true
+
+      - name: Upload SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scorecard-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: results.sarif
+          retention-days: 30
+          if-no-files-found: error
+
+  scorecard-validate:
+    name: Scorecard (validator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [scorecard]
+    if: always()
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Download SARIF artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: scorecard-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sarif
+
+      - name: Validate SARIF
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          sarif_path = pathlib.Path("sarif/results.sarif")
+          if not sarif_path.is_file():
+              print(f"::error::SARIF file not found at {sarif_path}")
+              sys.exit(1)
+
+          size = sarif_path.stat().st_size
+          if size == 0:
+              print("::error::SARIF file is empty")
+              sys.exit(1)
+
+          try:
+              data = json.loads(sarif_path.read_text(encoding="utf-8"))
+          except json.JSONDecodeError as exc:
+              print(f"::error::SARIF is not valid JSON: {exc}")
+              sys.exit(1)
+
+          runs = data.get("runs")
+          if not isinstance(runs, list) or not runs:
+              print("::error::SARIF missing non-empty 'runs' array")
+              sys.exit(1)
+
+          first_run = runs[0]
+          if "tool" not in first_run or "results" not in first_run:
+              print("::error::SARIF run missing required 'tool' or 'results' key")
+              sys.exit(1)
+
+          version = data.get("version")
+          results_count = sum(len(run.get("results", [])) for run in runs)
+          print(
+              f"::notice::SARIF valid (version={version}, runs={len(runs)}, "
+              f"results={results_count}, bytes={size})"
+          )
+
+          summary_path = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
+          summary_path.write_text(
+              "## OpenSSF Scorecard validation\n"
+              f"- SARIF version: `{version}`\n"
+              f"- Runs: {len(runs)}\n"
+              f"- Results: {results_count}\n"
+              f"- Size: {size} bytes\n",
+              encoding="utf-8",
+          )
+          PY
 
       - name: Upload to code scanning
         if: always()
         uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
-          sarif_file: results.sarif
+          sarif_file: sarif/results.sarif
+          category: openssf-scorecard
