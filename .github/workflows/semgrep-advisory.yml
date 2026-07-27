@@ -8,10 +8,17 @@ name: Semgrep Advisory
 permissions:
   contents: read
 
+concurrency:
+  group: semgrep-advisory-${{ github.event_name == 'schedule' && 'scheduled' || format('dispatch-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
 jobs:
   semgrep-advisory:
     runs-on: ubuntu-latest
-    continue-on-error: true
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,6 +34,41 @@ jobs:
       - name: Sync dependencies
         run: uv sync --all-extras --locked
 
-      # The Make target intentionally resolves the latest Semgrep and remote packs.
+      # The Make target intentionally resolves the latest Semgrep and remote packs,
+      # emitting both JSON and SARIF into build/reports/.
       - name: Run latest community advisory rules
-        run: make semgrep-advisory
+        run: make semgrep-advisory-report
+
+      - name: Write job summary
+        if: always()
+        run: |
+          set -euo pipefail
+          report="build/reports/semgrep-advisory.json"
+          if [ -f "$report" ]; then
+            count=$(jq '.results | length' "$report")
+          else
+            count=0
+          fi
+          {
+            echo "## Semgrep Advisory"
+            echo ""
+            echo "Findings: **${count}**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: semgrep-advisory-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/reports/semgrep-advisory.json
+            build/reports/semgrep-advisory.sarif
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          sarif_file: build/reports/semgrep-advisory.sarif
+          category: semgrep-advisory
