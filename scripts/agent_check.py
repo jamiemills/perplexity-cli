@@ -44,6 +44,14 @@ class Analyser:
     command_builder: Callable[[Path], tuple[list[str], TemporaryDirectory | None]] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PreCommitOptions:
+    """Controls which pre-commit pipeline stages run."""
+
+    run_tests: bool = True
+    run_fixers: bool = True
+
+
 SAFETY_INPUT_PATHS: tuple[str, ...] = (
     "pyproject.toml",
     "uv.lock",
@@ -372,20 +380,45 @@ def _format_json(report: RunReport) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _run_pre_commit(cwd: str, *, skip_tests: bool = False, skip_fixers: bool = False) -> RunReport:
+def _run_pre_commit(
+    cwd: str,
+    *,
+    options: PreCommitOptions | None = None,
+    **legacy_options: bool,
+) -> RunReport:
     """Run the pre-commit pipeline: fixers → linters → tests."""
+    selected_options = _normalise_pre_commit_options(options, legacy_options)
     t0 = time.monotonic()
     all_results: list[AnalyserResult] = []
 
-    if not skip_fixers:
+    if selected_options.run_fixers:
         all_results.extend(_run_sequential(PRE_COMMIT_FIXERS, cwd))
     all_results.extend(_run_parallel(PRE_COMMIT_LINTERS, cwd))
-    if not skip_tests:
+    if selected_options.run_tests:
         all_results.extend(_run_parallel(PRE_COMMIT_TESTS, cwd))
 
     return RunReport(
         results=all_results,
         total_duration_s=time.monotonic() - t0,
+    )
+
+
+def _normalise_pre_commit_options(
+    options: PreCommitOptions | None,
+    legacy_options: dict[str, bool],
+) -> PreCommitOptions:
+    """Translate the established skip keywords into positive stage options."""
+    unknown = set(legacy_options) - {"skip_tests", "skip_fixers"}
+    if unknown:
+        unexpected = next(iter(sorted(unknown)))
+        raise TypeError(f"_run_pre_commit() got an unexpected keyword argument '{unexpected}'")
+    if options is not None and legacy_options:
+        raise TypeError("options cannot be combined with skip_tests or skip_fixers")
+    if options is not None:
+        return options
+    return PreCommitOptions(
+        run_tests=not legacy_options.get("skip_tests", False),
+        run_fixers=not legacy_options.get("skip_fixers", False),
     )
 
 
@@ -432,7 +465,8 @@ def main() -> None:
     cwd = str(PROJECT_ROOT)
 
     if scope == "pre-commit":
-        report = _run_pre_commit(cwd, skip_tests=skip_tests, skip_fixers=skip_fixers)
+        options = PreCommitOptions(run_tests=not skip_tests, run_fixers=not skip_fixers)
+        report = _run_pre_commit(cwd, options=options)
     elif scope == "safety":
         report = _run_safety(cwd)
     else:

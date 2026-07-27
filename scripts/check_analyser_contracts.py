@@ -24,6 +24,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -108,7 +109,7 @@ class RunReport:
 
     @property
     def all_contracts_honoured(self) -> bool:
-        return all(r.passed for r in self.results) and not self.schema_errors
+        return all(result.passed for result in self.results) and not self.schema_errors
 
 
 # ---------------------------------------------------------------------------
@@ -124,9 +125,9 @@ def _try_import_tomllib() -> Any:
     return tomllib
 
 
-def _check_schema_section(data: dict[str, Any]) -> list[str]:
+def _check_schema_section(contracts_document: dict[str, Any]) -> list[str]:
     """Validate the [schema] section of the TOML file."""
-    schema = data.get("schema")
+    schema = contracts_document.get("schema")
     if not isinstance(schema, dict):
         return ["Missing or invalid [schema] section"]
     if schema.get("version") != 1:
@@ -134,14 +135,14 @@ def _check_schema_section(data: dict[str, Any]) -> list[str]:
     return []
 
 
-def _check_analysers_array(data: dict[str, Any]) -> list[str]:
+def _check_analysers_array(contracts_document: dict[str, Any]) -> list[str]:
     """Validate the [[analysers]] array exists and is non-empty."""
-    raw = data.get("analysers")
-    if raw is None:
+    analyser_entries = contracts_document.get("analysers")
+    if analyser_entries is None:
         return ["Missing [[analysers]] array"]
-    if not isinstance(raw, list):
+    if not isinstance(analyser_entries, list):
         return ["[[analysers]] must be an array of tables"]
-    if len(raw) == 0:
+    if not analyser_entries:
         return ["[[analysers]] array is empty"]
     return []
 
@@ -155,19 +156,19 @@ def load_contracts(path: Path) -> tuple[list[AnalyserContract], list[str]]:
     tomllib = _try_import_tomllib()
     try:
         with path.open("rb") as fh:
-            data = tomllib.load(fh)
+            contracts_document = tomllib.load(fh)
     except FileNotFoundError:
         return [], [f"Contracts file not found: {path}"]
     except Exception as exc:
         return [], [f"Failed to parse TOML: {exc}"]
 
     errors: list[str] = []
-    errors.extend(_check_schema_section(data))
-    errors.extend(_check_analysers_array(data))
+    errors.extend(_check_schema_section(contracts_document))
+    errors.extend(_check_analysers_array(contracts_document))
     if errors:
         return [], errors
 
-    raw_analysers = data["analysers"]
+    raw_analysers = contracts_document["analysers"]
     return _parse_all_analysers(raw_analysers, errors)
 
 
@@ -227,9 +228,9 @@ def _check_field_description(entry: dict[str, Any], prefix: str, errors: list[st
         errors.append(f"{prefix}: 'description' must be a non-empty string")
 
 
-def _check_test_node_id_item(item: Any, idx: int, prefix: str, errors: list[str]) -> None:
+def _check_test_node_id_item(node_id: Any, idx: int, prefix: str, errors: list[str]) -> None:
     """Validate a single test_node_ids entry."""
-    if not isinstance(item, str) or not item:
+    if not isinstance(node_id, str) or not node_id:
         errors.append(f"{prefix}: 'test_node_ids[{idx}]' must be a non-empty string")
 
 
@@ -237,12 +238,12 @@ def _check_field_test_node_ids(entry: dict[str, Any], prefix: str, errors: list[
     """Validate the optional 'test_node_ids' field if present."""
     if "test_node_ids" not in entry:
         return
-    raw = entry.get("test_node_ids")
-    if not isinstance(raw, list):
+    node_ids = entry.get("test_node_ids")
+    if not isinstance(node_ids, list):
         errors.append(f"{prefix}: 'test_node_ids' must be an array of strings")
         return
-    for i, item in enumerate(raw):
-        _check_test_node_id_item(item, i, prefix, errors)
+    for index, node_id in enumerate(node_ids):
+        _check_test_node_id_item(node_id, index, prefix, errors)
 
 
 def _validate_scalar_fields(entry: dict[str, Any], idx: int, errors: list[str]) -> None:
@@ -290,11 +291,11 @@ def _parse_single_analyser(entry: Any, idx: int) -> tuple[AnalyserContract | Non
     return contract, errors
 
 
-def _coerce_test_node_ids(raw: Any) -> tuple[str, ...]:
+def _coerce_test_node_ids(node_ids: Any) -> tuple[str, ...]:
     """Coerce the raw test_node_ids value into a tuple of strings."""
-    if not isinstance(raw, list):
+    if not isinstance(node_ids, list):
         return ()
-    return tuple(str(item) for item in raw)
+    return tuple(str(node_id) for node_id in node_ids)
 
 
 def _check_exit_bounds_present(exit_min: Any, exit_max: Any, full_prefix: str) -> str | None:
@@ -410,17 +411,20 @@ def _exit_ranges_overlap(a: StateContract, b: StateContract) -> bool:
 def _check_overlapping_states(contract: AnalyserContract) -> list[str]:
     """Check for overlapping exit-code ranges between states."""
     names = sorted(contract.states.keys())
-    for i in range(len(names)):
-        for j in range(i + 1, len(names)):
-            a = contract.states[names[i]]
-            b = contract.states[names[j]]
-            if _has_signal(a) or _has_signal(b):
+    for index, state_name in enumerate(names):
+        for compared_name in names[index + 1 :]:
+            state = contract.states[state_name]
+            compared_state = contract.states[compared_name]
+            if _has_signal(state) or _has_signal(compared_state):
                 continue
-            if _exit_ranges_overlap(a, b):
-                return [
-                    f"analyser '{contract.id}': state '{a.name}' ({a.exit_min}-{a.exit_max}) "
-                    f"overlaps '{b.name}' ({b.exit_min}-{b.exit_max})"
-                ]
+            if _exit_ranges_overlap(state, compared_state):
+                overlap = (
+                    f"analyser '{contract.id}': state '{state.name}' "
+                    f"({state.exit_min}-{state.exit_max}) overlaps "
+                    f"'{compared_state.name}' "
+                    f"({compared_state.exit_min}-{compared_state.exit_max})"
+                )
+                return [overlap]
     return []
 
 
@@ -536,9 +540,33 @@ def _match_state(analyser: AnalyserContract, exit_code: int, signal_name: str | 
 # ---------------------------------------------------------------------------
 
 
-def _should_skip_pending(contract: AnalyserContract, pending_ok: bool) -> bool:
+class PendingPolicy(Enum):
+    """Controls whether pending analyser contracts are selected."""
+
+    SKIP = "skip"
+    INCLUDE = "include"
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionOptions:
+    """Immutable analyser-selection criteria."""
+
+    only: str | None
+    pending_policy: PendingPolicy
+
+
+# owner: quality-infrastructure; reason: backwards-compatible private pending selection API
+def _should_skip_pending(  # nosemgrep: boolean-flag-argument
+    contract: AnalyserContract, pending_ok: bool
+) -> bool:
     """Return True if *contract* should be skipped as a pending analyser."""
-    return contract.status == "pending" and not pending_ok
+    policy = PendingPolicy.INCLUDE if pending_ok else PendingPolicy.SKIP
+    return _should_skip_pending_with_policy(contract, policy)
+
+
+def _should_skip_pending_with_policy(contract: AnalyserContract, policy: PendingPolicy) -> bool:
+    """Return whether a contract should be skipped under an explicit policy."""
+    return contract.status == "pending" and policy is PendingPolicy.SKIP
 
 
 def _matches_only_filter(contract: AnalyserContract, only: str | None) -> bool:
@@ -548,22 +576,32 @@ def _matches_only_filter(contract: AnalyserContract, only: str | None) -> bool:
     return only in contract.id or only in contract.target
 
 
-def _select_contracts(
+# owner: quality-infrastructure; reason: backwards-compatible positional analyser selection API
+def _select_contracts(  # nosemgrep: boolean-flag-argument
     contracts: list[AnalyserContract],
     only: str | None,
     pending_ok: bool,
 ) -> tuple[list[AnalyserContract], list[str]]:
-    """Select which contracts to run.
+    """Select contracts using the established boolean compatibility API.
 
     Returns:
         A tuple of (selected_contracts, skipped_pending_ids).
     """
+    pending_policy = PendingPolicy.INCLUDE if pending_ok else PendingPolicy.SKIP
+    options = SelectionOptions(only=only, pending_policy=pending_policy)
+    return _select_contracts_with_policy(contracts, options)
+
+
+def _select_contracts_with_policy(
+    contracts: list[AnalyserContract], options: SelectionOptions
+) -> tuple[list[AnalyserContract], list[str]]:
+    """Select contracts using an explicit pending policy."""
     selected: list[AnalyserContract] = []
     skipped: list[str] = []
     for c in contracts:
-        if _should_skip_pending(c, pending_ok):
+        if _should_skip_pending_with_policy(c, options.pending_policy):
             skipped.append(c.id)
-        elif _matches_only_filter(c, only):
+        elif _matches_only_filter(c, options.only):
             selected.append(c)
     return selected, skipped
 
@@ -617,10 +655,13 @@ def _format_result_line(r: ContractResult) -> list[str]:
     status = "PASS" if r.passed else "FAIL"
     matched = r.matched_state or "unknown"
     sig = f" signal={r.signal_name}" if r.signal_name else ""
-    lines = [
-        f"  [{status}] {r.analyser_id:<30} exit={r.exit_code:>3}{sig:<14} "
-        f"→ {matched:<18} ({r.duration_s:.1f}s)"
-    ]
+    result_line = "".join(
+        (
+            f"  [{status}] {r.analyser_id:<30} exit={r.exit_code:>3}{sig:<14} ",
+            f"→ {matched:<18} ({r.duration_s:.1f}s)",
+        )
+    )
+    lines = [result_line]
     if not r.passed:
         _append_failure_details(r, lines)
     return lines
@@ -662,8 +703,8 @@ def _format_report(report: RunReport, contracts_path: Path) -> str:
     lines.append("")
     lines.append("-" * 72)
 
-    for r in report.results:
-        lines.extend(_format_result_line(r))
+    for result in report.results:
+        lines.extend(_format_result_line(result))
 
     lines.append("-" * 72)
     lines.append(f"  Final: {passed} passed, {failed} failed")
@@ -677,7 +718,7 @@ def _format_json(report: RunReport, contracts_path: Path) -> str:
     failed = _count_failed(report.results)
     payload: dict[str, Any] = {
         "contracts_path": str(contracts_path),
-        "schema_valid": len(report.schema_errors) == 0,
+        "schema_valid": not report.schema_errors,
         "schema_errors": report.schema_errors,
         "warnings": report.warnings,
         "analyser_count": len(report.results),
@@ -712,15 +753,13 @@ def _build_report(
     args: argparse.Namespace,
 ) -> RunReport:
     """Build a RunReport from loaded contracts and CLI args."""
-    selected, skipped = _select_contracts(
-        contracts, args.only, args.pending_ok if hasattr(args, "pending_ok") else False
-    )
+    pending_policy = PendingPolicy.INCLUDE if args.pending_ok else PendingPolicy.SKIP
+    options = SelectionOptions(only=args.only, pending_policy=pending_policy)
+    selected, skipped = _select_contracts_with_policy(contracts, options)
     report = RunReport(skipped_pending=skipped)
 
     for c in selected:
-        result = run_analyser(
-            c, _PROJECT_ROOT, timeout_s=args.timeout if hasattr(args, "timeout") else 300
-        )
+        result = run_analyser(c, _PROJECT_ROOT, timeout_s=args.timeout)
         report.results.append(result)
 
     return report

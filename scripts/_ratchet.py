@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import operator
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -71,8 +73,8 @@ def load_counts(name: str) -> dict[str, int]:
     path = _baseline_path(name)
     if not path.is_file():
         return {}
-    data = json.loads(path.read_text())
-    return {str(k): int(v) for k, v in data.items()}
+    baseline_payload = json.loads(path.read_text())
+    return {str(path_name): int(count) for path_name, count in baseline_payload.items()}
 
 
 def save_counts(name: str, counts: dict[str, int]) -> Path:
@@ -89,8 +91,12 @@ def load_fingerprints(name: str) -> list[str]:
     path = _baseline_path(name)
     if not path.is_file():
         return []
-    data = json.loads(path.read_text())
-    items = data.get("fingerprints", data) if isinstance(data, dict) else data
+    baseline_payload = json.loads(path.read_text())
+    items = (
+        baseline_payload.get("fingerprints", baseline_payload)
+        if isinstance(baseline_payload, dict)
+        else baseline_payload
+    )
     return sorted(str(item) for item in items)
 
 
@@ -104,7 +110,9 @@ def save_fingerprints(name: str, fingerprints: list[str]) -> Path:
 
 
 def _changed(
-    current: dict[str, int], baseline: dict[str, int], *, grown: bool
+    current: dict[str, int],
+    baseline: dict[str, int],
+    comparison: Callable[[int, int], bool],
 ) -> dict[str, tuple[int, int]]:
     """Return ``{file: (previous, current)}`` for files that grew or shrunk."""
     result: dict[str, tuple[int, int]] = {}
@@ -112,7 +120,7 @@ def _changed(
         previous = baseline.get(file)
         if previous is None:
             continue
-        if (count > previous) if grown else (count < previous):
+        if comparison(count, previous):
             result[file] = (previous, count)
     return dict(sorted(result.items()))
 
@@ -122,8 +130,8 @@ def diff_counts(current: dict[str, int], baseline: dict[str, int]) -> CountDiff:
     new = {f: n for f, n in current.items() if f not in baseline and n > 0}
     return CountDiff(
         new=dict(sorted(new.items())),
-        grown=_changed(current, baseline, grown=True),
-        shrunk=_changed(current, baseline, grown=False),
+        grown=_changed(current, baseline, operator.gt),
+        shrunk=_changed(current, baseline, operator.lt),
         baseline_total=sum(baseline.values()),
         current_total=sum(current.values()),
     )

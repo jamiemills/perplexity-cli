@@ -96,7 +96,7 @@ class AnalysisResult:
 
     @property
     def clean(self) -> bool:
-        return len(self.errors) == 0 and len(self.warnings) == 0
+        return not self.errors and not self.warnings
 
 
 # ---------------------------------------------------------------------------
@@ -121,10 +121,10 @@ def _load_toml(path: Path) -> dict[str, Any]:
         sys.exit(1)
 
 
-def _build_layer_map(data: dict[str, Any]) -> dict[str, tuple[str, frozenset[str]]]:
+def _build_layer_map(model: dict[str, Any]) -> dict[str, tuple[str, frozenset[str]]]:
     """Build module_rel -> (layer_name, frozenset(allowed_deps)) from TOML data."""
     layer_map: dict[str, tuple[str, frozenset[str]]] = {}
-    for layer in data.get("layers", []):
+    for layer in model.get("layers", []):
         name = layer.get("name", "")
         allowed = frozenset(layer.get("allowed_deps", []))
         for mod in layer.get("modules", []):
@@ -134,10 +134,10 @@ def _build_layer_map(data: dict[str, Any]) -> dict[str, tuple[str, frozenset[str
     return layer_map
 
 
-def _build_adapter_groups(data: dict[str, Any]) -> dict[str, tuple[str, frozenset[str]]]:
+def _build_adapter_groups(model: dict[str, Any]) -> dict[str, tuple[str, frozenset[str]]]:
     """Build module_rel -> (group_name, frozenset(may_import_from_group_names))."""
     groups: dict[str, tuple[str, frozenset[str]]] = {}
-    for group in data.get("adapter_independence", []):
+    for group in model.get("adapter_independence", []):
         gname = group.get("name", "")
         may_from = frozenset(group.get("may_import_from", []))
         for mod in group.get("modules", []):
@@ -171,7 +171,7 @@ def _layer_for_module(
     """Return the layer name for *module_rel*, exact match first then prefix-fallback."""
     if module_rel in layer_map:
         return layer_map[module_rel][0]
-    if module_rel == "":
+    if not module_rel:
         return None
     return _prefix_match_layer(module_rel, layer_map)
 
@@ -184,7 +184,7 @@ def _prefix_match_layer(
     parts = module_rel.split(".")
     for i in range(len(parts) - 1, 0, -1):
         prefix = ".".join(parts[:i])
-        if prefix in layer_map and prefix != "":
+        if prefix and prefix in layer_map:
             return layer_map[prefix][0]
     return None
 
@@ -267,7 +267,7 @@ def _import_node_entries(
     if isinstance(node, python_ast.Import):
         return [(a.name, None) for a in node.names]
     if node.module is not None:
-        dots = "." * (getattr(node, "level", 0) or 0)
+        dots = "." * (node.level or 0)
         full = dots + node.module
         return [(full, a.name) for a in node.names]
     return []
@@ -353,7 +353,7 @@ def _collect_all_imports(
     for node in python_ast.walk(tree):
         if not isinstance(node, (python_ast.Import, python_ast.ImportFrom)):
             continue
-        lineno = getattr(node, "lineno", 0)
+        lineno = node.lineno
         if lineno == 0:
             continue
         entries = _import_node_entries(node)
@@ -653,8 +653,8 @@ def _load_baseline() -> set[tuple[str, str, str]]:
     if not BASELINE_PATH.is_file():
         return set()
     try:
-        data = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
-        accepted = data.get("accepted", [])
+        baseline_payload = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+        accepted = baseline_payload.get("accepted", [])
         return {(entry["rule"], entry["file"], entry["message"]) for entry in accepted}
     except (json.JSONDecodeError, KeyError):
         return set()
@@ -663,8 +663,8 @@ def _load_baseline() -> set[tuple[str, str, str]]:
 def _save_baseline(violations: list[Violation]) -> None:
     """Save the current set of violations as the accepted baseline."""
     accepted = [{"rule": v.rule, "file": v.file, "message": v.message} for v in violations]
-    data = {"version": 1, "accepted": accepted}
-    BASELINE_PATH.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    baseline_payload = {"version": 1, "accepted": accepted}
+    BASELINE_PATH.write_text(json.dumps(baseline_payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _apply_baseline(
@@ -739,7 +739,7 @@ def _format_json(result: AnalysisResult, accepted_count: int = 0) -> str:
             "error_count": len(errors),
             "warning_count": len(warnings),
             "accepted_count": accepted_count,
-            "clean": len(errors) == 0 and len(warnings) == 0,
+            "clean": not errors and not warnings,
             "errors": [{"rule": v.rule, "message": v.message, "file": v.file} for v in errors],
             "warnings": [{"rule": v.rule, "message": v.message, "file": v.file} for v in warnings],
         },
@@ -855,9 +855,9 @@ def main(argv: list[str] | None = None) -> None:
     """Run architecture checks and exit with the appropriate code."""
     cli_args = _parse_args(argv)
     toml_path = Path(cli_args["toml"]) if cli_args["toml"] else DEFAULT_TOML_PATH
-    data = _load_toml(toml_path)
-    layer_map = _build_layer_map(data)
-    adapter_groups = _build_adapter_groups(data)
+    model = _load_toml(toml_path)
+    layer_map = _build_layer_map(model)
+    adapter_groups = _build_adapter_groups(model)
     if cli_args["explain"]:
         _print_layer_model(layer_map)
         sys.exit(0)

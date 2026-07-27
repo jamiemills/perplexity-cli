@@ -87,7 +87,7 @@ def collect_findings() -> list[str]:
     finally:
         TEMP_CONFIG.unlink(missing_ok=True)
     try:
-        data = json.loads(result.stdout or "{}")
+        pyright_payload = json.loads(result.stdout or "{}")
     except json.JSONDecodeError as exc:
         detail = result.stderr.strip() or "Pyright produced unparseable output."
         raise RuntimeError(detail) from exc
@@ -100,8 +100,8 @@ def collect_findings() -> list[str]:
         raise RuntimeError(
             result.stderr.strip() or f"Pyright exited with status {result.returncode}."
         )
-    diagnostics = data.get("generalDiagnostics", [])
-    return sorted({_fingerprint(d) for d in diagnostics})
+    diagnostics = pyright_payload.get("generalDiagnostics", [])
+    return sorted({_fingerprint(diagnostic) for diagnostic in diagnostics})
 
 
 def _report_pass(diff: FingerprintDiff, count: int) -> None:

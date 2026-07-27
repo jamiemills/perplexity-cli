@@ -40,6 +40,7 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -127,6 +128,23 @@ class ModuleMetrics:
     def finding_id(self) -> str:
         """Stable identifier for trend tracking and deduplication."""
         return self.module
+
+
+class OutputMode(Enum):
+    """Available coupling report output formats."""
+
+    TEXT = "text"
+    JSON = "json"
+
+
+@dataclass(frozen=True, slots=True)
+class ReportOptions:
+    """Immutable options for coupling report generation."""
+
+    output_mode: OutputMode
+    threshold: float
+    max_flagged: int | None
+    trend_compare_path: Path | None
 
 
 def _make_finding_id(module: str) -> str:
@@ -774,10 +792,10 @@ def _handle_flag(
 
     Returns the number of extra positional args consumed (0 or 1).
     """
-    handler = _FLAG_HANDLERS.get(args[idx])
-    if handler is None:
+    flag_handler = _FLAG_HANDLERS.get(args[idx])
+    if flag_handler is None:
         return 0
-    return handler(args, idx, state)
+    return flag_handler(args, idx, state)
 
 
 def _parse_args(
@@ -856,30 +874,28 @@ def _print_single_module(module_name: str) -> None:
 def _emit_error(
     prefix: str,
     exc: BaseException,
-    json_mode: bool,
-    threshold: float,
+    options: ReportOptions,
 ) -> None:
     """Print *prefix* and *exc* to stderr, and a JSON report in JSON mode."""
     print(f"{prefix}: {exc}", file=sys.stderr)
-    if json_mode:
-        print(_format_error_report(threshold, str(exc)))
+    if options.output_mode is OutputMode.JSON:
+        print(_format_error_report(options.threshold, str(exc)))
 
 
 def _build_graph_or_exit(
-    json_mode: bool,
-    threshold: float,
+    options: ReportOptions,
 ) -> tuple[dict[str, set[str]], dict[str, set[str]], set[str]] | int:
     """Build the coupling graph or return an exit code on failure."""
     try:
         return _build_coupling_graph()
     except SyntaxErrorInSource as exc:
-        _emit_error("SYNTAX ERROR", exc, json_mode, threshold)
+        _emit_error("SYNTAX ERROR", exc, options)
         return _EXIT_SYNTAX_ERROR
     except FileReadError as exc:
-        _emit_error("READ ERROR", exc, json_mode, threshold)
+        _emit_error("READ ERROR", exc, options)
         return _EXIT_READ_ERROR
     except Exception as exc:
-        _emit_error("GRAPH ERROR", exc, json_mode, threshold)
+        _emit_error("GRAPH ERROR", exc, options)
         return _EXIT_GRAPH_ERROR
 
 
@@ -900,61 +916,53 @@ def _compute_abstractness_or_exit(
 def _compare_trends_or_exit(
     flagged_identities: set[str],
     trend_compare_path: Path,
-    json_mode: bool,
-    threshold: float,
+    options: ReportOptions,
 ) -> dict | int:
     """Compare trends or return an exit code on failure."""
     try:
         return _compare_trends(flagged_identities, trend_compare_path)
     except FileReadError as exc:
-        _emit_error("READ ERROR", exc, json_mode, threshold)
+        _emit_error("READ ERROR", exc, options)
         return _EXIT_READ_ERROR
 
 
 def _emit_report(
-    json_mode: bool,
     metrics: list[ModuleMetrics],
-    threshold: float,
     trend: dict | None,
+    options: ReportOptions,
 ) -> None:
     """Print the report in JSON or advisory-text form."""
-    if json_mode:
-        print(_format_json_report(metrics, threshold, trend))
+    if options.output_mode is OutputMode.JSON:
+        print(_format_json_report(metrics, options.threshold, trend))
         return
-    print(_format_advisory_text(metrics, threshold, trend))
+    print(_format_advisory_text(metrics, options.threshold, trend))
 
 
 def _emit_budget_advisory(
-    json_mode: bool,
     flagged: list[ModuleMetrics],
-    max_flagged: int | None,
+    options: ReportOptions,
 ) -> None:
     """Print the budget advisory when flagged count exceeds the budget."""
-    if max_flagged is None:
+    if options.max_flagged is None:
         return
-    if len(flagged) <= max_flagged:
+    if len(flagged) <= options.max_flagged:
         return
     msg = (
         f"\nADVISORY: {len(flagged)} flagged modules exceeds "
-        f"--max-flagged budget of {max_flagged}.  "
+        f"--max-flagged budget of {options.max_flagged}.  "
         f"This is informational only."
     )
-    if not json_mode:
+    if options.output_mode is OutputMode.TEXT:
         print(msg)
 
 
-def _generate_report(
-    json_mode: bool,
-    threshold: float,
-    max_flagged: int | None,
-    trend_compare_path: Path | None,
-) -> int:
+def _generate_report(options: ReportOptions) -> int:
     """Generate the coupling report.
 
     Returns:
         Exit code: 0 for success, non-zero for graph/parse/config errors.
     """
-    graph_result = _build_graph_or_exit(json_mode, threshold)
+    graph_result = _build_graph_or_exit(options)
     if isinstance(graph_result, int):
         return graph_result
     efferent, afferent, all_modules = graph_result
@@ -965,20 +973,20 @@ def _generate_report(
     abstractness_map = abstractness_result
 
     metrics = _compute_metrics(all_modules, efferent, afferent, abstractness_map)
-    flagged = _flagged_metrics(metrics, threshold)
+    flagged = _flagged_metrics(metrics, options.threshold)
     flagged_identities = {m.module for m in flagged}
 
     trend: dict | None = None
-    if trend_compare_path:
+    if options.trend_compare_path:
         trend_result = _compare_trends_or_exit(
-            flagged_identities, trend_compare_path, json_mode, threshold
+            flagged_identities, options.trend_compare_path, options
         )
         if isinstance(trend_result, int):
             return trend_result
         trend = trend_result
 
-    _emit_report(json_mode, metrics, threshold, trend)
-    _emit_budget_advisory(json_mode, flagged, max_flagged)
+    _emit_report(metrics, trend, options)
+    _emit_budget_advisory(flagged, options)
 
     return 0
 
@@ -994,7 +1002,9 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = argv if argv is not None else sys.argv[1:]
     json_mode, threshold, max_flagged, trend_compare_path = _parse_args(args)
-    return _generate_report(json_mode, threshold, max_flagged, trend_compare_path)
+    output_mode = OutputMode.JSON if json_mode else OutputMode.TEXT
+    options = ReportOptions(output_mode, threshold, max_flagged, trend_compare_path)
+    return _generate_report(options)
 
 
 if __name__ == "__main__":

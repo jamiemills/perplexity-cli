@@ -56,17 +56,17 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _fingerprint(item: dict) -> str:
+def _fingerprint(diagnostic: dict) -> str:
     """Create a stable identifier from a Ruff JSON diagnostic."""
-    location = item.get("location", {})
-    filename = item.get("filename", "?")
+    location = diagnostic.get("location", {})
+    filename = diagnostic.get("filename", "?")
     root_prefix = str(PROJECT_ROOT) + "/"
     if isinstance(filename, str) and filename.startswith(root_prefix):
         filename = filename[len(root_prefix) :]
     return "{}:{}:{}".format(
         filename,
         location.get("row", 0),
-        item.get("code", "?"),
+        diagnostic.get("code", "?"),
     )
 
 

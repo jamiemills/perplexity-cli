@@ -69,14 +69,14 @@ def _fingerprint(result: dict) -> str:
 
 def _parse_results(stdout: str, stderr: str) -> list[str]:
     try:
-        data = json.loads(stdout or "{}")
+        semgrep_payload = json.loads(stdout or "{}")
     except json.JSONDecodeError as error:
         message = stderr.strip() or "Semgrep produced unparseable JSON output."
         raise RuntimeError(message) from error
-    errors = data.get("errors", [])
+    errors = semgrep_payload.get("errors", [])
     if errors:
         raise RuntimeError(f"Semgrep reported analysis errors: {errors}")
-    results = data.get("results", [])
+    results = semgrep_payload.get("results", [])
     arch_results = [r for r in results if r.get("check_id") in ARCH_RULE_IDS]
     return sorted({_fingerprint(r) for r in arch_results})
 

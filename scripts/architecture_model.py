@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Any, cast
 
@@ -75,10 +76,10 @@ def _collect_production_modules(src_root: Path) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def _validate_schema_section(data: dict[str, Any]) -> list[str]:
+def _validate_schema_section(model: dict[str, Any]) -> list[str]:
     """Validate the [schema] top-level section."""
     errors: list[str] = []
-    schema = data.get("schema")
+    schema = model.get("schema")
     if schema is None:
         errors.append("Missing [schema] section")
         return errors
@@ -90,17 +91,17 @@ def _validate_schema_section(data: dict[str, Any]) -> list[str]:
     return errors
 
 
-def _validate_layers_array(data: dict[str, Any]) -> list[str]:
+def _validate_layers_array(model: dict[str, Any]) -> list[str]:
     """Validate the [[layers]] array exists and has entries."""
     errors: list[str] = []
-    layers = data.get("layers")
+    layers = model.get("layers")
     if layers is None:
         errors.append("Missing [[layers]] array")
         return errors
     if not isinstance(layers, list):
         errors.append("[[layers]] must be an array of tables")
         return errors
-    if len(layers) == 0:
+    if not layers:
         errors.append("[[layers]] array must not be empty")
     return errors
 
@@ -131,43 +132,43 @@ def _check_layer_list_fields(layer: dict[str, Any], i: int, errors: list[str]) -
         errors.append(f"layers[{i}].allowed_deps must be a list")
 
 
-def _validate_adapter_groups(data: dict[str, Any]) -> list[str]:
+def _validate_adapter_groups(model: dict[str, Any]) -> list[str]:
     """Validate [[adapter_independence]] entries."""
     errors: list[str] = []
-    for i, indep in enumerate(data.get("adapter_independence", [])):
-        if not isinstance(indep, dict):
-            errors.append(f"adapter_independence[{i}] must be a table")
+    for index, independence_group in enumerate(model.get("adapter_independence", [])):
+        if not isinstance(independence_group, dict):
+            errors.append(f"adapter_independence[{index}] must be a table")
             continue
         for field in _REQUIRED_INDEP_FIELDS:
-            if field not in indep:
-                errors.append(f"adapter_independence[{i}] missing required field: {field}")
+            if field not in independence_group:
+                errors.append(f"adapter_independence[{index}] missing required field: {field}")
     return errors
 
 
-def _validate_composition_roots_section(data: dict[str, Any]) -> list[str]:
+def _validate_composition_roots_section(model: dict[str, Any]) -> list[str]:
     """Validate [[composition_roots]] entries."""
     errors: list[str] = []
-    for i, crate_root in enumerate(data.get("composition_roots", [])):
-        if not isinstance(crate_root, dict):
-            errors.append(f"composition_roots[{i}] must be a table")
+    for index, composition_root in enumerate(model.get("composition_roots", [])):
+        if not isinstance(composition_root, dict):
+            errors.append(f"composition_roots[{index}] must be a table")
             continue
-        if "modules" not in crate_root:
-            errors.append(f"composition_roots[{i}] missing required field: modules")
+        if "modules" not in composition_root:
+            errors.append(f"composition_roots[{index}] missing required field: modules")
     return errors
 
 
-def _validate_schema(data: dict[str, Any]) -> list[str]:
+def _validate_schema(model: dict[str, Any]) -> list[str]:
     """Validate the full TOML structure. Returns list of error messages."""
     errors: list[str] = []
-    errors.extend(_validate_schema_section(data))
-    errors.extend(_validate_layers_array(data))
-    if "layers" in data and isinstance(data["layers"], list):
-        for i, layer_raw in enumerate(data["layers"]):
+    errors.extend(_validate_schema_section(model))
+    errors.extend(_validate_layers_array(model))
+    if "layers" in model and isinstance(model["layers"], list):
+        for index, layer_raw in enumerate(model["layers"]):
             if isinstance(layer_raw, dict):
                 layer = cast(dict[str, Any], layer_raw)
-                errors.extend(_validate_individual_layer(layer, i))
-    errors.extend(_validate_adapter_groups(data))
-    errors.extend(_validate_composition_roots_section(data))
+                errors.extend(_validate_individual_layer(layer, index))
+    errors.extend(_validate_adapter_groups(model))
+    errors.extend(_validate_composition_roots_section(model))
     return errors
 
 
@@ -208,11 +209,11 @@ def _check_layer_modules_for_duplicates(
         seen[mod] = name
 
 
-def _check_duplicates_and_overlaps(data: dict[str, Any]) -> list[str]:
+def _check_duplicates_and_overlaps(model: dict[str, Any]) -> list[str]:
     """Check for duplicate or overlapping module assignments across layers."""
     errors: list[str] = []
     seen: dict[str, str] = {}
-    for layer in data.get("layers", []):
+    for layer in model.get("layers", []):
         if isinstance(layer.get("modules"), list):
             _check_layer_modules_for_duplicates(layer, seen, errors)
     return errors
@@ -266,33 +267,35 @@ def _validate_layer_names(layers: list[dict[str, Any]]) -> list[str]:
 
 
 def _check_single_adapter_refs(
-    ai: dict[str, Any], adapter_names: set[str], errors: list[str]
+    adapter_group: dict[str, Any], adapter_names: set[str], errors: list[str]
 ) -> None:
     """Check may_import_from references for a single adapter group."""
-    ai_name = ai.get("name", "<unnamed>")
-    for dep_name in ai.get("may_import_from", []):
+    group_name = adapter_group.get("name", "<unnamed>")
+    for dep_name in adapter_group.get("may_import_from", []):
         if isinstance(dep_name, str) and dep_name not in adapter_names:
             errors.append(
-                f"Adapter independence group '{ai_name}' references "
+                f"Adapter independence group '{group_name}' references "
                 f"unknown adapter group '{dep_name}' in may_import_from"
             )
 
 
-def _validate_adapter_refs(data: dict[str, Any]) -> list[str]:
+def _validate_adapter_refs(model: dict[str, Any]) -> list[str]:
     """Validate that adapter_independence may_import_from references are valid."""
     errors: list[str] = []
-    adapter_indep = data.get("adapter_independence", [])
-    adapter_names = {ai.get("name") for ai in adapter_indep if isinstance(ai.get("name"), str)}
-    for ai in adapter_indep:
-        if isinstance(ai, dict):
-            _check_single_adapter_refs(ai, adapter_names, errors)
+    adapter_groups = model.get("adapter_independence", [])
+    adapter_names = {
+        group.get("name") for group in adapter_groups if isinstance(group.get("name"), str)
+    }
+    for adapter_group in adapter_groups:
+        if isinstance(adapter_group, dict):
+            _check_single_adapter_refs(adapter_group, adapter_names, errors)
     return errors
 
 
-def _check_layer_name_validity(data: dict[str, Any]) -> list[str]:
+def _check_layer_name_validity(model: dict[str, Any]) -> list[str]:
     """Validate that all layer names and allowed_deps references are valid."""
     errors: list[str] = []
-    layers = data.get("layers", [])
+    layers = model.get("layers", [])
     if not isinstance(layers, list):
         return errors
 
@@ -300,7 +303,7 @@ def _check_layer_name_validity(data: dict[str, Any]) -> list[str]:
     for layer in layers:
         if isinstance(layer, dict):
             errors.extend(_validate_layer_deps(layer))
-    errors.extend(_validate_adapter_refs(data))
+    errors.extend(_validate_adapter_refs(model))
     return errors
 
 
@@ -309,10 +312,10 @@ def _check_layer_name_validity(data: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _get_classified_modules(data: dict[str, Any]) -> set[str]:
+def _get_classified_modules(model: dict[str, Any]) -> set[str]:
     """Extract all classified module paths from all layers."""
     classified: set[str] = set()
-    layers = data.get("layers", [])
+    layers = model.get("layers", [])
     if not isinstance(layers, list):
         return classified
     for layer in layers:
@@ -322,10 +325,10 @@ def _get_classified_modules(data: dict[str, Any]) -> set[str]:
     return classified
 
 
-def _check_module_coverage(data: dict[str, Any], production_modules: set[str]) -> list[str]:
+def _check_module_coverage(model: dict[str, Any], production_modules: set[str]) -> list[str]:
     """Check that all production modules are classified and no unknown modules exist."""
     errors: list[str] = []
-    classified = _get_classified_modules(data)
+    classified = _get_classified_modules(model)
 
     unclassified = production_modules - classified
     if unclassified:
@@ -356,10 +359,10 @@ def _add_module_strings(modules_container: list[Any], target: set[str]) -> None:
             target.add(mod)
 
 
-def _collect_layer_modules(data: dict[str, Any], target_layer: str) -> set[str]:
+def _collect_layer_modules(model: dict[str, Any], target_layer: str) -> set[str]:
     """Collect all module paths classified as *target_layer*."""
     modules: set[str] = set()
-    layers = data.get("layers", [])
+    layers = model.get("layers", [])
     if not isinstance(layers, list):
         return modules
     for layer in layers:
@@ -370,17 +373,17 @@ def _collect_layer_modules(data: dict[str, Any], target_layer: str) -> set[str]:
     return modules
 
 
-def _check_adapter_modules_validity(data: dict[str, Any]) -> list[str]:
+def _check_adapter_modules_validity(model: dict[str, Any]) -> list[str]:
     """Check that all modules in adapter groups are classified as adapter."""
     errors: list[str] = []
-    adapter_modules = _collect_layer_modules(data, "adapter")
+    adapter_modules = _collect_layer_modules(model, "adapter")
 
-    for ai in data.get("adapter_independence", []):
-        ai_name = ai.get("name", "<unnamed>")
-        for mod in ai.get("modules", []):
+    for adapter_group in model.get("adapter_independence", []):
+        group_name = adapter_group.get("name", "<unnamed>")
+        for mod in adapter_group.get("modules", []):
             if isinstance(mod, str) and mod not in adapter_modules:
                 errors.append(
-                    f"Adapter independence group '{ai_name}' references "
+                    f"Adapter independence group '{group_name}' references "
                     f"module '{mod}' which is not classified as 'adapter'"
                 )
 
@@ -392,14 +395,14 @@ def _check_adapter_modules_validity(data: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _check_composition_root_validity(data: dict[str, Any]) -> list[str]:
+def _check_composition_root_validity(model: dict[str, Any]) -> list[str]:
     """Check composition_roots modules match composition_root layer."""
     errors: list[str] = []
-    cr_modules = _collect_layer_modules(data, "composition_root")
+    composition_modules = _collect_layer_modules(model, "composition_root")
 
-    for cr in data.get("composition_roots", []):
-        for mod in cr.get("modules", []):
-            if isinstance(mod, str) and mod not in cr_modules:
+    for composition_root in model.get("composition_roots", []):
+        for mod in composition_root.get("modules", []):
+            if isinstance(mod, str) and mod not in composition_modules:
                 errors.append(
                     f"composition_roots references module '{mod}' "
                     f"which is not classified as 'composition_root'"
@@ -413,7 +416,19 @@ def _check_composition_root_validity(data: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def validate(toml_path: Path, src_root: Path, check_modules: bool = True) -> list[str]:
+class CoverageMode(Enum):
+    """Controls source-tree coverage validation."""
+
+    CHECK = "check"
+    SKIP = "skip"
+
+
+# owner: quality-infrastructure; reason: backwards-compatible public architecture validation API
+def validate(  # nosemgrep: boolean-flag-argument
+    toml_path: Path,
+    src_root: Path,
+    check_modules: bool = True,
+) -> list[str]:
     """Validate the architecture TOML file. Returns a list of error messages.
 
     Args:
@@ -424,18 +439,26 @@ def validate(toml_path: Path, src_root: Path, check_modules: bool = True) -> lis
     Returns:
         List of error messages. Empty list means validation passed.
     """
-    data = _load_toml(toml_path)
+    coverage_mode = CoverageMode.CHECK if check_modules else CoverageMode.SKIP
+    return _validate_with_coverage(toml_path, src_root, coverage_mode)
+
+
+def _validate_with_coverage(
+    toml_path: Path, src_root: Path, coverage_mode: CoverageMode
+) -> list[str]:
+    """Validate architecture configuration using an explicit coverage mode."""
+    model = _load_toml(toml_path)
     errors: list[str] = []
 
-    errors.extend(_validate_schema(data))
-    errors.extend(_check_duplicates_and_overlaps(data))
-    errors.extend(_check_layer_name_validity(data))
-    errors.extend(_check_adapter_modules_validity(data))
-    errors.extend(_check_composition_root_validity(data))
+    errors.extend(_validate_schema(model))
+    errors.extend(_check_duplicates_and_overlaps(model))
+    errors.extend(_check_layer_name_validity(model))
+    errors.extend(_check_adapter_modules_validity(model))
+    errors.extend(_check_composition_root_validity(model))
 
-    if check_modules:
+    if coverage_mode is CoverageMode.CHECK:
         production_modules = _collect_production_modules(src_root)
-        errors.extend(_check_module_coverage(data, production_modules))
+        errors.extend(_check_module_coverage(model, production_modules))
 
     return errors
 
