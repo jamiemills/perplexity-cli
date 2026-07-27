@@ -100,7 +100,7 @@ def test_release_drafter_omits_noisy_and_feature_branch_triggers() -> None:
     assert "pull-requests: read" in release
 
 
-def test_trusted_safety_job_has_fork_and_dependabot_condition() -> None:
+def test_trusted_safety_job_excludes_forks_and_dependabot() -> None:
     """Safety secrets must only be exposed to explicitly trusted changes."""
     ci_text = _workflow_texts()["ci.yml"]
     ci = _load_workflow("ci.yml")
@@ -108,7 +108,7 @@ def test_trusted_safety_job_has_fork_and_dependabot_condition() -> None:
     if_condition = str(safety.get("if", ""))
     assert "github.event_name != 'pull_request'" in if_condition
     assert "github.event.pull_request.head.repo.full_name == github.repository" in if_condition
-    assert "github.actor == 'dependabot[bot]'" in if_condition
+    assert "github.actor != 'dependabot[bot]'" in if_condition
     assert "RUN_SAFETY_FOR_DEPENDABOT" not in if_condition
     recipe = " ".join(
         str(step.get("run", "")) for step in safety.get("steps") or [] if isinstance(step, dict)
@@ -137,6 +137,8 @@ def test_ci_has_concurrency_group() -> None:
     assert "cancel-in-progress" in concurrency, (
         "ci.yml concurrency block missing 'cancel-in-progress'"
     )
+    group = str(concurrency["group"])
+    assert "github.run_id" in group, "manual dispatches need unique concurrency groups"
 
 
 def test_ci_jobs_have_timeouts() -> None:

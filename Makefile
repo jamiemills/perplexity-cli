@@ -504,9 +504,9 @@ ci-fuzz-status: test-fuzz ## CI fuzz status (non-authoritative until rank 4)
 
 ci-property: test-property-$(PROPERTY_PROFILE) ## CI property tests
 
-ci-package: build verify smoke-test ## CI package build, verify, and smoke test
+ci-package: build verify ## CI package build and verification
 
-ci: ci-static ci-test-coverage ci-fuzz-status pip-audit sonar-reports ci-property ci-package  ## Full CI pipeline
+ci: ci-static ci-test-coverage ci-fuzz-status pip-audit sonar-reports ci-property ci-package smoke-test  ## Full local CI pipeline
 
 ci-trusted: ci safety-gate  ## Full CI plus authenticated Safety for trusted code
 

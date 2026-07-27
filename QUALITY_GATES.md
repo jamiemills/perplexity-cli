@@ -400,10 +400,10 @@ local `make ci-*` recipes stay authoritative for both pre-push and CI.
 | Compatibility (Python 3.13, 3.14) | ubuntu-latest | `make ci-test-compat` | `fail-fast: false` matrix |
 | Property Tests (Python 3.13) | ubuntu-latest | `make ci-property` with `PROPERTY_PROFILE=ci` | 1000 Hypothesis examples |
 | Fuzz Status (Python 3.12) | ubuntu-latest | `make ci-fuzz-status` | `continue-on-error: true` — non-authoritative until rank 4 |
-| Build & Package (Python 3.12) | ubuntu-latest | `make ci-package` | Uploads `wheel-dist` artefact |
-| Wheel Smoke (Linux) | ubuntu-latest | `make smoke-test` | Consumes `wheel-dist` |
-| Wheel Smoke (macOS) | macos-latest | `make smoke-test` | Consumes `wheel-dist` |
-| Safety (trusted) | ubuntu-latest, Python 3.13 | `make safety-gate` | Skipped for external fork PRs |
+| Build & Package (Python 3.12) | ubuntu-latest | `make ci-package` | Uploads a run-attempt-scoped distribution artefact |
+| Wheel Smoke (Linux) | ubuntu-latest | `make smoke-test` | Consumes the package-job wheel |
+| Wheel Smoke (macOS) | macos-latest | `make smoke-test` | Consumes the package-job wheel |
+| Safety (trusted) | ubuntu-latest, Python 3.13 | `make safety-gate` | Skipped for external forks and Dependabot PRs |
 | macOS (Python 3.12) | macos-latest | `make ci-test-compat` | Darwin compatibility signal |
 
 The workflow declares a single `concurrency` group keyed on the pull-request
@@ -414,14 +414,15 @@ number or ref, cancelling superseded runs except for `workflow_dispatch`.
 Triggered for pushes to `master`, all pull requests, and manual dispatch.
 `make ci` runs the credential-free aggregate: `ci-static`,
 `ci-test-coverage`, `ci-fuzz-status`, `pip-audit`, `sonar-reports`,
-`ci-property`, and `ci-package`. The CI workflow splits these into separate
-jobs (above) so a single lane failure is isolated; locally `make ci` runs
-them sequentially in one shell. Test execution uses `pytest-xdist -n auto`.
+`ci-property`, `ci-package`, and `smoke-test`. The CI workflow splits these
+into separate jobs (above) so a single lane failure is isolated; local
+`make ci` runs the same targets in dependency order. Test execution uses
+`pytest-xdist -n auto`.
 
 This credential-free pipeline is required for every PR, including external
-forks. A separate `Safety (trusted)` job runs `make safety-gate` for pushes,
-same-repository PRs and Dependabot PRs. External forks skip that job because
-GitHub correctly withholds repository and Dependabot secrets. The OpenCode
+forks. A separate `Safety (trusted)` job runs `make safety-gate` for pushes
+and non-Dependabot same-repository PRs. External forks and Dependabot PRs
+skip that job because ordinary repository secrets are unavailable. The OpenCode
 plugin/config checks (`opencode-check`, `opencode-audit`) run inside the CI
 `static` job alongside `ci-static`, the analyser-contract tests, and the
 blocking Semgrep lane.
@@ -534,8 +535,8 @@ inline where they need Git or event context.
 | `make ci-test-compat` | CI compatibility tests without coverage (Python 3.13/3.14, macOS) |
 | `make ci-fuzz-status` | CI fuzz status; `continue-on-error` in CI until rank 4 |
 | `make ci-property` | CI property tests (`$(PROPERTY_PROFILE)` examples) |
-| `make ci-package` | CI package build, verify, and smoke test |
-| `make ci` | Universal credential-free aggregate: `ci-static`, `ci-test-coverage`, `ci-fuzz-status`, `pip-audit`, `sonar-reports`, `ci-property`, `ci-package` |
+| `make ci-package` | CI package build and verification; workflow smoke jobs consume the uploaded wheel |
+| `make ci` | Local credential-free aggregate: `ci-static`, `ci-test-coverage`, `ci-fuzz-status`, `pip-audit`, `sonar-reports`, `ci-property`, `ci-package`, `smoke-test` |
 | `make ci-trusted` | Universal CI plus fail-closed authenticated Safety |
 | `make test` | Unit tests without coverage (fail-fast, xdist) |
 | `make test-coverage` | Unit tests with global + per-module coverage enforcement (xdist) |

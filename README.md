@@ -1064,7 +1064,7 @@ documented in [`QUALITY_GATES.md`](QUALITY_GATES.md).
 ```bash
 make ci                         # credential-free CI aggregate: ci-static,
                                 #   ci-test-coverage, ci-fuzz-status, pip-audit,
-                                #   sonar-reports, ci-property, ci-package
+                                #   sonar-reports, ci-property, ci-package, smoke-test
 make ci-trusted                 # make ci plus authenticated Safety
 make ci-static                  # format-check, lint, typecheck-all, bandit,
                                 #   vulture, complexity
