@@ -1,0 +1,12 @@
+{
+  "event_sequence": 10,
+  "event_type": "wave_completed",
+  "run_id": "20260726-201025",
+  "wave": 3,
+  "integration_sha": "9a6f5aa6ec7ad61be55668e5fa25e6ba3ae1a206",
+  "tasks": {
+    "P1-POLICY-FOUNDATION": {"status": "integrated", "candidate": "5e639b2", "tests": "35 passed"},
+    "G1-GITLEAKS-PREREQ": {"status": "integrated", "candidate": "fbefd55", "tests": "24 passed", "bug_fix": "root-commit union false-negative in gitleaks_check.sh"}
+  },
+  "make_check": "pass"
+}
