@@ -11,7 +11,7 @@ from perplexity_cli.utils.config import get_config_paths
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
 from perplexity_cli.utils.exceptions import AuthenticationError
 from perplexity_cli.utils.file_permissions import verify_secure_permissions
-from perplexity_cli.utils.logging import get_logger, redact_mapping_keys, redact_path, redact_text
+from perplexity_cli.utils.logging import get_logger, redact_mapping_keys, redact_path
 
 TOKEN_AGE_WARNING_DAYS = 30
 _MALFORMED_COOKIES_ERROR = "Token file contains malformed cookies data"
@@ -95,10 +95,7 @@ class TokenManager:
             )
 
         except OSError as e:
-            # owner: security - exception text is fully redacted before logging.
-            self.logger.error(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
-                "Failed to save token file: %s", redact_text(str(e), max_length=0)
-            )
+            self.logger.exception("Failed to save token file", exc_info=False)
             msg = f"Failed to save or set permissions on token file {self.token_path}: {e}"
             raise OSError(msg) from e
 
@@ -173,10 +170,7 @@ class TokenManager:
             return (token, cookies)
 
         except (OSError, json.JSONDecodeError) as e:
-            # owner: security - exception text is fully redacted before logging.
-            self.logger.error(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
-                "Failed to load token file: %s", redact_text(str(e), max_length=0)
-            )
+            self.logger.exception("Failed to load token file", exc_info=False)
             msg = f"Failed to load token from {self.token_path}: {e}"
             raise OSError(msg) from e
 
@@ -351,10 +345,7 @@ class TokenManager:
                     "Token cleared from %s", redact_path(self.token_path)
                 )
             except OSError as e:
-                # owner: security - exception text is fully redacted before logging.
-                self.logger.error(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
-                    "Failed to delete token file: %s", redact_text(str(e), max_length=0)
-                )
+                self.logger.exception("Failed to delete token file", exc_info=False)
                 msg = f"Failed to delete token file: {e}"
                 raise OSError(msg) from e
 

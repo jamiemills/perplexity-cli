@@ -20,7 +20,7 @@ from perplexity_cli.utils.exceptions import (
     PerplexityRequestError,
     UpstreamSchemaError,
 )
-from perplexity_cli.utils.logging import get_logger, redact_text
+from perplexity_cli.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from perplexity_cli.config.models import FeatureConfig
@@ -343,7 +343,4 @@ def run_status_command(
         click.echo("Status: [INFO] Token file has insecure permissions")
         click.echo(f"Error: {e}")
         click.echo(f"\nFix with: chmod 0600 {tm.token_path}")
-        # owner: security - exception text is fully redacted before logging.
-        logger.error(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
-            "Token file has insecure permissions: %s", redact_text(str(e), max_length=0)
-        )
+        logger.exception("Token file has insecure permissions", exc_info=False)
