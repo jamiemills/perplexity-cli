@@ -16,7 +16,7 @@ from perplexity_cli.runners.config import (
 class TestRunConfigureCommand:
     """Tests for run_configure_command()."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.runners.config.StyleManager")
     def test_happy_path_saves_and_echoes(self, mock_sm_class, capsys):
         """Test successful style configuration."""
         mock_sm = Mock()
@@ -29,7 +29,7 @@ class TestRunConfigureCommand:
         assert "Style configured successfully" in captured.out
         assert "Be concise and technical" in captured.out
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.runners.config.StyleManager")
     def test_value_error_exits(self, mock_sm_class, capsys):
         """Test that ValueError from save_style causes exit code 1."""
         mock_sm = Mock()
@@ -43,7 +43,7 @@ class TestRunConfigureCommand:
         captured = capsys.readouterr()
         assert "Invalid style: style too long" in captured.err
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.runners.config.StyleManager")
     def test_os_error_exits(self, mock_sm_class, capsys):
         """Test that OSError from save_style causes exit code 1."""
         mock_sm = Mock()
@@ -61,7 +61,7 @@ class TestRunConfigureCommand:
 class TestRunViewStyleCommand:
     """Tests for run_view_style_command()."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.runners.config.StyleManager")
     def test_displays_configured_style(self, mock_sm_class, capsys):
         """Test that a configured style is displayed."""
         mock_sm = Mock()
@@ -74,7 +74,7 @@ class TestRunViewStyleCommand:
         assert "Current style:" in captured.out
         assert "Be formal and precise" in captured.out
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.runners.config.StyleManager")
     def test_displays_no_style_message(self, mock_sm_class, capsys):
         """Test output when no style is configured."""
         mock_sm = Mock()
@@ -86,7 +86,7 @@ class TestRunViewStyleCommand:
         captured = capsys.readouterr()
         assert "No style configured" in captured.out
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.runners.config.StyleManager")
     def test_os_error_exits(self, mock_sm_class, capsys):
         """Test that OSError from load_style causes exit code 1."""
         mock_sm = Mock()
@@ -104,7 +104,7 @@ class TestRunViewStyleCommand:
 class TestRunClearStyleCommand:
     """Tests for run_clear_style_command()."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.runners.config.StyleManager")
     def test_clears_existing_style(self, mock_sm_class, capsys):
         """Test successful style clearing."""
         mock_sm = Mock()
@@ -117,7 +117,7 @@ class TestRunClearStyleCommand:
         captured = capsys.readouterr()
         assert "Style cleared successfully" in captured.out
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.runners.config.StyleManager")
     def test_no_style_to_clear(self, mock_sm_class, capsys):
         """Test output when no style exists to clear."""
         mock_sm = Mock()
@@ -130,7 +130,7 @@ class TestRunClearStyleCommand:
         captured = capsys.readouterr()
         assert "No style is currently configured" in captured.out
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.runners.config.StyleManager")
     def test_os_error_exits(self, mock_sm_class, capsys):
         """Test that OSError causes exit code 1."""
         mock_sm = Mock()
@@ -148,8 +148,8 @@ class TestRunClearStyleCommand:
 class TestRunShowConfigCommand:
     """Tests for run_show_config_command()."""
 
-    @patch("perplexity_cli.utils.config.get_feature_config_path")
-    @patch("perplexity_cli.utils.config.get_feature_config")
+    @patch("perplexity_cli.runners.config.get_feature_config_path")
+    @patch("perplexity_cli.runners.config.get_feature_config")
     def test_displays_configuration(self, mock_get_config, mock_get_path, capsys, monkeypatch):
         """Test that configuration is displayed correctly."""
         monkeypatch.delenv("PERPLEXITY_SAVE_COOKIES", raising=False)

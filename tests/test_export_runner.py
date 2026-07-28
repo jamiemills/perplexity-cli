@@ -40,7 +40,7 @@ def _close_run_async_raise(exc):
 class TestRunExportThreadsCommand:
     """Tests for run_export_threads_command()."""
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
     def test_not_authenticated_human(self, mock_tm_class, capsys):
         """Human output shows not authenticated error."""
         mock_tm = Mock()
@@ -61,7 +61,7 @@ class TestRunExportThreadsCommand:
         captured = capsys.readouterr()
         assert "Not authenticated" in captured.err
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
     def test_not_authenticated_json(self, mock_tm_class, capsys):
         """JSON output shows error envelope when not authenticated."""
         mock_tm = Mock()
@@ -82,12 +82,12 @@ class TestRunExportThreadsCommand:
         assert envelope["ok"] is False
         assert envelope["command"] == "pxcli threads export"
 
-    @patch("perplexity_cli.threads.exporter.write_threads_csv", autospec=True)
+    @patch("perplexity_cli.runners.export.write_threads_csv", autospec=True)
     @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    @patch("perplexity_cli.utils.config.get_rate_limiting_config", autospec=True)
-    @patch("perplexity_cli.threads.cache_manager.ThreadCacheManager", autospec=True)
-    @patch("perplexity_cli.threads.scraper.ThreadScraper", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
+    @patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True)
+    @patch("perplexity_cli.runners.export.ThreadScraper", autospec=True)
+    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
     def test_success_human(
         self,
         mock_tm_class,
@@ -122,12 +122,12 @@ class TestRunExportThreadsCommand:
         assert "Export complete" in captured.out
         assert "ERROR" not in captured.err
 
-    @patch("perplexity_cli.threads.exporter.write_threads_csv", autospec=True)
+    @patch("perplexity_cli.runners.export.write_threads_csv", autospec=True)
     @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    @patch("perplexity_cli.utils.config.get_rate_limiting_config", autospec=True)
-    @patch("perplexity_cli.threads.cache_manager.ThreadCacheManager", autospec=True)
-    @patch("perplexity_cli.threads.scraper.ThreadScraper", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
+    @patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True)
+    @patch("perplexity_cli.runners.export.ThreadScraper", autospec=True)
+    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
     def test_success_json(
         self,
         mock_tm_class,
@@ -196,14 +196,14 @@ class TestValidateExportDates:
 class TestSetupRateLimiter:
     """Tests for _setup_rate_limiter."""
 
-    @patch("perplexity_cli.utils.config.get_rate_limiting_config", autospec=True)
+    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
     def test_returns_none_when_disabled(self, mock_config):
         """When rate limiting is disabled, returns None."""
         mock_config.return_value = Mock(enabled=False)
         result = _setup_rate_limiter(Mock())
         assert result is None
 
-    @patch("perplexity_cli.utils.config.get_rate_limiting_config", autospec=True)
+    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
     def test_returns_rate_limiter_when_enabled(self, mock_config):
         """When rate limiting is enabled, returns a RateLimiter instance."""
         mock_config.return_value = Mock(enabled=True, requests_per_period=10, period_seconds=60)
@@ -362,10 +362,10 @@ class TestRunExportErrorHandlers:
     def _prepare_mocks(self, output_format="human"):
         """Set up common mocks for authenticated export."""
         patches = {
-            "tm": patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True),
-            "rate": patch("perplexity_cli.utils.config.get_rate_limiting_config", autospec=True),
-            "cm": patch("perplexity_cli.threads.cache_manager.ThreadCacheManager", autospec=True),
-            "scraper": patch("perplexity_cli.threads.scraper.ThreadScraper", autospec=True),
+            "tm": patch("perplexity_cli.runners.export.TokenManager", autospec=True),
+            "rate": patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True),
+            "cm": patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True),
+            "scraper": patch("perplexity_cli.runners.export.ThreadScraper", autospec=True),
         }
         mocks = {k: p.start() for k, p in patches.items()}
         tm = Mock()

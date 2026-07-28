@@ -76,7 +76,7 @@ class TestVerifyToken:
     """Tests for _verify_token()."""
 
     def test_returns_true_on_successful_verification(self) -> None:
-        with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
+        with patch("perplexity_cli.runners.status.PerplexityAPI") as mock_api_class:
             mock_api = Mock()
             mock_api.get_complete_answer.return_value = Mock(text="OK")
             mock_api_class.return_value.__enter__.return_value = mock_api
@@ -85,7 +85,7 @@ class TestVerifyToken:
             assert result is True
 
     def test_returns_false_on_empty_response(self) -> None:
-        with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
+        with patch("perplexity_cli.runners.status.PerplexityAPI") as mock_api_class:
             mock_api = Mock()
             mock_api.get_complete_answer.return_value = Mock(text="")
             mock_api_class.return_value.__enter__.return_value = mock_api
@@ -96,7 +96,7 @@ class TestVerifyToken:
     def test_returns_false_on_api_error(self) -> None:
         from perplexity_cli.utils.exceptions import PerplexityRequestError
 
-        with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
+        with patch("perplexity_cli.runners.status.PerplexityAPI") as mock_api_class:
             mock_api_class.return_value.__enter__.side_effect = PerplexityRequestError("down")
 
             result = _verify_token("token", {}, Mock())
@@ -285,9 +285,9 @@ class TestHandleAuthenticatedStatus:
 class TestRunDoctorSecurity:
     """Tests for run_doctor_security_command()."""
 
-    @patch("perplexity_cli.utils.config.get_feature_config")
-    @patch("perplexity_cli.threads.cache_manager.ThreadCacheManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.runners.status.get_feature_config")
+    @patch("perplexity_cli.runners.status.ThreadCacheManager")
+    @patch("perplexity_cli.runners.status.TokenManager")
     def test_json_mode_writes_envelope(
         self,
         mock_tm_class,
@@ -320,9 +320,9 @@ class TestRunDoctorSecurity:
         assert "token_path" in envelope["result"]
         assert "cookies_enabled" in envelope["result"]
 
-    @patch("perplexity_cli.utils.config.get_feature_config")
-    @patch("perplexity_cli.threads.cache_manager.ThreadCacheManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.runners.status.get_feature_config")
+    @patch("perplexity_cli.runners.status.ThreadCacheManager")
+    @patch("perplexity_cli.runners.status.TokenManager")
     def test_human_mode_prints_output(
         self,
         mock_tm_class,
@@ -363,7 +363,7 @@ class TestRunDoctorSecurity:
 class TestRunStatusCommand:
     """Tests for run_status_command()."""
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.runners.status.TokenManager")
     def test_not_authenticated_human(self, mock_tm_class, capsys):
         """Human output shows not authenticated."""
         mock_tm = Mock()
@@ -375,7 +375,7 @@ class TestRunStatusCommand:
         captured = capsys.readouterr()
         assert "Not authenticated" in captured.out
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.runners.status.TokenManager")
     def test_authenticated_human(self, mock_tm_class, capsys):
         """Human output shows authenticated status."""
         mock_tm = Mock()
@@ -392,7 +392,7 @@ class TestRunStatusCommand:
         captured = capsys.readouterr()
         assert "Authenticated" in captured.out
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.runners.status.TokenManager")
     def test_not_authenticated_json(self, mock_tm_class, capsys):
         """JSON output shows authenticated=False."""
         mock_tm = Mock()
@@ -406,7 +406,7 @@ class TestRunStatusCommand:
         assert envelope["ok"] is True
         assert envelope["result"]["authenticated"] is False
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.runners.status.TokenManager")
     def test_authenticated_json(self, mock_tm_class, capsys):
         """JSON output shows authenticated=True with details."""
         mock_tm = Mock()

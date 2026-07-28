@@ -488,7 +488,7 @@ class TestRunModelsListCommand:
                 return_value=SubscriptionLevel.PRO,
                 autospec=True,
             ),
-            patch("perplexity_cli.error_handler.handle_error", autospec=True) as mock_handle,
+            patch("perplexity_cli.runners.models.handle_error", autospec=True) as mock_handle,
         ):
             # handle_error in json_mode calls sys.exit internally
             mock_handle.side_effect = SystemExit(1)
@@ -510,8 +510,8 @@ class TestResolveAuth:
         from perplexity_cli.runners.models import _resolve_auth
 
         with (
-            patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True) as mock_tm_cls,
-            patch("perplexity_cli.auth.utils.load_token_optional", autospec=True) as mock_load,
+            patch("perplexity_cli.runners.models.TokenManager", autospec=True) as mock_tm_cls,
+            patch("perplexity_cli.runners.models.load_token_optional", autospec=True) as mock_load,
         ):
             mock_load.return_value = ("tok-123", {"cf": "cookie"})
             result = _resolve_auth()
@@ -523,8 +523,8 @@ class TestResolveAuth:
         from perplexity_cli.runners.models import _resolve_auth
 
         with (
-            patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True),
-            patch("perplexity_cli.auth.utils.load_token_optional", autospec=True) as mock_load,
+            patch("perplexity_cli.runners.models.TokenManager", autospec=True),
+            patch("perplexity_cli.runners.models.load_token_optional", autospec=True) as mock_load,
         ):
             mock_load.return_value = (None, None)
             result = _resolve_auth()
@@ -543,7 +543,7 @@ class TestCreateRestClient:
     def test_creates_client_with_auth_context(self) -> None:
         from perplexity_cli.runners.models import _create_rest_client
 
-        with patch("perplexity_cli.api.rest_client.RestClient", autospec=True) as mock_client_cls:
+        with patch("perplexity_cli.runners.models.RestClient", autospec=True) as mock_client_cls:
             _create_rest_client("tok-123", {"cf": "cookie"})
 
         mock_client_cls.assert_called_once()
@@ -557,7 +557,7 @@ class TestCreateModelService:
 
         mock_client = MagicMock()
         with patch(
-            "perplexity_cli.services.model_service.ModelService", autospec=True
+            "perplexity_cli.runners.models.ModelService", autospec=True
         ) as mock_svc_cls:
             _create_model_service(mock_client, SubscriptionLevel.PRO)
 
@@ -569,7 +569,7 @@ class TestCreateModelService:
 
         mock_client = MagicMock()
         with patch(
-            "perplexity_cli.services.model_service.ModelService", autospec=True
+            "perplexity_cli.runners.models.ModelService", autospec=True
         ) as mock_svc_cls:
             _create_model_service(mock_client, SubscriptionLevel.MAX)
 

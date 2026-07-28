@@ -8,8 +8,8 @@ from perplexity_cli.cli import auth_login, auth_logout, auth_status
 class TestAuthLogin:
     """Test auth login command routing."""
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.auth.oauth_handler.authenticate_sync")
+    @patch("perplexity_cli.runners.auth.TokenManager")
+    @patch("perplexity_cli.runners.auth.authenticate_sync")
     def test_auth_login_invokes_run_auth_command(self, mock_auth, mock_tm_class, runner):
         mock_cookies = {"__cf_bm": "test"}
         mock_auth.return_value = ("token-abc", mock_cookies)
@@ -22,8 +22,8 @@ class TestAuthLogin:
         assert result.exit_code == 0
         assert "Authentication successful" in result.output
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.auth.oauth_handler.authenticate_sync")
+    @patch("perplexity_cli.runners.auth.TokenManager")
+    @patch("perplexity_cli.runners.auth.authenticate_sync")
     def test_auth_login_custom_port(self, mock_auth, mock_tm_class, runner):
         mock_auth.return_value = ("token-abc", {})
         mock_tm = Mock()
@@ -35,8 +35,8 @@ class TestAuthLogin:
         assert result.exit_code == 0
         mock_auth.assert_called_once_with(port=9223)
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.auth.oauth_handler.authenticate_sync")
+    @patch("perplexity_cli.runners.auth.TokenManager")
+    @patch("perplexity_cli.runners.auth.authenticate_sync")
     def test_auth_login_default_port(self, mock_auth, mock_tm_class, runner):
         from perplexity_cli.config.defaults import DEFAULT_CHROME_DEBUG_PORT
 
@@ -54,7 +54,7 @@ class TestAuthLogin:
 class TestAuthLogout:
     """Test auth logout command routing."""
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.runners.auth.TokenManager")
     def test_auth_logout_invokes_run_logout_command(self, mock_tm_class, runner):
         mock_tm = Mock()
         mock_tm.token_exists.return_value = True
@@ -71,7 +71,7 @@ class TestAuthLogout:
 class TestAuthStatus:
     """Test auth status command routing."""
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.runners.status.TokenManager")
     def test_auth_status_invokes_run_status_command(self, mock_tm_class, runner):
         mock_tm = Mock()
         mock_tm.token_exists.return_value = False
@@ -82,8 +82,8 @@ class TestAuthStatus:
         assert result.exit_code == 0
         assert "Not authenticated" in result.output
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.runners.status.TokenManager")
+    @patch("perplexity_cli.runners.status.PerplexityAPI")
     def test_auth_status_verify(self, mock_api_class, mock_tm_class, runner):
         from pathlib import Path
         from unittest.mock import MagicMock
