@@ -22,13 +22,13 @@ def test_run_auth_command_saves_token_and_cookies(capsys):
     mock_tm.token_path = Path("/tmp/token.json")
 
     with (
-        patch("perplexity_cli.auth.oauth_handler.authenticate_sync") as mock_auth,
-        patch("perplexity_cli.auth.token_manager.TokenManager", return_value=mock_tm),
+        patch("perplexity_cli.runners.auth.authenticate_sync") as mock_auth,
+        patch("perplexity_cli.runners.auth.TokenManager", return_value=mock_tm),
         patch(
-            "perplexity_cli.utils.config.get_perplexity_base_url",
+            "perplexity_cli.runners.auth.get_perplexity_base_url",
             return_value="https://www.perplexity.ai",
         ),
-        patch("perplexity_cli.utils.config.get_save_cookies_enabled", return_value=True),
+        patch("perplexity_cli.runners.auth.get_save_cookies_enabled", return_value=True),
     ):
         mock_auth.return_value = ("token-123", {"cf_clearance": "cookie-1"})
 
@@ -44,7 +44,7 @@ def test_run_logout_command_reports_no_credentials(capsys):
     mock_tm = Mock()
     mock_tm.token_exists.return_value = False
 
-    with patch("perplexity_cli.auth.token_manager.TokenManager", return_value=mock_tm):
+    with patch("perplexity_cli.runners.auth.TokenManager", return_value=mock_tm):
         run_logout_command()
 
     captured = capsys.readouterr()
@@ -54,9 +54,9 @@ def test_run_logout_command_reports_no_credentials(capsys):
 def test_run_auth_command_handles_authentication_error(capsys):
     """Auth runner maps browser/auth failures to the user-facing auth path."""
     with (
-        patch("perplexity_cli.auth.oauth_handler.authenticate_sync") as mock_auth,
+        patch("perplexity_cli.runners.auth.authenticate_sync") as mock_auth,
         patch(
-            "perplexity_cli.utils.config.get_perplexity_base_url",
+            "perplexity_cli.runners.auth.get_perplexity_base_url",
             return_value="https://www.perplexity.ai",
         ),
     ):
@@ -73,8 +73,8 @@ def test_run_auth_command_handles_authentication_error(capsys):
 def test_run_set_config_command_updates_setting(capsys):
     """Set-config runner persists the boolean feature value."""
     with (
-        patch("perplexity_cli.utils.config.set_feature") as mock_set_feature,
-        patch("perplexity_cli.utils.config.clear_feature_config_cache") as mock_clear_cache,
+        patch("perplexity_cli.runners.config.set_feature") as mock_set_feature,
+        patch("perplexity_cli.runners.config.clear_feature_config_cache") as mock_clear_cache,
     ):
         run_set_config_command("debug_mode", "true")
 
@@ -86,7 +86,7 @@ def test_run_set_config_command_updates_setting(capsys):
 
 def test_run_set_config_command_handles_configuration_error(capsys):
     """Set-config runner maps configuration failures to exit code 1."""
-    with patch("perplexity_cli.utils.config.set_feature") as mock_set_feature:
+    with patch("perplexity_cli.runners.config.set_feature") as mock_set_feature:
         mock_set_feature.side_effect = ConfigurationError("bad config")
 
         with pytest.raises(SystemExit) as exc_info:
@@ -103,11 +103,11 @@ def test_run_show_config_command_displays_config_and_env_overrides(capsys, monke
 
     with (
         patch(
-            "perplexity_cli.utils.config.get_feature_config",
+            "perplexity_cli.runners.config.get_feature_config",
             return_value=FeatureConfig(save_cookies=True, debug_mode=False),
         ),
         patch(
-            "perplexity_cli.utils.config.get_feature_config_path",
+            "perplexity_cli.runners.config.get_feature_config_path",
             return_value=Path("/tmp/config.json"),
         ),
     ):
@@ -132,22 +132,22 @@ def test_run_export_threads_command_forwards_filters_and_writes_csv(capsys):
     output_path = Path("/tmp/threads.csv")
 
     with (
-        patch("perplexity_cli.auth.token_manager.TokenManager", return_value=mock_tm),
+        patch("perplexity_cli.runners.export.TokenManager", return_value=mock_tm),
         patch(
-            "perplexity_cli.utils.config.get_rate_limiting_config",
+            "perplexity_cli.runners.export.get_rate_limiting_config",
             return_value=RateLimitConfig(
                 enabled=False, requests_per_period=20, period_seconds=60.0
             ),
         ),
         patch(
-            "perplexity_cli.threads.cache_manager.ThreadCacheManager",
+            "perplexity_cli.runners.export.ThreadCacheManager",
             return_value=mock_cache_manager,
         ),
         patch(
-            "perplexity_cli.threads.scraper.ThreadScraper", return_value=mock_scraper
+            "perplexity_cli.runners.export.ThreadScraper", return_value=mock_scraper
         ) as mock_scraper_class,
         patch(
-            "perplexity_cli.threads.exporter.write_threads_csv", return_value=output_path
+            "perplexity_cli.runners.export.write_threads_csv", return_value=output_path
         ) as mock_write_csv,
     ):
         run_export_threads_command(
@@ -181,14 +181,14 @@ def test_run_export_threads_command_handles_invalid_date(capsys):
     mock_tm.load_token.return_value = ("token-123", None)
 
     with (
-        patch("perplexity_cli.auth.token_manager.TokenManager", return_value=mock_tm),
+        patch("perplexity_cli.runners.export.TokenManager", return_value=mock_tm),
         patch(
-            "perplexity_cli.utils.config.get_rate_limiting_config",
+            "perplexity_cli.runners.export.get_rate_limiting_config",
             return_value=RateLimitConfig(
                 enabled=False, requests_per_period=20, period_seconds=60.0
             ),
         ),
-        patch("perplexity_cli.threads.cache_manager.ThreadCacheManager", return_value=Mock()),
+        patch("perplexity_cli.runners.export.ThreadCacheManager", return_value=Mock()),
         patch("dateutil.parser.parse", side_effect=ValueError("bad date")),
     ):
         with pytest.raises(SystemExit) as exc_info:
