@@ -26,7 +26,7 @@ import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src" / "perplexity_cli"
@@ -64,7 +64,7 @@ class Violation:
 
 @dataclass
 class AnalysisResult:
-    violations: list[Violation] = field(default_factory=list)
+    violations: list[Violation] = field(default_factory=list[Violation])
     files_checked: int = 0
 
     @property
@@ -122,11 +122,15 @@ def _build_dynamic_allowlist(model: dict[str, Any]) -> dict[str, set[str]]:
     and values are lists of permitted dynamic-import targets.
     """
     allowlist: dict[str, set[str]] = {}
-    dynamic_section = model.get("dynamic_imports", {})
+    dynamic_section: object = model.get("dynamic_imports", {})
     if isinstance(dynamic_section, dict):
-        for source, targets in dynamic_section.items():
+        dynamic_mapping = cast(dict[object, object], dynamic_section)
+        for source, targets in dynamic_mapping.items():
             if isinstance(targets, list):
-                allowlist[source] = {str(t) for t in targets if isinstance(t, str)}
+                typed_targets = cast(list[object], targets)
+                allowlist[str(source)] = {
+                    target for target in typed_targets if isinstance(target, str)
+                }
     return allowlist
 
 

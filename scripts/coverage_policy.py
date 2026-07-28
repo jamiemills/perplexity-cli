@@ -24,7 +24,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import subprocess
+
+# owner: quality-infrastructure; reason: coverage runs through the active Python without a shell
+import subprocess  # nosec B404
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -123,8 +125,9 @@ def _combine_fragments(
     data_files: list[str] = [_copy_to_temp(frag, workdir) for frag in fragments]
 
     env = {"COVERAGE_FILE": str(combined_data)}
-    cmd = ["coverage", "combine", "--keep", *data_files]
-    result = subprocess.run(
+    cmd = [sys.executable, "-m", "coverage", "combine", "--keep", *data_files]
+    # owner: quality-infrastructure; reason: generated fragment paths are passed to the active Python without a shell
+    result = subprocess.run(  # nosec B603
         cmd, capture_output=True, text=True, env=env, cwd=str(workdir), check=False
     )
     if result.returncode != 0:
@@ -142,8 +145,9 @@ def _generate_json_report(combined_data: Path, workdir: Path) -> dict[str, Any]:
     """Run 'coverage json' on the combined data file to produce a report dict."""
     env = {"COVERAGE_FILE": str(combined_data)}
     json_path = workdir / "coverage.json"
-    cmd = ["coverage", "json", "-o", str(json_path)]
-    result = subprocess.run(
+    cmd = [sys.executable, "-m", "coverage", "json", "-o", str(json_path)]
+    # owner: quality-infrastructure; reason: generated report paths are passed to the active Python without a shell
+    result = subprocess.run(  # nosec B603
         cmd, capture_output=True, text=True, env=env, cwd=str(workdir), check=False
     )
     if result.returncode != 0:

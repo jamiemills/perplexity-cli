@@ -17,7 +17,7 @@ from __future__ import annotations
 import ast
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 import grimp
 
@@ -42,6 +42,10 @@ class FileReadError(ImportGraphError):
     """A source file could not be read."""
 
 
+class _GrimpApi(Protocol):
+    def build_graph(self, package_name: str, *, cache_dir: str | None) -> grimp.ImportGraph: ...
+
+
 # ---------------------------------------------------------------------------
 # Grimp graph builder
 # ---------------------------------------------------------------------------
@@ -49,7 +53,8 @@ class FileReadError(ImportGraphError):
 
 def _build_import_graph() -> grimp.ImportGraph:
     """Build and return the Grimp import graph for the project."""
-    return grimp.build_graph(str(PACKAGE_NAME), cache_dir=None)
+    grimp_api = cast(_GrimpApi, grimp)
+    return grimp_api.build_graph(str(PACKAGE_NAME), cache_dir=None)
 
 
 # ---------------------------------------------------------------------------

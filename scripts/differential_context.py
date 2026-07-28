@@ -30,6 +30,9 @@ See also: quality/schemas/differential-context-v1.json
 from __future__ import annotations
 
 import logging
+
+# owner: quality-infrastructure; reason: git argv is structurally delimited and always runs without a shell
+import subprocess  # nosec B404
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -41,6 +44,11 @@ ZERO_BEFORE_SHA = "0000000000000000000000000000000000000000"
 _MIN_SHA_LENGTH = 40
 
 DiffMode = Literal["local", "pr", "push", "dispatch", "ci"]
+
+_ALLOWED_GIT_COMMANDS = frozenset(
+    {"--version", "diff", "diff-index", "log", "merge-base", "rev-parse"}
+)
+_FORBIDDEN_GIT_OPTIONS = frozenset({"-c", "--exec-path", "--ext-diff", "--textconv"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,12 +132,13 @@ def _run_git(
     cwd: Path | None = None,
     timeout_s: float = 30.0,
 ) -> tuple[int, str, str]:
-    import subprocess
-
+    if not _git_args_are_safe(args):
+        return (-1, "", "git arguments rejected by policy")
     cmd = ["git", *args]
     logger.debug("Running: %s", " ".join(cmd))
     try:
-        proc = subprocess.run(
+        # owner: quality-infrastructure; reason: git argv is structurally delimited and shell execution is disabled
+        proc = subprocess.run(  # nosec B603
             cmd,
             cwd=cwd,
             capture_output=True,
@@ -146,12 +155,25 @@ def _run_git(
         return (-3, "", f"git command failed: {exc}")
 
 
+def _git_args_are_safe(args: list[str]) -> bool:
+    """Allow only required git commands and reject execution-capable options."""
+    if not args:
+        return True
+    if args[0] not in _ALLOWED_GIT_COMMANDS:
+        return False
+    return not any(
+        argument in _FORBIDDEN_GIT_OPTIONS
+        or any(character in argument for character in ("\x00", "\n", "\r"))
+        for argument in args
+    )
+
+
 def compute_merge_base(
     base_tip: str,
     head: str,
     cwd: Path | None = None,
 ) -> MergeBase:
-    returncode, stdout, stderr = _run_git(["merge-base", base_tip, head], cwd=cwd)
+    returncode, stdout, stderr = _run_git(["merge-base", "--", base_tip, head], cwd=cwd)
     if returncode != 0:
         details = GitErrorDetails(
             command=f"merge-base {base_tip} {head}",
@@ -173,6 +195,11 @@ def compute_merge_base(
 
 
 def _files_from_empty_tree(to_sha: str, cwd: Path | None = None) -> DiffResult:
+    if not _is_safe_revision(to_sha):
+        return DiffResult(
+            git_error=True,
+            error_details=GitErrorDetails("log --name-only " + to_sha, -1, "invalid revision"),
+        )
     returncode, stdout, stderr = _run_git(["log", "--name-only", "--format=", to_sha], cwd=cwd)
     if returncode != 0:
         return DiffResult(
@@ -186,6 +213,15 @@ def _files_from_empty_tree(to_sha: str, cwd: Path | None = None) -> DiffResult:
     return DiffResult(changed_files=changed, is_empty=not changed)
 
 
+def _is_safe_revision(revision: str) -> bool:
+    """Reject option-like or control-character-bearing git revisions."""
+    return (
+        bool(revision)
+        and not revision.startswith("-")
+        and not any(character in revision for character in ("\x00", "\n", "\r"))
+    )
+
+
 def compute_diff(
     from_sha: str,
     to_sha: str,
@@ -194,7 +230,7 @@ def compute_diff(
     if from_sha == EMPTY_TREE_HASH:
         return _files_from_empty_tree(to_sha, cwd=cwd)
     returncode, stdout, stderr = _run_git(
-        ["diff", "--name-only", f"{from_sha}...{to_sha}"], cwd=cwd
+        ["diff", "--name-only", f"{from_sha}...{to_sha}", "--"], cwd=cwd
     )
     if returncode != 0:
         return DiffResult(
@@ -219,7 +255,7 @@ def compute_full_diff(
 ) -> DiffResult:
     if from_sha == EMPTY_TREE_HASH:
         return _files_from_empty_tree(to_sha, cwd=cwd)
-    returncode, stdout, stderr = _run_git(["diff", f"{from_sha}...{to_sha}"], cwd=cwd)
+    returncode, stdout, stderr = _run_git(["diff", f"{from_sha}...{to_sha}", "--"], cwd=cwd)
     if returncode != 0:
         return DiffResult(
             is_empty=True,

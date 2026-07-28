@@ -13,9 +13,14 @@ Usage
 
 from __future__ import annotations
 
+import argparse
 import json
-import subprocess
+import re
+
+# owner: quality-infrastructure; reason: validated git and radon argv run without a shell
+import subprocess  # nosec B404
 import sys
+import tarfile
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +32,7 @@ DEFAULT_REVISIONS = 10
 
 # Git log format ``%H|%ad|%s`` yields three pipe-delimited fields per commit.
 _EXPECTED_PIPE_PARTS = 3
+_REVISION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +64,10 @@ class MetricSnapshot:
 
 def _git_log(revisions: int) -> list[tuple[str, str, str]]:
     """Return list of (hash, date, message) for the last *revisions* commits."""
-    result = subprocess.run(
+    if revisions <= 0:
+        raise ValueError("revisions must be positive")
+    # owner: quality-infrastructure; reason: validated integer count is passed to fixed git argv without a shell
+    result = subprocess.run(  # nosec B603 B607
         [
             "git",
             "log",
@@ -77,20 +86,13 @@ def _git_log(revisions: int) -> list[tuple[str, str, str]]:
         print("Failed to read git history", file=sys.stderr)
         sys.exit(1)
 
-    entries: list[tuple[str, str, str]] = []
-    for line in result.stdout.strip().split("\n"):
-        if not line:
-            continue
-        parts = line.split("|", 2)
-        if len(parts) == _EXPECTED_PIPE_PARTS:
-            entries.append((parts[0], parts[1], parts[2]))
-
-    return entries
+    return _parse_log_entries(result.stdout)
 
 
 def _git_since(since_date: str) -> list[tuple[str, str, str]]:
     """Return list of (hash, date, message) for commits since *since_date*."""
-    result = subprocess.run(
+    # owner: quality-infrastructure; reason: Git date expression is one argv value and shell execution is disabled
+    result = subprocess.run(  # nosec B603 B607
         [
             "git",
             "log",
@@ -109,8 +111,13 @@ def _git_since(since_date: str) -> list[tuple[str, str, str]]:
         print("Failed to read git history", file=sys.stderr)
         sys.exit(1)
 
+    return _parse_log_entries(result.stdout)
+
+
+def _parse_log_entries(output: str) -> list[tuple[str, str, str]]:
+    """Parse the fixed pipe-delimited git log format."""
     entries: list[tuple[str, str, str]] = []
-    for line in result.stdout.strip().split("\n"):
+    for line in output.strip().split("\n"):
         if not line:
             continue
         parts = line.split("|", 2)
@@ -122,8 +129,12 @@ def _git_since(since_date: str) -> list[tuple[str, str, str]]:
 
 def _checkout_revision(rev: str, tmpdir: str) -> bool:
     """Extract src/ at *rev* into *tmpdir*.  Returns True on success."""
-    result = subprocess.run(
-        ["git", "archive", rev, f"{SRC_DIR}/", f"--output={tmpdir}/src.tar"],
+    if not _is_safe_revision(rev):
+        return False
+    archive_path = Path(tmpdir) / "src.tar"
+    # owner: quality-infrastructure; reason: validated revision and generated path run as fixed git argv
+    result = subprocess.run(  # nosec B603 B607
+        ["git", "archive", rev, f"{SRC_DIR}/", f"--output={archive_path}"],
         capture_output=True,
         text=True,
         cwd=str(PROJECT_ROOT),
@@ -132,13 +143,19 @@ def _checkout_revision(rev: str, tmpdir: str) -> bool:
     if result.returncode != 0:
         return False
 
-    extract = subprocess.run(
-        ["tar", "-xf", f"{tmpdir}/src.tar", "-C", tmpdir],
-        capture_output=True,
-        text=True,
-        check=False,
+    try:
+        with tarfile.open(archive_path) as archive:
+            archive.extractall(tmpdir, filter="data")
+    except (OSError, tarfile.TarError):
+        return False
+    return True
+
+
+def _is_safe_revision(revision: str) -> bool:
+    """Accept normal hashes and refs while rejecting option and ref injection syntax."""
+    return bool(_REVISION_PATTERN.fullmatch(revision)) and not any(
+        token in revision for token in ("..", "@{", "//")
     )
-    return extract.returncode == 0
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +165,8 @@ def _checkout_revision(rev: str, tmpdir: str) -> bool:
 
 def _run_radon_cc(tmpdir: str) -> tuple[int, str]:
     """Run radon cc on the checked-out source in *tmpdir*.  Returns (violations, worst_rank)."""
-    result = subprocess.run(
+    # owner: quality-infrastructure; reason: generated checkout path runs through the active Python without a shell
+    result = subprocess.run(  # nosec B603
         [
             sys.executable,
             "-m",
@@ -176,7 +194,8 @@ def _run_radon_cc(tmpdir: str) -> tuple[int, str]:
 
 def _run_radon_mi(tmpdir: str) -> tuple[int, str]:
     """Run radon mi on the checked-out source in *tmpdir*.  Returns (violations, worst_rank)."""
-    result = subprocess.run(
+    # owner: quality-infrastructure; reason: generated checkout path runs through the active Python without a shell
+    result = subprocess.run(  # nosec B603
         [
             sys.executable,
             "-m",
@@ -321,38 +340,23 @@ def _format_json(snapshots: list[MetricSnapshot]) -> str:
 
 
 def _parse_args(args: list[str]) -> tuple[bool, int, str | None]:
-    json_mode = False
-    revisions = DEFAULT_REVISIONS
-    since_date: str | None = None
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--json":
-            json_mode = True
-        elif arg == "--revisions":
-            i += 1
-            revisions = _parse_int_arg(args, i, "--revisions")
-        elif arg == "--since":
-            i += 1
-            since_date = _parse_since_arg(args, i)
-        i += 1
-
-    return json_mode, revisions, since_date
+    parser = argparse.ArgumentParser(description="Track metrics over git history.")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--revisions", type=_positive_revisions, default=DEFAULT_REVISIONS)
+    parser.add_argument("--since")
+    parsed = parser.parse_args(args)
+    return parsed.json, parsed.revisions, parsed.since
 
 
-def _parse_int_arg(args: list[str], i: int, flag: str) -> int:
-    if i >= len(args):
-        print(f"{flag} requires an integer", file=sys.stderr)
-        sys.exit(2)
-    return int(args[i])
-
-
-def _parse_since_arg(args: list[str], i: int) -> str:
-    if i >= len(args):
-        print("--since requires a date (YYYY-MM-DD)", file=sys.stderr)
-        sys.exit(2)
-    return args[i]
+def _positive_revisions(value: str) -> int:
+    """Parse a positive revision count for argparse."""
+    try:
+        revisions = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if revisions <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return revisions
 
 
 def main() -> None:

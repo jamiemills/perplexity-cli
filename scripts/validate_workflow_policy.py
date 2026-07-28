@@ -34,7 +34,7 @@ import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
@@ -83,6 +83,10 @@ class Strictness(Enum):
     STRICT = "strict"
 
 
+class _YamlLoader(Protocol):
+    def load(self, stream: str) -> object: ...
+
+
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
@@ -120,7 +124,7 @@ class FileReport:
 
     file: str
     parsed: bool
-    findings: list[Finding] = field(default_factory=list)
+    findings: list[Finding] = field(default_factory=list[Finding])
     parse_error: str = ""
 
 
@@ -133,7 +137,7 @@ class PolicyReport:
         strict: Whether warnings should be promoted to errors.
     """
 
-    reports: list[FileReport] = field(default_factory=list)
+    reports: list[FileReport] = field(default_factory=list[FileReport])
     strict: bool = False
 
 
@@ -164,7 +168,7 @@ def _parse_workflow(text: str, yaml_parser: YAML) -> tuple[dict[str, Any] | None
         Tuple of (parsed dict or None, error message or empty string).
     """
     try:
-        loaded = yaml_parser.load(text)
+        loaded = cast(_YamlLoader, yaml_parser).load(text)
     except YAMLError as exc:
         logger.info("YAML parse error: %s", exc)
         return None, str(exc)
@@ -173,7 +177,7 @@ def _parse_workflow(text: str, yaml_parser: YAML) -> tuple[dict[str, Any] | None
         return None, str(exc)
     if not isinstance(loaded, dict):
         return None, "workflow root must be a mapping"
-    return loaded, ""
+    return cast(dict[str, Any], loaded), ""
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +243,8 @@ def _validate_permissions(workflow: dict[str, Any], file_name: str) -> list[Find
     """Check that ``permissions`` exists at workflow or every-job level."""
     if "permissions" in workflow:
         return []
-    jobs = workflow.get("jobs") or {}
+    raw_jobs: object = workflow.get("jobs") or {}
+    jobs = cast(dict[str, Any], raw_jobs) if isinstance(raw_jobs, dict) else {}
     missing = _jobs_missing_permissions(jobs)
     if missing:
         return [
@@ -295,20 +300,24 @@ def _extract_uses_ref(uses_value: Any) -> str | None:
 def _iter_uses(workflow: dict[str, Any]) -> list[tuple[Any, str | None]]:
     """Yield ``(uses_value, job_name)`` pairs for every step's ``uses`` key."""
     pairs: list[tuple[Any, str | None]] = []
-    jobs = workflow.get("jobs") or {}
+    raw_jobs: object = workflow.get("jobs") or {}
+    jobs = cast(dict[str, Any], raw_jobs) if isinstance(raw_jobs, dict) else {}
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
             continue
-        pairs.extend(_iter_job_uses(job, job_name))
+        pairs.extend(_iter_job_uses(cast(dict[str, Any], job), job_name))
     return pairs
 
 
 def _iter_job_uses(job: dict[str, Any], job_name: str) -> list[tuple[Any, str]]:
     """Yield ``(uses_value, job_name)`` pairs for a single job's steps."""
     pairs: list[tuple[Any, str]] = []
-    for step in job.get("steps") or []:
+    raw_steps: object = job.get("steps") or []
+    steps = cast(list[object], raw_steps) if isinstance(raw_steps, list) else []
+    for step in steps:
         if isinstance(step, dict) and "uses" in step:
-            pairs.append((step["uses"], job_name))
+            step_mapping = cast(dict[str, Any], step)
+            pairs.append((step_mapping["uses"], job_name))
     return pairs
 
 

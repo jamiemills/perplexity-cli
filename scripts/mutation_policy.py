@@ -32,10 +32,13 @@ import argparse
 import json
 import logging
 import re
-import subprocess
+
+# owner: quality-infrastructure; reason: only the fixed pinned mutmut command is executed without a shell
+import subprocess  # nosec B404
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 _PROJECT_ROOT_PATH = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT_PATH) not in sys.path:
@@ -307,7 +310,7 @@ def _entry_to_dict(entry: MutantEntry) -> dict[str, str]:
     }
 
 
-def report_to_dict(report: MutationReport) -> dict:
+def report_to_dict(report: MutationReport) -> dict[str, Any]:
     """Serialise a :class:`MutationReport` to a JSON-compatible dict.
 
     Args:
@@ -317,7 +320,7 @@ def report_to_dict(report: MutationReport) -> dict:
         A dict suitable for :func:`json.dumps`. The ``error`` key is only
         included when populated.
     """
-    payload: dict = {
+    payload: dict[str, Any] = {
         "tool": report.tool,
         "version": report.version,
         "total_mutants": report.total_mutants,
@@ -362,7 +365,8 @@ def _run_mutmut(args: tuple[str, ...]) -> str:
     cmd = [*_MUTMUT_PREFIX, *args]
     logger.info("Running: %s", " ".join(cmd))
     try:
-        result = subprocess.run(
+        # owner: quality-infrastructure; reason: args are restricted to the mutmut helper contracts and shell is disabled
+        result = subprocess.run(  # nosec B603
             cmd,
             capture_output=True,
             text=True,

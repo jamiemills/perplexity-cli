@@ -28,7 +28,9 @@ import argparse
 import json
 import logging
 import re
-import subprocess
+
+# owner: quality-infrastructure; reason: fixed make database query runs without a shell
+import subprocess  # nosec B404
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -90,6 +92,10 @@ class ReportFormat(Enum):
     TEXT = "text"
 
 
+class MakefileSchemaError(ValueError):
+    """A non-canonical Makefile uses syntax the safe parser cannot model."""
+
+
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
@@ -138,8 +144,8 @@ class MakeReport:
     """
 
     makefile: str
-    targets: dict[str, MakeTarget] = field(default_factory=dict)
-    findings: list[Finding] = field(default_factory=list)
+    targets: dict[str, MakeTarget] = field(default_factory=dict[str, MakeTarget])
+    findings: list[Finding] = field(default_factory=list[Finding])
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +158,30 @@ class MakeReport:
 _TARGET_RULE_PATTERN: re.Pattern[str] = re.compile(
     r"^(?P<targets>[^\s=:][^\s=]*(:?\s[^\s=:][^\s=]*)*):\s*(?P<rest>.*)$"
 )
+_VARIABLE_ASSIGNMENT_PATTERN = re.compile(
+    r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?P<operator>:=|=)\s*(?P<value>.*)$"
+)
+_TARGET_SPECIFIC_ASSIGNMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\s*(?:::=|:=|\?=|\+=|=)")
+_VARIABLE_REFERENCE_PATTERN = re.compile(r"\$\((?P<paren>[^()]*)\)|\$\{(?P<brace>[^{}]*)\}")
+_VARIABLE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_UNSUPPORTED_DIRECTIVE_PATTERN = re.compile(
+    r"^(?:-?include|sinclude|ifeq|ifneq|ifdef|ifndef|else|endif|define|endef|override|export|unexport)\b"
+)
+
+
+def _new_string_lists() -> dict[str, list[str]]:
+    """Create a string-keyed list accumulator."""
+    return defaultdict(list)
+
+
+@dataclass(slots=True)
+class _SourceParseState:
+    """Mutable state for safe Makefile source parsing."""
+
+    variables: dict[str, str] = field(default_factory=dict[str, str])
+    prereqs: dict[str, list[str]] = field(default_factory=_new_string_lists)
+    recipes: dict[str, list[str]] = field(default_factory=_new_string_lists)
+    current_targets: tuple[str, ...] = ()
 
 
 def parse_make_database(text: str) -> dict[str, MakeTarget]:
@@ -169,6 +199,126 @@ def parse_make_database(text: str) -> dict[str, MakeTarget]:
     recipes: dict[str, list[str]] = defaultdict(list)
     _accumulate_lines(text.splitlines(), prereqs, recipes)
     return _build_targets(prereqs, recipes)
+
+
+def parse_makefile_source(text: str) -> dict[str, MakeTarget]:
+    """Safely parse the supported static subset of Makefile source syntax."""
+    state = _SourceParseState()
+    for line in _logical_source_lines(text):
+        _consume_source_line(line, state)
+    return _build_targets(state.prereqs, state.recipes)
+
+
+def _logical_source_lines(text: str) -> list[str]:
+    """Join backslash continuations outside recipes."""
+    physical_lines = text.splitlines()
+    logical_lines: list[str] = []
+    index = 0
+    while index < len(physical_lines):
+        line = physical_lines[index]
+        index += 1
+        if line.startswith("\t"):
+            logical_lines.append(line)
+            continue
+        while line.rstrip().endswith("\\"):
+            if index >= len(physical_lines):
+                raise MakefileSchemaError("unterminated backslash continuation")
+            line = line.rstrip()[:-1] + " " + physical_lines[index].strip()
+            index += 1
+        logical_lines.append(line)
+    return logical_lines
+
+
+def _consume_source_line(line: str, state: _SourceParseState) -> None:
+    """Consume one logical source line into parser state."""
+    if line.startswith("\t"):
+        _associate_source_recipe(line[1:], state)
+        return
+    statement = line.split("#", 1)[0].strip()
+    if not statement:
+        return
+    if _UNSUPPORTED_DIRECTIVE_PATTERN.match(statement):
+        raise MakefileSchemaError(f"unsupported Make directive: {statement}")
+    assignment = _VARIABLE_ASSIGNMENT_PATTERN.match(statement)
+    if assignment is not None:
+        _record_source_variable(assignment, state)
+        return
+    state.current_targets = _record_source_rule(statement, state)
+
+
+def _associate_source_recipe(recipe: str, state: _SourceParseState) -> None:
+    """Associate one recipe line with every target in the preceding rule."""
+    if not state.current_targets:
+        raise MakefileSchemaError("recipe has no preceding supported target rule")
+    for target in state.current_targets:
+        state.recipes[target].append(recipe)
+
+
+def _record_source_variable(match: re.Match[str], state: _SourceParseState) -> None:
+    """Record a simple recursive or immediate variable assignment."""
+    name = match.group("name")
+    value = match.group("value").strip()
+    if match.group("operator") == ":=":
+        value = _expand_source_variables(value, state.variables)
+    state.variables[name] = value
+    state.current_targets = ()
+
+
+def _record_source_rule(statement: str, state: _SourceParseState) -> tuple[str, ...]:
+    """Expand and record one static target rule."""
+    expanded = _expand_source_variables(statement, state.variables)
+    _reject_basic_rule_syntax(expanded, statement)
+    match = _TARGET_RULE_PATTERN.match(expanded)
+    if match is None:
+        raise MakefileSchemaError(f"unrecognised Makefile statement: {statement}")
+    _reject_target_specific_assignment(match, statement)
+    _reject_double_colon_rule(expanded, statement)
+    names, prereqs = _extract_target_pieces(match)
+    if names == [".PHONY"]:
+        return ()
+    if not names or any(name.startswith(".") for name in names):
+        raise MakefileSchemaError(f"unsupported special target rule: {statement}")
+    _accumulate_rule(_pair_targets_with_prereqs(names, prereqs), state.prereqs)
+    return tuple(names)
+
+
+def _reject_basic_rule_syntax(expanded: str, statement: str) -> None:
+    """Reject unsupported static rule operators except target assignments."""
+    if any(token in expanded for token in (";", "|", "%")):
+        raise MakefileSchemaError(f"unsupported target rule syntax: {statement}")
+
+
+def _reject_double_colon_rule(expanded: str, statement: str) -> None:
+    """Reject double-colon rules after target assignment detection."""
+    if "::" in expanded:
+        raise MakefileSchemaError(f"unsupported target rule syntax: {statement}")
+
+
+def _reject_target_specific_assignment(match: re.Match[str], statement: str) -> None:
+    """Reject target-specific variable assignment operators."""
+    if _TARGET_SPECIFIC_ASSIGNMENT_PATTERN.match(match.group("rest").strip()):
+        raise MakefileSchemaError(f"unsupported target-specific variable assignment: {statement}")
+
+
+def _expand_source_variables(
+    value: str,
+    variables: dict[str, str],
+    stack: tuple[str, ...] = (),
+) -> str:
+    """Expand simple Make variable references and reject dynamic functions."""
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group("paren") or match.group("brace")
+        if not _VARIABLE_NAME_PATTERN.fullmatch(name):
+            raise MakefileSchemaError(f"unsupported dynamic Make expression: {match.group(0)}")
+        if name in stack:
+            raise MakefileSchemaError(f"cyclic Make variable reference: {name}")
+        return _expand_source_variables(variables.get(name, ""), variables, (*stack, name))
+
+    expanded = _VARIABLE_REFERENCE_PATTERN.sub(replace, value)
+    if "$" in expanded:
+        raise MakefileSchemaError(f"unsupported Make expansion: {expanded}")
+    return expanded
 
 
 def _accumulate_lines(
@@ -300,12 +450,10 @@ _MAKE_TIMEOUT_S = 30
 
 
 def _run_make_database(makefile: Path) -> str:
-    """Run ``make -p -f <makefile>`` and return its stdout.
+    """Return parseable target text without executing caller-controlled Makefiles.
 
-    A non-existent target is requested so the default goal is not executed;
-    we only want the database, not the recipes. Make exits 2 with "No rule
-    to make target" — that is expected and harmless because the database is
-    still printed to stdout before the failure.
+    The canonical repository Makefile is trusted and expanded with ``make -p``.
+    Every other file is read directly and parsed without invoking Make.
 
     Args:
         makefile: Path to the Makefile to inspect.
@@ -320,16 +468,21 @@ def _run_make_database(makefile: Path) -> str:
             (e.g. invalid Makefile syntax that fails before printing).
         subprocess.TimeoutExpired: If the invocation exceeds the timeout.
     """
+    resolved_makefile = makefile.resolve(strict=True)
+    canonical_makefile = DEFAULT_MAKEFILE.resolve(strict=True)
+    if resolved_makefile != canonical_makefile:
+        return makefile.read_text(encoding="utf-8")
     cmd: list[str] = [
         "make",
         "-p",
         "-f",
-        str(makefile),
+        str(canonical_makefile),
         _DATABASE_QUERY_TARGET,
     ]
     logger.info("Running: %s", " ".join(cmd))
     try:
-        result = subprocess.run(
+        # owner: quality-infrastructure; reason: only the resolved trusted repository Makefile is queried
+        result = subprocess.run(  # nosec B603
             cmd,
             capture_output=True,
             text=True,
@@ -533,8 +686,11 @@ def analyse_makefile(makefile: Path, spec: PolicySpec) -> MakeReport:
     Returns:
         A :class:`MakeReport` with parsed targets and findings.
     """
-    text = _run_make_database(makefile)
-    targets = parse_make_database(text)
+    resolved_makefile = makefile.resolve(strict=True)
+    if resolved_makefile == DEFAULT_MAKEFILE.resolve(strict=True):
+        targets = parse_make_database(_run_make_database(makefile))
+    else:
+        targets = parse_makefile_source(makefile.read_text(encoding="utf-8"))
     findings = run_policy(targets, spec)
     return MakeReport(makefile=str(makefile), targets=targets, findings=findings)
 
@@ -691,6 +847,9 @@ def _build_report_safely(makefile: Path) -> MakeReport | None:
         return None
     except subprocess.CalledProcessError as exc:
         sys.stderr.write(f"make failed: {exc}\n")
+        return None
+    except MakefileSchemaError as exc:
+        sys.stderr.write(f"unsupported Makefile schema: {exc}\n")
         return None
 
 

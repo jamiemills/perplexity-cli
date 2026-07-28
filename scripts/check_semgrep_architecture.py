@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
+
+# owner: quality-infrastructure; reason: pinned Semgrep architecture scan runs without a shell
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _ratchet import (
@@ -59,8 +62,9 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _fingerprint(result: dict) -> str:
-    start = result.get("start", {})
+def _fingerprint(result: dict[str, Any]) -> str:
+    raw_start: object = result.get("start", {})
+    start = cast(dict[str, Any], raw_start) if isinstance(raw_start, dict) else {}
     result_path = Path(str(result.get("path", "?")))
     try:
         display_path = result_path.relative_to(PROJECT_ROOT)
@@ -75,16 +79,29 @@ def _fingerprint(result: dict) -> str:
 
 def _parse_results(stdout: str, stderr: str) -> list[str]:
     try:
-        semgrep_payload = json.loads(stdout or "{}")
+        raw_payload: object = json.loads(stdout or "{}")
     except json.JSONDecodeError as error:
         message = stderr.strip() or "Semgrep produced unparseable JSON output."
         raise RuntimeError(message) from error
+    if not isinstance(raw_payload, dict):
+        raise RuntimeError("Semgrep JSON output is not an object.")
+    semgrep_payload = cast(dict[str, Any], raw_payload)
     errors = semgrep_payload.get("errors", [])
     if errors:
         raise RuntimeError(f"Semgrep reported analysis errors: {errors}")
-    results = semgrep_payload.get("results", [])
-    arch_results = [r for r in results if r.get("check_id") in ARCH_RULE_IDS]
+    results = _validated_results(semgrep_payload.get("results", []))
+    arch_results = [result for result in results if result.get("check_id") in ARCH_RULE_IDS]
     return sorted({_fingerprint(r) for r in arch_results})
+
+
+def _validated_results(raw_results: object) -> list[dict[str, Any]]:
+    """Validate and type-narrow Semgrep's result list."""
+    if not isinstance(raw_results, list):
+        raise RuntimeError("Semgrep results field is not a list.")
+    typed_results = cast(list[object], raw_results)
+    if any(not isinstance(item, dict) for item in typed_results):
+        raise RuntimeError("Semgrep results field contains a non-object result.")
+    return [cast(dict[str, Any], item) for item in typed_results]
 
 
 def collect_findings() -> list[str]:
@@ -103,7 +120,8 @@ def collect_findings() -> list[str]:
         "--metrics=off",
         str(PRODUCTION_SOURCE),
     ]
-    result = subprocess.run(
+    # owner: quality-infrastructure; reason: fixed pinned Semgrep argv runs without a shell
+    result = subprocess.run(  # nosec B603
         cmd,
         capture_output=True,
         text=True,

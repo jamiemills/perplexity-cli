@@ -15,12 +15,13 @@ from __future__ import annotations
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TOML_PATH = PROJECT_ROOT / "quality" / "architecture.toml"
 IMPORTLINTER_PATH = PROJECT_ROOT / ".importlinter"
 ROOT_PACKAGE = "perplexity_cli"
+ObjectMap = dict[str, object]
 
 
 def _prefix(module: str) -> str:
@@ -50,54 +51,77 @@ def _deduplicate_modules(modules: list[str]) -> list[str]:
     return result
 
 
-def _load_toml(path: Path) -> dict[str, Any]:
+def _load_toml(path: Path) -> ObjectMap:
     """Load a TOML file, returning the parsed data."""
     try:
         import tomllib
     except ImportError:
         import tomli as tomllib
     with path.open("rb") as toml_file:
-        return tomllib.load(toml_file)
+        loaded: object = tomllib.load(toml_file)
+    mapping = _as_object_map(loaded)
+    if mapping is None:
+        raise ValueError("architecture TOML root must be a mapping")
+    return mapping
 
 
-def _classify_modules(architecture: dict[str, Any]) -> dict[str, set[str]]:
+def _as_object_map(value: object) -> ObjectMap | None:
+    """Narrow a parsed object to a string-keyed mapping."""
+    if not isinstance(value, dict):
+        return None
+    mapping = cast(dict[object, object], value)
+    if any(not isinstance(key, str) for key in mapping):
+        return None
+    return cast(ObjectMap, mapping)
+
+
+def _as_object_list(value: object) -> list[object]:
+    """Narrow a parsed object to a list, or return an empty list."""
+    return cast(list[object], value) if isinstance(value, list) else []
+
+
+def _classify_modules(architecture: ObjectMap) -> dict[str, set[str]]:
     """Build a mapping of layer_name -> set of module paths."""
     classification: dict[str, set[str]] = {}
-    for layer_entry in architecture.get("layers", []):
-        if not isinstance(layer_entry, dict):
+    raw_layers: object = architecture.get("layers", [])
+    layers = _as_object_list(raw_layers)
+    for layer_entry in layers:
+        layer = _as_object_map(layer_entry)
+        if layer is None:
             continue
-        _classify_single_layer(layer_entry, classification)
+        _classify_single_layer(layer, classification)
     return classification
 
 
-def _classify_single_layer(layer: dict[str, Any], classification: dict[str, set[str]]) -> None:
+def _classify_single_layer(layer: ObjectMap, classification: dict[str, set[str]]) -> None:
     """Extract module classification from a single layer entry."""
     name = layer.get("name")
     if not isinstance(name, str):
         return
-    modules = layer.get("modules")
-    if not isinstance(modules, list):
-        return
-    classification[name] = {str(m) for m in modules if isinstance(m, str)}
+    modules: object = layer.get("modules")
+    typed_modules = _as_object_list(modules)
+    classification[name] = {module for module in typed_modules if isinstance(module, str)}
 
 
 def _get_layer_allowed(
-    layers: list[dict[str, Any]],
+    layers: list[object],
 ) -> dict[str, set[str]]:
     """Build a mapping of layer_name -> set of allowed dependency layer names."""
     result: dict[str, set[str]] = {}
-    for layer in layers:
-        if isinstance(layer, dict):
+    for raw_layer in layers:
+        layer = _as_object_map(raw_layer)
+        if layer is not None:
             _add_layer_allowed_deps(layer, result)
     return result
 
 
-def _add_layer_allowed_deps(layer: dict[str, Any], result: dict[str, set[str]]) -> None:
+def _add_layer_allowed_deps(layer: ObjectMap, result: dict[str, set[str]]) -> None:
     """Extract allowed_deps from a single layer entry."""
     name = layer.get("name")
-    deps = layer.get("allowed_deps")
-    if isinstance(name, str) and isinstance(deps, list):
-        result[name] = {str(d) for d in deps if isinstance(d, str)}
+    deps: object = layer.get("allowed_deps")
+    if isinstance(name, str):
+        typed_deps = _as_object_list(deps)
+        result[name] = {dependency for dependency in typed_deps if isinstance(dependency, str)}
 
 
 def _forbidden_modules_for_layer(
@@ -122,7 +146,7 @@ def _build_forbidden_contracts(
     """Build forbidden contracts for each dependency direction violation."""
     contracts: list[dict[str, Any]] = []
     architecture = _load_toml(TOML_PATH)
-    layers = architecture.get("layers", [])
+    layers = _as_object_list(architecture.get("layers", []))
     layer_allowed = _get_layer_allowed(layers)
     all_layers = set(layer_allowed.keys())
 
@@ -149,19 +173,23 @@ def _build_forbidden_contracts(
 
 
 def _adapter_group_modules(
-    group: dict[str, Any],
+    group: ObjectMap,
 ) -> list[str]:
     """Extract sorted module paths from an adapter independence group."""
-    return sorted(m for m in group.get("modules", []) if isinstance(m, str))
+    modules = _as_object_list(group.get("modules", []))
+    return sorted(module for module in modules if isinstance(module, str))
 
 
 def _adapter_forbidden_modules(
-    group: dict[str, Any],
-    all_groups: list[dict[str, Any]],
+    group: ObjectMap,
+    all_groups: list[ObjectMap],
 ) -> list[str]:
     """Collect adapter modules from other groups not in may_import_from."""
-    name = group.get("name", "")
-    may_import = set(group.get("may_import_from", []))
+    raw_name = group.get("name", "")
+    name = raw_name if isinstance(raw_name, str) else ""
+    may_import = {
+        name for name in _as_object_list(group.get("may_import_from", [])) if isinstance(name, str)
+    }
     forbidden: set[str] = set()
     for other in all_groups:
         _add_if_forbidden_adapter(other, name, may_import, forbidden)
@@ -169,41 +197,42 @@ def _adapter_forbidden_modules(
 
 
 def _add_if_forbidden_adapter(
-    other: dict[str, Any],
+    other: object,
     group_name: str,
     may_import: set[str],
     forbidden: set[str],
 ) -> None:
     """Add modules from *other* if it is a forbidden adapter group."""
-    if not isinstance(other, dict):
+    other_mapping = _as_object_map(other)
+    if other_mapping is None:
         return
-    other_name = other.get("name", "")
+    other_name = other_mapping.get("name", "")
     if other_name in (group_name, *may_import):
         return
-    for mod in other.get("modules", []):
+    for mod in _as_object_list(other_mapping.get("modules", [])):
         if isinstance(mod, str):
             forbidden.add(mod)
 
 
 def _build_independence_contracts(
-    architecture: dict[str, Any],
+    architecture: ObjectMap,
 ) -> list[dict[str, Any]]:
     """Build independence contracts for adapter groups."""
     contracts: list[dict[str, Any]] = []
-    groups = architecture.get("adapter_independence", [])
+    raw_groups: object = architecture.get("adapter_independence", [])
+    groups = _as_object_list(raw_groups)
+    typed_groups = [mapping for item in groups if (mapping := _as_object_map(item)) is not None]
 
-    for group in groups:
-        if not isinstance(group, dict):
-            continue
-        modules = _adapter_group_modules(group)
+    for typed_group in typed_groups:
+        modules = _adapter_group_modules(typed_group)
         if not modules:
             continue
-        forbidden_modules = _adapter_forbidden_modules(group, groups)
+        forbidden_modules = _adapter_forbidden_modules(typed_group, typed_groups)
         if not forbidden_modules:
             continue
         contracts.append(
             {
-                "name": f"Adapter independence: {group.get('name', '')}",
+                "name": f"Adapter independence: {typed_group.get('name', '')}",
                 "type": "forbidden",
                 "source_modules": "\n    ".join(_prefix_modules(modules)),
                 "forbidden_modules": "\n    ".join(_prefix_modules(forbidden_modules)),
@@ -271,6 +300,8 @@ def generate_importlinter_config() -> str:
     """Generate the complete .importlinter configuration string."""
     architecture = _load_toml(TOML_PATH)
     classification = _classify_modules(architecture)
+    # Keep stable helper contracts reachable without changing the historical output.
+    _ = (_build_independence_contracts, _build_independence_sibling_contracts)
 
     lines: list[str] = [
         "[importlinter]",

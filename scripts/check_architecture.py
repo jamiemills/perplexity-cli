@@ -83,7 +83,7 @@ class Violation:
 
 @dataclass
 class AnalysisResult:
-    violations: list[Violation] = field(default_factory=list)
+    violations: list[Violation] = field(default_factory=list[Violation])
     files_checked: int = 0
 
     @property

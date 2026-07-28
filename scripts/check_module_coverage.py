@@ -29,7 +29,7 @@ import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -167,12 +167,13 @@ def _check_modules(
     coverage_data: dict[str, Any], min_coverage: float
 ) -> list[tuple[str, float, int, int]]:
     """Return a list of (module, percentage, statements, missing) for failing modules."""
-    files = coverage_data.get("files")
+    files: object = coverage_data.get("files")
     if not isinstance(files, dict) or not files:
         msg = "Coverage report contains no module entries."
         raise ValueError(msg)
     failures: list[tuple[str, float, int, int]] = []
-    for filepath, entry in sorted(files.items()):
+    typed_files = cast(dict[str, Any], files)
+    for filepath, entry in sorted(typed_files.items()):
         result = _check_module_entry(filepath, entry, min_coverage)
         if result is not None:
             failures.append(result)
@@ -185,12 +186,12 @@ def _check_modules(
 
 
 def _entry_as_dict(entry: Any) -> dict[str, Any]:
-    return entry if isinstance(entry, dict) else {}
+    return cast(dict[str, Any], entry) if isinstance(entry, dict) else {}
 
 
 def _summary_from_entry(entry: dict[str, Any]) -> dict[str, Any]:
     summary = entry.get("summary")
-    return summary if isinstance(summary, dict) else {}
+    return cast(dict[str, Any], summary) if isinstance(summary, dict) else {}
 
 
 def _is_python_source(fp: str) -> bool:
@@ -315,20 +316,21 @@ def validate_report(
     root = src_root or SRC_ROOT
     errors: list[str] = []
 
-    files = coverage_data.get("files")
+    files: object = coverage_data.get("files")
     if not isinstance(files, dict) or not files:
         errors.append("Coverage report contains no module entries.")
         return errors
 
-    meta = coverage_data.get("meta")
-    meta_dict: dict[str, Any] = meta if isinstance(meta, dict) else {}
+    typed_files = cast(dict[str, Any], files)
+    meta: object = coverage_data.get("meta")
+    meta_dict = cast(dict[str, Any], meta) if isinstance(meta, dict) else {}
     config = _ValidationConfig(
         min_coverage=min_coverage,
         branch_enabled=bool(meta_dict.get("branch_coverage", False)),
     )
 
     source_modules = _enumerate_source_modules(root)
-    report_paths = _process_report_entries(files, source_modules, config, errors)
+    report_paths = _process_report_entries(typed_files, source_modules, config, errors)
     _check_missing_executable(source_modules, report_paths, errors)
     _log_missing_statement_free(source_modules, report_paths)
     return errors

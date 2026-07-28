@@ -9,8 +9,8 @@ Usage::
     uv run python scripts/semgrep_policy.py --blocking [configs...]
     uv run python scripts/semgrep_policy.py --advisory  [configs...]
 
-All additional arguments after the mode flag are forwarded to Semgrep as-is
-(configs, severity, excludes, targets, etc.).
+Semgrep arguments are restricted to the declared invocation schema: repeated
+configs, severities and excludes, optional JSON/SARIF output paths, and targets.
 
 Exit codes (classified):
     0 — clean: no blocking findings
@@ -18,18 +18,22 @@ Exit codes (classified):
     2 — malformed: Semgrep JSON unparseable
     3 — timeout: Semgrep process timed out
     4 — missing-config: required config file not found
-    5 — internal-error: unexpected failure or Semgrep errors array
+    5 — internal-error: invocation contract failure, unexpected failure, or
+        Semgrep errors array
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import subprocess
+
+# owner: quality-infrastructure; reason: pinned Semgrep runs as validated argv without a shell
+import subprocess  # nosec B404
 import sys
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TIMEOUT = 180
@@ -55,6 +59,46 @@ class PolicyMode(Enum):
     ADVISORY = "advisory"
 
 
+class SemgrepInvocationError(ValueError):
+    """The requested Semgrep invocation is outside the supported schema."""
+
+
+class _InvocationParser(argparse.ArgumentParser):
+    """Argument parser that reports errors through policy classification."""
+
+    def error(self, message: str) -> NoReturn:
+        raise SemgrepInvocationError(message)
+
+
+@dataclass(frozen=True, slots=True)
+class SemgrepInvocation:
+    """Validated Semgrep scanner arguments."""
+
+    configs: tuple[str, ...] = ()
+    severities: tuple[str, ...] = ()
+    excludes: tuple[str, ...] = ()
+    json_outputs: tuple[str, ...] = ()
+    sarif_outputs: tuple[str, ...] = ()
+    targets: tuple[str, ...] = ()
+
+    def to_argv(self) -> list[str]:
+        """Render the validated invocation as Semgrep argv."""
+        argv: list[str] = []
+        _append_options(argv, "--config", self.configs)
+        _append_options(argv, "--severity", self.severities)
+        _append_options(argv, "--exclude", self.excludes)
+        _append_options(argv, "--json-output", self.json_outputs)
+        _append_options(argv, "--sarif-output", self.sarif_outputs)
+        argv.extend(self.targets)
+        return argv
+
+
+def _append_options(argv: list[str], option: str, values: tuple[str, ...]) -> None:
+    """Append repeated option/value pairs to argv."""
+    for value in values:
+        argv.extend((option, value))
+
+
 def _validate_install() -> None:
     """Verify the pinned Semgrep binary is invocable before running scans.
 
@@ -63,7 +107,8 @@ def _validate_install() -> None:
     ``subprocess.TimeoutExpired``.
     """
     try:
-        result = subprocess.run(
+        # owner: quality-infrastructure; reason: fixed pinned Semgrep version probe runs without a shell
+        result = subprocess.run(  # nosec B603 B607
             [
                 "uvx",
                 "--from",
@@ -93,17 +138,20 @@ def _run_semgrep(
     timeout: int,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Semgrep with the canonical JSON flags and return the result."""
+    invocation = _parse_semgrep_invocation(semgrep_args)
+    _validate_timeout(timeout)
     cmd = [
         "uvx",
         "--from",
         f"semgrep=={SEMGREP_VERSION}",
         "semgrep",
-        *semgrep_args,
+        *invocation.to_argv(),
         "--json",
         "--quiet",
         "--metrics=off",
     ]
-    return subprocess.run(
+    # owner: quality-infrastructure; reason: all forwarded argv passed the typed Semgrep invocation schema
+    return subprocess.run(  # nosec B603
         cmd,
         capture_output=True,
         text=True,
@@ -111,6 +159,53 @@ def _run_semgrep(
         timeout=timeout,
         check=False,
     )
+
+
+def _scanner_parser() -> argparse.ArgumentParser:
+    """Build the fail-closed parser for supported Semgrep arguments."""
+    parser = _InvocationParser(add_help=False, allow_abbrev=False)
+    parser.add_argument("--config", action="append", default=[])
+    parser.add_argument(
+        "--severity", action="append", choices=("ERROR", "WARNING", "INFO"), default=[]
+    )
+    parser.add_argument("--exclude", action="append", default=[])
+    parser.add_argument("--json-output", action="append", default=[])
+    parser.add_argument("--sarif-output", action="append", default=[])
+    parser.add_argument("targets", nargs="*")
+    return parser
+
+
+def _parse_semgrep_invocation(semgrep_args: list[str]) -> SemgrepInvocation:
+    """Parse supported scanner arguments into a typed invocation."""
+    args = _scanner_parser().parse_args(semgrep_args)
+    values = (*args.config, *args.exclude, *args.json_output, *args.sarif_output, *args.targets)
+    if any(not _safe_argv_value(value) for value in values):
+        raise SemgrepInvocationError(
+            "Semgrep argument values must be non-empty and free of control characters."
+        )
+    return SemgrepInvocation(
+        configs=tuple(args.config),
+        severities=tuple(args.severity),
+        excludes=tuple(args.exclude),
+        json_outputs=tuple(args.json_output),
+        sarif_outputs=tuple(args.sarif_output),
+        targets=tuple(args.targets),
+    )
+
+
+def _safe_argv_value(value: str) -> bool:
+    """Return whether a scanner argument is safe as one non-option argv value."""
+    return (
+        bool(value)
+        and not value.startswith("-")
+        and not any(character in value for character in ("\x00", "\n", "\r"))
+    )
+
+
+def _validate_timeout(timeout: int) -> None:
+    """Reject non-positive scanner timeouts through invocation classification."""
+    if timeout <= 0:
+        raise SemgrepInvocationError("timeout must be greater than zero")
 
 
 def _fail_malformed(message: str, result: subprocess.CompletedProcess[str]) -> NoReturn:
@@ -123,18 +218,21 @@ def _fail_malformed(message: str, result: subprocess.CompletedProcess[str]) -> N
 
 def _parse_output(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     """Parse Semgrep stdout as JSON; exit malformed on empty/unparseable output."""
-    stdout = result.stdout
-    if stdout is None or not stdout.strip():
+    stdout = cast(object, result.stdout)
+    if stdout is None or not isinstance(stdout, str) or not stdout.strip():
         _fail_malformed("Semgrep produced empty output.\n", result)
     try:
-        return json.loads(stdout)
+        decoded: object = json.loads(stdout)
     except json.JSONDecodeError as exc:
         _fail_malformed(f"Semgrep produced unparseable JSON: {exc}\n", result)
+    if not isinstance(decoded, dict):
+        _fail_malformed("Semgrep JSON root must be an object.\n", result)
+    return cast(dict[str, Any], decoded)
 
 
 def _check_errors(semgrep_output: dict[str, Any]) -> None:
     """Exit with internal-error if Semgrep reported any analysis errors."""
-    errors = semgrep_output.get("errors", [])
+    errors = _require_list_field(semgrep_output, "errors")
     if errors:
         sys.stderr.write(f"Semgrep reported {len(errors)} analysis error(s):\n")
         for error in errors:
@@ -142,10 +240,33 @@ def _check_errors(semgrep_output: dict[str, Any]) -> None:
         sys.exit(EXIT_INTERNAL_ERROR)
 
 
+def _require_list_field(semgrep_output: dict[str, Any], field_name: str) -> list[object]:
+    """Return a list field or classify the scanner output as malformed."""
+    value: object = semgrep_output.get(field_name, [])
+    if not isinstance(value, list):
+        sys.stderr.write(f"Semgrep JSON field '{field_name}' must be a list.\n")
+        sys.exit(EXIT_MALFORMED)
+    return cast(list[object], value)
+
+
+def _results_from_output(semgrep_output: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate and return Semgrep result objects."""
+    results = _require_list_field(semgrep_output, "results")
+    if any(not isinstance(result, dict) for result in results):
+        sys.stderr.write("Semgrep JSON field 'results' must contain only objects.\n")
+        sys.exit(EXIT_MALFORMED)
+    return [cast(dict[str, Any], result) for result in results]
+
+
 def _fail_internal(message: str) -> NoReturn:
     """Write an internal-error diagnostic and exit with EXIT_INTERNAL_ERROR."""
     sys.stderr.write(message)
     sys.exit(EXIT_INTERNAL_ERROR)
+
+
+def _fail_invocation(error: SemgrepInvocationError) -> NoReturn:
+    """Report an invocation contract failure as an internal/config error."""
+    _fail_internal(f"Invalid Semgrep invocation: {error}\n")
 
 
 def _register_rule(
@@ -280,6 +401,8 @@ def _run_and_classify(
     """
     try:
         result = _run_semgrep(semgrep_args, timeout)
+    except SemgrepInvocationError as exc:
+        _fail_invocation(exc)
     except subprocess.TimeoutExpired:
         sys.stderr.write(f"Semgrep timed out after {timeout}s.\n")
         sys.exit(EXIT_TIMEOUT)
@@ -292,14 +415,14 @@ def _run_and_classify(
     _check_errors(semgrep_output)
 
     policy = _load_policy()
-    results = semgrep_output.get("results", [])
+    results = _results_from_output(semgrep_output)
     return _classify(results, policy)
 
 
 def main() -> None:
     """Parse args, run Semgrep, classify findings, and exit with status code."""
-    parser = argparse.ArgumentParser(
-        description="Canonical Semgrep wrapper with policy enforcement."
+    parser = _InvocationParser(
+        description="Canonical Semgrep wrapper with policy enforcement.", allow_abbrev=False
     )
     mode_group = parser.add_mutually_exclusive_group(required=True)
     mode_group.add_argument(
@@ -314,10 +437,34 @@ def main() -> None:
         default=DEFAULT_TIMEOUT,
         help=f"Process timeout in seconds (default: {DEFAULT_TIMEOUT}).",
     )
-    args, semgrep_args = parser.parse_known_args()
+    parser.add_argument("--config", action="append", default=[])
+    parser.add_argument(
+        "--severity", action="append", choices=("ERROR", "WARNING", "INFO"), default=[]
+    )
+    parser.add_argument("--exclude", action="append", default=[])
+    parser.add_argument("--json-output", action="append", default=[])
+    parser.add_argument("--sarif-output", action="append", default=[])
+    parser.add_argument("targets", nargs="*")
+    try:
+        args = parser.parse_args()
+    except SemgrepInvocationError as exc:
+        _fail_invocation(exc)
+    invocation = SemgrepInvocation(
+        configs=tuple(args.config),
+        severities=tuple(args.severity),
+        excludes=tuple(args.exclude),
+        json_outputs=tuple(args.json_output),
+        sarif_outputs=tuple(args.sarif_output),
+        targets=tuple(args.targets),
+    )
+    try:
+        _parse_semgrep_invocation(invocation.to_argv())
+        _validate_timeout(args.timeout)
+    except SemgrepInvocationError as exc:
+        _fail_invocation(exc)
 
     _validate_install()
-    blocking, advisory = _run_and_classify(semgrep_args, args.timeout)
+    blocking, advisory = _run_and_classify(invocation.to_argv(), args.timeout)
     _report(blocking, advisory, args.blocking)
 
     if args.blocking and blocking:

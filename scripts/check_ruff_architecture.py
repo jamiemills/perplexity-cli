@@ -20,9 +20,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
+
+# owner: quality-infrastructure; reason: fixed Ruff architecture scan runs without a shell
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _ratchet import (
@@ -56,9 +59,10 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _fingerprint(diagnostic: dict) -> str:
+def _fingerprint(diagnostic: dict[str, Any]) -> str:
     """Create a stable identifier from a Ruff JSON diagnostic."""
-    location = diagnostic.get("location", {})
+    raw_location: object = diagnostic.get("location", {})
+    location = cast(dict[str, Any], raw_location) if isinstance(raw_location, dict) else {}
     filename = diagnostic.get("filename", "?")
     root_prefix = str(PROJECT_ROOT) + "/"
     if isinstance(filename, str) and filename.startswith(root_prefix):
@@ -85,7 +89,8 @@ def collect_findings() -> list[str]:
         "--no-fix",
         "src",
     ]
-    result = subprocess.run(
+    # owner: quality-infrastructure; reason: fixed project Ruff argv runs without a shell
+    result = subprocess.run(  # nosec B603
         cmd,
         capture_output=True,
         text=True,
@@ -95,16 +100,20 @@ def collect_findings() -> list[str]:
     )
     # Ruff exits 0 = no findings, 1 = findings, 2+ = tool error.
     # All three are valid for JSON parsing; only exit >=2 is a tool failure.
-    is_tool_error = (
-        result.returncode >= _TOOL_ERROR_EXIT_THRESHOLD if result.returncode is not None else False
-    )
+    is_tool_error = result.returncode >= _TOOL_ERROR_EXIT_THRESHOLD
     try:
-        items = json.loads(result.stdout or "[]")
+        raw_items: object = json.loads(result.stdout or "[]")
     except json.JSONDecodeError as exc:
         detail = result.stderr.strip() or "Ruff produced unparseable output."
         raise RuntimeError(detail) from exc
     if is_tool_error:
         raise RuntimeError(result.stderr.strip() or f"Ruff exited with status {result.returncode}.")
+    if not isinstance(raw_items, list):
+        raise RuntimeError("Ruff JSON output is not a list.")
+    typed_items = cast(list[object], raw_items)
+    if any(not isinstance(item, dict) for item in typed_items):
+        raise RuntimeError("Ruff JSON output contains a non-object diagnostic.")
+    items = [cast(dict[str, Any], item) for item in typed_items]
     return sorted({_fingerprint(item) for item in items})
 
 

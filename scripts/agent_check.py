@@ -19,7 +19,9 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
+
+# owner: quality-infrastructure; reason: configured analyser argv runs without a shell
+import subprocess  # nosec B404
 import sys
 import time
 from collections.abc import Callable
@@ -41,7 +43,9 @@ class Analyser:
     name: str
     command: list[str]
     fixer: bool = False  # True if this analyser modifies source files
-    command_builder: Callable[[Path], tuple[list[str], TemporaryDirectory | None]] | None = None
+    command_builder: Callable[[Path], tuple[list[str], TemporaryDirectory[str] | None]] | None = (
+        None
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +76,7 @@ SAFETY_COPY_EXCLUDES: tuple[str, ...] = (
 )
 
 
-def _build_safety_stage(cwd: Path) -> TemporaryDirectory:
+def _build_safety_stage(cwd: Path) -> TemporaryDirectory[str]:
     stage = TemporaryDirectory(prefix="pxcli-safety-")
     stage_root = Path(stage.name)
 
@@ -95,7 +99,7 @@ def _build_safety_stage(cwd: Path) -> TemporaryDirectory:
     return stage
 
 
-def _build_safety_command(cwd: Path) -> tuple[list[str], TemporaryDirectory]:
+def _build_safety_command(cwd: Path) -> tuple[list[str], TemporaryDirectory[str]]:
     stage = _build_safety_stage(cwd)
     stage_root = Path(stage.name)
     command = ["uvx", "--from", "safety==3.8.1", "safety"]
@@ -164,7 +168,7 @@ class AnalyserResult:
 class RunReport:
     """Aggregated report for an entire check run."""
 
-    results: list[AnalyserResult] = field(default_factory=list)
+    results: list[AnalyserResult] = field(default_factory=list[AnalyserResult])
     total_duration_s: float = 0.0
 
     @property
@@ -189,12 +193,13 @@ def _run_one(analyser: Analyser, cwd: str) -> AnalyserResult:
     """Run a single analyser and return its result."""
     start = time.monotonic()
     cmd = analyser.command
-    cleanup_target: TemporaryDirectory | None = None
+    cleanup_target: TemporaryDirectory[str] | None = None
     try:
         if analyser.command_builder is not None:
             cmd, cleanup_target = analyser.command_builder(Path(cwd))
 
-        proc = subprocess.run(
+        # owner: quality-infrastructure; reason: configured analyser argv cannot replace the executable and uses no shell
+        proc = subprocess.run(  # nosec B603
             cmd,
             capture_output=True,
             text=True,
