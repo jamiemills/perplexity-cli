@@ -91,9 +91,8 @@ _load_remote_query_target() {
 
 _load_advertised_remote_commits() {
     local output_name="$1" query_target="$2" expected_length="$3" advertisement
-    local -n output="$output_name"
     local advertised_oid advertised_ref extra commit
-    local -A unique_commits=()
+    local _raw_commits=""
 
     advertisement="$(git ls-remote -- "$query_target" 2>/dev/null)" || {
         _die "failed to query advertised remote refs"
@@ -106,28 +105,41 @@ _load_advertised_remote_commits() {
         }
         _validate_oid "$advertised_oid" "advertised remote" "$expected_length"
         _load_commit_oid commit "$advertised_oid" "advertised remote"
-        unique_commits["$commit"]=1
+        _raw_commits+="$commit"$'\n'
     done <<< "$advertisement"
 
-    [[ ${#unique_commits[@]} -gt 0 ]] || _die "remote advertised no usable commit refs"
-    output=("${!unique_commits[@]}")
+    local _deduped
+    _deduped="$(printf '%s' "$_raw_commits" | sort -u)"
+    [[ -n "$_deduped" ]] || _die "remote advertised no usable commit refs"
+    local _arr=()
+    while IFS= read -r commit; do
+        _arr+=("$commit")
+    done <<< "$_deduped"
+    eval "$output_name=(\"\${_arr[@]}\")"
 }
 
 _append_reachable_difference() {
     local output_name="$1"
     shift
-    # shellcheck disable=SC2178  # The caller intentionally supplies an associative array.
-    local -n output="$output_name"
     local reachable_commits
 
     reachable_commits="$(git rev-list "$@" 2>/dev/null)" || {
         _die "unable to establish commit reachability"
     }
     if [[ -n "$reachable_commits" ]]; then
-        while IFS= read -r commit; do
-            # shellcheck disable=SC2034  # Assignment updates the caller through the nameref.
-            output["$commit"]=1
+        local _existing
+        eval "_existing=(\"\${${output_name}[@]:-}\")"
+        local _commit
+        while IFS= read -r _commit; do
+            _existing+=("$_commit")
         done <<< "$reachable_commits"
+        local _deduped
+        _deduped="$(printf '%s\n' "${_existing[@]}" | sort -u)"
+        local _arr=()
+        while IFS= read -r _commit; do
+            [[ -n "$_commit" ]] && _arr+=("$_commit")
+        done <<< "$_deduped"
+        eval "$output_name=(\"\${_arr[@]}\")"
     fi
 }
 
@@ -147,7 +159,7 @@ _pre_push_scan() {
     local remote_arg="$1" remote_location="$2" expected_length remote_query_target=""
     local local_ref local_oid remote_ref remote_oid extra local_commit remote_commit
     local row_count=0
-    local -A commits=()
+    local -a commits=()
     local -a advertised_commits=()
     local advertisements_loaded=false
 
@@ -194,7 +206,7 @@ _pre_push_scan() {
         echo "gitleaks: no commits to scan"
         return 0
     fi
-    _scan_exact_commits "${!commits[@]}"
+    _scan_exact_commits "${commits[@]}"
 }
 
 _scan_range() {

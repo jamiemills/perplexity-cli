@@ -319,7 +319,7 @@ test:  ## Run tests without coverage (fail-fast, parallel)
 	uv run pytest tests/ -q --tb=line -x -n auto
 
 test-coverage-report:  ## Run tests and produce coverage reports
-	uv run pytest tests/ -q --tb=line -x -n auto \
+	uv run pytest tests/ -q --tb=line -x -n auto --dist loadfile \
 		--cov=perplexity_cli --cov-report=term-missing \
 		--cov-report=json --cov-report=xml:coverage.xml
 
