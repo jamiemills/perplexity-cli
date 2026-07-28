@@ -241,7 +241,7 @@ metrics-track:  ## Track CC and MI trends over recent git revisions
 	uv run python scripts/track_metrics.py
 
 arch-check:  ## Check architecture layer boundaries (hard gate, no baseline)
-	uv run python scripts/check_architecture.py --no-baseline
+	uv run python scripts/check_architecture.py
 
 arch-check-dynamic:  ## Check dynamic import architecture enforcement
 	uv run python scripts/check_dynamic_imports.py --no-baseline
