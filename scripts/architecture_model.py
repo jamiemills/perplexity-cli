@@ -12,9 +12,10 @@ Usage:
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from enum import Enum
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TOML_PATH = PROJECT_ROOT / "quality" / "architecture.toml"
@@ -36,7 +37,36 @@ _REQUIRED_LAYER_FIELDS = ("name", "description", "allowed_deps", "modules")
 _REQUIRED_INDEP_FIELDS = ("name", "modules", "may_import_from")
 
 
-def _load_toml(path: Path) -> dict[str, Any]:
+Model = Mapping[str, object]
+Table = Mapping[str, object]
+
+
+def _as_list(value: object) -> list[object] | None:
+    """Narrow a TOML value to its concrete array representation."""
+    if not isinstance(value, list):
+        return None
+    return cast(list[object], value)
+
+
+def _as_table(value: object) -> Table | None:
+    """Narrow a TOML value to a string-keyed table."""
+    if not isinstance(value, dict):
+        return None
+    entries = cast(dict[object, object], value)
+    if not all(isinstance(key, str) for key in entries):
+        return None
+    return cast(Table, entries)
+
+
+def _tables(model: Model, key: str) -> list[Table]:
+    """Return valid tables from a top-level array, ignoring malformed entries."""
+    values = _as_list(model.get(key))
+    if values is None:
+        return []
+    return [table for value in values if (table := _as_table(value)) is not None]
+
+
+def _load_toml(path: Path) -> dict[str, object]:
     """Load a TOML file, returning the parsed data."""
     try:
         import tomllib
@@ -45,7 +75,11 @@ def _load_toml(path: Path) -> dict[str, Any]:
 
     try:
         with path.open("rb") as f:
-            return tomllib.load(f)
+            loaded: object = tomllib.load(f)
+            table = _as_table(loaded)
+            if table is None:
+                raise TypeError("TOML root must be a table")
+            return dict(table)
     except FileNotFoundError:
         print(f"TOML file not found: {path}", file=sys.stderr)
         sys.exit(1)
@@ -76,22 +110,23 @@ def _collect_production_modules(src_root: Path) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def _validate_schema_section(model: dict[str, Any]) -> list[str]:
+def _validate_schema_section(model: Model) -> list[str]:
     """Validate the [schema] top-level section."""
     errors: list[str] = []
     schema = model.get("schema")
     if schema is None:
         errors.append("Missing [schema] section")
         return errors
-    if not isinstance(schema, dict):
+    schema_table = _as_table(schema)
+    if schema_table is None:
         errors.append("[schema] must be a table")
         return errors
-    if "version" not in schema:
+    if "version" not in schema_table:
         errors.append("[schema] missing required field: version")
     return errors
 
 
-def _validate_layers_array(model: dict[str, Any]) -> list[str]:
+def _validate_layers_array(model: Model) -> list[str]:
     """Validate the [[layers]] array exists and has entries."""
     errors: list[str] = []
     layers = model.get("layers")
@@ -106,10 +141,11 @@ def _validate_layers_array(model: dict[str, Any]) -> list[str]:
     return errors
 
 
-def _validate_individual_layer(layer: dict[str, Any], i: int) -> list[str]:
+def _validate_individual_layer(layer_raw: object, i: int) -> list[str]:
     """Validate a single layer entry at index *i*."""
     errors: list[str] = []
-    if not isinstance(layer, dict):
+    layer = _as_table(layer_raw)
+    if layer is None:
         errors.append(f"layers[{i}] must be a table")
         return errors
     _check_layer_required_fields(layer, i, errors)
@@ -117,14 +153,14 @@ def _validate_individual_layer(layer: dict[str, Any], i: int) -> list[str]:
     return errors
 
 
-def _check_layer_required_fields(layer: dict[str, Any], i: int, errors: list[str]) -> None:
+def _check_layer_required_fields(layer: Table, i: int, errors: list[str]) -> None:
     """Check required fields exist in a layer entry."""
     for field in _REQUIRED_LAYER_FIELDS:
         if field not in layer:
             errors.append(f"layers[{i}] missing required field: {field}")
 
 
-def _check_layer_list_fields(layer: dict[str, Any], i: int, errors: list[str]) -> None:
+def _check_layer_list_fields(layer: Table, i: int, errors: list[str]) -> None:
     """Check that list-typed fields in a layer entry are actually lists."""
     if not isinstance(layer.get("modules"), list):
         errors.append(f"layers[{i}].modules must be a list")
@@ -132,11 +168,13 @@ def _check_layer_list_fields(layer: dict[str, Any], i: int, errors: list[str]) -
         errors.append(f"layers[{i}].allowed_deps must be a list")
 
 
-def _validate_adapter_groups(model: dict[str, Any]) -> list[str]:
+def _validate_adapter_groups(model: Model) -> list[str]:
     """Validate [[adapter_independence]] entries."""
     errors: list[str] = []
-    for index, independence_group in enumerate(model.get("adapter_independence", [])):
-        if not isinstance(independence_group, dict):
+    groups = _as_list(model.get("adapter_independence")) or []
+    for index, group_raw in enumerate(groups):
+        independence_group = _as_table(group_raw)
+        if independence_group is None:
             errors.append(f"adapter_independence[{index}] must be a table")
             continue
         for field in _REQUIRED_INDEP_FIELDS:
@@ -145,11 +183,13 @@ def _validate_adapter_groups(model: dict[str, Any]) -> list[str]:
     return errors
 
 
-def _validate_composition_roots_section(model: dict[str, Any]) -> list[str]:
+def _validate_composition_roots_section(model: Model) -> list[str]:
     """Validate [[composition_roots]] entries."""
     errors: list[str] = []
-    for index, composition_root in enumerate(model.get("composition_roots", [])):
-        if not isinstance(composition_root, dict):
+    roots = _as_list(model.get("composition_roots")) or []
+    for index, root_raw in enumerate(roots):
+        composition_root = _as_table(root_raw)
+        if composition_root is None:
             errors.append(f"composition_roots[{index}] must be a table")
             continue
         if "modules" not in composition_root:
@@ -157,48 +197,31 @@ def _validate_composition_roots_section(model: dict[str, Any]) -> list[str]:
     return errors
 
 
-def _validate_schema(model: dict[str, Any]) -> list[str]:
+def _validate_schema(model: Model) -> list[str]:
     """Validate the full TOML structure. Returns list of error messages."""
     errors: list[str] = []
     errors.extend(_validate_schema_section(model))
     errors.extend(_validate_layers_array(model))
     if "layers" in model and isinstance(model["layers"], list):
-        for index, layer_raw in enumerate(model["layers"]):
-            if isinstance(layer_raw, dict):
-                layer = cast(dict[str, Any], layer_raw)
-                errors.extend(_validate_individual_layer(layer, index))
+        for index, layer_raw in enumerate(cast(list[object], model["layers"])):
+            errors.extend(_validate_individual_layer(layer_raw, index))
     errors.extend(_validate_adapter_groups(model))
     errors.extend(_validate_composition_roots_section(model))
     return errors
 
 
-# ---------------------------------------------------------------------------
+# Composition root validity
 # Duplicate / overlap detection
 # ---------------------------------------------------------------------------
 
 
-def _collect_classified_modules(
-    layers: list[dict[str, Any]],
-) -> dict[str, str]:
-    """Build a mapping of module -> layer_name, reporting duplicates."""
-    seen: dict[str, str] = {}
-    for layer in layers:
-        name = layer.get("name", "<unnamed>")
-        modules = layer.get("modules", [])
-        if not isinstance(modules, list):
-            continue
-        for mod in modules:
-            if isinstance(mod, str):
-                seen[mod] = name
-    return seen
-
-
 def _check_layer_modules_for_duplicates(
-    layer: dict[str, Any], seen: dict[str, str], errors: list[str]
+    layer: Table, seen: dict[str, object], errors: list[str]
 ) -> None:
     """Check modules in a single layer for duplicates against *seen*."""
     name = layer.get("name", "<unnamed>")
-    for mod in layer.get("modules", []):
+    modules = _as_list(layer.get("modules")) or []
+    for mod in modules:
         if not isinstance(mod, str):
             errors.append(f"Module in layer '{name}' is not a string: {mod!r}")
             continue
@@ -209,12 +232,12 @@ def _check_layer_modules_for_duplicates(
         seen[mod] = name
 
 
-def _check_duplicates_and_overlaps(model: dict[str, Any]) -> list[str]:
+def _check_duplicates_and_overlaps(model: Model) -> list[str]:
     """Check for duplicate or overlapping module assignments across layers."""
     errors: list[str] = []
-    seen: dict[str, str] = {}
-    for layer in model.get("layers", []):
-        if isinstance(layer.get("modules"), list):
+    seen: dict[str, object] = {}
+    for layer in _tables(model, "layers"):
+        if _as_list(layer.get("modules")) is not None:
             _check_layer_modules_for_duplicates(layer, seen, errors)
     return errors
 
@@ -225,12 +248,12 @@ def _check_duplicates_and_overlaps(model: dict[str, Any]) -> list[str]:
 
 
 def _validate_layer_deps(
-    layer: dict[str, Any],
+    layer: Table,
 ) -> list[str]:
     """Validate that a layer's allowed_deps reference valid layer names."""
     errors: list[str] = []
     name = layer.get("name", "<unnamed>")
-    for dep in layer.get("allowed_deps", []):
+    for dep in _as_list(layer.get("allowed_deps")) or []:
         if not isinstance(dep, str):
             errors.append(f"Layer '{name}' has non-string allowed_deps entry: {dep!r}")
         elif dep not in VALID_LAYER_NAMES:
@@ -242,7 +265,7 @@ def _validate_layer_deps(
     return errors
 
 
-def _validate_layer_names(layers: list[dict[str, Any]]) -> list[str]:
+def _validate_layer_names(layers: list[Table]) -> list[str]:
     """Validate that all layer names are valid and no required layers are missing."""
     errors: list[str] = []
     specified: set[str] = set()
@@ -267,11 +290,11 @@ def _validate_layer_names(layers: list[dict[str, Any]]) -> list[str]:
 
 
 def _check_single_adapter_refs(
-    adapter_group: dict[str, Any], adapter_names: set[str], errors: list[str]
+    adapter_group: Table, adapter_names: set[str], errors: list[str]
 ) -> None:
     """Check may_import_from references for a single adapter group."""
     group_name = adapter_group.get("name", "<unnamed>")
-    for dep_name in adapter_group.get("may_import_from", []):
+    for dep_name in _as_list(adapter_group.get("may_import_from")) or []:
         if isinstance(dep_name, str) and dep_name not in adapter_names:
             errors.append(
                 f"Adapter independence group '{group_name}' references "
@@ -279,30 +302,28 @@ def _check_single_adapter_refs(
             )
 
 
-def _validate_adapter_refs(model: dict[str, Any]) -> list[str]:
+def _validate_adapter_refs(model: Model) -> list[str]:
     """Validate that adapter_independence may_import_from references are valid."""
     errors: list[str] = []
-    adapter_groups = model.get("adapter_independence", [])
+    adapter_groups = _tables(model, "adapter_independence")
     adapter_names = {
-        group.get("name") for group in adapter_groups if isinstance(group.get("name"), str)
+        name for group in adapter_groups if isinstance((name := group.get("name")), str)
     }
     for adapter_group in adapter_groups:
-        if isinstance(adapter_group, dict):
-            _check_single_adapter_refs(adapter_group, adapter_names, errors)
+        _check_single_adapter_refs(adapter_group, adapter_names, errors)
     return errors
 
 
-def _check_layer_name_validity(model: dict[str, Any]) -> list[str]:
+def _check_layer_name_validity(model: Model) -> list[str]:
     """Validate that all layer names and allowed_deps references are valid."""
     errors: list[str] = []
-    layers = model.get("layers", [])
-    if not isinstance(layers, list):
+    layer_values = _as_list(model.get("layers"))
+    if layer_values is None:
         return errors
-
+    layers = [table for value in layer_values if (table := _as_table(value)) is not None]
     errors.extend(_validate_layer_names(layers))
     for layer in layers:
-        if isinstance(layer, dict):
-            errors.extend(_validate_layer_deps(layer))
+        errors.extend(_validate_layer_deps(layer))
     errors.extend(_validate_adapter_refs(model))
     return errors
 
@@ -312,20 +333,17 @@ def _check_layer_name_validity(model: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _get_classified_modules(model: dict[str, Any]) -> set[str]:
+def _get_classified_modules(model: Model) -> set[str]:
     """Extract all classified module paths from all layers."""
     classified: set[str] = set()
-    layers = model.get("layers", [])
-    if not isinstance(layers, list):
-        return classified
-    for layer in layers:
-        for mod in layer.get("modules", []):
+    for layer in _tables(model, "layers"):
+        for mod in _as_list(layer.get("modules")) or []:
             if isinstance(mod, str):
                 classified.add(mod)
     return classified
 
 
-def _check_module_coverage(model: dict[str, Any], production_modules: set[str]) -> list[str]:
+def _check_module_coverage(model: Model, production_modules: set[str]) -> list[str]:
     """Check that all production modules are classified and no unknown modules exist."""
     errors: list[str] = []
     classified = _get_classified_modules(model)
@@ -352,35 +370,31 @@ def _check_module_coverage(model: dict[str, Any], production_modules: set[str]) 
 # ---------------------------------------------------------------------------
 
 
-def _add_module_strings(modules_container: list[Any], target: set[str]) -> None:
+def _add_module_strings(modules_container: list[object], target: set[str]) -> None:
     """Add string entries from a modules list into *target* set."""
     for mod in modules_container:
         if isinstance(mod, str):
             target.add(mod)
 
 
-def _collect_layer_modules(model: dict[str, Any], target_layer: str) -> set[str]:
+def _collect_layer_modules(model: Model, target_layer: str) -> set[str]:
     """Collect all module paths classified as *target_layer*."""
     modules: set[str] = set()
-    layers = model.get("layers", [])
-    if not isinstance(layers, list):
-        return modules
-    for layer in layers:
-        if not isinstance(layer, dict):
-            continue
+    for layer in _tables(model, "layers"):
         if layer.get("name") == target_layer:
-            _add_module_strings(layer.get("modules", []), modules)
+            module_values = _as_list(layer.get("modules")) or []
+            _add_module_strings(module_values, modules)
     return modules
 
 
-def _check_adapter_modules_validity(model: dict[str, Any]) -> list[str]:
+def _check_adapter_modules_validity(model: Model) -> list[str]:
     """Check that all modules in adapter groups are classified as adapter."""
     errors: list[str] = []
     adapter_modules = _collect_layer_modules(model, "adapter")
 
-    for adapter_group in model.get("adapter_independence", []):
+    for adapter_group in _tables(model, "adapter_independence"):
         group_name = adapter_group.get("name", "<unnamed>")
-        for mod in adapter_group.get("modules", []):
+        for mod in _as_list(adapter_group.get("modules")) or []:
             if isinstance(mod, str) and mod not in adapter_modules:
                 errors.append(
                     f"Adapter independence group '{group_name}' references "
@@ -391,17 +405,15 @@ def _check_adapter_modules_validity(model: dict[str, Any]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Composition root validity
-# ---------------------------------------------------------------------------
 
 
-def _check_composition_root_validity(model: dict[str, Any]) -> list[str]:
+def _check_composition_root_validity(model: Model) -> list[str]:
     """Check composition_roots modules match composition_root layer."""
     errors: list[str] = []
     composition_modules = _collect_layer_modules(model, "composition_root")
 
-    for composition_root in model.get("composition_roots", []):
-        for mod in composition_root.get("modules", []):
+    for composition_root in _tables(model, "composition_roots"):
+        for mod in _as_list(composition_root.get("modules")) or []:
             if isinstance(mod, str) and mod not in composition_modules:
                 errors.append(
                     f"composition_roots references module '{mod}' "
@@ -409,18 +421,6 @@ def _check_composition_root_validity(model: dict[str, Any]) -> list[str]:
                 )
 
     return errors
-
-
-# ---------------------------------------------------------------------------
-# Orchestration
-# ---------------------------------------------------------------------------
-
-
-class CoverageMode(Enum):
-    """Controls source-tree coverage validation."""
-
-    CHECK = "check"
-    SKIP = "skip"
 
 
 # owner: quality-infrastructure; reason: backwards-compatible public architecture validation API
@@ -461,6 +461,13 @@ def _validate_with_coverage(
         errors.extend(_check_module_coverage(model, production_modules))
 
     return errors
+
+
+class CoverageMode(Enum):
+    """Controls source-tree coverage validation."""
+
+    CHECK = "check"
+    SKIP = "skip"
 
 
 # ---------------------------------------------------------------------------

@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict, cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src" / "perplexity_cli"
@@ -145,6 +145,29 @@ class ReportOptions:
     threshold: float
     max_flagged: int | None
     trend_compare_path: Path | None
+
+
+class TrendReport(TypedDict):
+    """Trend comparison fields emitted in coupling report schema v1."""
+
+    previous_flagged_count: int
+    delta: int
+    direction: str
+    previous_timestamp: object
+    added: list[str]
+    removed: list[str]
+    persistent: list[str]
+
+
+@dataclass(slots=True)
+class _ArgumentState:
+    """Mutable state used while consuming command-line flags."""
+
+    json_mode: bool = False
+    threshold: float = DEFAULT_DISTANCE_THRESHOLD
+    max_flagged: int | None = None
+    trend_compare: Path | None = None
+    module: str | None = None
 
 
 def _make_finding_id(module: str) -> str:
@@ -423,7 +446,17 @@ def _flagged_metrics(metrics: Sequence[ModuleMetrics], threshold: float) -> list
 # ---------------------------------------------------------------------------
 
 
-def _load_previous_report(previous_path: Path) -> dict:
+def _as_json_object(value: object, path: Path) -> dict[str, object]:
+    """Validate and narrow a parsed JSON report object."""
+    if not isinstance(value, dict):
+        raise FileReadError(f"Trend-compare file {path} must contain a JSON object")
+    entries = cast(dict[object, object], value)
+    if not all(isinstance(key, str) for key in entries):
+        raise FileReadError(f"Trend-compare file {path} contains a non-string key")
+    return cast(dict[str, object], entries)
+
+
+def _load_previous_report(previous_path: Path) -> dict[str, object]:
     """Load and validate a previous coupling report.
 
     Args:
@@ -441,20 +474,60 @@ def _load_previous_report(previous_path: Path) -> dict:
         raise FileReadError(f"Cannot read trend-compare file {previous_path}: {exc}") from exc
 
     try:
-        previous = json.loads(raw)
+        loaded: object = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise FileReadError(f"Invalid JSON in trend-compare file {previous_path}: {exc}") from exc
 
+    previous = _as_json_object(loaded, previous_path)
     if previous.get("report_version") != "1":
         ver = previous.get("report_version")
         raise FileReadError(f"Unsupported report version {ver} in {previous_path}")
     return previous
 
 
+def _string_list(value: object) -> list[str] | None:
+    """Return a JSON array only when every item is a string."""
+    if not isinstance(value, list):
+        return None
+    items = cast(list[object], value)
+    if not all(isinstance(item, str) for item in items):
+        return None
+    return cast(list[str], items)
+
+
+def _finding_identities(value: object) -> set[str]:
+    """Extract module identities from a validated findings array."""
+    if not isinstance(value, list):
+        return set()
+    identities: set[str] = set()
+    for finding_raw in cast(list[object], value):
+        finding = _as_finding(finding_raw)
+        if finding is not None:
+            identities.add(finding)
+    return identities
+
+
+def _as_finding(value: object) -> str | None:
+    """Extract a module name from one previous finding object."""
+    if not isinstance(value, dict):
+        return None
+    finding = cast(dict[object, object], value)
+    module = finding.get("module")
+    return module if isinstance(module, str) else None
+
+
+def _previous_identities(previous: dict[str, object]) -> set[str]:
+    """Read identities from the preferred field or legacy findings fallback."""
+    flagged = _string_list(previous.get("flagged_identities"))
+    if flagged:
+        return set(flagged)
+    return _finding_identities(previous.get("findings"))
+
+
 def _compare_trends(
     current_flagged: set[str],
     previous_path: Path,
-) -> dict:
+) -> TrendReport:
     """Compare current flagged modules against a previous snapshot.
 
     Args:
@@ -469,9 +542,7 @@ def _compare_trends(
     """
     previous = _load_previous_report(previous_path)
 
-    prev_identities = set(previous.get("flagged_identities", []))
-    if not prev_identities:
-        prev_identities = {f["module"] for f in previous.get("findings", [])}
+    prev_identities = _previous_identities(previous)
 
     prev_count = len(prev_identities)
     curr_count = len(current_flagged)
@@ -520,7 +591,7 @@ def _format_finding_row(m: ModuleMetrics) -> str:
     )
 
 
-def _format_trend_section(trend: dict, flagged_count: int) -> list[str]:
+def _format_trend_section(trend: TrendReport, flagged_count: int) -> list[str]:
     """Format the trend comparison section of the text report."""
     lines: list[str] = []
     lines.append("── Trend Comparison ──")
@@ -528,11 +599,11 @@ def _format_trend_section(trend: dict, flagged_count: int) -> list[str]:
     lines.append(f"  Previous flagged:  {trend['previous_flagged_count']}")
     lines.append(f"  Current flagged:   {flagged_count}")
     lines.append(f"  Delta:             {trend['delta']:+d} ({trend['direction']})")
-    if trend.get("added"):
+    if trend["added"]:
         lines.append(f"  Newly flagged:     {', '.join(trend['added'])}")
-    if trend.get("removed"):
+    if trend["removed"]:
         lines.append(f"  Resolved:          {', '.join(trend['removed'])}")
-    if trend.get("persistent"):
+    if trend["persistent"]:
         persistent = trend["persistent"]
         label = ", ".join(persistent[:_TREND_PERSISTENT_LIMIT])
         suffix = " ..." if len(persistent) > _TREND_PERSISTENT_LIMIT else ""
@@ -589,7 +660,7 @@ def _format_legend() -> list[str]:
 def _format_advisory_text(
     metrics: list[ModuleMetrics],
     threshold: float,
-    trend: dict | None = None,
+    trend: TrendReport | None = None,
 ) -> str:
     """Format the advisory text report.
 
@@ -619,7 +690,7 @@ def _format_advisory_text(
 def _format_json_report(
     metrics: list[ModuleMetrics],
     threshold: float,
-    trend: dict | None = None,
+    trend: TrendReport | None = None,
 ) -> str:
     """Format the advisory coupling report as JSON (schema v1).
 
@@ -633,7 +704,7 @@ def _format_json_report(
     """
     flagged = _flagged_metrics(metrics, threshold)
 
-    findings = []
+    findings: list[dict[str, object]] = []
     for m in metrics:
         findings.append(
             {
@@ -652,7 +723,7 @@ def _format_json_report(
             }
         )
 
-    report: dict = {
+    report: dict[str, object] = {
         "report_version": "1",
         "total_modules": len(metrics),
         "flagged_count": len(flagged),
@@ -738,43 +809,43 @@ def _ensure_value_present(args: list[str], idx: int, message: str) -> None:
         sys.exit(_EXIT_CONFIG_ERROR)
 
 
-def _handle_json_flag(_args: list[str], _idx: int, state: dict) -> int:
+def _handle_json_flag(_args: list[str], _idx: int, state: _ArgumentState) -> int:
     """Enable JSON output mode in *state*."""
-    state["json_mode"] = True
+    state.json_mode = True
     return 0
 
 
-def _handle_threshold_flag(args: list[str], idx: int, state: dict) -> int:
+def _handle_threshold_flag(args: list[str], idx: int, state: _ArgumentState) -> int:
     """Parse and store the --threshold value in *state*."""
     val = _parse_arg_float(args, idx + 1, "--threshold")
     _ensure_threshold_range(val)
-    state["threshold"] = val
+    state.threshold = val
     return 1
 
 
-def _handle_max_flagged_flag(args: list[str], idx: int, state: dict) -> int:
+def _handle_max_flagged_flag(args: list[str], idx: int, state: _ArgumentState) -> int:
     """Parse and store the --max-flagged value in *state*."""
     _ensure_value_present(args, idx + 1, "--max-flagged requires an integer value")
-    state["max_flagged"] = _parse_arg_int(args, idx + 1, "--max-flagged")
+    state.max_flagged = _parse_arg_int(args, idx + 1, "--max-flagged")
     return 1
 
 
-def _handle_trend_compare_flag(args: list[str], idx: int, state: dict) -> int:
+def _handle_trend_compare_flag(args: list[str], idx: int, state: _ArgumentState) -> int:
     """Store the --trend-compare file path in *state*."""
     _ensure_value_present(args, idx + 1, "--trend-compare requires a file path")
-    state["trend_compare"] = Path(args[idx + 1])
+    state.trend_compare = Path(args[idx + 1])
     return 1
 
 
-def _handle_module_flag(args: list[str], idx: int, state: dict) -> int:
+def _handle_module_flag(args: list[str], idx: int, state: _ArgumentState) -> int:
     """Store the --module name in *state*."""
     arg = args[idx]
     _ensure_value_present(args, idx + 1, f"{arg} requires a module name")
-    state["module"] = args[idx + 1]
+    state.module = args[idx + 1]
     return 1
 
 
-_FLAG_HANDLERS: dict[str, Callable[[list[str], int, dict], int]] = {
+_FLAG_HANDLERS: dict[str, Callable[[list[str], int, _ArgumentState], int]] = {
     "--json": _handle_json_flag,
     "--threshold": _handle_threshold_flag,
     "--max-flagged": _handle_max_flagged_flag,
@@ -786,7 +857,7 @@ _FLAG_HANDLERS: dict[str, Callable[[list[str], int, dict], int]] = {
 def _handle_flag(
     args: list[str],
     idx: int,
-    state: dict,
+    state: _ArgumentState,
 ) -> int:
     """Process a single CLI flag, updating *state* in place.
 
@@ -806,13 +877,7 @@ def _parse_args(
     Returns:
         A tuple of (json_mode, threshold, max_flagged, trend_compare_path).
     """
-    state: dict = {
-        "json_mode": False,
-        "threshold": DEFAULT_DISTANCE_THRESHOLD,
-        "max_flagged": None,
-        "trend_compare": None,
-        "module": None,
-    }
+    state = _ArgumentState()
 
     i = 0
     while i < len(args):
@@ -820,50 +885,16 @@ def _parse_args(
         i += 1 + consumed
 
     return (
-        state["json_mode"],
-        state["threshold"],
-        state["max_flagged"],
-        state["trend_compare"],
+        state.json_mode,
+        state.threshold,
+        state.max_flagged,
+        state.trend_compare,
     )
 
 
 # ---------------------------------------------------------------------------
 # Single module detail
 # ---------------------------------------------------------------------------
-
-
-def _print_single_module(module_name: str) -> None:
-    """Print detailed coupling info for a single module."""
-    rel = _strip_package_prefix(module_name)
-    efferent, afferent, all_modules = _build_coupling_graph()
-    abstractness_map = _compute_abstractness(all_modules)
-    na, nc = abstractness_map.get(rel, (0, 0))
-    ce = len(efferent.get(rel, set()))
-    ca = len(afferent.get(rel, set()))
-
-    m = ModuleMetrics(
-        module=rel,
-        ca=ca,
-        ce=ce,
-        na=na,
-        nc=nc,
-        dependencies=tuple(sorted(efferent.get(rel, set()))),
-        dependents=tuple(sorted(afferent.get(rel, set()))),
-    )
-
-    print(f"Module: {rel}")
-    print(f"  Ca (afferent):    {m.ca}")
-    print(f"  Ce (efferent):    {m.ce}")
-    print(f"  Instability (I):  {m.instability:.3f}")
-    print(f"  Abstractness (A): {m.abstractness:.3f}")
-    print(f"  Distance (D):     {m.distance:.3f}")
-    print(f"  Zone:             {_zone_label(m) or 'balanced'}")
-    print("  Dependencies:")
-    for d in m.dependencies:
-        print(f"    {d}")
-    print("  Dependents:")
-    for d in m.dependents:
-        print(f"    {d}")
 
 
 # ---------------------------------------------------------------------------
@@ -917,7 +948,7 @@ def _compare_trends_or_exit(
     flagged_identities: set[str],
     trend_compare_path: Path,
     options: ReportOptions,
-) -> dict | int:
+) -> TrendReport | int:
     """Compare trends or return an exit code on failure."""
     try:
         return _compare_trends(flagged_identities, trend_compare_path)
@@ -928,7 +959,7 @@ def _compare_trends_or_exit(
 
 def _emit_report(
     metrics: list[ModuleMetrics],
-    trend: dict | None,
+    trend: TrendReport | None,
     options: ReportOptions,
 ) -> None:
     """Print the report in JSON or advisory-text form."""
@@ -976,7 +1007,7 @@ def _generate_report(options: ReportOptions) -> int:
     flagged = _flagged_metrics(metrics, options.threshold)
     flagged_identities = {m.module for m in flagged}
 
-    trend: dict | None = None
+    trend: TrendReport | None = None
     if options.trend_compare_path:
         trend_result = _compare_trends_or_exit(
             flagged_identities, options.trend_compare_path, options

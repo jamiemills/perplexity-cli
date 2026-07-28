@@ -18,21 +18,34 @@ from __future__ import annotations
 import argparse
 import json
 import operator
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_DIR = PROJECT_ROOT / "quality" / "baselines"
+
+
+def _empty_counts() -> dict[str, int]:
+    return {}
+
+
+def _empty_changes() -> dict[str, tuple[int, int]]:
+    return {}
+
+
+def _empty_fingerprints() -> list[str]:
+    return []
 
 
 @dataclass
 class CountDiff:
     """Result of comparing current per-file counts against a baseline."""
 
-    new: dict[str, int] = field(default_factory=dict)
-    grown: dict[str, tuple[int, int]] = field(default_factory=dict)
-    shrunk: dict[str, tuple[int, int]] = field(default_factory=dict)
+    new: dict[str, int] = field(default_factory=_empty_counts)
+    grown: dict[str, tuple[int, int]] = field(default_factory=_empty_changes)
+    shrunk: dict[str, tuple[int, int]] = field(default_factory=_empty_changes)
     baseline_total: int = 0
     current_total: int = 0
 
@@ -46,8 +59,8 @@ class CountDiff:
 class FingerprintDiff:
     """Result of comparing current finding fingerprints against a baseline."""
 
-    new: list[str] = field(default_factory=list)
-    removed: list[str] = field(default_factory=list)
+    new: list[str] = field(default_factory=_empty_fingerprints)
+    removed: list[str] = field(default_factory=_empty_fingerprints)
 
     @property
     def is_regression(self) -> bool:
@@ -73,8 +86,18 @@ def load_counts(name: str) -> dict[str, int]:
     path = _baseline_path(name)
     if not path.is_file():
         return {}
-    baseline_payload = json.loads(path.read_text())
-    return {str(path_name): int(count) for path_name, count in baseline_payload.items()}
+    baseline_payload: object = json.loads(path.read_text())
+    if not isinstance(baseline_payload, dict):
+        raise TypeError("Counts baseline must contain a JSON object")
+    entries = cast(dict[object, object], baseline_payload)
+    return {str(path_name): _to_int(count) for path_name, count in entries.items()}
+
+
+def _to_int(value: object) -> int:
+    """Convert a scalar JSON count to an integer."""
+    if not isinstance(value, (str, int, float)):
+        raise TypeError("Baseline counts must be numeric values")
+    return int(value)
 
 
 def save_counts(name: str, counts: dict[str, int]) -> Path:
@@ -91,13 +114,20 @@ def load_fingerprints(name: str) -> list[str]:
     path = _baseline_path(name)
     if not path.is_file():
         return []
-    baseline_payload = json.loads(path.read_text())
-    items = (
-        baseline_payload.get("fingerprints", baseline_payload)
-        if isinstance(baseline_payload, dict)
-        else baseline_payload
-    )
+    baseline_payload: object = json.loads(path.read_text())
+    items = _fingerprint_items(baseline_payload)
     return sorted(str(item) for item in items)
+
+
+def _fingerprint_items(payload: object) -> Iterable[object]:
+    """Extract iterable fingerprint entries from either supported schema."""
+    items = payload
+    if isinstance(payload, dict):
+        entries = cast(dict[object, object], payload)
+        items = entries.get("fingerprints", entries)
+    if not isinstance(items, Iterable):
+        raise TypeError("Fingerprint baseline must contain an iterable")
+    return cast(Iterable[object], items)
 
 
 def save_fingerprints(name: str, fingerprints: list[str]) -> Path:
