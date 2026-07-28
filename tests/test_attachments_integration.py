@@ -40,10 +40,10 @@ def mock_query_app() -> Generator[tuple[Mock, Mock, Mock, Mock], None, None]:
     mock_sm.load_style.return_value = None
 
     with (
-        patch("perplexity_cli.utils.style_manager.StyleManager", return_value=mock_sm),
-        patch("perplexity_cli.auth.token_manager.TokenManager", return_value=mock_tm),
+        patch("perplexity_cli.query_runner.StyleManager", return_value=mock_sm),
+        patch("perplexity_cli.query_runner.TokenManager", return_value=mock_tm),
         patch("perplexity_cli.attachments.AttachmentUploader", return_value=mock_uploader),
-        patch("perplexity_cli.api.endpoints.PerplexityAPI", return_value=mock_api),
+        patch("perplexity_cli.query_runner.PerplexityAPI", return_value=mock_api),
     ):
         yield mock_api, mock_uploader, mock_tm, mock_sm
 

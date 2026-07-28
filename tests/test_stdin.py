@@ -33,18 +33,18 @@ def _make_api_mock(answer: Answer | None = None):
 def _apply_standard_patches(stack, mock_api):
     """Apply standard patches to an ExitStack and return nothing."""
     stack.enter_context(
-        patch("perplexity_cli.auth.token_manager.TokenManager", return_value=Mock())
+        patch("perplexity_cli.query_runner.TokenManager", return_value=Mock())
     )
     stack.enter_context(
         patch(
-            "perplexity_cli.auth.utils.load_token_optional",
+            "perplexity_cli.query_runner.load_token_optional",
             return_value=("token-123", None),
         )
     )
     stack.enter_context(
         patch("perplexity_cli.query_runner.resolve_attachment_urls", return_value=[])
     )
-    stack.enter_context(patch("perplexity_cli.api.endpoints.PerplexityAPI", return_value=mock_api))
+    stack.enter_context(patch("perplexity_cli.query_runner.PerplexityAPI", return_value=mock_api))
     stack.enter_context(
         patch("perplexity_cli.query_runner.build_final_query", side_effect=lambda q: q)
     )

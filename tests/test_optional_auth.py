@@ -20,7 +20,7 @@ def _make_api_mock(**kwargs):
 class TestLoadTokenOptional:
     """Tests for load_token_optional() utility function."""
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
     def test_load_token_optional_no_token_exists(self, mock_tm_class):
         """Test load_token_optional returns (None, None) when no token exists."""
         from perplexity_cli.utils.logging import get_logger
@@ -35,7 +35,7 @@ class TestLoadTokenOptional:
         assert token is None
         assert cookies is None
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
     def test_load_token_optional_token_exists(self, mock_tm_class):
         """Test load_token_optional returns token and cookies when they exist."""
         from perplexity_cli.utils.logging import get_logger
@@ -52,7 +52,7 @@ class TestLoadTokenOptional:
         assert token == test_token
         assert cookies == test_cookies
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
     def test_load_token_optional_no_exit_on_missing_token(self, mock_tm_class):
         """Test load_token_optional does not exit when token is missing."""
         from perplexity_cli.utils.logging import get_logger
@@ -72,9 +72,9 @@ class TestLoadTokenOptional:
 class TestQueryWithoutAuthentication:
     """Tests for query command running without authentication."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_query_without_token(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
         """Test query command succeeds without authentication token."""
         # Mock token manager - no token
@@ -105,9 +105,9 @@ class TestQueryWithoutAuthentication:
         call_args = mock_api_class.call_args
         assert call_args[0][0] is None  # token is first positional arg
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_query_with_token_still_works(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -143,9 +143,9 @@ class TestQueryWithoutAuthentication:
         assert call_args[0][0] == test_token  # token is first positional arg
         assert call_args[0][1] == test_cookies  # cookies is second positional arg
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_query_format_plain_without_auth(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -168,9 +168,9 @@ class TestQueryWithoutAuthentication:
         assert result.exit_code == 0
         assert "Plain text answer" in result.output
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_query_format_markdown_without_auth(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -193,9 +193,9 @@ class TestQueryWithoutAuthentication:
         assert result.exit_code == 0
         assert "Markdown answer" in result.output
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_query_format_json_without_auth(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -218,9 +218,9 @@ class TestQueryWithoutAuthentication:
         assert result.exit_code == 0
         assert "JSON answer" in result.output
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_query_strip_references_without_auth(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -255,9 +255,9 @@ class TestQueryWithoutAuthentication:
 class TestQueryAuthenticationErrors:
     """Tests for error handling when API rejects unauthenticated requests."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_query_unauthenticated_api_rejection(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -290,9 +290,9 @@ class TestQueryAuthenticationErrors:
         assert "[ERROR] Authentication failed" in result.output
         assert "Re-authenticate with" in result.output
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_query_rate_limit_without_auth(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -328,8 +328,8 @@ class TestQueryAuthenticationErrors:
 class TestAttachmentAuthentication:
     """Tests for authentication requirements when using file attachments."""
 
-    @patch("perplexity_cli.utils.file_handler.resolve_file_arguments")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.query_runner.resolve_file_arguments")
+    @patch("perplexity_cli.query_runner.TokenManager")
     def test_query_with_attach_flag_requires_auth(self, mock_tm_class, mock_resolve_files, runner):
         """Test query with --attach flag fails without authentication."""
         mock_tm = Mock()
@@ -347,8 +347,8 @@ class TestAttachmentAuthentication:
         assert "File attachments require authentication" in result.output
         assert "pxcli auth login" in result.output
 
-    @patch("perplexity_cli.utils.file_handler.resolve_file_arguments")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
+    @patch("perplexity_cli.query_runner.resolve_file_arguments")
+    @patch("perplexity_cli.query_runner.TokenManager")
     def test_query_with_inline_file_path_requires_auth(
         self, mock_tm_class, mock_resolve_files, runner
     ):
@@ -368,13 +368,13 @@ class TestAttachmentAuthentication:
         assert "File attachments require authentication" in result.output
         assert "pxcli auth login" in result.output
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
+    @patch("perplexity_cli.query_runner.StyleManager")
     @patch("perplexity_cli.query_runner.run_async")
-    @patch("perplexity_cli.utils.file_handler.resolve_file_arguments")
-    @patch("perplexity_cli.utils.file_handler.load_attachments")
+    @patch("perplexity_cli.query_runner.resolve_file_arguments")
+    @patch("perplexity_cli.query_runner.load_attachments")
     @patch("perplexity_cli.attachments.AttachmentUploader")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_query_with_attach_flag_and_auth_works(
         self,
         mock_api_class,

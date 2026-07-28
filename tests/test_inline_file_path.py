@@ -34,10 +34,10 @@ Status: Complete""",
 
         runner = CliRunner()
 
-        with patch("perplexity_cli.utils.style_manager.StyleManager") as mock_sm_class:
-            with patch("perplexity_cli.auth.token_manager.TokenManager") as mock_tm_class:
+        with patch("perplexity_cli.query_runner.StyleManager") as mock_sm_class:
+            with patch("perplexity_cli.query_runner.TokenManager") as mock_tm_class:
                 with patch("perplexity_cli.attachments.AttachmentUploader") as mock_uploader_class:
-                    with patch("perplexity_cli.api.endpoints.PerplexityAPI") as mock_api_class:
+                    with patch("perplexity_cli.query_runner.PerplexityAPI") as mock_api_class:
                         # Mock style manager
                         mock_sm = Mock()
                         mock_sm.load_style.return_value = None
