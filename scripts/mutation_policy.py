@@ -79,6 +79,7 @@ STATUS_TO_CATEGORY: dict[str, str] = {
     "suspicious": "suspicious",
     "skipped": "skipped",
     "not checked": "not_checked",
+    "no tests": "skipped",
 }
 
 # Subprocess invocation prefix used to reach the project's pinned mutmut.
