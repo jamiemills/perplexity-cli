@@ -440,3 +440,314 @@ class TestRunExportErrorHandlers:
                 run_export_threads_command(ctx, None, None, None, False, False)
 
         self._stop_patches(patches)
+
+
+class TestExportRunnerMutationKillers:
+    """Mutation-killing tests for export runner edge cases."""
+
+    def test_normalise_context_rejects_non_dict(self):
+        from perplexity_cli.runners.export import _normalise_context
+
+        assert _normalise_context("not-a-dict") is None
+        assert _normalise_context(42) is None
+        assert _normalise_context(None) is None
+
+    def test_normalise_context_rejects_non_bool_values(self):
+        from perplexity_cli.runners.export import _normalise_context
+
+        with pytest.raises(TypeError, match="must be a bool"):
+            _normalise_context({"json": "yes"})
+
+    def test_normalise_context_valid_flags(self):
+        from perplexity_cli.runners.export import _normalise_context
+
+        result = _normalise_context({"json": True, "schema": False, "debug": True})
+        assert result == {"json": True, "schema": False, "debug": True}
+
+    def test_normalise_context_empty_dict(self):
+        from perplexity_cli.runners.export import _normalise_context
+
+        result = _normalise_context({})
+        assert result == {"json": False, "schema": False, "debug": False}
+
+    def test_validate_optional_date_rejects_non_string(self):
+        from perplexity_cli.runners.export import _validate_optional_date
+
+        with pytest.raises(TypeError, match="must be a string or None"):
+            _validate_optional_date(123, "from_date")
+
+    def test_validate_optional_date_none_returns_none(self):
+        from perplexity_cli.runners.export import _validate_optional_date
+
+        assert _validate_optional_date(None, "from_date") is None
+
+    def test_validate_optional_date_string_passthrough(self):
+        from perplexity_cli.runners.export import _validate_optional_date
+
+        assert _validate_optional_date("2025-01-01", "to_date") == "2025-01-01"
+
+    def test_validate_output_path_rejects_non_path(self):
+        from perplexity_cli.runners.export import _validate_output_path
+
+        with pytest.raises(TypeError, match="output must be a Path or None"):
+            _validate_output_path("/tmp/file.csv")
+
+    def test_validate_output_path_none_returns_none(self):
+        from perplexity_cli.runners.export import _validate_output_path
+
+        assert _validate_output_path(None) is None
+
+    def test_validate_output_path_accepts_path(self):
+        from perplexity_cli.runners.export import _validate_output_path
+
+        p = Path("/tmp/out.csv")
+        assert _validate_output_path(p) is p
+
+    def test_require_bool_value_rejects_non_bool(self):
+        from perplexity_cli.runners.export import _require_bool_value
+
+        with pytest.raises(TypeError, match="force_refresh must be a bool"):
+            _require_bool_value("true", "force_refresh")
+
+    def test_require_bool_value_accepts_true(self):
+        from perplexity_cli.runners.export import _require_bool_value
+
+        assert _require_bool_value(True, "clear_cache") is True
+
+    def test_require_bool_value_accepts_false(self):
+        from perplexity_cli.runners.export import _require_bool_value
+
+        assert _require_bool_value(False, "clear_cache") is False
+
+    def test_resolve_export_tail_values_wrong_arg_count(self):
+        from perplexity_cli.runners.export import _resolve_export_tail_values
+
+        with pytest.raises(TypeError, match="expected output, force_refresh, and clear_cache"):
+            _resolve_export_tail_values((None, False), {})
+
+    def test_resolve_export_tail_values_wrong_kwargs(self):
+        from perplexity_cli.runners.export import _resolve_export_tail_values
+
+        with pytest.raises(TypeError, match="requires output, force_refresh, clear_cache"):
+            _resolve_export_tail_values((), {"output": None, "wrong": True})
+
+    def test_resolve_export_tail_values_from_kwargs(self):
+        from perplexity_cli.runners.export import _resolve_export_tail_values
+
+        output, force, clear = _resolve_export_tail_values(
+            (), {"output": None, "force_refresh": True, "clear_cache": False}
+        )
+        assert output is None
+        assert force is True
+        assert clear is False
+
+    def test_resolve_export_tail_values_from_args(self):
+        from perplexity_cli.runners.export import _resolve_export_tail_values
+
+        output, force, clear = _resolve_export_tail_values((Path("/x.csv"), True, True), {})
+        assert output == Path("/x.csv")
+        assert force is True
+        assert clear is True
+
+    def test_string_or_empty_returns_string(self):
+        from perplexity_cli.runners.export import _string_or_empty
+
+        assert _string_or_empty("hello") == "hello"
+
+    def test_string_or_empty_returns_empty_for_non_string(self):
+        from perplexity_cli.runners.export import _string_or_empty
+
+        assert _string_or_empty(42) == ""
+        assert _string_or_empty(None) == ""
+        assert _string_or_empty([]) == ""
+
+    def test_thread_payload_from_dict(self):
+        from perplexity_cli.runners.export import _thread_payload
+
+        record = {"title": "T1", "created_at": "2025-01-01", "url": "https://x.ai"}
+        payload = _thread_payload(record)
+        assert payload == {"title": "T1", "created_at": "2025-01-01", "url": "https://x.ai"}
+
+    def test_thread_payload_from_dict_missing_keys(self):
+        from perplexity_cli.runners.export import _thread_payload
+
+        payload = _thread_payload({})
+        assert payload == {"title": "", "created_at": "", "url": ""}
+
+    def test_thread_payload_from_object(self):
+        from perplexity_cli.runners.export import _thread_payload
+
+        record = Mock()
+        record.title = "Obj Title"
+        record.created_at = "2025-06-01"
+        record.url = "https://obj.ai"
+        payload = _thread_payload(record)
+        assert payload == {"title": "Obj Title", "created_at": "2025-06-01", "url": "https://obj.ai"}
+
+    def test_thread_payload_from_object_missing_attr(self):
+        from perplexity_cli.runners.export import _thread_payload
+
+        class Bare:
+            pass
+
+        payload = _thread_payload(Bare())
+        assert payload == {"title": "", "created_at": "", "url": ""}
+
+    def test_echo_date_range_with_both_dates(self, capsys):
+        from perplexity_cli.runners.export import _echo_date_range
+
+        _echo_date_range("2025-01-01", "2025-12-31")
+        captured = capsys.readouterr()
+        assert "[OK] Filtered by date range: 2025-01-01 to 2025-12-31" in captured.err
+
+    def test_echo_date_range_from_only(self, capsys):
+        from perplexity_cli.runners.export import _echo_date_range
+
+        _echo_date_range("2025-01-01", None)
+        captured = capsys.readouterr()
+        assert "2025-01-01 to end" in captured.err
+
+    def test_echo_date_range_to_only(self, capsys):
+        from perplexity_cli.runners.export import _echo_date_range
+
+        _echo_date_range(None, "2025-12-31")
+        captured = capsys.readouterr()
+        assert "beginning to 2025-12-31" in captured.err
+
+    def test_echo_date_range_neither(self, capsys):
+        from perplexity_cli.runners.export import _echo_date_range
+
+        _echo_date_range(None, None)
+        assert capsys.readouterr().err == ""
+
+    def test_echo_date_range_custom_prefix(self, capsys):
+        from perplexity_cli.runners.export import _echo_date_range
+
+        _echo_date_range("2025-01-01", None, prefix="Date range")
+        captured = capsys.readouterr()
+        assert "Date range: 2025-01-01 to end" in captured.err
+
+    def test_handle_no_threads_shows_date_range(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_no_threads("2025-01-01", "2025-06-30", output_format="human")
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "No threads found matching criteria." in captured.err
+        assert "2025-01-01 to 2025-06-30" in captured.err
+
+    def test_handle_known_error_non_auth_no_reauth_hint(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_known_error(ValueError("oops"), output_format="human", logger=Mock())
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "[ERROR] Export failed: oops" in captured.err
+        assert "re-authenticate" not in captured.err
+
+    def test_handle_auth_missing_human(self, capsys):
+        from perplexity_cli.runners.export import _handle_auth_missing
+
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_auth_missing("human", Mock())
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "[ERROR] Not authenticated." in captured.err
+        assert "pxcli auth login" in captured.err
+
+    @patch("perplexity_cli.runners.export.write_threads_csv", autospec=True)
+    @patch("perplexity_cli.runners.export.run_async", autospec=True)
+    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
+    @patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True)
+    @patch("perplexity_cli.runners.export.ThreadScraper", autospec=True)
+    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
+    def test_success_human_with_date_range(
+        self,
+        mock_tm_class,
+        mock_scraper_class,
+        mock_cm_class,
+        mock_rate_config,
+        mock_run_async,
+        mock_write_csv,
+        capsys,
+    ):
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("token", {})
+        mock_tm_class.return_value = mock_tm
+        mock_rate_config.return_value = Mock(enabled=False)
+        mock_run_async.side_effect = _close_run_async_return(
+            [{"title": "T1", "created_at": "2025-03-01", "url": "https://x.ai"}]
+        )
+        mock_write_csv.return_value = Path("/tmp/threads.csv")
+
+        run_export_threads_command(
+            ctx_obj={},
+            from_date="2025-01-01",
+            to_date="2025-06-30",
+            output=None,
+            force_refresh=False,
+            clear_cache=False,
+        )
+
+        captured = capsys.readouterr()
+        assert "Exported 1 threads" in captured.out
+        assert "2025-01-01 to 2025-06-30" in captured.err
+
+    @patch("perplexity_cli.runners.export.write_threads_csv", autospec=True)
+    @patch("perplexity_cli.runners.export.run_async", autospec=True)
+    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
+    @patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True)
+    @patch("perplexity_cli.runners.export.ThreadScraper", autospec=True)
+    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
+    def test_success_json_with_explicit_output(
+        self,
+        mock_tm_class,
+        mock_scraper_class,
+        mock_cm_class,
+        mock_rate_config,
+        mock_run_async,
+        mock_write_csv,
+        capsys,
+    ):
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("token", {})
+        mock_tm_class.return_value = mock_tm
+        mock_rate_config.return_value = Mock(enabled=False)
+        mock_run_async.side_effect = _close_run_async_return(
+            [{"title": "T1", "created_at": "2025-01-01", "url": "https://x.ai"}]
+        )
+        mock_write_csv.return_value = Path("/tmp/out.csv")
+
+        run_export_threads_command(
+            ctx_obj={"json": True},
+            from_date=None,
+            to_date=None,
+            output=Path("/tmp/out.csv"),
+            force_refresh=False,
+            clear_cache=False,
+        )
+
+        mock_write_csv.assert_called_once()
+        envelope = json.loads(capsys.readouterr().out.strip())
+        assert envelope["result"]["output_path"] is not None
+
+    def test_validate_export_dates_invalid_shows_format_hint(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            _validate_export_dates("garbage", None, output_format="human")
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "Please use YYYY-MM-DD format" in captured.err
+
+    def test_handle_cache_clear_preserve_does_nothing(self):
+        cm = Mock()
+        _handle_cache_clear(cm, clear_cache=False, output_format="human", logger=Mock())
+        cm.cache_exists.assert_not_called()
+        cm.clear_cache.assert_not_called()
+
+    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
+    def test_setup_rate_limiter_logs_config(self, mock_config):
+        mock_config.return_value = Mock(enabled=True, requests_per_period=5, period_seconds=30)
+        logger = Mock()
+        result = _setup_rate_limiter(logger)
+        assert result is not None
+        logger.info.assert_called_once_with(
+            "Rate limiting enabled: %s requests per %s seconds", 5, 30
+        )

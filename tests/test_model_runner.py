@@ -637,3 +637,196 @@ class TestOutputJson:
         assert data["ok"] is True
         assert data["command"] == "pxcli models list"
         assert len(data["result"]["models"]) == 1
+
+
+class TestModelRunnerMutationKillers:
+    """Mutation-killing tests for model runner edge cases."""
+
+    def test_get_ctx_flag_none_ctx_returns_false(self) -> None:
+        from perplexity_cli.runners.models import _get_ctx_flag
+
+        assert _get_ctx_flag(None, "json") is False
+
+    def test_get_ctx_flag_missing_key_returns_false(self) -> None:
+        from perplexity_cli.runners.models import _get_ctx_flag
+
+        assert _get_ctx_flag({}, "json") is False
+
+    def test_get_ctx_flag_present_true(self) -> None:
+        from perplexity_cli.runners.models import _get_ctx_flag
+
+        assert _get_ctx_flag({"json": True}, "json") is True
+
+    def test_get_ctx_flag_present_false(self) -> None:
+        from perplexity_cli.runners.models import _get_ctx_flag
+
+        assert _get_ctx_flag({"json": False}, "json") is False
+
+    def test_format_model_table_exact_empty(self) -> None:
+        from perplexity_cli.runners.models import format_model_table
+
+        assert format_model_table([]) == "No models available."
+
+    def test_format_model_table_separator_line(self) -> None:
+        from perplexity_cli.runners.models import format_model_table
+
+        entries = [
+            ModelConfigEntry(
+                label="M",
+                description="D",
+                subscription_tier="pro",
+                non_reasoning_model="m1",
+            ),
+        ]
+        output = format_model_table(entries)
+        lines = output.split("\n")
+        assert len(lines) == 3
+        assert all(c == "-" or c == " " for c in lines[1])
+
+    def test_format_model_table_default_label_suffix(self) -> None:
+        from perplexity_cli.runners.models import format_model_table
+
+        entries = [
+            ModelConfigEntry(
+                label="Best",
+                description="Auto",
+                subscription_tier="pro",
+                non_reasoning_model="m1",
+                is_default=True,
+            ),
+        ]
+        output = format_model_table(entries)
+        assert "Best (default)" in output
+
+    def test_format_model_table_non_default_no_suffix(self) -> None:
+        from perplexity_cli.runners.models import format_model_table
+
+        entries = [
+            ModelConfigEntry(
+                label="Other",
+                description="Desc",
+                subscription_tier="pro",
+                non_reasoning_model="m2",
+                is_default=False,
+            ),
+        ]
+        output = format_model_table(entries)
+        assert "(default)" not in output
+
+    def test_format_model_table_tier_capitalized(self) -> None:
+        from perplexity_cli.runners.models import format_model_table
+
+        entries = [
+            ModelConfigEntry(
+                label="X",
+                description="Y",
+                subscription_tier="max",
+                non_reasoning_model="m3",
+            ),
+        ]
+        output = format_model_table(entries)
+        assert "Max" in output
+
+    def test_format_model_table_no_model_id_shows_none(self) -> None:
+        from perplexity_cli.runners.models import format_model_table
+
+        entries = [
+            ModelConfigEntry(
+                label="NoId",
+                description="Desc",
+                subscription_tier="pro",
+                non_reasoning_model=None,
+            ),
+        ]
+        output = format_model_table(entries)
+        assert "(none)" in output
+
+    def test_format_model_table_empty_description(self) -> None:
+        from perplexity_cli.runners.models import format_model_table
+
+        entries = [
+            ModelConfigEntry(
+                label="NoDesc",
+                description="",
+                subscription_tier="pro",
+                non_reasoning_model="m4",
+            ),
+        ]
+        output = format_model_table(entries)
+        assert "NoDesc" in output
+
+    def test_entry_to_dict_description_empty_string(self) -> None:
+        from perplexity_cli.runners.models import _entry_to_dict
+
+        entry = ModelConfigEntry(
+            label="L",
+            description="",
+            subscription_tier="pro",
+            non_reasoning_model="m5",
+        )
+        result = _entry_to_dict(entry)
+        assert result["description"] == ""
+
+    def test_entry_to_dict_all_fields(self) -> None:
+        from perplexity_cli.runners.models import _entry_to_dict
+
+        entry = ModelConfigEntry(
+            label="Full",
+            description="Full desc",
+            subscription_tier="max",
+            non_reasoning_model="m6",
+            reasoning_model="m6_think",
+            is_default=True,
+        )
+        result = _entry_to_dict(entry)
+        assert result["model_id"] == "m6"
+        assert result["label"] == "Full"
+        assert result["tier"] == "max"
+        assert result["description"] == "Full desc"
+        assert result["reasoning_model"] == "m6_think"
+        assert result["is_default"] is True
+
+    def test_handle_list_error_http_status_human(self, capsys) -> None:
+        from perplexity_cli.runners.models import _handle_list_error
+        from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError
+
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_list_error(
+                PerplexityHTTPStatusError("Forbidden"), output_format="human", logger=MagicMock()
+            )
+        assert exc_info.value.code == 1
+        assert "[ERROR] Failed to fetch models: Forbidden" in capsys.readouterr().err
+
+    def test_handle_list_error_request_error_human(self, capsys) -> None:
+        from perplexity_cli.runners.models import _handle_list_error
+        from perplexity_cli.utils.exceptions import PerplexityRequestError
+
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_list_error(
+                PerplexityRequestError("timeout"), output_format="human", logger=MagicMock()
+            )
+        assert exc_info.value.code == 1
+        assert "[ERROR] Network error: timeout" in capsys.readouterr().err
+
+    def test_handle_list_error_unexpected_human(self, capsys) -> None:
+        from perplexity_cli.runners.models import _handle_list_error
+
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_list_error(RuntimeError("boom"), output_format="human", logger=MagicMock())
+        assert exc_info.value.code == 1
+        assert "[ERROR] Unexpected error: boom" in capsys.readouterr().err
+
+    def test_run_models_list_auth_error_exact_message(self, capsys) -> None:
+        from perplexity_cli.runners.models import run_models_list_command
+
+        with patch(
+            "perplexity_cli.runners.models._resolve_auth",
+            return_value=(None, None),
+            autospec=True,
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                run_models_list_command(ctx_obj=None)
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "[ERROR] Authentication required. Run 'pxcli auth login' first." in captured.err

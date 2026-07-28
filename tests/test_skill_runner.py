@@ -1,8 +1,9 @@
 """Tests for the skill display command runner."""
 
+import json
 from unittest.mock import patch
 
-from perplexity_cli.runners.skill import run_show_skill_command
+from perplexity_cli.runners.skill import _load_skill_content, _resolve_ctx_flags, run_show_skill_command
 
 
 class TestRunShowSkillCommand:
@@ -95,3 +96,73 @@ class TestSkillMdContent:
             assert code_desc in content, (
                 f"Expected exit code description '{code_desc}' not found in skill.md"
             )
+
+
+class TestSkillRunnerMutationKillers:
+    """Mutation-killing tests for skill runner edge cases."""
+
+    def test_load_skill_content_fallback_exact_string(self):
+        with patch("perplexity_cli.runners.skill.files") as mock_files:
+            mock_files.return_value.joinpath.return_value.read_text.side_effect = FileNotFoundError()
+            result = _load_skill_content()
+
+        assert result == (
+            "Agent Skill definition not available. "
+            "Run 'perplexity-cli --help' for usage information."
+        )
+
+    def test_load_skill_content_returns_file_content(self):
+        with patch("perplexity_cli.runners.skill.files") as mock_files:
+            mock_files.return_value.joinpath.return_value.read_text.return_value = "# Skill"
+            result = _load_skill_content()
+
+        assert result == "# Skill"
+
+    def test_resolve_ctx_flags_json_mode_true(self):
+        with patch("perplexity_cli.runners.skill.click.get_current_context", return_value=None):
+            output_format, include_schema = _resolve_ctx_flags(json_mode=True)
+
+        assert output_format == "json"
+        assert include_schema == "no_schema"
+
+    def test_resolve_ctx_flags_json_mode_false(self):
+        with patch("perplexity_cli.runners.skill.click.get_current_context", return_value=None):
+            output_format, include_schema = _resolve_ctx_flags(json_mode=False)
+
+        assert output_format == "human"
+        assert include_schema == "no_schema"
+
+    def test_resolve_ctx_flags_json_mode_none_no_ctx(self):
+        with patch("perplexity_cli.runners.skill.click.get_current_context", return_value=None):
+            output_format, include_schema = _resolve_ctx_flags(json_mode=None)
+
+        assert output_format == "human"
+        assert include_schema == "no_schema"
+
+    def test_resolve_ctx_flags_schema_from_ctx(self):
+        from unittest.mock import Mock
+
+        mock_ctx = Mock()
+        mock_ctx.obj = {"json": False, "schema": True}
+        with patch("perplexity_cli.runners.skill.click.get_current_context", return_value=mock_ctx):
+            output_format, include_schema = _resolve_ctx_flags(json_mode=None)
+
+        assert output_format == "human"
+        assert include_schema == "with_schema"
+
+    def test_run_show_skill_json_output(self, capsys):
+        with patch("perplexity_cli.runners.skill.files") as mock_files:
+            mock_files.return_value.joinpath.return_value.read_text.return_value = "# Skill MD"
+            run_show_skill_command(json_mode=True)
+
+        envelope = json.loads(capsys.readouterr().out.strip())
+        assert envelope["ok"] is True
+        assert envelope["command"] == "pxcli skill show"
+        assert envelope["result"]["skill_md"] == "# Skill MD"
+
+    def test_run_show_skill_human_output_exact(self, capsys):
+        with patch("perplexity_cli.runners.skill.files") as mock_files:
+            mock_files.return_value.joinpath.return_value.read_text.return_value = "exact content"
+            run_show_skill_command(json_mode=False)
+
+        assert capsys.readouterr().out == "exact content\n"
