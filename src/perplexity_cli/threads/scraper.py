@@ -23,6 +23,9 @@ from typing import (
 
 from dateutil import parser as dateutil_parser
 
+from perplexity_cli.envelope import ErrorCode
+from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
+from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.utils.config import get_perplexity_base_url, get_thread_list_url
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
@@ -45,8 +48,6 @@ from perplexity_cli.utils.version import get_api_version
 if TYPE_CHECKING:
     from curl_cffi.requests import AsyncSession
     from curl_cffi.requests.models import Response
-
-    from perplexity_cli.threads.exporter import ThreadRecord
 
 
 def _load_request_exception_type() -> tuple[type[Exception], bool]:
@@ -179,8 +180,6 @@ def _get_cache_str_field(thread_dict: dict[str, object], field: str) -> str:
 
 def _convert_cache_thread_dicts(thread_dicts: list[dict[str, object]]) -> list[ThreadRecord]:
     """Proxy cache conversion through the shared thread utility helper."""
-    from perplexity_cli.threads.exporter import ThreadRecord
-
     records: list[ThreadRecord] = []
     for thread_dict in thread_dicts:
         records.append(
@@ -343,15 +342,11 @@ def _create_async_session(timeout: int = _DEFAULT_TIMEOUT_SECONDS) -> AsyncSessi
 
 def _is_in_date_range(dt: datetime, from_date: str | None, to_date: str | None) -> bool:
     """Proxy the date-range check through the shared date parser."""
-    from perplexity_cli.threads.date_parser import is_in_date_range
-
     return is_in_date_range(dt, from_date, to_date)
 
 
 def _to_iso8601(dt: datetime) -> str:
     """Proxy ISO-8601 formatting through the shared date parser."""
-    from perplexity_cli.threads.date_parser import to_iso8601
-
     return to_iso8601(dt)
 
 
@@ -422,8 +417,6 @@ def _parse_single_thread(
     Raises:
         UpstreamSchemaError: If required fields are malformed.
     """
-    from perplexity_cli.threads.exporter import ThreadRecord
-
     timestamp_str = _get_str_field(thread_dict, "last_query_datetime")
     if not timestamp_str:
         msg = "Malformed thread timestamp in upstream API response"
@@ -454,8 +447,6 @@ def _handle_http_error(e: PerplexityHTTPStatusError) -> None:
         RateLimitError: If status is 429.
         PerplexityHTTPStatusError: For all other statuses.
     """
-    from perplexity_cli.envelope import ErrorCode
-
     error_code, _, _ = classify_http_error(e)
     if error_code == ErrorCode.authentication_required:
         msg = (

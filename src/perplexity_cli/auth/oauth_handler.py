@@ -14,8 +14,15 @@ from typing import TYPE_CHECKING, Any, TypeGuard, cast
 import httpx
 import websockets
 
+from perplexity_cli.config.defaults import (
+    DEFAULT_AUTH_POLL_INTERVAL,
+    DEFAULT_AUTH_TIMEOUT,
+    DEFAULT_CHROME_DEBUG_PORT,
+    DEFAULT_PAGE_LOAD_TIMEOUT,
+)
 from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.exceptions import AuthenticationError
+from perplexity_cli.utils.logging import get_logger
 
 from ..utils.config import get_perplexity_base_url
 
@@ -187,12 +194,6 @@ def _resolve_auth_defaults(
     Returns:
         Tuple of (url, port, timeout, poll_interval) with defaults applied.
     """
-    from perplexity_cli.config.defaults import (
-        DEFAULT_AUTH_POLL_INTERVAL,
-        DEFAULT_AUTH_TIMEOUT,
-        DEFAULT_CHROME_DEBUG_PORT,
-    )
-
     return (
         url if url is not None else get_perplexity_base_url(),
         port if port is not None else DEFAULT_CHROME_DEBUG_PORT,
@@ -336,8 +337,6 @@ async def authenticate_with_browser(
         RuntimeError: If Chrome is not available or authentication fails.
         TimeoutError: If authentication timeout is exceeded.
     """
-    from perplexity_cli.utils.logging import get_logger
-
     logger = get_logger()
     url, port, timeout, poll_interval = _resolve_auth_defaults(url, port, timeout, poll_interval)
 
@@ -371,11 +370,7 @@ async def _wait_for_page_load(
         TimeoutError: If page doesn't load within timeout.
     """
     if timeout is None:
-        from perplexity_cli.config.defaults import DEFAULT_PAGE_LOAD_TIMEOUT
-
         timeout = DEFAULT_PAGE_LOAD_TIMEOUT
-    from perplexity_cli.utils.logging import get_logger
-
     logger = get_logger()
     start_time = asyncio.get_event_loop().time()
     poll_interval = 0.5

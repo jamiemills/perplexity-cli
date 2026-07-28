@@ -11,7 +11,17 @@ from typing import TYPE_CHECKING, Final, Protocol, TypedDict, TypeGuard
 
 import httpx
 
+from perplexity_cli.config.defaults import (
+    DEFAULT_REQUEST_TIMEOUT,
+    DEFAULT_UPLOAD_TIMEOUT,
+    PERPLEXITY_SETTINGS_URL,
+)
 from perplexity_cli.utils.attachment_models import FileAttachment
+from perplexity_cli.utils.config import (
+    get_perplexity_base_url,
+    get_s3_bucket_url,
+    get_upload_url_endpoint,
+)
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
     AttachmentUploadError,
@@ -30,6 +40,11 @@ try:
     RequestException = _ReqExc
 except ImportError:  # pragma: no cover
     RequestException = Exception
+
+try:
+    from curl_cffi.requests import AsyncSession as CurlAsyncSession
+except ImportError:  # pragma: no cover
+    CurlAsyncSession = None
 
 if TYPE_CHECKING:
     from curl_cffi.requests import AsyncSession
@@ -125,8 +140,6 @@ def _diagnose_upload_entry_error(upload_data: Mapping[str, object]) -> str:
         Human-readable error message string.
     """
     if upload_data.get("rate_limited"):
-        from perplexity_cli.config.defaults import PERPLEXITY_SETTINGS_URL
-
         return (
             "File upload quota exhausted. "
             "Your Perplexity plan's document analysis allowance "
@@ -217,8 +230,6 @@ class AttachmentUploader:
             base_url: Base URL for Perplexity API (default from configuration).
         """
         if base_url is None:
-            from perplexity_cli.utils.config import get_perplexity_base_url
-
             base_url = get_perplexity_base_url()
 
         self.token = token
@@ -228,11 +239,11 @@ class AttachmentUploader:
     @staticmethod
     def _create_async_session(timeout: int | None = None) -> AsyncSession[CurlResponse]:
         """Create an AsyncSession with Chrome TLS impersonation."""
-        from curl_cffi.requests import AsyncSession as CurlAsyncSession
+        if CurlAsyncSession is None:
+            msg = "curl_cffi is required but could not be imported"
+            raise RuntimeError(msg)
 
         if timeout is None:
-            from perplexity_cli.config.defaults import DEFAULT_REQUEST_TIMEOUT
-
             timeout = DEFAULT_REQUEST_TIMEOUT
 
         return CurlAsyncSession(impersonate="chrome", timeout=timeout)
@@ -261,10 +272,7 @@ class AttachmentUploader:
         logger.info("Requesting presigned URLs for %s file(s)", len(attachments))
 
         # Step 1: Request presigned upload URLs from API
-        # Returns both the API response and UUID->attachment mapping
         # Use a single session for both the presigned URL request and S3 uploads
-        from perplexity_cli.config.defaults import DEFAULT_UPLOAD_TIMEOUT
-
         upload_timeout: int = DEFAULT_UPLOAD_TIMEOUT
 
         session_manager: AsyncSession[CurlResponse] = self._create_async_session(
@@ -314,8 +322,6 @@ class AttachmentUploader:
         headers = build_perplexity_headers(self.token, self.cookies)
 
         try:
-            from perplexity_cli.utils.config import get_upload_url_endpoint
-
             upload_url_endpoint: str = get_upload_url_endpoint()
             response: _UploadUrlResponse = await session.post(
                 upload_url_endpoint,
@@ -481,9 +487,6 @@ class AttachmentUploader:
         files_dict["file"] = (attachment.filename, file_content, attachment.content_type)
 
         try:
-            from perplexity_cli.config.defaults import DEFAULT_UPLOAD_TIMEOUT
-            from perplexity_cli.utils.config import get_s3_bucket_url
-
             upload_timeout: int = DEFAULT_UPLOAD_TIMEOUT
             s3_bucket_url: str = get_s3_bucket_url()
             async_client_factory = _get_httpx_async_client_factory()

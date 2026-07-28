@@ -8,15 +8,24 @@ a human-readable table or a JSON envelope.
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import click
 
-if TYPE_CHECKING:
-    from perplexity_cli.services.model_service import ModelService
-
 from perplexity_cli._types import OutputFormat, SchemaInclusion
-from perplexity_cli.models.model_config import ModelConfigEntry, SubscriptionLevel
+from perplexity_cli.api.rest_client import RestClient
+from perplexity_cli.auth.models import AuthContext
+from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.auth.utils import load_token_optional
+from perplexity_cli.envelope import success_envelope, write_envelope
+from perplexity_cli.error_handler import handle_error
+from perplexity_cli.models.model_config import ModelConfigEntry, SubscriptionLevel, UserSettings
+from perplexity_cli.services.model_service import ModelService
+from perplexity_cli.utils.config import get_user_settings_endpoint
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+    PerplexityRequestError,
+)
 from perplexity_cli.utils.logging import get_logger
 
 
@@ -41,9 +50,6 @@ def _resolve_auth() -> tuple[str | None, dict[str, str] | None]:
     Returns:
         Tuple of (token, cookies), either or both may be None.
     """
-    from perplexity_cli.auth.token_manager import TokenManager
-    from perplexity_cli.auth.utils import load_token_optional
-
     logger = get_logger()
     token_manager = TokenManager()
     return load_token_optional(token_manager, logger)
@@ -62,9 +68,6 @@ def _create_rest_client(
     Returns:
         Configured RestClient instance.
     """
-    from perplexity_cli.api.rest_client import RestClient
-    from perplexity_cli.auth.models import AuthContext
-
     auth = AuthContext(token=token, cookies=cookies)
     return RestClient(auth=auth)
 
@@ -82,9 +85,6 @@ def _detect_subscription_level(client: Any) -> SubscriptionLevel:
     Returns:
         The detected subscription level.
     """
-    from perplexity_cli.models.model_config import UserSettings
-    from perplexity_cli.utils.config import get_user_settings_endpoint
-
     logger = get_logger()
     try:
         settings_payload = client.get_json(get_user_settings_endpoint())
@@ -113,8 +113,6 @@ def _create_model_service(
     Returns:
         Configured ModelService instance.
     """
-    from perplexity_cli.services.model_service import ModelService
-
     return ModelService(
         rest_client=client,
         subscription_level=subscription_level,
@@ -329,8 +327,6 @@ def _output_json(
         entries: Accessible model entries.
         include_schema: Whether to embed JSON schema.
     """
-    from perplexity_cli.envelope import success_envelope, write_envelope
-
     result = build_models_json_result(entries)
     envelope = success_envelope("pxcli models list", result)
     write_envelope(envelope, include_schema=include_schema)
@@ -348,14 +344,7 @@ def _handle_list_error(
         output_format: Either ``"json"`` or ``"human"``.
         logger: Logger instance.
     """
-    from perplexity_cli.utils.exceptions import (
-        PerplexityHTTPStatusError,
-        PerplexityRequestError,
-    )
-
     if output_format == "json":
-        from perplexity_cli.error_handler import handle_error
-
         handle_error(exc, "pxcli models list", output_format="json")
 
     if isinstance(exc, PerplexityHTTPStatusError):
