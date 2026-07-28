@@ -1,7 +1,9 @@
 # Selected Ranks Remediation Plan
 
-> Run ID: 20260726-201025
+> Run ID: 20260726-201025 (primary build)
+> Follow-up Run ID: 20260728-0002 (pre-existing debt + gate activation)
 > Base SHA: 88595a4ac30bcfd9586f37e26aad2430b04bf84e
+> Final SHA: e1d90350467d74dac870c447677419e9200816ab
 > Source: `.claude/plans/quality-infrastructure-selected-remediation-plan.md`
 > Scope: Ranks 16, 17, 21, 25, 26, 29 plus bounded Rank 10 and 18 prerequisites
 
@@ -132,3 +134,50 @@ ci-trusted
 | 25 | Concurrency, timeouts, permissions on every CI job | Local semantic validation passes |
 | 26 | All three scheduled workflows have timeouts, concurrency, reports, SARIF | actionlint passes; activation pending manual and schedule events |
 | 29 | Semantic validators parse YAML/Make; adversarial fixtures fail; docs match config | Local policy tests pass |
+
+## 7. Follow-Up Run (20260728-0002) — Cyclic State Machine
+
+Executed as a cyclic state machine with parallel agent dispatch, validation
+gates, and repair loops per phase.
+
+### Category A — Pre-Existing Debt (All Complete)
+
+| Item | Gate | Phase | Status |
+|------|------|-------|--------|
+| A1 | CHECK_ARCH | P2 | true (4 baselined violations) |
+| A2 | CHECK_COUPLING | P3 | true (--blocking flag added, MAX_FLAGGED=40) |
+| A3 | CHECK_RATCHETS | P1 | true |
+| A4 | CHECK_DEPTRY | P1 | true (tomli/grimp added to dev deps) |
+| A5 | CHECK_IMPORT_LINTER | P3 | true (12 contracts, independence re-enabled) |
+| A6 | CHECK_DYNAMIC_IMPORTS | P2 | true (0 violations) |
+| A7 | function-local-import | P4 | 111 → 3 findings (97% reduction) |
+| A8 | .opencode pins | P1 | 5 ranges → exact versions |
+
+### Category B — Signed-Off Infrastructure Verification
+
+| Item | Status | Blocker |
+|------|--------|---------|
+| B1 Scheduled mutation | Pending | Requires `git push` + `workflow_dispatch` |
+| B2 Scorecard OIDC/SARIF | Pending | Requires `git push` + `workflow_dispatch` |
+| B3 Safety credentials | Pending | Requires `git push` + repo secret verification |
+| B4 macOS wheel smoke | Pending | Requires `git push` + CI observation |
+| B5 Actionlint pinning | Complete | Verified at 1.7.12.24 via uvx |
+
+### Final Acceptance (S_FINAL_ACCEPTANCE — Complete)
+
+| Gate | Result |
+|------|--------|
+| `make check` (12/12 toggles) | Pass |
+| `make ci` (2,267 tests, 93% coverage) | Pass |
+| `make semgrep` | 0 findings |
+| `make gitleaks-ci` (630 commits) | 0 leaks |
+| `make ratchets` (83 identities, 3 arch) | Pass |
+| `make opencode-check` (109 tests) | Pass |
+| `make opencode-audit` | 0 vulnerabilities |
+| `make import-linter` (12 contracts) | 0 broken |
+| `make arch-check` (4 baselined) | Pass |
+| `make coupling-check` (34/40 flagged) | Pass |
+
+### Remaining Work
+
+B1-B4 require `git push` to validate. No local work remains.
