@@ -12,6 +12,11 @@ from perplexity_cli.commands._examples import (
 )
 from perplexity_cli.commands._help_refs import STYLE_SET_HELP_REF
 from perplexity_cli.commands._help_sections import HelpSectionConfig, add_help_sections
+from perplexity_cli.runners import (
+    run_clear_style_command,
+    run_configure_command,
+    run_view_style_command,
+)
 
 
 @click.group(
@@ -97,8 +102,6 @@ def style_set(ctx: click.Context, style: str, **flags: ClickValue) -> None:
         [OK] Style set to: be brief and concise
     """
     record_output_flags(ctx, flags)
-    from perplexity_cli.runners import run_configure_command
-
     run_configure_command(style)
 
 
@@ -150,8 +153,6 @@ def style_show(ctx: click.Context, **flags: ClickValue) -> None:
         No style configured.
     """
     record_output_flags(ctx, flags)
-    from perplexity_cli.runners import run_view_style_command
-
     run_view_style_command()
 
 
@@ -201,8 +202,6 @@ def style_clear(ctx: click.Context, **flags: ClickValue) -> None:
         No style was configured.
     """
     record_output_flags(ctx, flags)
-    from perplexity_cli.runners import run_clear_style_command
-
     run_clear_style_command()
 
 

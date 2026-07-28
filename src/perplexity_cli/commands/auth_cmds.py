@@ -14,6 +14,7 @@ from perplexity_cli.commands._help_refs import AUTH_LOGIN_HELP_REF, AUTH_STATUS_
 from perplexity_cli.commands._help_sections import HelpSectionConfig, add_help_sections
 from perplexity_cli.commands._runner_adapter import run_auth_command
 from perplexity_cli.config.defaults import DEFAULT_CHROME_DEBUG_PORT
+from perplexity_cli.runners import run_logout_command, run_status_command
 
 
 @click.group(
@@ -186,8 +187,6 @@ def auth_logout(ctx: click.Context, **flags: ClickValue) -> None:
         [OK] Logged out successfully.
     """
     record_output_flags(ctx, flags)
-    from perplexity_cli.runners import run_logout_command
-
     run_logout_command()
 
 
@@ -258,8 +257,6 @@ def auth_status(ctx: click.Context, **flags: ClickValue) -> None:
         Cookies:       12
     """
     record_output_flags(ctx, flags)
-    from perplexity_cli.runners import run_status_command
-
     run_status_command("verify" if flags.get("verify") else "skip")
 
 

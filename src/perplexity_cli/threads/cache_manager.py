@@ -11,6 +11,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+from dateutil import parser as dateutil_parser
 from pydantic import ValidationError
 
 from perplexity_cli.threads.exporter import ThreadRecord
@@ -245,8 +246,6 @@ class ThreadCacheManager:
             Tuple of (oldest_date, newest_date) as date objects, or None
             if cache does not exist or metadata is incomplete.
         """
-        from dateutil import parser as dateutil_parser
-
         cache = self.load_cache()
         if not cache:
             return None
@@ -311,8 +310,6 @@ class ThreadCacheManager:
         Raises:
             ValueError: If date format is invalid.
         """
-        from dateutil import parser as dateutil_parser
-
         coverage = self._parse_cache_coverage()
         if coverage is None:
             return True, from_date, to_date

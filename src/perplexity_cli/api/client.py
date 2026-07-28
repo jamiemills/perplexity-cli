@@ -21,6 +21,11 @@ from typing import Final, Protocol, TypeGuard, cast
 
 from perplexity_cli.api.models import HttpRequestContext
 from perplexity_cli.auth.models import AuthContext
+from perplexity_cli.config.defaults import (
+    DEFAULT_DEEP_RESEARCH_TIMEOUT,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_REQUEST_TIMEOUT,
+)
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
@@ -679,8 +684,6 @@ class SSEClient:
             timeout: Request timeout in seconds (default from config).
             max_retries: Maximum retry attempts (default from config).
         """
-        from perplexity_cli.config.defaults import DEFAULT_MAX_RETRIES, DEFAULT_REQUEST_TIMEOUT
-
         self.auth = auth
         self.timeout = timeout if timeout is not None else DEFAULT_REQUEST_TIMEOUT
         self.max_retries = max_retries if max_retries is not None else DEFAULT_MAX_RETRIES
@@ -739,8 +742,6 @@ class SSEClient:
         params: JsonObject = params_value if _is_json_object(params_value) else {}
         is_deep_research = _is_deep_research_request(params)
         if is_deep_research:
-            from perplexity_cli.config.defaults import DEFAULT_DEEP_RESEARCH_TIMEOUT
-
             effective_timeout = DEFAULT_DEEP_RESEARCH_TIMEOUT
         else:
             effective_timeout = self.timeout

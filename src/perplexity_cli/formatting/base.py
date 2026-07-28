@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import sys
 from abc import ABC, abstractmethod
 
 from perplexity_cli.api.models import Answer, WebResult
@@ -264,10 +266,6 @@ class Formatter(ABC):
         Returns:
             True if colours should be used, False otherwise.
         """
-        import os
-        import sys
-
-        # NO_COLOR convention: any value (even empty string) disables colour
         if os.environ.get("NO_COLOR") is not None:
             return False
         return sys.stdout.isatty()
@@ -279,9 +277,6 @@ def should_use_plain_default() -> bool:
     Returns:
         True if plain format should be the default, False otherwise.
     """
-    import os
-    import sys
-
     if not sys.stdout.isatty():
         return True
     return os.environ.get("NO_COLOR") is not None

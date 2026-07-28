@@ -1,14 +1,15 @@
 """Logging configuration and utilities for Perplexity CLI."""
 
+import json
 import logging
 import re
 import sys
 from collections.abc import Mapping
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
-# get_config_paths imported lazily in get_default_log_file()
+from perplexity_cli.utils.config import get_config_paths
 
 
 class DynamicStderrHandler(logging.StreamHandler[TextIO]):
@@ -61,9 +62,6 @@ class JSONLogFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         """Format a log record as a single-line JSON object."""
-        import json
-        from datetime import datetime
-
         entry = {
             "ts": datetime.now(UTC).isoformat(),
             "level": record.levelname,
@@ -168,8 +166,6 @@ def get_default_log_file() -> Path:
     Returns:
         Path to default log file in config directory.
     """
-    from perplexity_cli.utils.config import get_config_paths
-
     return get_config_paths().log_file_path
 
 

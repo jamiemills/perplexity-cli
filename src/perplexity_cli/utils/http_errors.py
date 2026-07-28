@@ -10,11 +10,13 @@ Shared policy:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Final
+import traceback
+from typing import Any, Final
 
 import click
 
 from perplexity_cli._types import DebugMode
+from perplexity_cli.envelope import ErrorCode
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
@@ -26,9 +28,6 @@ _HTTP_STATUS_UNAUTHORISED: Final[int] = 401
 _HTTP_STATUS_FORBIDDEN: Final[int] = 403
 _HTTP_STATUS_TOO_MANY_REQUESTS: Final[int] = 429
 _HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
-
-if TYPE_CHECKING:
-    from perplexity_cli.envelope import ErrorCode
 
 
 def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
@@ -98,8 +97,6 @@ def handle_unexpected_cli_error(
     click.echo(user_message, err=True)
 
     if debug_mode == "debug":
-        import traceback
-
         debug_output = traceback.format_exc()
         if include_debug_hint:
             click.echo(f"Debug info:\n{debug_output}", err=True)
@@ -119,8 +116,6 @@ def classify_http_error(
     Returns:
         Tuple of (error_code, human_message, fix_suggestion).
     """
-    from perplexity_cli.envelope import ErrorCode
-
     status = error.response.status_code
     if status == _HTTP_STATUS_UNAUTHORISED:
         return (
@@ -161,8 +156,6 @@ def classify_network_error(
     Returns:
         Tuple of (error_code, human_message, fix_suggestion).
     """
-    from perplexity_cli.envelope import ErrorCode
-
     return (
         ErrorCode.network_error,
         "Network error. Please check your internet connection.",

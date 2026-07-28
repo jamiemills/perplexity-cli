@@ -10,6 +10,7 @@ from perplexity_cli.commands._examples import (
     CONFIG_SHOW_JSON_EXAMPLE,
 )
 from perplexity_cli.commands._help_sections import HelpSectionConfig, add_help_sections
+from perplexity_cli.runners import run_set_config_command, run_show_config_command
 
 
 @click.group(
@@ -97,8 +98,6 @@ def config_set(ctx: click.Context, key: str, value: str, **flags: ClickValue) ->
         [OK] save_cookies set to true
     """
     record_output_flags(ctx, flags)
-    from perplexity_cli.runners import run_set_config_command
-
     run_set_config_command(key, value)
 
 
@@ -150,8 +149,6 @@ def config_show(ctx: click.Context, **flags: ClickValue) -> None:
           debug_mode:   false
     """
     record_output_flags(ctx, flags)
-    from perplexity_cli.runners import run_show_config_command
-
     run_show_config_command()
 
 

@@ -18,6 +18,9 @@ from dataclasses import dataclass
 
 import click
 
+from perplexity_cli.envelope import Envelope, ErrorEnvelope
+from perplexity_cli.exit_codes import format_exit_codes_help
+
 __all__ = [
     "HelpSectionConfig",
     "add_help_sections",
@@ -74,8 +77,6 @@ def _write_ndjson_example(formatter: click.HelpFormatter, example: str) -> None:
 
 def _write_json_schema(formatter: click.HelpFormatter) -> None:
     """Write Pydantic JSON schema sections for Envelope and ErrorEnvelope."""
-    from perplexity_cli.envelope import Envelope, ErrorEnvelope
-
     formatter.write("\n")
     formatter.write("JSON Schema (Success Envelope):\n")
     schema_text = _json.dumps(Envelope.model_json_schema(), indent=2)
@@ -92,8 +93,6 @@ def _write_json_schema(formatter: click.HelpFormatter) -> None:
 
 def _write_exit_codes(formatter: click.HelpFormatter) -> None:
     """Write the standard exit-code table section."""
-    from perplexity_cli.exit_codes import format_exit_codes_help
-
     formatter.write("\n")
     with formatter.section("Exit Codes"):
         for line in format_exit_codes_help().strip().splitlines():

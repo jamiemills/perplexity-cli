@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from io import StringIO
 from typing import TYPE_CHECKING, Final
 
 from rich.console import Console
@@ -75,8 +76,6 @@ class RichFormatter(Formatter):
             table.add_row(str(i), ref.name, ref.url)
 
         # Render table to string with ANSI codes
-        from io import StringIO
-
         string_buffer = StringIO()
         temp_console = Console(file=string_buffer, force_terminal=True, legacy_windows=False)
         temp_console.print(table)
@@ -128,8 +127,6 @@ class RichFormatter(Formatter):
         Returns:
             Complete Rich-formatted output (with ANSI codes for terminal).
         """
-        from io import StringIO
-
         string_buffer = StringIO()
         # Force terminal mode to preserve ANSI colour codes
         output_console = Console(file=string_buffer, force_terminal=True, legacy_windows=False)
@@ -167,8 +164,6 @@ class RichFormatter(Formatter):
         Args:
             text: Text possibly containing markdown syntax.
         """
-        import re
-
         lines = text.split("\n")
         for line in lines:
             # Check for headers (###, ##, #)
@@ -202,8 +197,6 @@ class RichFormatter(Formatter):
         """
         try:
             syntax = Syntax(code_content, language, theme="monokai", line_numbers=False)
-            from io import StringIO
-
             code_buffer = StringIO()
             code_console = Console(file=code_buffer, legacy_windows=False)
             code_console.print(syntax)
