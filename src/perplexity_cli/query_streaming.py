@@ -22,7 +22,9 @@ from perplexity_cli.api.models import (
     TraceContext,
     WebResult,
 )
+from perplexity_cli.envelope import Meta
 from perplexity_cli.formatting.context import RenderContext
+from perplexity_cli.ndjson import NDJSONWriter
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
@@ -34,11 +36,10 @@ from perplexity_cli.utils.http_errors import (
     handle_unexpected_cli_error,
 )
 from perplexity_cli.utils.logging import get_logger
+from perplexity_cli.utils.version import get_version
 
 if TYPE_CHECKING:
     import logging
-
-    from perplexity_cli.ndjson import NDJSONWriter
 
     #: Type for error handler callbacks in the dispatch table.
     _ErrorHandler = Callable[[Any, logging.Logger], Any]
@@ -88,9 +89,6 @@ def _write_ndjson_result(
         references: List of web references.
         trace: Trace and timing context for envelope metadata.
     """
-    from perplexity_cli.envelope import Meta
-    from perplexity_cli.utils.version import get_version
-
     result_data = {
         "answer": accumulated_text,
         "references": [{"name": r.name, "url": r.url, "snippet": r.snippet} for r in references],
@@ -275,8 +273,6 @@ def stream_query_response(
     """
     ndjson_writer = None
     if render.options.json_mode:
-        from perplexity_cli.ndjson import NDJSONWriter
-
         ndjson_writer = NDJSONWriter(sys.stdout)
         ndjson_writer.start(command="pxcli query --json --stream")
 
