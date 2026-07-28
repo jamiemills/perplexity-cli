@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   publish:
+    name: Publish Distribution
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     concurrency:
       group: publish-${{ github.ref }}
       cancel-in-progress: true

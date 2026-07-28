@@ -186,7 +186,7 @@ class TestValidateCommandOwnership:
 
 SIMPLE_MAKEFILE = textwrap.dedent(
     """\
-    .PHONY: test lint format-check ci
+    .PHONY: test lint format-check ci-static ci-test-coverage ci-test-compat ci-fuzz-status pip-audit sonar-reports ci-property ci-package smoke-test safety-gate ci ci-trusted
 
     test: lint
     \tpytest
@@ -197,8 +197,21 @@ SIMPLE_MAKEFILE = textwrap.dedent(
     format-check: lint
     \truff format --check .
 
-    ci: test
+    ci-static: format-check
+    ci-test-coverage:
+    ci-test-compat:
+    ci-fuzz-status:
+    pip-audit:
+    sonar-reports:
+    ci-property:
+    ci-package:
+    smoke-test:
+    safety-gate:
+
+    ci: ci-static ci-test-coverage ci-fuzz-status pip-audit sonar-reports ci-property ci-package smoke-test
     \techo building
+
+    ci-trusted: ci safety-gate
     """
 )
 
@@ -238,22 +251,13 @@ class TestCliEndToEnd:
         assert exit_code == mkp.EXIT_FAIL
 
     def test_dependency_chain_validated(self, tmp_path: Path) -> None:
-        """The default ``ci → test`` dependency rule is enforced."""
+        """The default split-CI dependency rule is enforced."""
         makefile = self._write_makefile(
             tmp_path,
-            textwrap.dedent(
-                """\
-                .PHONY: test lint ci
-
-                test: lint
-                \tpytest
-
-                lint:
-                \truff check .
-
-                ci: lint
-                \techo no test dep
-                """
+            SIMPLE_MAKEFILE.replace(
+                "ci: ci-static ci-test-coverage ci-fuzz-status pip-audit "
+                "sonar-reports ci-property ci-package smoke-test",
+                "ci: ci-static",
             ),
         )
         exit_code = mkp.main(["--makefile", str(makefile)])

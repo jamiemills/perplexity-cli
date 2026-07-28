@@ -444,8 +444,8 @@ workflow artefacts (30-day retention) and SARIF to GitHub code scanning.
 Every external action reference is pinned to a full 40-character commit SHA.
 
 - `mutation-scheduled.yml` runs `make mutate-full-policy` weekly (Sunday
-  02:00 UTC, 6 h timeout). It uploads the mutation report and the mutmut
-  cache as artefacts and writes a job summary with the policy verdict. The
+  02:00 UTC, 6 h timeout). It uploads the mutation report and mutmut 3
+  metadata from `mutants/` as artefacts and writes a job summary with the policy verdict. The
   policy wrapper decides pass/fail; the job always reports results.
 - `scorecard.yml` runs OpenSSF Scorecard weekly (Monday 06:00 UTC) as a
   two-job producer/validator pipeline. The producer publishes results and

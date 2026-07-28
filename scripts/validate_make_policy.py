@@ -50,20 +50,37 @@ SEVERITY_WARNING: str = "warning"
 
 # Canonical "interesting" targets expected to exist in this project. These can
 # be overridden by callers via the CLI.
-DEFAULT_REQUIRED_TARGETS: tuple[str, ...] = ("test", "lint", "format-check")
+DEFAULT_REQUIRED_TARGETS: tuple[str, ...] = (
+    "test",
+    "lint",
+    "format-check",
+    "ci-static",
+    "ci-test-coverage",
+    "ci-test-compat",
+    "ci-property",
+    "ci-package",
+)
 
 # Targets whose prerequisites should follow a known shape. Each value is the
 # list of prerequisites that must all be present (in any order).
 DEFAULT_DEPENDENCY_RULES: dict[str, tuple[str, ...]] = {
-    "ci": ("test",),
+    "ci": (
+        "ci-static",
+        "ci-test-coverage",
+        "ci-fuzz-status",
+        "pip-audit",
+        "sonar-reports",
+        "ci-property",
+        "ci-package",
+        "smoke-test",
+    ),
+    "ci-trusted": ("ci", "safety-gate"),
 }
 
 # Canonical command tokens that, if shared across two unrelated targets,
 # usually indicate duplicated responsibility. Each token maps to the single
 # target that should "own" it.
-DEFAULT_COMMAND_OWNERSHIP: dict[str, str] = {
-    "pytest": "test",
-}
+DEFAULT_COMMAND_OWNERSHIP: dict[str, str] = {}
 
 
 class ReportFormat(Enum):

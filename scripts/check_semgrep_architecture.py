@@ -61,8 +61,13 @@ def _parse_args() -> argparse.Namespace:
 
 def _fingerprint(result: dict) -> str:
     start = result.get("start", {})
+    result_path = Path(str(result.get("path", "?")))
+    try:
+        display_path = result_path.relative_to(PROJECT_ROOT)
+    except ValueError:
+        display_path = result_path
     return "{}:{}:{}".format(
-        result.get("path", "?"),
+        display_path,
         start.get("line", 0),
         result.get("check_id", "?"),
     )

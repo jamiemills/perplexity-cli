@@ -17,7 +17,7 @@
     "scripts/import_graph.py:176:nosemgrep:getattr-with-string-literal",
     "scripts/import_graph.py:202:nosemgrep:getattr-with-string-literal",
     "scripts/semgrep_policy.py:235:nosemgrep:boolean-flag-argument",
-    "scripts/validate_make_policy.py:681:nosemgrep:boolean-flag-argument",
+    "scripts/validate_make_policy.py:698:nosemgrep:boolean-flag-argument",
     "scripts/validate_workflow_policy.py:341:nosemgrep:boolean-flag-argument",
     "scripts/validate_workflow_policy.py:483:nosemgrep:boolean-flag-argument",
     "src/perplexity_cli/api/client.py:48:no-cover",

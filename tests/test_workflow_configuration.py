@@ -194,3 +194,10 @@ def test_no_continue_on_error_on_scheduled() -> None:
             if isinstance(job, dict) and job.get("continue-on-error") is True
         ]
         assert offenders == [], f"{name} sets continue-on-error: true on: {offenders}"
+
+
+def test_mutation_workflow_uploads_mutmut3_metadata() -> None:
+    """Scheduled mutation evidence must use mutmut 3's actual metadata path."""
+    mutation = _workflow_texts()["mutation-scheduled.yml"]
+    assert "path: mutants/" in mutation
+    assert "path: .mutmut-cache" not in mutation

@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   mutation:
+    name: Full Mutation Policy
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
@@ -78,11 +79,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Upload mutmut cache
+      - name: Upload mutmut metadata
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: mutmut-cache-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .mutmut-cache
+          name: mutmut-metadata-${{ github.run_id }}-${{ github.run_attempt }}
+          path: mutants/
           if-no-files-found: warn
           retention-days: 30
