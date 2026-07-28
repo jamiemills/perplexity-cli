@@ -453,12 +453,12 @@ class TestQualityGatesMatchesRepo:
         test therefore asserts against the source-of-truth config file.
         """
         gates = (PROJECT_ROOT / "quality" / "gates.conf").read_text(encoding="utf-8")
-        assert "CHECK_SEMGREP = false" in gates
+        assert "CHECK_SEMGREP = true" in gates
         assert "CHECK_ARCH = true" in gates
-        assert "CHECK_COUPLING = false" in gates
+        assert "CHECK_COUPLING = true" in gates
         assert "CHECK_RATCHETS = true" in gates
         assert "CHECK_DEPTRY = true" in gates
-        assert "CHECK_IMPORT_LINTER = false" in gates
+        assert "CHECK_IMPORT_LINTER = true" in gates
 
 
 # ---------------------------------------------------------------------------

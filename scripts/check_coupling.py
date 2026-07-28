@@ -984,18 +984,24 @@ def _emit_budget_advisory(
     options: ReportOptions,
 ) -> None:
     """Print the budget advisory when flagged count exceeds the budget."""
-    if options.max_flagged is None:
+    if options.max_flagged is None or len(flagged) <= options.max_flagged:
         return
-    if len(flagged) <= options.max_flagged:
-        return
-    label = "BLOCKING" if options.blocking else "ADVISORY"
-    suffix = "" if options.blocking else "  This is informational only."
-    msg = (
-        f"\n{label}: {len(flagged)} flagged modules exceeds "
-        f"--max-flagged budget of {options.max_flagged}.{suffix}"
-    )
+    msg = _format_budget_message(len(flagged), options.max_flagged, options.blocking)
     if options.output_mode is OutputMode.TEXT:
         print(msg)
+
+
+# owner: quality-infrastructure; reason: private helper, boolean from typed enum context.
+def _format_budget_message(  # nosemgrep: boolean-flag-argument
+    flagged_count: int, max_flagged: int, blocking: bool
+) -> str:
+    """Build the budget-exceeded message."""
+    label = "BLOCKING" if blocking else "ADVISORY"
+    suffix = "" if blocking else "  This is informational only."
+    return (
+        f"\n{label}: {flagged_count} flagged modules exceeds "
+        f"--max-flagged budget of {max_flagged}.{suffix}"
+    )
 
 
 def _should_block(
@@ -1022,6 +1028,19 @@ def _generate_report(options: ReportOptions) -> int:
         return graph_result
     efferent, afferent, all_modules = graph_result
 
+    exit_code = _collect_and_report(efferent, afferent, all_modules, options)
+    if exit_code is not None:
+        return exit_code
+    return 0
+
+
+def _collect_and_report(
+    efferent: dict[str, set[str]],
+    afferent: dict[str, set[str]],
+    all_modules: set[str],
+    options: ReportOptions,
+) -> int | None:
+    """Collect metrics, emit report, return exit code or None for success."""
     abstractness_result = _compute_abstractness_or_exit(all_modules)
     if isinstance(abstractness_result, int):
         return abstractness_result
@@ -1031,22 +1050,28 @@ def _generate_report(options: ReportOptions) -> int:
     flagged = _flagged_metrics(metrics, options.threshold)
     flagged_identities = {m.module for m in flagged}
 
-    trend: TrendReport | None = None
-    if options.trend_compare_path:
-        trend_result = _compare_trends_or_exit(
-            flagged_identities, options.trend_compare_path, options
-        )
-        if isinstance(trend_result, int):
-            return trend_result
-        trend = trend_result
+    trend = _resolve_trend(flagged_identities, options)
+    if isinstance(trend, int):
+        return trend
 
     _emit_report(metrics, trend, options)
     _emit_budget_advisory(flagged, options)
 
     if _should_block(flagged, options):
         return 1
+    return None
 
-    return 0
+
+def _resolve_trend(
+    flagged_identities: set[str], options: ReportOptions
+) -> TrendReport | None | int:
+    """Compute trend comparison, returning None if no trend path is configured."""
+    if not options.trend_compare_path:
+        return None
+    trend_result = _compare_trends_or_exit(flagged_identities, options.trend_compare_path, options)
+    if isinstance(trend_result, int):
+        return trend_result
+    return trend_result
 
 
 def main(argv: list[str] | None = None) -> int:
