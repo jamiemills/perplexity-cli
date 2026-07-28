@@ -34,7 +34,7 @@
     "scripts/import_graph.py:179:nosemgrep:getattr-with-string-literal",
     "scripts/import_graph.py:181:nosemgrep:getattr-with-string-literal",
     "scripts/import_graph.py:207:nosemgrep:getattr-with-string-literal",
-    "scripts/mutation_policy.py:369:nosec",
+    "scripts/mutation_policy.py:370:nosec",
     "scripts/mutation_policy.py:37:nosec",
     "scripts/semgrep_policy.py:111:nosec",
     "scripts/semgrep_policy.py:154:nosec",
