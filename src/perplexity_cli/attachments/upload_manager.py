@@ -7,7 +7,7 @@ import base64
 import logging
 import uuid
 from collections.abc import Coroutine, Mapping
-from typing import TYPE_CHECKING, Final, Protocol, TypedDict, TypeGuard
+from typing import TYPE_CHECKING, Any, Final, Protocol, TypedDict, TypeGuard
 
 import httpx
 
@@ -41,10 +41,18 @@ try:
 except ImportError:  # pragma: no cover
     RequestException = Exception
 
-try:
-    from curl_cffi.requests import AsyncSession as CurlAsyncSession
-except ImportError:  # pragma: no cover
-    CurlAsyncSession = None
+
+def _get_async_session_class() -> type[Any] | None:
+    """Return AsyncSession or None when curl_cffi is unavailable."""
+    try:
+        from curl_cffi.requests import AsyncSession
+
+        return AsyncSession
+    except ImportError:  # pragma: no cover
+        return None
+
+
+CurlAsyncSession = _get_async_session_class()
 
 if TYPE_CHECKING:
     from curl_cffi.requests import AsyncSession
