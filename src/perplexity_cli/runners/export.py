@@ -11,17 +11,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypedDict, TypeGuard, cast
 
 import click
-from dateutil import parser as dateutil_parser
 
 from perplexity_cli._types import OutputFormat, SchemaInclusion
-from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
-from perplexity_cli.threads.cache_manager import ThreadCacheManager
-from perplexity_cli.threads.exporter import ThreadRecord, write_threads_csv
-from perplexity_cli.threads.scraper import ThreadScraper
+
+if TYPE_CHECKING:
+    from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.utils.async_bridge import run_async
-from perplexity_cli.utils.config import get_rate_limiting_config
 from perplexity_cli.utils.exceptions import (
     AuthenticationError,
     PerplexityHTTPStatusError,
@@ -31,13 +28,16 @@ from perplexity_cli.utils.exceptions import (
 )
 from perplexity_cli.utils.http_errors import handle_http_error, handle_unexpected_cli_error
 from perplexity_cli.utils.logging import get_logger
-from perplexity_cli.utils.rate_limiter import RateLimiter
 
 _COMMAND = "pxcli threads export"
 _EXPORT_TAIL_ARG_COUNT = 3
 
 if TYPE_CHECKING:
+    from perplexity_cli.auth.token_manager import TokenManager
     from perplexity_cli.config.models import RateLimitConfig
+    from perplexity_cli.threads.cache_manager import ThreadCacheManager
+    from perplexity_cli.threads.exporter import ThreadRecord
+    from perplexity_cli.threads.scraper import ThreadScraper
 
 
 class ExportContext(TypedDict, total=False):
@@ -136,6 +136,8 @@ class ExportResult:
 
 def _create_token_manager() -> TokenManager:
     """Create the token manager used by this runner."""
+    from perplexity_cli.auth.token_manager import TokenManager
+
     return TokenManager()
 
 
@@ -147,6 +149,8 @@ def _emit_json_error(e: Exception, output_format: OutputFormat) -> None:
 
 def _create_cache_manager() -> ThreadCacheManager:
     """Create the cache manager used by this runner."""
+    from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
     return ThreadCacheManager()
 
 
@@ -295,6 +299,8 @@ def _validate_export_dates(
 
 def _try_parse_dates(from_date: str | None, to_date: str | None) -> None:
     """Parse date strings, raising ValueError if either is invalid."""
+    from dateutil import parser as dateutil_parser
+
     for date_str in (from_date, to_date):
         if date_str:
             dateutil_parser.parse(date_str)
@@ -302,6 +308,9 @@ def _try_parse_dates(from_date: str | None, to_date: str | None) -> None:
 
 def _setup_rate_limiter(logger: logging.Logger) -> ExportRateLimiterProtocol | None:
     """Create a rate limiter if rate limiting is enabled, otherwise return None."""
+    from perplexity_cli.utils.config import get_rate_limiting_config
+    from perplexity_cli.utils.rate_limiter import RateLimiter
+
     config: RateLimitConfig = get_rate_limiting_config()
     if not config.enabled:
         return None
@@ -441,6 +450,8 @@ def _output_export_results(
         logger.info("Exported %s threads (JSON only, no CSV written)", len(result.threads))
         return
 
+    from perplexity_cli.threads.exporter import write_threads_csv
+
     output_path = write_threads_csv(result.threads, result.output_path)
     written_result = ExportResult(
         threads=result.threads,
@@ -561,6 +572,8 @@ def _prepare_export(
 
 def _execute_scrape_and_export(prepared: PreparedExport, request: ExportRequest) -> None:
     """Create the scraper, scrape threads, and output results."""
+    from perplexity_cli.threads.scraper import ThreadScraper
+
     scraper = ThreadScraper(
         token=prepared.token,
         cookies=prepared.cookies,

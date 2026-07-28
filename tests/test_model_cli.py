@@ -86,7 +86,7 @@ class TestModelsListCommand:
         sample_entries: list[ModelConfigEntry],
     ) -> None:
         with patch(
-            "perplexity_cli.runners.models.run_models_list_command",
+            "perplexity_cli.commands.models_cmds.run_models_list_command",
         ) as mock_run:
             result = runner.invoke(main, ["models", "list"])
 
@@ -103,7 +103,7 @@ class TestModelsListCommand:
         sample_entries: list[ModelConfigEntry],
     ) -> None:
         with patch(
-            "perplexity_cli.runners.models.run_models_list_command",
+            "perplexity_cli.commands.models_cmds.run_models_list_command",
         ) as mock_run:
             result = runner.invoke(main, ["models", "list", "--json"])
 
@@ -119,7 +119,7 @@ class TestModelsListCommand:
         sample_entries: list[ModelConfigEntry],
     ) -> None:
         with patch(
-            "perplexity_cli.runners.models.run_models_list_command",
+            "perplexity_cli.commands.models_cmds.run_models_list_command",
         ) as mock_run:
             result = runner.invoke(main, ["models", "list", "--json", "--schema"])
 

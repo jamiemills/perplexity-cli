@@ -12,12 +12,8 @@ from typing import TYPE_CHECKING, Any, Literal, TypeGuard, cast
 import click
 
 from perplexity_cli._types import OutputFormat, SchemaInclusion
-from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.auth.token_manager import TokenManager
-from perplexity_cli.config.defaults import DEFAULT_STATUS_CHECK_TIMEOUT
 from perplexity_cli.envelope import success_envelope, write_envelope
-from perplexity_cli.threads.cache_manager import ThreadCacheManager
-from perplexity_cli.utils.config import get_feature_config
 from perplexity_cli.utils.exceptions import (
     AuthenticationError,
     PerplexityHTTPStatusError,
@@ -29,6 +25,7 @@ from perplexity_cli.utils.logging import get_logger
 if TYPE_CHECKING:
     from perplexity_cli.config.models import FeatureConfig
     from perplexity_cli.envelope import Envelope
+    from perplexity_cli.threads.cache_manager import ThreadCacheManager
 
 
 def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -129,6 +126,9 @@ def _output_doctor_security_text(
 
 def run_doctor_security_command(*, output_format: OutputFormat | None = None) -> None:
     """Execute the doctor security command."""
+    from perplexity_cli.threads.cache_manager import ThreadCacheManager
+    from perplexity_cli.utils.config import get_feature_config
+
     if output_format is None:
         output_format = _get_json_mode_from_ctx()
 
@@ -169,7 +169,11 @@ def _verify_token(
     logger: logging.Logger,
 ) -> bool | None:
     """Run token verification against the API."""
+    from perplexity_cli.api.endpoints import PerplexityAPI
+
     try:
+        from perplexity_cli.config.defaults import DEFAULT_STATUS_CHECK_TIMEOUT
+
         logger.debug("Verifying token validity")
         with PerplexityAPI(
             token=token, cookies=cookies, timeout=DEFAULT_STATUS_CHECK_TIMEOUT
@@ -290,6 +294,8 @@ def run_status_command(
     verify: Literal["verify", "skip"], *, output_format: OutputFormat | None = None
 ) -> None:
     """Execute the status command."""
+    from perplexity_cli.auth.token_manager import TokenManager
+
     if output_format is None:
         output_format = _get_json_mode_from_ctx()
 

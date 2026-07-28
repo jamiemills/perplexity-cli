@@ -5,23 +5,18 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Literal, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard
 
 import click
 
 from perplexity_cli._types import OutputFormat, SchemaInclusion
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
-from perplexity_cli.utils.config import (
-    FeatureConfig,
-    clear_feature_config_cache,
-    get_feature_config,
-    get_feature_config_path,
-    set_feature,
-)
 from perplexity_cli.utils.exceptions import ConfigurationError
 from perplexity_cli.utils.logging import get_logger
-from perplexity_cli.utils.style_manager import StyleManager
+
+if TYPE_CHECKING:
+    from perplexity_cli.utils.style_manager import StyleManager
 
 
 def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -75,6 +70,8 @@ def _handle_style_error(
 
 def run_configure_command(style: str, *, output_format: OutputFormat | None = None) -> None:
     """Execute the configure command."""
+    from perplexity_cli.utils.style_manager import StyleManager
+
     if output_format is None:
         output_format = _get_json_mode_from_ctx()
 
@@ -110,6 +107,8 @@ def _output_view_style(style: object) -> None:
 
 def run_view_style_command(*, output_format: OutputFormat | None = None) -> None:
     """Execute the view-style command."""
+    from perplexity_cli.utils.style_manager import StyleManager
+
     if output_format is None:
         output_format = _get_json_mode_from_ctx()
 
@@ -149,6 +148,8 @@ def _execute_clear_style(sm: StyleManager, output_format: OutputFormat) -> None:
 
 def run_clear_style_command(*, output_format: OutputFormat | None = None) -> None:
     """Execute the clear-style command."""
+    from perplexity_cli.utils.style_manager import StyleManager
+
     if output_format is None:
         output_format = _get_json_mode_from_ctx()
 
@@ -229,6 +230,8 @@ def run_set_config_command(
     key: str, value: str, *, output_format: OutputFormat | None = None
 ) -> None:
     """Execute the set-config command."""
+    from perplexity_cli.utils.config import clear_feature_config_cache, set_feature
+
     logger = get_logger()
 
     if output_format is None:
@@ -278,6 +281,12 @@ def _output_config_text(
 
 def run_show_config_command(*, output_format: OutputFormat | None = None) -> None:
     """Execute the show-config command."""
+    from perplexity_cli.utils.config import (
+        FeatureConfig,
+        get_feature_config,
+        get_feature_config_path,
+    )
+
     logger = get_logger()
 
     if output_format is None:

@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import socket
 import sys
 import time
 import uuid
@@ -19,19 +18,10 @@ from typing import TYPE_CHECKING, Literal
 import click
 
 from perplexity_cli._types import DebugMode, OutputFormat, QueryOptions, SchemaInclusion
-from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.api.models import QueryInput, TraceContext
-from perplexity_cli.attachments import AttachmentUploader
 from perplexity_cli.auth.models import AuthContext
-from perplexity_cli.auth.token_manager import TokenManager
-from perplexity_cli.auth.utils import load_token_optional
-from perplexity_cli.envelope import Meta, envelope_to_dict, success_envelope
-from perplexity_cli.error_handler import handle_error
-from perplexity_cli.formatting import get_formatter, list_formatters
 from perplexity_cli.formatting.context import OutputOptions, RenderContext
-from perplexity_cli.query_streaming import stream_query_response
 from perplexity_cli.utils.async_bridge import run_async
-from perplexity_cli.utils.config import get_config_paths, get_save_cookies_enabled
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
     AttachmentUploadError,
@@ -40,19 +30,12 @@ from perplexity_cli.utils.exceptions import (
     PerplexityRequestError,
     UpstreamSchemaError,
 )
-from perplexity_cli.utils.file_handler import load_attachments, resolve_file_arguments
-from perplexity_cli.utils.http_errors import (
-    handle_http_error,
-    handle_network_error,
-    handle_unexpected_cli_error,
-)
 from perplexity_cli.utils.logging import get_logger, redact_path, redact_text, redact_url
-from perplexity_cli.utils.style_manager import StyleManager
-from perplexity_cli.utils.version import get_version
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from perplexity_cli.api.endpoints import PerplexityAPI
     from perplexity_cli.api.models import Answer
     from perplexity_cli.formatting.base import Formatter
     from perplexity_cli.utils.attachment_models import FileAttachment
@@ -90,6 +73,10 @@ def log_query_debug_context(
     logger = get_logger()
     if not logger.isEnabledFor(logging.DEBUG):
         return
+
+    import socket
+
+    from perplexity_cli.utils.config import get_config_paths, get_save_cookies_enabled
 
     try:
         hostname = socket.gethostname()
@@ -171,6 +158,8 @@ def _resolve_and_upload(
     Returns:
         List of uploaded attachment URLs.
     """
+    from perplexity_cli.utils.file_handler import resolve_file_arguments
+
     file_paths = resolve_file_arguments(
         [query_text],
         attach_args=attachment_list if attachment_list else None,
@@ -221,6 +210,8 @@ def _load_and_upload_attachments(
     Returns:
         List of uploaded attachment URLs.
     """
+    from perplexity_cli.utils.file_handler import load_attachments
+
     file_attachments = load_attachments(file_paths)
     logger.debug("Attachment loading complete: %s file(s) loaded", len(file_attachments))
     for attachment in file_attachments:
@@ -254,6 +245,8 @@ def _do_s3_upload(
     Returns:
         List of uploaded attachment URLs.
     """
+    from perplexity_cli.attachments import AttachmentUploader
+
     logger.debug("Starting S3 upload for attachments")
     uploader = AttachmentUploader(token=token, cookies=cookies)
     try:
@@ -271,6 +264,8 @@ def _do_s3_upload(
 
 def get_query_formatter(output_format: str | None) -> tuple[str, Formatter]:
     """Resolve the configured formatter for the query command."""
+    from perplexity_cli.formatting import get_formatter, list_formatters
+
     logger = get_logger()
     resolved_output_format = output_format or "rich"
     try:
@@ -287,6 +282,8 @@ def get_query_formatter(output_format: str | None) -> tuple[str, Formatter]:
 
 def build_final_query(query_text: str) -> str:
     """Apply any configured style prompt to the query text."""
+    from perplexity_cli.utils.style_manager import StyleManager
+
     logger = get_logger()
     style = StyleManager().load_style()
     if not style:
@@ -346,6 +343,9 @@ def _build_json_envelope(
     Returns:
         JSON string ready for output.
     """
+    from perplexity_cli.envelope import Meta, envelope_to_dict, success_envelope
+    from perplexity_cli.utils.version import get_version
+
     result = {
         "answer": answer_obj.text,
         "references": [
@@ -373,6 +373,8 @@ def _handle_query_exception(
         ctx_obj: The Click context object dictionary.
         output_format: Either ``"json"`` or ``"human"``.
     """
+    from perplexity_cli.error_handler import handle_error
+
     logger = get_logger()
     debug_mode: DebugMode = "debug" if bool((ctx_obj or {}).get("debug", False)) else "normal"
 
@@ -402,6 +404,8 @@ def _try_dispatch_known_error(
     Returns:
         True if the error was handled, False otherwise.
     """
+    from perplexity_cli.utils.http_errors import handle_http_error, handle_network_error
+
     if isinstance(exc, PerplexityHTTPStatusError):
         handle_http_error(exc, logger, debug_mode=debug_mode)
         return True
@@ -427,6 +431,8 @@ def _handle_fallback_error(exc: Exception, logger: logging.Logger, debug_mode: D
         logger: Logger instance.
         debug_mode: Whether debug mode is active.
     """
+    from perplexity_cli.utils.http_errors import handle_unexpected_cli_error
+
     handle_unexpected_cli_error(
         exc,
         logger,
@@ -569,6 +575,11 @@ def run_query_command(
     model_preference = options.model_preference
     request_param_overrides = options.request_param_overrides
 
+    from perplexity_cli.api.endpoints import PerplexityAPI
+    from perplexity_cli.auth.token_manager import TokenManager
+    from perplexity_cli.auth.utils import load_token_optional
+    from perplexity_cli.query_streaming import stream_query_response
+
     logger = get_logger()
     query_text = _read_query_from_stdin(query_text)
     json_mode, timeout, include_schema = _read_ctx_options(ctx_obj)
@@ -619,6 +630,8 @@ def _handle_keyboard_interrupt(output_format: OutputFormat, logger: logging.Logg
         logger: Logger instance.
     """
     if output_format == "json":
+        from perplexity_cli.error_handler import handle_error
+
         handle_error(
             KeyboardInterrupt(),
             _QUERY_JSON_COMMAND,

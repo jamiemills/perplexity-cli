@@ -8,7 +8,7 @@
     },
     {
       "rule": "framework-isolation",
-      "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/query_runner.py:19",
+      "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/query_runner.py:18",
       "message": "query_runner (layer: application) imports 'click' [module-level], but application must not depend on framework libraries"
     },
     {

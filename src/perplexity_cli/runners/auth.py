@@ -9,12 +9,9 @@ from typing import Literal, TypeGuard
 import click
 
 from perplexity_cli._types import DebugMode, OutputFormat, SchemaInclusion
-from perplexity_cli.auth.oauth_handler import authenticate_sync
-from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
 from perplexity_cli.runners._utils import resolve_json_flag
-from perplexity_cli.utils.config import get_perplexity_base_url, get_save_cookies_enabled
 from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationError
 from perplexity_cli.utils.http_errors import handle_unexpected_cli_error
 from perplexity_cli.utils.logging import get_logger, redact_path, redact_text
@@ -64,6 +61,9 @@ def _handle_auth_success(
     include_schema: SchemaInclusion,
 ) -> None:
     """Handle successful authentication output."""
+    from perplexity_cli.auth.token_manager import TokenManager
+    from perplexity_cli.utils.config import get_save_cookies_enabled
+
     tm = TokenManager()
     tm.save_token(token, cookies=cookies)
     # owner: security - the only argument is the redacted token-file path.
@@ -104,6 +104,8 @@ def _resolve_ctx_flags(ctx_obj: object) -> tuple[bool, bool, bool]:
 
 def run_auth_command(ctx_obj: object, port: int) -> None:
     """Execute the auth command."""
+    from perplexity_cli.utils.config import get_perplexity_base_url
+
     logger = get_logger()
     json_mode, include_schema, debug_mode = _resolve_ctx_flags(ctx_obj)
     logger.info("Starting authentication on port %s", port)
@@ -175,6 +177,8 @@ def _execute_auth(
 ) -> None:
     """Perform authentication and handle domain-specific errors."""
     options = _resolve_auth_output_options(ctx_flags)
+    from perplexity_cli.auth.oauth_handler import authenticate_sync
+
     logger = get_logger()
 
     try:
@@ -230,6 +234,8 @@ def _logout_emit(
 
 def run_logout_command(*, json_mode: bool | None = None) -> None:
     """Execute the logout command."""
+    from perplexity_cli.auth.token_manager import TokenManager
+
     resolved_json, include_schema = _resolve_logout_ctx(json_mode)
     tm = TokenManager()
 

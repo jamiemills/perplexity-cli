@@ -57,7 +57,7 @@ class TestPrepareTokenData:
     def test_cookies_saved_when_enabled(self, token_manager, monkeypatch):
         """Cookies are encrypted and included when save_cookies is enabled."""
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_save_cookies_enabled",
+            "perplexity_cli.auth.token_manager.get_save_cookies_enabled",
             lambda: True,
         )
         data = token_manager._prepare_token_data("enc_tok", {"a": "b"})
@@ -66,7 +66,7 @@ class TestPrepareTokenData:
     def test_cookies_skipped_when_disabled(self, token_manager, monkeypatch):
         """Cookies are omitted when save_cookies is disabled in config."""
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_save_cookies_enabled",
+            "perplexity_cli.auth.token_manager.get_save_cookies_enabled",
             lambda: False,
         )
         data = token_manager._prepare_token_data("enc_tok", {"a": "b"})
@@ -195,7 +195,7 @@ class TestLoadTokenRoundTrip:
     def test_load_token_with_cookies(self, token_manager, temp_token_file, monkeypatch):
         """Token and cookies are saved and loaded correctly."""
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_save_cookies_enabled",
+            "perplexity_cli.auth.token_manager.get_save_cookies_enabled",
             lambda: True,
         )
         token_manager.save_token("my_token", cookies={"cf_clearance": "val"})
