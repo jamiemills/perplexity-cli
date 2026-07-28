@@ -35,13 +35,12 @@ _check_version() {
 
 _load_object_format_length() {
     local output_name="$1" object_format
-    local -n output="$output_name"
     object_format="$(git rev-parse --show-object-format 2>/dev/null)" || {
         _die "unable to determine Git object format"
     }
     case "$object_format" in
-        sha1) output=40 ;;
-        sha256) output=64 ;;
+        sha1) eval "$output_name=40" ;;
+        sha256) eval "$output_name=64" ;;
         *) _die "unsupported Git object format '$object_format'" ;;
     esac
 }
@@ -66,27 +65,26 @@ _require_object() {
 }
 
 _load_commit_oid() {
-    local output_name="$1" oid="$2" label="$3"
-    local -n output="$output_name"
+    local output_name="$1" oid="$2" label="$3" _result
     _require_object "$oid" "$label"
-    output="$(git rev-parse --verify "$oid^{commit}" 2>/dev/null)" || {
+    _result="$(git rev-parse --verify "$oid^{commit}" 2>/dev/null)" || {
         _die "$label object $oid does not peel to a commit"
     }
+    eval "$output_name=\"\$_result\""
 }
 
 _load_remote_query_target() {
     local output_name="$1" requested="$2" location="$3" configured
-    local -n output="$output_name"
     [[ -n "$requested" && "$requested" != *$'\n'* ]] || _die "invalid remote destination"
     [[ -n "$location" && "$location" != *$'\n'* ]] || _die "invalid remote destination"
     while IFS= read -r configured; do
         if [[ "$configured" == "$requested" ]]; then
             [[ "$requested" != -* ]] || _die "configured remote name must not begin with '-'"
-            output="$requested"
+            eval "$output_name=\"\$requested\""
             return 0
         fi
     done < <(git remote 2>/dev/null) || _die "unable to enumerate configured remotes"
-    output="$location"
+    eval "$output_name=\"\$location\""
 }
 
 _load_advertised_remote_commits() {
