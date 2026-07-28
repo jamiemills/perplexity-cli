@@ -57,7 +57,7 @@ class TestCLICommands:
         expected_version = get_version()
         assert expected_version in result.output
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.status.TokenManager", autospec=True)
     def test_status_not_authenticated(self, mock_tm_class, runner):
         """Test status when not authenticated."""
         mock_tm = Mock()
@@ -70,7 +70,7 @@ class TestCLICommands:
         assert "Not authenticated" in result.output
         assert "pxcli auth login" in result.output
 
-    @patch("perplexity_cli.utils.config.set_feature", autospec=True)
+    @patch("perplexity_cli.runners.config.set_feature", autospec=True)
     def test_set_config_handles_configuration_error(self, mock_set_feature, runner):
         """Test config set surfaces configuration errors consistently."""
         from perplexity_cli.utils.exceptions import ConfigurationError
@@ -82,9 +82,9 @@ class TestCLICommands:
         assert result.exit_code == 1
         assert "Failed to update configuration: bad config" in result.output
 
-    @patch("perplexity_cli.utils.config.get_feature_config", autospec=True)
-    @patch("perplexity_cli.threads.cache_manager.ThreadCacheManager", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.status.get_feature_config", autospec=True)
+    @patch("perplexity_cli.runners.status.ThreadCacheManager", autospec=True)
+    @patch("perplexity_cli.runners.status.TokenManager", autospec=True)
     def test_doctor_security_reports_storage_risk(
         self, mock_tm_class, mock_cache_manager_class, mock_get_feature_config, runner
     ):
@@ -110,8 +110,8 @@ class TestCLICommands:
         assert "not against other local processes or users" in result.output
         assert "Cookie storage warning" in result.output
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI", autospec=True)
+    @patch("perplexity_cli.runners.status.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.status.PerplexityAPI", autospec=True)
     def test_status_authenticated(self, mock_api_class, mock_tm_class, runner):
         """Test status shows local authentication details by default."""
         from pathlib import Path
@@ -137,8 +137,8 @@ class TestCLICommands:
         assert "Live verification not run" in result.output
         mock_api_class.assert_not_called()
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI", autospec=True)
+    @patch("perplexity_cli.runners.status.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.status.PerplexityAPI", autospec=True)
     def test_status_authenticated_with_verify(self, mock_api_class, mock_tm_class, runner):
         """Test status --verify performs a live verification call."""
         from pathlib import Path
@@ -164,7 +164,7 @@ class TestCLICommands:
             token="test-token-123", cookies={"csrftoken": "abc"}, timeout=10
         )
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.auth.TokenManager", autospec=True)
     def test_logout_no_token(self, mock_tm_class, runner):
         """Test logout when no token exists."""
         mock_tm = Mock()
@@ -176,7 +176,7 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert "No stored credentials" in result.output
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.auth.TokenManager", autospec=True)
     def test_logout_success(self, mock_tm_class, runner):
         """Test successful logout."""
         mock_tm = Mock()
@@ -190,7 +190,7 @@ class TestCLICommands:
         assert "Logged out successfully" in result.output
         mock_tm.clear_token.assert_called_once()
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.auth.TokenManager", autospec=True)
     def test_logout_failure(self, mock_tm_class, runner):
         """Test logout surfaces unexpected token deletion failures."""
         mock_tm = Mock()
@@ -203,9 +203,9 @@ class TestCLICommands:
         assert result.exit_code == 1
         assert "Error during logout: permission denied" in result.output
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI", autospec=True)
+    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
+    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
+    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
     def test_query_success(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
         """Test successful query."""
         # Mock style manager (no style configured)
@@ -235,9 +235,9 @@ class TestCLICommands:
             extra_params=([], None, {}),
         )
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI", autospec=True)
+    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
+    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
+    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
     def test_query_debug_logging_redacts_sensitive_values(
         self,
         mock_api_class,
@@ -278,9 +278,9 @@ class TestCLICommands:
         assert str(Path.home() / ".config" / "perplexity-cli" / "token.json") not in combined
         assert "<redacted:" in combined
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI", autospec=True)
+    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
+    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
+    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
     def test_query_success_with_references(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -325,9 +325,9 @@ class TestCLICommands:
         for url in ref_urls:
             assert result.output.count(url) >= 1
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI", autospec=True)
+    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
+    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
+    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
     def test_query_not_authenticated(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
         """Test query when not authenticated - should attempt to run without token."""
         mock_tm = Mock()
@@ -359,9 +359,9 @@ class TestCLICommands:
         call_args = mock_api_class.call_args
         assert call_args[0][0] is None  # token is first positional arg
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI", autospec=True)
+    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
+    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
+    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
     def test_query_network_error(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
         """Test query with network error."""
         from perplexity_cli.utils.exceptions import PerplexityRequestError
@@ -386,8 +386,8 @@ class TestCLICommands:
         assert result.exit_code == 1
         assert "Network error" in result.output
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.auth.oauth_handler.authenticate_sync", autospec=True)
+    @patch("perplexity_cli.runners.auth.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.auth.authenticate_sync", autospec=True)
     def test_auth_success(self, mock_auth, mock_tm_class, runner):
         """Test successful authentication."""
         # Mock authentication - returns (token, cookies) tuple
@@ -405,8 +405,8 @@ class TestCLICommands:
         assert "Authentication successful" in result.output
         mock_tm.save_token.assert_called_once_with("new-token-123", cookies=mock_cookies)
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.auth.oauth_handler.authenticate_sync", autospec=True)
+    @patch("perplexity_cli.runners.auth.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.auth.authenticate_sync", autospec=True)
     def test_auth_failure(self, mock_auth, mock_tm_class, runner):
         """Test authentication failure."""
         # Mock authentication failure
@@ -440,7 +440,7 @@ class TestCLIIntegration:
         result2 = runner.invoke(auth_status)
         assert result2.exit_code == 0
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
+    @patch("perplexity_cli.runners.config.StyleManager", autospec=True)
     def test_configure_style(self, mock_sm_class, runner):
         """Test style set command saves style."""
         mock_sm = Mock()
@@ -451,7 +451,7 @@ class TestCLIIntegration:
         assert "Style configured successfully" in result.output
         mock_sm.save_style.assert_called_once_with("be brief and concise")
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
+    @patch("perplexity_cli.runners.config.StyleManager", autospec=True)
     def test_configure_style_error(self, mock_sm_class, runner):
         """Test style set command handles save errors."""
         mock_sm = Mock()
@@ -462,7 +462,7 @@ class TestCLIIntegration:
         assert result.exit_code == 1
         assert "Invalid style" in result.output
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
+    @patch("perplexity_cli.runners.config.StyleManager", autospec=True)
     def test_view_style_when_set(self, mock_sm_class, runner):
         """Test style show displays configured style."""
         mock_sm = Mock()
@@ -474,7 +474,7 @@ class TestCLIIntegration:
         assert "Current style:" in result.output
         assert "be brief" in result.output
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
+    @patch("perplexity_cli.runners.config.StyleManager", autospec=True)
     def test_view_style_when_not_set(self, mock_sm_class, runner):
         """Test style show when no style configured."""
         mock_sm = Mock()
@@ -485,7 +485,7 @@ class TestCLIIntegration:
         assert result.exit_code == 0
         assert "No style configured" in result.output
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
+    @patch("perplexity_cli.runners.config.StyleManager", autospec=True)
     def test_clear_style_when_set(self, mock_sm_class, runner):
         """Test style clear removes style."""
         mock_sm = Mock()
@@ -497,7 +497,7 @@ class TestCLIIntegration:
         assert "Style cleared successfully" in result.output
         mock_sm.clear_style.assert_called_once()
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
+    @patch("perplexity_cli.runners.config.StyleManager", autospec=True)
     def test_clear_style_when_not_set(self, mock_sm_class, runner):
         """Test style clear when no style configured."""
         mock_sm = Mock()
@@ -508,9 +508,9 @@ class TestCLIIntegration:
         assert result.exit_code == 0
         assert "No style is currently configured" in result.output
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
+    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
+    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
     def test_query_with_style_appended(self, mock_tm_class, mock_api_class, mock_sm_class, runner):
         """Test query appends style to query text."""
         # Mock token manager
@@ -542,8 +542,8 @@ class TestCLIIntegration:
 class TestShowConfig:
     """Test config show command with Pydantic model returns."""
 
-    @patch("perplexity_cli.utils.config.get_feature_config_path", autospec=True)
-    @patch("perplexity_cli.utils.config.get_feature_config", autospec=True)
+    @patch("perplexity_cli.runners.config.get_feature_config_path", autospec=True)
+    @patch("perplexity_cli.runners.config.get_feature_config", autospec=True)
     def test_show_config_uses_attribute_access(self, mock_get_config, mock_get_path, runner):
         """Test that config_show accesses Pydantic model attributes, not dict keys."""
         from pathlib import Path
@@ -559,8 +559,8 @@ class TestShowConfig:
         assert "save_cookies: True" in result.output
         assert "debug_mode:   False" in result.output
 
-    @patch("perplexity_cli.utils.config.get_feature_config_path", autospec=True)
-    @patch("perplexity_cli.utils.config.get_feature_config", autospec=True)
+    @patch("perplexity_cli.runners.config.get_feature_config_path", autospec=True)
+    @patch("perplexity_cli.runners.config.get_feature_config", autospec=True)
     def test_show_config_default_values(self, mock_get_config, mock_get_path, runner):
         """Test config_show with default FeatureConfig values."""
         from pathlib import Path
@@ -580,8 +580,8 @@ class TestShowConfig:
 class TestExportThreadsRateLimitConfig:
     """Test threads export command uses Pydantic model attribute access for rate limiting."""
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.utils.config.get_rate_limiting_config", autospec=True)
+    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
     def test_export_threads_rate_limit_attribute_access(
         self, mock_get_rl_config, mock_tm_class, runner
     ):
@@ -602,8 +602,8 @@ class TestExportThreadsRateLimitConfig:
         # Should exit with auth error, but the rate limit config access should not raise TypeError
         assert "Not authenticated" in result.output
 
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.utils.config.get_rate_limiting_config", autospec=True)
+    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
     def test_export_threads_rate_limit_disabled(self, mock_get_rl_config, mock_tm_class, runner):
         """Test threads_export when rate limiting is disabled."""
         from perplexity_cli.config.models import RateLimitConfig
@@ -621,10 +621,10 @@ class TestExportThreadsRateLimitConfig:
         # Should exit with auth error, no TypeError on rate limit config
         assert "Not authenticated" in result.output
 
-    @patch("perplexity_cli.threads.scraper.ThreadScraper", autospec=True)
-    @patch("perplexity_cli.threads.cache_manager.ThreadCacheManager", autospec=True)
-    @patch("perplexity_cli.utils.config.get_rate_limiting_config", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
+    @patch("perplexity_cli.runners.export.ThreadScraper", autospec=True)
+    @patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True)
+    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
+    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
     def test_export_threads_passes_cookies_to_scraper(
         self,
         mock_tm_class,
@@ -668,9 +668,9 @@ class TestExportThreadsRateLimitConfig:
 class TestStreamingDefault:
     """Tests for batch mode as the default query mode."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI", autospec=True)
+    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
+    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
+    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
     def test_query_default_batch_mode(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
         """Test that invoking query without flags uses batch (non-streaming) path."""
         mock_sm = Mock()
@@ -693,9 +693,9 @@ class TestStreamingDefault:
         mock_api.get_complete_answer.assert_called_once()
         mock_api.submit_query.assert_not_called()
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager", autospec=True)
-    @patch("perplexity_cli.auth.token_manager.TokenManager", autospec=True)
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI", autospec=True)
+    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
+    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
+    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
     def test_query_explicit_stream_uses_streaming(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
