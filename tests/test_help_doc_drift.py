@@ -454,7 +454,7 @@ class TestQualityGatesMatchesRepo:
         """
         gates = (PROJECT_ROOT / "quality" / "gates.conf").read_text(encoding="utf-8")
         assert "CHECK_SEMGREP = false" in gates
-        assert "CHECK_ARCH = false" in gates
+        assert "CHECK_ARCH = true" in gates
         assert "CHECK_COUPLING = false" in gates
         assert "CHECK_RATCHETS = true" in gates
         assert "CHECK_DEPTRY = true" in gates
