@@ -530,7 +530,7 @@ inline where they need Git or event context.
 | `make setup` | Create venv, sync deps, install lefthook, verify CLI |
 | `make configure-opencode` | Reproducibly install and validate OpenCode plugins/config |
 | `make check` | Static checks whose `CHECK_*` toggle is `true` in `quality/gates.conf`. Format, lint, typecheck-all, security, and complexity are on by default; Semgrep, architecture, coupling, ratchets, Deptry, import-linter, and dynamic-imports are off and run via their own targets |
-| `make ci-static` | CI static lane: format-check, lint, typecheck-all, bandit, vulture, complexity |
+| `make ci-static` | CI static lane: format-check, lint, typecheck-all, bandit, vulture, complexity, pinned actionlint |
 | `make ci-test-coverage` | CI test lane with per-module coverage enforcement (Python 3.12) |
 | `make ci-test-compat` | CI compatibility tests without coverage (Python 3.13/3.14, macOS) |
 | `make ci-fuzz-status` | CI fuzz status; `continue-on-error` in CI until rank 4 |

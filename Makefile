@@ -9,7 +9,9 @@ SHELL := /bin/bash
 PYTHON_VERSION ?= 3.12
 PROPERTY_PROFILE ?= ci
 SEMGREP_VERSION := 1.171.0
+ACTIONLINT_PY_VERSION := 1.7.12.24
 SEMGREP := uvx --from semgrep==$(SEMGREP_VERSION) semgrep
+ACTIONLINT := uvx --from actionlint-py==$(ACTIONLINT_PY_VERSION) actionlint
 SEMGREP_CONFIGS := \
 	--config .semgrep.yml \
 	--config .semgrep-community-python.yml \
@@ -494,7 +496,7 @@ agent-check-push:
 analyser-contract-tests:  ## Run analyser contract validation tests
 	uv run pytest tests/test_analyser_contracts.py -q
 
-ci-static: format-check lint typecheck-all bandit vulture complexity ## CI static analysis lane
+ci-static: format-check lint typecheck-all bandit vulture complexity actionlint ## CI static analysis lane
 
 ci-test-coverage: test-coverage ## CI test lane with per-module coverage (Python 3.12)
 
@@ -607,8 +609,4 @@ quality-architecture: import-linter arch-check coupling-report  ## Run all archi
 .PHONY: actionlint
 
 actionlint:  ## Validate GitHub Actions workflows with actionlint
-	@command -v actionlint >/dev/null 2>&1 || { \
-		echo "actionlint is required. Install: curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash"; \
-		exit 1; \
-	}
-	actionlint
+	$(ACTIONLINT)
