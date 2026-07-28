@@ -456,8 +456,8 @@ class TestQualityGatesMatchesRepo:
         assert "CHECK_SEMGREP = false" in gates
         assert "CHECK_ARCH = false" in gates
         assert "CHECK_COUPLING = false" in gates
-        assert "CHECK_RATCHETS = false" in gates
-        assert "CHECK_DEPTRY = false" in gates
+        assert "CHECK_RATCHETS = true" in gates
+        assert "CHECK_DEPTRY = true" in gates
         assert "CHECK_IMPORT_LINTER = false" in gates
 
 

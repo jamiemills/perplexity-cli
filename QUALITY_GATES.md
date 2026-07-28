@@ -147,8 +147,8 @@ pre-push and CI through their dedicated Make targets.
 | `CHECK_SEMGREP` | false | Semgrep static analysis (runs in pre-commit stage 1 and the CI `static` job) |
 | `CHECK_ARCH` | false | Architecture layer check (runs in pre-push and on-demand) |
 | `CHECK_COUPLING` | false | Coupling and stability metrics (runs in pre-push and on-demand) |
-| `CHECK_RATCHETS` | false | Three baseline-aware ratchets plus two whole-tree hard gates (run in pre-push) |
-| `CHECK_DEPTRY` | false | Deptry dependency hygiene (runs on-demand via `make deptry`) |
+| `CHECK_RATCHETS` | true | Three baseline-aware ratchets plus two whole-tree hard gates |
+| `CHECK_DEPTRY` | true | Deptry dependency hygiene |
 | `CHECK_IMPORT_LINTER` | false | Import-linter contracts; available but excluded from `make check` by default |
 | `CHECK_DYNAMIC_IMPORTS` | false | Dynamic import architecture enforcement |
 
