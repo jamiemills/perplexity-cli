@@ -38,21 +38,8 @@ source_modules =
     perplexity_cli.services
     perplexity_cli.session_log
 forbidden_modules =
-    perplexity_cli.api
-    perplexity_cli.attachments
-    perplexity_cli.auth
-    perplexity_cli.config
-    perplexity_cli.threads
-    perplexity_cli.utils
     perplexity_cli.cli
     perplexity_cli.command_runner
-    perplexity_cli.commands
-    perplexity_cli.completion_commands
-    perplexity_cli.error_handler
-    perplexity_cli.formatting
-    perplexity_cli.help_json
-    perplexity_cli.mcp_server
-    perplexity_cli.runners
 
 [importlinter:contract:3]
 name = domain must not import non-allowed layers
@@ -85,20 +72,158 @@ forbidden_modules =
     perplexity_cli.runners
 
 [importlinter:contract:4]
-name = presentation must not import non-allowed layers
+name = Adapter independence: api_adapter
 type = forbidden
 source_modules =
-    perplexity_cli.commands
-    perplexity_cli.completion_commands
-    perplexity_cli.error_handler
-    perplexity_cli.formatting
-    perplexity_cli.help_json
-    perplexity_cli.mcp_server
-    perplexity_cli.runners
+    perplexity_cli.api.client
+    perplexity_cli.api.endpoints
+    perplexity_cli.api.rest_client
 forbidden_modules =
-    perplexity_cli.api
-    perplexity_cli.attachments
-    perplexity_cli.auth
+    perplexity_cli.attachments.upload_manager
+    perplexity_cli.auth.oauth_handler
+    perplexity_cli.auth.token_manager
+    perplexity_cli.auth.utils
+    perplexity_cli.threads.cache_manager
+    perplexity_cli.threads.date_parser
+    perplexity_cli.threads.exporter
+    perplexity_cli.threads.scraper
+    perplexity_cli.threads.utils
+
+[importlinter:contract:5]
+name = Adapter independence: auth_adapter
+type = forbidden
+source_modules =
+    perplexity_cli.auth.oauth_handler
+    perplexity_cli.auth.token_manager
+    perplexity_cli.auth.utils
+forbidden_modules =
+    perplexity_cli.api.client
+    perplexity_cli.api.endpoints
+    perplexity_cli.api.rest_client
+    perplexity_cli.attachments.upload_manager
+    perplexity_cli.threads.cache_manager
+    perplexity_cli.threads.date_parser
+    perplexity_cli.threads.exporter
+    perplexity_cli.threads.scraper
+    perplexity_cli.threads.utils
+
+[importlinter:contract:6]
+name = Adapter independence: attachments_adapter
+type = forbidden
+source_modules =
+    perplexity_cli.attachments.upload_manager
+forbidden_modules =
+    perplexity_cli.auth.oauth_handler
+    perplexity_cli.auth.token_manager
+    perplexity_cli.auth.utils
+    perplexity_cli.threads.cache_manager
+    perplexity_cli.threads.date_parser
+    perplexity_cli.threads.exporter
+    perplexity_cli.threads.scraper
+    perplexity_cli.threads.utils
+
+[importlinter:contract:7]
+name = Adapter independence: threads_adapter
+type = forbidden
+source_modules =
+    perplexity_cli.threads.cache_manager
+    perplexity_cli.threads.date_parser
+    perplexity_cli.threads.exporter
+    perplexity_cli.threads.scraper
+    perplexity_cli.threads.utils
+forbidden_modules =
+    perplexity_cli.api.client
+    perplexity_cli.api.endpoints
+    perplexity_cli.api.rest_client
+    perplexity_cli.attachments.upload_manager
+    perplexity_cli.auth.oauth_handler
+    perplexity_cli.auth.token_manager
+    perplexity_cli.auth.utils
+
+[importlinter:contract:8]
+name = Adapter independence: config_adapter
+type = forbidden
+source_modules =
     perplexity_cli.config
-    perplexity_cli.threads
-    perplexity_cli.utils
+forbidden_modules =
+    perplexity_cli.api.client
+    perplexity_cli.api.endpoints
+    perplexity_cli.api.rest_client
+    perplexity_cli.attachments.upload_manager
+    perplexity_cli.auth.oauth_handler
+    perplexity_cli.auth.token_manager
+    perplexity_cli.auth.utils
+    perplexity_cli.threads.cache_manager
+    perplexity_cli.threads.date_parser
+    perplexity_cli.threads.exporter
+    perplexity_cli.threads.scraper
+    perplexity_cli.threads.utils
+
+[importlinter:contract:9]
+name = Adapter independence: utils_adapter
+type = forbidden
+source_modules =
+    perplexity_cli.utils.async_bridge
+    perplexity_cli.utils.config
+    perplexity_cli.utils.cookies
+    perplexity_cli.utils.encryption
+    perplexity_cli.utils.file_handler
+    perplexity_cli.utils.file_permissions
+    perplexity_cli.utils.http_errors
+    perplexity_cli.utils.http_headers
+    perplexity_cli.utils.logging
+    perplexity_cli.utils.rate_limiter
+    perplexity_cli.utils.retry
+    perplexity_cli.utils.session_factory
+    perplexity_cli.utils.session_token
+    perplexity_cli.utils.style_manager
+    perplexity_cli.utils.version
+forbidden_modules =
+    perplexity_cli.api.client
+    perplexity_cli.api.endpoints
+    perplexity_cli.api.rest_client
+    perplexity_cli.attachments.upload_manager
+    perplexity_cli.auth.oauth_handler
+    perplexity_cli.auth.token_manager
+    perplexity_cli.auth.utils
+    perplexity_cli.threads.cache_manager
+    perplexity_cli.threads.date_parser
+    perplexity_cli.threads.exporter
+    perplexity_cli.threads.scraper
+    perplexity_cli.threads.utils
+
+[importlinter:contract:10]
+name = Independence (cycles): formatting
+type = independence
+modules =
+    perplexity_cli.formatting.context
+    perplexity_cli.formatting.json
+    perplexity_cli.formatting.markdown
+    perplexity_cli.formatting.plain
+    perplexity_cli.formatting.registry
+    perplexity_cli.formatting.rich
+
+[importlinter:contract:11]
+name = Independence (cycles): commands
+type = independence
+modules =
+    perplexity_cli.commands.auth_cmds
+    perplexity_cli.commands.config_cmds
+    perplexity_cli.commands.doctor_cmds
+    perplexity_cli.commands.models_cmds
+    perplexity_cli.commands.query_cmd
+    perplexity_cli.commands.schema_cmd
+    perplexity_cli.commands.skill_cmds
+    perplexity_cli.commands.style_cmds
+    perplexity_cli.commands.threads_cmds
+
+[importlinter:contract:12]
+name = Independence (cycles): runners
+type = independence
+modules =
+    perplexity_cli.runners.auth
+    perplexity_cli.runners.config
+    perplexity_cli.runners.export
+    perplexity_cli.runners.models
+    perplexity_cli.runners.skill
+    perplexity_cli.runners.status

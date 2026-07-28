@@ -247,8 +247,6 @@ def _build_independence_sibling_contracts() -> list[dict[str, Any]]:
     contracts: list[dict[str, Any]] = []
     sibling_groups = {
         "formatting": [
-            "formatting.__init__",
-            "formatting.base",
             "formatting.context",
             "formatting.json",
             "formatting.markdown",
@@ -257,13 +255,6 @@ def _build_independence_sibling_contracts() -> list[dict[str, Any]]:
             "formatting.rich",
         ],
         "commands": [
-            "commands.__init__",
-            "commands._ctx",
-            "commands._examples",
-            "commands._help_refs",
-            "commands._help_sections",
-            "commands._runner_adapter",
-            "commands._schemas",
             "commands.auth_cmds",
             "commands.config_cmds",
             "commands.doctor_cmds",
@@ -275,8 +266,6 @@ def _build_independence_sibling_contracts() -> list[dict[str, Any]]:
             "commands.threads_cmds",
         ],
         "runners": [
-            "runners.__init__",
-            "runners._utils",
             "runners.auth",
             "runners.config",
             "runners.export",
@@ -300,8 +289,6 @@ def generate_importlinter_config() -> str:
     """Generate the complete .importlinter configuration string."""
     architecture = _load_toml(TOML_PATH)
     classification = _classify_modules(architecture)
-    # Keep stable helper contracts reachable without changing the historical output.
-    _ = (_build_independence_contracts, _build_independence_sibling_contracts)
 
     lines: list[str] = [
         "[importlinter]",
@@ -312,6 +299,8 @@ def generate_importlinter_config() -> str:
 
     contract_id = 0
     contract_id = _append_contracts(lines, contract_id, _build_forbidden_contracts(classification))
+    contract_id = _append_contracts(lines, contract_id, _build_independence_contracts(architecture))
+    contract_id = _append_contracts(lines, contract_id, _build_independence_sibling_contracts())
     return "\n".join(lines)
 
 

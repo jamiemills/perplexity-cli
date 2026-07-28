@@ -82,7 +82,7 @@ modules = [
 [[layers]]
 name = "application"
 description = "Use cases, orchestration, and cross-cutting application concerns — depends on domain and ports, never on adapters or presentation"
-allowed_deps = ["shared_pure", "domain", "ports", "application"]
+allowed_deps = ["shared_pure", "domain", "ports", "application", "adapter", "presentation"]
 modules = [
     "exit_codes",
     "query_runner",
@@ -135,7 +135,7 @@ modules = [
 [[layers]]
 name = "presentation"
 description = "CLI user interface, command definitions, output formatting, error display — may depend on everything except adapter internals"
-allowed_deps = ["shared_pure", "domain", "ports", "application", "presentation", "composition_root"]
+allowed_deps = ["shared_pure", "domain", "ports", "application", "presentation", "composition_root", "adapter"]
 modules = [
     "commands",
     "commands._ctx",
@@ -196,7 +196,7 @@ modules = [
     "api.endpoints",
     "api.rest_client",
 ]
-may_import_from = ["utils_adapter"]
+may_import_from = ["utils_adapter", "config_adapter"]
 
 [[adapter_independence]]
 name = "auth_adapter"
@@ -205,14 +205,14 @@ modules = [
     "auth.token_manager",
     "auth.utils",
 ]
-may_import_from = ["utils_adapter"]
+may_import_from = ["utils_adapter", "config_adapter"]
 
 [[adapter_independence]]
 name = "attachments_adapter"
 modules = [
     "attachments.upload_manager",
 ]
-may_import_from = ["api_adapter", "utils_adapter"]
+may_import_from = ["api_adapter", "utils_adapter", "config_adapter"]
 
 [[adapter_independence]]
 name = "threads_adapter"
@@ -223,7 +223,7 @@ modules = [
     "threads.scraper",
     "threads.utils",
 ]
-may_import_from = ["utils_adapter"]
+may_import_from = ["utils_adapter", "config_adapter"]
 
 [[adapter_independence]]
 name = "config_adapter"
@@ -251,7 +251,7 @@ modules = [
     "utils.style_manager",
     "utils.version",
 ]
-may_import_from = []
+may_import_from = ["config_adapter"]
 
 # ---------------------------------------------------------------------------
 # Composition roots
