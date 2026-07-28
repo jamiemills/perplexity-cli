@@ -24,10 +24,13 @@ from __future__ import annotations
 
 import json
 import logging
+
+# owner: quality-infrastructure; reason: invoke Git with internally assembled argv and no shell
+import subprocess  # nosec B404
 import sys
-import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from scripts.differential_context import DiffContext
@@ -40,12 +43,59 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT: Path = _PROJECT_ROOT_PATH
 SOURCE_ROOT: str = "src/perplexity_cli/"
-MANIFEST_SUFFIX: str = "mutation_manifest.json"
 
 
 EXIT_SOURCE_CHANGES = 0
 EXIT_NO_PRODUCTION_CHANGES = 1
 EXIT_GIT_ERROR = 2
+
+
+class RenameEntry(TypedDict):
+    """A renamed path pair in the mutation manifest."""
+
+    old: str
+    new: str
+
+
+class MutationManifest(TypedDict):
+    """Stable JSON schema emitted by mutation discovery."""
+
+    schema_version: str
+    changed_files: list[str]
+    deletions: list[str]
+    renames: list[RenameEntry]
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryOptions:
+    """Immutable command-line options for mutation discovery."""
+
+    base_sha: str | None
+    tested_sha: str | None
+    local: bool
+    manifest: bool
+
+
+def _run_git(args: list[str], cwd: Path) -> tuple[int, str, str]:
+    """Run an internally assembled Git command without a shell."""
+    command = ["git", *args]
+    try:
+        # owner: quality-infrastructure; reason: internal Git argv keeps refs discrete and disables shell
+        result = subprocess.run(  # nosec B603
+            command,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=30.0,
+            check=False,
+        )
+    except FileNotFoundError:
+        return -1, "", "git executable not found"
+    except subprocess.TimeoutExpired:
+        return -2, "", "git command timed out after 30.0s"
+    except OSError as exc:
+        return -3, "", f"git command failed: {exc}"
+    return result.returncode, result.stdout.strip(), result.stderr.strip()
 
 
 def _resolve_ref(ref: str) -> str:
@@ -57,10 +107,8 @@ def _resolve_ref(ref: str) -> str:
     Returns:
         The full 40-character SHA, or the input unchanged on failure.
     """
-    from scripts.differential_context import _run_git
-
     returncode, stdout, stderr = _run_git(
-        ["rev-parse", "--verify", f"{ref}^{{commit}}"],
+        ["rev-parse", "--verify", "--end-of-options", f"{ref}^{{commit}}"],
         cwd=PROJECT_ROOT,
     )
     if returncode != 0:
@@ -90,7 +138,7 @@ def _build_manifest(
     changed_files: tuple[str, ...],
     deletions: tuple[str, ...],
     renames: tuple[tuple[str, str], ...],
-) -> dict:
+) -> MutationManifest:
     """Build a structured manifest dictionary.
 
     Args:
@@ -109,36 +157,12 @@ def _build_manifest(
     }
 
 
-def _write_temp_manifest(manifest: dict) -> Path:
-    """Write manifest to a temporary file.
-
-    Args:
-        manifest: The manifest dictionary to serialize.
-
-    Returns:
-        Path to the temporary manifest file.
-    """
-    fd, tmp_path = tempfile.mkstemp(suffix=f".{MANIFEST_SUFFIX}", prefix="mutate_", text=True)
-    path = Path(tmp_path)
-    try:
-        serialised_manifest = json.dumps(manifest, indent=2)
-        path.write_text(serialised_manifest + "\n")
-        logger.info("Mutation manifest written to %s", tmp_path)
-    finally:
-        import os
-
-        os.close(fd)
-    return path
-
-
 def _collect_local_source_files() -> tuple[str, ...]:
     """Collect locally changed source files from worktree.
 
     Returns:
         A tuple of relative file paths.
     """
-    from scripts.differential_context import _run_git
-
     seen: dict[str, None] = {}
     for cmd_args in (
         ("diff", "--name-only", "--cached", "--", SOURCE_ROOT),
@@ -243,8 +267,6 @@ def _process_git_diff_status(
     Returns:
         A tuple of (deletions, renames) where renames are (old, new) pairs.
     """
-    from scripts.differential_context import _run_git
-
     returncode, stdout, stderr = _run_git(
         ["diff", "--name-status", "--diff-filter=DR", f"{from_sha}...{to_sha}"],
         cwd=PROJECT_ROOT,
@@ -260,7 +282,7 @@ def _classify_result(
     changed_files: tuple[str, ...],
     deletions: tuple[str, ...],
     renames: tuple[tuple[str, str], ...],
-) -> tuple[dict, int]:
+) -> tuple[MutationManifest, int]:
     """Determine exit code from collected results.
 
     Args:
@@ -280,7 +302,7 @@ def _classify_result(
     return manifest, EXIT_SOURCE_CHANGES
 
 
-def _compute_ci_manifest(base_sha: str, tested_sha: str) -> tuple[dict, int]:
+def _compute_ci_manifest(base_sha: str, tested_sha: str) -> tuple[MutationManifest, int]:
     """Compute manifest for a CI differential comparison.
 
     Args:
@@ -298,7 +320,7 @@ def _compute_ci_manifest(base_sha: str, tested_sha: str) -> tuple[dict, int]:
     return _process_diff_context(ctx)
 
 
-def _compute_local_manifest() -> tuple[dict, int]:
+def _compute_local_manifest() -> tuple[MutationManifest, int]:
     """Compute manifest for local worktree changes.
 
     Returns:
@@ -310,12 +332,12 @@ def _compute_local_manifest() -> tuple[dict, int]:
     return _process_diff_context(ctx)
 
 
-def _make_empty_manifest() -> dict:
+def _make_empty_manifest() -> MutationManifest:
     """Return an empty manifest dictionary."""
     return _build_manifest((), (), ())
 
 
-def _handle_git_error(ctx: DiffContext) -> tuple[dict, int]:
+def _handle_git_error(ctx: DiffContext) -> tuple[MutationManifest, int]:
     """Handle a git error from a DiffContext.
 
     Args:
@@ -393,7 +415,7 @@ def _resolve_changed_files(ctx: DiffContext) -> tuple[str, ...]:
     return ctx.changed_files
 
 
-def _process_diff_context(ctx: DiffContext) -> tuple[dict, int]:
+def _process_diff_context(ctx: DiffContext) -> tuple[MutationManifest, int]:
     """Process a DiffContext to extract mutation target files.
 
     Args:
@@ -420,7 +442,7 @@ def discover_mutate_diff_files(  # nosemgrep: boolean-flag-argument
     base_sha: str | None = None,
     tested_sha: str | None = None,
     local: bool = False,
-) -> tuple[dict, int]:
+) -> tuple[MutationManifest, int]:
     """Discover source files to mutate between two git references.
 
     Args:
@@ -439,7 +461,9 @@ def discover_mutate_diff_files(  # nosemgrep: boolean-flag-argument
     return _make_empty_manifest(), EXIT_GIT_ERROR
 
 
-def _parse_args(args: list[str] | None = None) -> tuple[str | None, str | None, bool, bool]:
+def _parse_args(
+    args: list[str] | None = None,
+) -> tuple[str | None, str | None, bool, bool]:
     """Parse command-line arguments.
 
     Args:
@@ -461,13 +485,26 @@ def _parse_args(args: list[str] | None = None) -> tuple[str | None, str | None, 
     return parsed.base_sha, parsed.tested_sha, parsed.local, parsed.manifest
 
 
+def _parse_options(args: list[str] | None = None) -> DiscoveryOptions:
+    """Construct immutable CLI options from the compatibility parser."""
+    base_sha, tested_sha, local, manifest = _parse_args(args)
+    return DiscoveryOptions(
+        base_sha=base_sha,
+        tested_sha=tested_sha,
+        local=local,
+        manifest=manifest,
+    )
+
+
 def main() -> int:
     """CLI entry point."""
-    base_sha, tested_sha, local, show_manifest = _parse_args()
+    options = _parse_options()
     manifest, exit_code = discover_mutate_diff_files(
-        base_sha=base_sha, tested_sha=tested_sha, local=local
+        base_sha=options.base_sha,
+        tested_sha=options.tested_sha,
+        local=options.local,
     )
-    if show_manifest:
+    if options.manifest:
         print(json.dumps(manifest, indent=2))
         return exit_code
     for path in manifest.get("changed_files", []):

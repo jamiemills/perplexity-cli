@@ -20,9 +20,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
+
+# owner: quality-infrastructure; reason: invoke Pyright with a static argv and no shell
+import subprocess  # nosec B404
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict, TypeGuard
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _ratchet import (
@@ -39,7 +43,7 @@ BASELINE_NAME = "pyright-strict.json"
 DESCRIPTION = "Pyright strict ratchet: block new Any/unknown diagnostics."
 _SCRIPT = Path(__file__).name
 
-_STRICT_CONFIG = {
+_STRICT_CONFIG: dict[str, object] = {
     "include": ["src/"],
     "typeCheckingMode": "strict",
     "pythonVersion": "3.12",
@@ -50,24 +54,127 @@ _STRICT_CONFIG = {
 _TOOL_ERROR_EXIT_THRESHOLD = 2
 
 
-def _parse_args() -> argparse.Namespace:
+class DiagnosticPosition(TypedDict):
+    """Source position in a Pyright diagnostic."""
+
+    line: int
+    character: int
+
+
+class DiagnosticRange(TypedDict):
+    """Source range fields used by the ratchet fingerprint."""
+
+    start: DiagnosticPosition
+
+
+class PyrightDiagnostic(TypedDict):
+    """Validated Pyright diagnostic fields used by this gate."""
+
+    file: str
+    range: DiagnosticRange
+    rule: str
+    severity: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class PyrightOptions:
+    """Immutable Pyright ratchet command-line options."""
+
+    update_baseline: bool
+
+
+def _is_object_dict(value: object) -> TypeGuard[dict[str, object]]:
+    """Return whether a decoded JSON value is an object."""
+    return isinstance(value, dict)
+
+
+def _is_object_list(value: object) -> TypeGuard[list[object]]:
+    """Return whether a decoded JSON value is an array."""
+    return isinstance(value, list)
+
+
+def _parse_args() -> PyrightOptions:
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     add_update_flag(parser)
-    return parser.parse_args()
+    parsed = parser.parse_args()
+    update_baseline: object = parsed.update_baseline
+    return PyrightOptions(update_baseline=update_baseline is True)
 
 
-def _fingerprint(diag: dict) -> str:
+def _required_object(mapping: dict[str, object], key: str) -> dict[str, object]:
+    """Return a required JSON object field or raise a schema error."""
+    value = mapping.get(key)
+    if not _is_object_dict(value):
+        raise RuntimeError(f"Pyright diagnostic field '{key}' must be an object.")
+    return value
+
+
+def _required_string(mapping: dict[str, object], key: str) -> str:
+    """Return a required JSON string field or raise a schema error."""
+    value = mapping.get(key)
+    if not isinstance(value, str):
+        raise RuntimeError(f"Pyright diagnostic field '{key}' must be a string.")
+    return value
+
+
+def _required_int(mapping: dict[str, object], key: str) -> int:
+    """Return a required JSON integer field or raise a schema error."""
+    value = mapping.get(key)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise RuntimeError(f"Pyright diagnostic field '{key}' must be an integer.")
+    return value
+
+
+def _position(value: dict[str, object]) -> DiagnosticPosition:
+    """Validate a decoded Pyright source position."""
+    return {
+        "line": _required_int(value, "line"),
+        "character": _required_int(value, "character"),
+    }
+
+
+def _diagnostic(value: object) -> PyrightDiagnostic:
+    """Validate one decoded Pyright diagnostic."""
+    if not _is_object_dict(value):
+        raise RuntimeError("Every Pyright generalDiagnostics entry must be an object.")
+    range_value = _required_object(value, "range")
+    start_value = _required_object(range_value, "start")
+    return {
+        "file": _required_string(value, "file"),
+        "range": {"start": _position(start_value)},
+        "rule": _required_string(value, "rule"),
+        "severity": _required_string(value, "severity"),
+        "message": _required_string(value, "message"),
+    }
+
+
+def _parse_diagnostics(stdout: str) -> list[PyrightDiagnostic]:
+    """Decode and validate the diagnostics array from Pyright JSON."""
+    decoded: object = json.loads(stdout or "{}")
+    if not _is_object_dict(decoded):
+        raise RuntimeError("Pyright JSON root must be an object.")
+    raw_diagnostics = decoded.get("generalDiagnostics", [])
+    if not _is_object_list(raw_diagnostics):
+        raise RuntimeError("Pyright generalDiagnostics must be an array.")
+    diagnostics: list[PyrightDiagnostic] = []
+    for value in raw_diagnostics:
+        diagnostics.append(_diagnostic(value))
+    return diagnostics
+
+
+def _fingerprint(diag: PyrightDiagnostic) -> str:
     """Create a stable identifier from a Pyright diagnostic."""
-    start = diag.get("range", {}).get("start", {})
-    file_path = diag.get("file", "?")
+    start = diag["range"]["start"]
+    file_path = diag["file"]
     root_prefix = str(PROJECT_ROOT) + "/"
-    if isinstance(file_path, str) and file_path.startswith(root_prefix):
+    if file_path.startswith(root_prefix):
         file_path = file_path[len(root_prefix) :]
     return "{}:{}:{}:{}".format(
         file_path,
-        start.get("line", 0),
-        start.get("character", 0),
-        diag.get("rule") or diag.get("message", "?")[:40],
+        start["line"],
+        start["character"],
+        diag["rule"] or diag["message"][:40],
     )
 
 
@@ -76,7 +183,8 @@ def collect_findings() -> list[str]:
     TEMP_CONFIG.write_text(json.dumps(_STRICT_CONFIG), encoding="utf-8")
     cmd = ["uv", "run", "pyright", "-p", str(TEMP_CONFIG), "--outputjson"]
     try:
-        result = subprocess.run(
+        # owner: quality-infrastructure; reason: static argv uses a project-owned config without a shell
+        result = subprocess.run(  # nosec B603
             cmd,
             capture_output=True,
             text=True,
@@ -87,20 +195,17 @@ def collect_findings() -> list[str]:
     finally:
         TEMP_CONFIG.unlink(missing_ok=True)
     try:
-        pyright_payload = json.loads(result.stdout or "{}")
+        diagnostics = _parse_diagnostics(result.stdout)
     except json.JSONDecodeError as exc:
         detail = result.stderr.strip() or "Pyright produced unparseable output."
         raise RuntimeError(detail) from exc
     # Pyright can exit non-zero for findings — that is expected.
     # Only exit >=2 signals a tool crash.
-    is_tool_error = (
-        result.returncode is not None and result.returncode >= _TOOL_ERROR_EXIT_THRESHOLD
-    )
+    is_tool_error = result.returncode >= _TOOL_ERROR_EXIT_THRESHOLD
     if is_tool_error:
         raise RuntimeError(
             result.stderr.strip() or f"Pyright exited with status {result.returncode}."
         )
-    diagnostics = pyright_payload.get("generalDiagnostics", [])
     return sorted({_fingerprint(diagnostic) for diagnostic in diagnostics})
 
 

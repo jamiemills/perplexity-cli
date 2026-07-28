@@ -20,13 +20,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
+
+# owner: quality-infrastructure; reason: invoke Make with discrete validated argv and no shell
+import subprocess  # nosec B404
 import sys
 import time
+import tomllib
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TypeGuard
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_CONTRACTS = _PROJECT_ROOT / "quality" / "analyser-contracts.toml"
@@ -102,10 +105,10 @@ class ContractResult:
 class RunReport:
     """Aggregated report for an entire contract-check run."""
 
-    results: list[ContractResult] = field(default_factory=list)
-    schema_errors: list[str] = field(default_factory=list)
-    skipped_pending: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    results: list[ContractResult] = field(default_factory=list[ContractResult])
+    schema_errors: list[str] = field(default_factory=list[str])
+    skipped_pending: list[str] = field(default_factory=list[str])
+    warnings: list[str] = field(default_factory=list[str])
 
     @property
     def all_contracts_honoured(self) -> bool:
@@ -117,34 +120,51 @@ class RunReport:
 # ---------------------------------------------------------------------------
 
 
-def _try_import_tomllib() -> Any:
-    try:
-        import tomllib
-    except ImportError:
-        import tomli as tomllib
-    return tomllib
+def _is_object_dict(value: object) -> TypeGuard[dict[str, object]]:
+    """Return whether a TOML value is a table with string keys."""
+    return isinstance(value, dict)
 
 
-def _check_schema_section(contracts_document: dict[str, Any]) -> list[str]:
+def _is_object_list(value: object) -> TypeGuard[list[object]]:
+    """Return whether a TOML value is an array."""
+    return isinstance(value, list)
+
+
+def _check_schema_section(contracts_document: dict[str, object]) -> list[str]:
     """Validate the [schema] section of the TOML file."""
     schema = contracts_document.get("schema")
-    if not isinstance(schema, dict):
+    if not _is_object_dict(schema):
         return ["Missing or invalid [schema] section"]
     if schema.get("version") != 1:
         return [f"Unsupported schema version {schema.get('version')}"]
     return []
 
 
-def _check_analysers_array(contracts_document: dict[str, Any]) -> list[str]:
+def _check_analysers_array(contracts_document: dict[str, object]) -> list[str]:
     """Validate the [[analysers]] array exists and is non-empty."""
     analyser_entries = contracts_document.get("analysers")
     if analyser_entries is None:
         return ["Missing [[analysers]] array"]
-    if not isinstance(analyser_entries, list):
+    if not _is_object_list(analyser_entries):
         return ["[[analysers]] must be an array of tables"]
     if not analyser_entries:
         return ["[[analysers]] array is empty"]
     return []
+
+
+def _load_document(path: Path) -> tuple[dict[str, object] | None, list[str]]:
+    """Load a TOML document and report input or parsing errors."""
+    try:
+        with path.open("rb") as fh:
+            loaded_document: object = tomllib.load(fh)
+    except FileNotFoundError:
+        return None, [f"Contracts file not found: {path}"]
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return None, [f"Failed to parse TOML: {exc}"]
+
+    if not _is_object_dict(loaded_document):
+        return None, ["TOML document must be a table"]
+    return loaded_document, []
 
 
 def load_contracts(path: Path) -> tuple[list[AnalyserContract], list[str]]:
@@ -153,14 +173,9 @@ def load_contracts(path: Path) -> tuple[list[AnalyserContract], list[str]]:
     Returns:
         A tuple of (contracts, schema_errors).
     """
-    tomllib = _try_import_tomllib()
-    try:
-        with path.open("rb") as fh:
-            contracts_document = tomllib.load(fh)
-    except FileNotFoundError:
-        return [], [f"Contracts file not found: {path}"]
-    except Exception as exc:
-        return [], [f"Failed to parse TOML: {exc}"]
+    contracts_document, load_errors = _load_document(path)
+    if contracts_document is None:
+        return [], load_errors
 
     errors: list[str] = []
     errors.extend(_check_schema_section(contracts_document))
@@ -169,11 +184,13 @@ def load_contracts(path: Path) -> tuple[list[AnalyserContract], list[str]]:
         return [], errors
 
     raw_analysers = contracts_document["analysers"]
+    if not _is_object_list(raw_analysers):
+        return [], errors
     return _parse_all_analysers(raw_analysers, errors)
 
 
 def _parse_all_analysers(
-    raw: list[Any], errors: list[str]
+    raw: list[object], errors: list[str]
 ) -> tuple[list[AnalyserContract], list[str]]:
     """Parse every entry in the [[analysers]] array."""
     contracts: list[AnalyserContract] = []
@@ -186,7 +203,7 @@ def _parse_all_analysers(
     return contracts, errors
 
 
-def _validate_required_keys(entry: dict[str, Any], idx: int) -> list[str]:
+def _validate_required_keys(entry: dict[str, object], idx: int) -> list[str]:
     """Check that all required top-level keys are present."""
     prefix = f"analysers[{idx}]"
     missing = _REQUIRED_ANALYSER_KEYS - set(entry.keys())
@@ -195,26 +212,34 @@ def _validate_required_keys(entry: dict[str, Any], idx: int) -> list[str]:
     return []
 
 
-def _check_field_id(entry: dict[str, Any], prefix: str, errors: list[str]) -> None:
+def _check_field_id(entry: dict[str, object], prefix: str, errors: list[str]) -> None:
     """Validate the 'id' field."""
     if not isinstance(entry.get("id"), str) or not entry.get("id"):
         errors.append(f"{prefix}: 'id' must be a non-empty string")
 
 
-def _check_field_target(entry: dict[str, Any], prefix: str, errors: list[str]) -> None:
+def _check_field_target(entry: dict[str, object], prefix: str, errors: list[str]) -> None:
     """Validate the 'target' field."""
-    if not isinstance(entry.get("target"), str) or not entry.get("target"):
+    target = entry.get("target")
+    if not isinstance(target, str) or not target:
         errors.append(f"{prefix}: 'target' must be a non-empty string")
+    elif not _is_safe_make_target(target):
+        errors.append(f"{prefix}: 'target' contains unsafe make syntax")
 
 
-def _check_field_phase(entry: dict[str, Any], prefix: str, errors: list[str]) -> None:
+def _is_safe_make_target(target: str) -> bool:
+    """Return whether Make will interpret the argument as one target name."""
+    return not target.startswith("-") and "=" not in target and target.isprintable()
+
+
+def _check_field_phase(entry: dict[str, object], prefix: str, errors: list[str]) -> None:
     """Validate the 'phase' field."""
     phase = entry.get("phase")
     if not isinstance(phase, int) or phase < 1:
         errors.append(f"{prefix}: 'phase' must be a positive integer")
 
 
-def _check_field_status(entry: dict[str, Any], prefix: str, errors: list[str]) -> None:
+def _check_field_status(entry: dict[str, object], prefix: str, errors: list[str]) -> None:
     """Validate the 'status' field."""
     if entry.get("status") not in _VALID_STATUSES:
         errors.append(
@@ -222,31 +247,31 @@ def _check_field_status(entry: dict[str, Any], prefix: str, errors: list[str]) -
         )
 
 
-def _check_field_description(entry: dict[str, Any], prefix: str, errors: list[str]) -> None:
+def _check_field_description(entry: dict[str, object], prefix: str, errors: list[str]) -> None:
     """Validate the 'description' field."""
     if not isinstance(entry.get("description"), str) or not entry.get("description"):
         errors.append(f"{prefix}: 'description' must be a non-empty string")
 
 
-def _check_test_node_id_item(node_id: Any, idx: int, prefix: str, errors: list[str]) -> None:
+def _check_test_node_id_item(node_id: object, idx: int, prefix: str, errors: list[str]) -> None:
     """Validate a single test_node_ids entry."""
     if not isinstance(node_id, str) or not node_id:
         errors.append(f"{prefix}: 'test_node_ids[{idx}]' must be a non-empty string")
 
 
-def _check_field_test_node_ids(entry: dict[str, Any], prefix: str, errors: list[str]) -> None:
+def _check_field_test_node_ids(entry: dict[str, object], prefix: str, errors: list[str]) -> None:
     """Validate the optional 'test_node_ids' field if present."""
     if "test_node_ids" not in entry:
         return
     node_ids = entry.get("test_node_ids")
-    if not isinstance(node_ids, list):
+    if not _is_object_list(node_ids):
         errors.append(f"{prefix}: 'test_node_ids' must be an array of strings")
         return
     for index, node_id in enumerate(node_ids):
         _check_test_node_id_item(node_id, index, prefix, errors)
 
 
-def _validate_scalar_fields(entry: dict[str, Any], idx: int, errors: list[str]) -> None:
+def _validate_scalar_fields(entry: dict[str, object], idx: int, errors: list[str]) -> None:
     """Validate id, target, phase, status, description, test_node_ids fields."""
     prefix = f"analysers[{idx}]"
     _check_field_id(entry, prefix, errors)
@@ -257,19 +282,19 @@ def _validate_scalar_fields(entry: dict[str, Any], idx: int, errors: list[str]) 
     _check_field_test_node_ids(entry, prefix, errors)
 
 
-def _parse_single_analyser(entry: Any, idx: int) -> tuple[AnalyserContract | None, list[str]]:
+def _parse_single_analyser(entry: object, idx: int) -> tuple[AnalyserContract | None, list[str]]:
     """Parse a single [[analysers]] entry."""
     errors: list[str] = []
     prefix = f"analysers[{idx}]"
 
-    if not isinstance(entry, dict):
+    if not _is_object_dict(entry):
         return None, [f"{prefix}: expected a table, got {type(entry).__name__}"]
 
     errors.extend(_validate_required_keys(entry, idx))
     _validate_scalar_fields(entry, idx, errors)
 
     states_raw = entry.get("states", {})
-    if not isinstance(states_raw, dict):
+    if not _is_object_dict(states_raw):
         errors.append(f"{prefix}: 'states' must be a table")
         return None, errors
 
@@ -280,25 +305,37 @@ def _parse_single_analyser(entry: Any, idx: int) -> tuple[AnalyserContract | Non
         return None, errors
 
     contract = AnalyserContract(
-        id=str(entry["id"]),
-        target=str(entry["target"]),
-        phase=int(entry["phase"]),
-        status=str(entry["status"]),
-        description=str(entry["description"]),
+        id=_required_string(entry, "id"),
+        target=_required_string(entry, "target"),
+        phase=_required_int(entry, "phase"),
+        status=_required_string(entry, "status"),
+        description=_required_string(entry, "description"),
         states=states,
         test_node_ids=_coerce_test_node_ids(entry.get("test_node_ids")),
     )
     return contract, errors
 
 
-def _coerce_test_node_ids(node_ids: Any) -> tuple[str, ...]:
+def _required_string(entry: dict[str, object], key: str) -> str:
+    """Return a string field after successful schema validation."""
+    value = entry[key]
+    return value if isinstance(value, str) else ""
+
+
+def _required_int(entry: dict[str, object], key: str) -> int:
+    """Return an integer field after successful schema validation."""
+    value = entry[key]
+    return value if isinstance(value, int) else 0
+
+
+def _coerce_test_node_ids(node_ids: object) -> tuple[str, ...]:
     """Coerce the raw test_node_ids value into a tuple of strings."""
-    if not isinstance(node_ids, list):
+    if not _is_object_list(node_ids):
         return ()
-    return tuple(str(node_id) for node_id in node_ids)
+    return tuple(node_id for node_id in node_ids if isinstance(node_id, str))
 
 
-def _check_exit_bounds_present(exit_min: Any, exit_max: Any, full_prefix: str) -> str | None:
+def _check_exit_bounds_present(exit_min: object, exit_max: object, full_prefix: str) -> str | None:
     """Return error if exit_min or exit_max is missing."""
     if exit_min is None or exit_max is None:
         return f"{full_prefix}: missing exit_min or exit_max"
@@ -306,7 +343,7 @@ def _check_exit_bounds_present(exit_min: Any, exit_max: Any, full_prefix: str) -
 
 
 def _check_state_exit_range(
-    state_name: str, state_data: dict[str, Any], full_prefix: str
+    state_name: str, state_data: dict[str, object], full_prefix: str
 ) -> tuple[int, int, str | None]:
     """Validate exit_min/exit_max; return (min, max, error_or_none)."""
     del state_name  # reserved for future use
@@ -327,7 +364,7 @@ def _check_state_exit_range(
 
 
 def _check_state_signal(
-    state_data: dict[str, Any], full_prefix: str
+    state_data: dict[str, object], full_prefix: str
 ) -> tuple[str | None, str | None]:
     """Validate the optional 'signal' field; return (signal_value, error_message)."""
     signal = state_data.get("signal")
@@ -337,12 +374,12 @@ def _check_state_signal(
 
 
 def _validate_single_state(
-    state_name: str, state_data: Any, prefix: str
+    state_name: str, state_data: object, prefix: str
 ) -> tuple[StateContract | None, list[str]]:
     """Validate a single state entry and return the parsed contract."""
     full_prefix = f"{prefix}.{state_name}"
 
-    if not isinstance(state_data, dict):
+    if not _is_object_dict(state_data):
         return None, [f"{full_prefix}: expected a table"]
 
     unknown_keys = set(state_data.keys()) - _VALID_STATE_KEYS
@@ -361,7 +398,9 @@ def _validate_single_state(
     return sc, []
 
 
-def _parse_states(raw: dict[str, Any], prefix: str) -> tuple[dict[str, StateContract], list[str]]:
+def _parse_states(
+    raw: dict[str, object], prefix: str
+) -> tuple[dict[str, StateContract], list[str]]:
     """Parse the [analysers.states] table."""
     errors: list[str] = []
     states: dict[str, StateContract] = {}
@@ -482,7 +521,8 @@ def run_analyser(
     stderr_tail = ""
 
     try:
-        proc = subprocess.run(
+        # owner: quality-infrastructure; reason: validated Make target is one argv item with no shell
+        proc = subprocess.run(  # nosec B603
             cmd,
             capture_output=True,
             text=True,
@@ -555,18 +595,30 @@ class SelectionOptions:
     pending_policy: PendingPolicy
 
 
+@dataclass(frozen=True, slots=True)
+class CliOptions:
+    """Immutable analyser-contract command-line options."""
+
+    contracts: Path
+    validate: bool
+    run: bool
+    pending_ok: bool
+    json: bool
+    only: str | None
+    timeout: int
+
+
 # owner: quality-infrastructure; reason: backwards-compatible private pending selection API
 def _should_skip_pending(  # nosemgrep: boolean-flag-argument
     contract: AnalyserContract, pending_ok: bool
 ) -> bool:
     """Return True if *contract* should be skipped as a pending analyser."""
-    policy = PendingPolicy.INCLUDE if pending_ok else PendingPolicy.SKIP
-    return _should_skip_pending_with_policy(contract, policy)
+    return contract.status == "pending" and not pending_ok
 
 
 def _should_skip_pending_with_policy(contract: AnalyserContract, policy: PendingPolicy) -> bool:
     """Return whether a contract should be skipped under an explicit policy."""
-    return contract.status == "pending" and policy is PendingPolicy.SKIP
+    return _should_skip_pending(contract, policy is PendingPolicy.INCLUDE)
 
 
 def _matches_only_filter(contract: AnalyserContract, only: str | None) -> bool:
@@ -716,7 +768,7 @@ def _format_json(report: RunReport, contracts_path: Path) -> str:
     """Format the run report as JSON."""
     passed = _count_passed(report.results)
     failed = _count_failed(report.results)
-    payload: dict[str, Any] = {
+    payload: dict[str, object] = {
         "contracts_path": str(contracts_path),
         "schema_valid": not report.schema_errors,
         "schema_errors": report.schema_errors,
@@ -750,12 +802,10 @@ def _format_json(report: RunReport, contracts_path: Path) -> str:
 
 def _build_report(
     contracts: list[AnalyserContract],
-    args: argparse.Namespace,
+    args: CliOptions,
 ) -> RunReport:
     """Build a RunReport from loaded contracts and CLI args."""
-    pending_policy = PendingPolicy.INCLUDE if args.pending_ok else PendingPolicy.SKIP
-    options = SelectionOptions(only=args.only, pending_policy=pending_policy)
-    selected, skipped = _select_contracts_with_policy(contracts, options)
+    selected, skipped = _select_contracts(contracts, args.only, args.pending_ok)
     report = RunReport(skipped_pending=skipped)
 
     for c in selected:
@@ -765,7 +815,7 @@ def _build_report(
     return report
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace:
+def _parse_args(argv: list[str]) -> CliOptions:
     parser = argparse.ArgumentParser(
         description="Check analyser behaviour against declared contracts.",
     )
@@ -807,15 +857,33 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default=300,
         help="Timeout per analyser in seconds (default: 300).",
     )
-    return parser.parse_args(argv)
+    parsed = parser.parse_args(argv)
+    contracts: object = parsed.contracts
+    validate: object = parsed.validate
+    run: object = parsed.run
+    pending_ok: object = parsed.pending_ok
+    json_output: object = parsed.json
+    only: object = parsed.only
+    timeout: object = parsed.timeout
+    if not isinstance(contracts, Path) or not isinstance(timeout, int):
+        parser.error("invalid contracts path or timeout")
+    return CliOptions(
+        contracts=contracts,
+        validate=validate is True,
+        run=run is True,
+        pending_ok=pending_ok is True,
+        json=json_output is True,
+        only=only if isinstance(only, str) else None,
+        timeout=timeout,
+    )
 
 
-def _should_validate(args: argparse.Namespace) -> bool:
+def _should_validate(args: CliOptions) -> bool:
     """Return True if schema validation should be performed."""
     return args.validate or not args.run
 
 
-def _should_run(args: argparse.Namespace) -> bool:
+def _should_run(args: CliOptions) -> bool:
     """Return True if analysers should be executed."""
     return args.run or not args.validate
 
@@ -851,7 +919,7 @@ def main(argv: list[str] | None = None) -> None:
     _exit_on_result(report)
 
 
-def _output_and_exit(report: RunReport, args: argparse.Namespace) -> None:
+def _output_and_exit(report: RunReport, args: CliOptions) -> None:
     """Print the report in the requested format."""
     if args.json:
         print(_format_json(report, args.contracts))
