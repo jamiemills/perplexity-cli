@@ -11,13 +11,13 @@
     "@opencode-ai/plugin": "1.15.12"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "10.0.1",
     "@types/node": "24.12.2",
-    "eslint": "^10.8.0",
+    "eslint": "10.8.0",
     "jsonc-parser": "3.3.1",
-    "tsx": "^4.19.0",
+    "tsx": "4.23.1",
     "typescript": "5.8.2",
-    "typescript-eslint": "^8.65.0",
-    "vitest": "^4.1.10"
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
   }
 }
