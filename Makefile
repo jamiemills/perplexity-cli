@@ -244,7 +244,7 @@ arch-check:  ## Check architecture layer boundaries (hard gate, no baseline)
 	uv run python scripts/check_architecture.py
 
 arch-check-dynamic:  ## Check dynamic import architecture enforcement
-	uv run python scripts/check_dynamic_imports.py --no-baseline
+	uv run python scripts/check_dynamic_imports.py
 
 arch-explain:  ## Display the architecture layer model
 	uv run python scripts/check_architecture.py --explain
