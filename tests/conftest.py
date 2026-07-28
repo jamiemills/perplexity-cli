@@ -1,7 +1,29 @@
 """Shared test fixtures for the perplexity-cli test suite."""
 
+import os
 import tempfile
 from pathlib import Path
+
+if os.environ.get("MUTANT_UNDER_TEST"):
+    collect_ignore_glob = [
+        "test_agent_check_edge_cases.py",
+        "test_analyser_contracts.py",
+        "test_architecture.py",
+        "test_architecture_model.py",
+        "test_coupling_metrics.py",
+        "test_coverage_policy.py",
+        "test_differential_context.py",
+        "test_dynamic_imports.py",
+        "test_import_graph.py",
+        "test_make_policy.py",
+        "test_mutate_diff_files.py",
+        "test_mutation_policy.py",
+        "test_quality_pipeline_configuration.py",
+        "test_quality_ratchets.py",
+        "test_semgrep_wrapper.py",
+        "test_suppressions.py",
+        "test_workflow_policy.py",
+    ]
 
 import pytest
 from click.testing import CliRunner
