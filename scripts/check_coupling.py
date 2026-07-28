@@ -145,6 +145,7 @@ class ReportOptions:
     threshold: float
     max_flagged: int | None
     trend_compare_path: Path | None
+    blocking: bool = False
 
 
 class TrendReport(TypedDict):
@@ -168,6 +169,7 @@ class _ArgumentState:
     max_flagged: int | None = None
     trend_compare: Path | None = None
     module: str | None = None
+    blocking: bool = False
 
 
 def _make_finding_id(module: str) -> str:
@@ -837,6 +839,12 @@ def _handle_trend_compare_flag(args: list[str], idx: int, state: _ArgumentState)
     return 1
 
 
+def _handle_blocking_flag(_args: list[str], _idx: int, state: _ArgumentState) -> int:
+    """Enable blocking (non-zero exit) mode in *state*."""
+    state.blocking = True
+    return 0
+
+
 def _handle_module_flag(args: list[str], idx: int, state: _ArgumentState) -> int:
     """Store the --module name in *state*."""
     arg = args[idx]
@@ -850,6 +858,7 @@ _FLAG_HANDLERS: dict[str, Callable[[list[str], int, _ArgumentState], int]] = {
     "--threshold": _handle_threshold_flag,
     "--max-flagged": _handle_max_flagged_flag,
     "--trend-compare": _handle_trend_compare_flag,
+    "--blocking": _handle_blocking_flag,
     "--module": _handle_module_flag,
 }
 
@@ -871,11 +880,11 @@ def _handle_flag(
 
 def _parse_args(
     args: list[str],
-) -> tuple[bool, float, int | None, Path | None]:
+) -> tuple[bool, float, int | None, Path | None, bool]:
     """Parse CLI arguments.
 
     Returns:
-        A tuple of (json_mode, threshold, max_flagged, trend_compare_path).
+        A tuple of (json_mode, threshold, max_flagged, trend_compare_path, blocking).
     """
     state = _ArgumentState()
 
@@ -889,6 +898,7 @@ def _parse_args(
         state.threshold,
         state.max_flagged,
         state.trend_compare,
+        state.blocking,
     )
 
 
@@ -978,20 +988,34 @@ def _emit_budget_advisory(
         return
     if len(flagged) <= options.max_flagged:
         return
+    label = "BLOCKING" if options.blocking else "ADVISORY"
+    suffix = "" if options.blocking else "  This is informational only."
     msg = (
-        f"\nADVISORY: {len(flagged)} flagged modules exceeds "
-        f"--max-flagged budget of {options.max_flagged}.  "
-        f"This is informational only."
+        f"\n{label}: {len(flagged)} flagged modules exceeds "
+        f"--max-flagged budget of {options.max_flagged}.{suffix}"
     )
     if options.output_mode is OutputMode.TEXT:
         print(msg)
+
+
+def _should_block(
+    flagged: list[ModuleMetrics],
+    options: ReportOptions,
+) -> bool:
+    """Return True when --blocking is set and flagged exceeds the budget."""
+    if not options.blocking:
+        return False
+    if options.max_flagged is None:
+        return False
+    return len(flagged) > options.max_flagged
 
 
 def _generate_report(options: ReportOptions) -> int:
     """Generate the coupling report.
 
     Returns:
-        Exit code: 0 for success, non-zero for graph/parse/config errors.
+        Exit code: 0 for success/advisory, non-zero for graph/parse/config errors
+        or when --blocking is set and flagged exceeds max_flagged budget.
     """
     graph_result = _build_graph_or_exit(options)
     if isinstance(graph_result, int):
@@ -1019,6 +1043,9 @@ def _generate_report(options: ReportOptions) -> int:
     _emit_report(metrics, trend, options)
     _emit_budget_advisory(flagged, options)
 
+    if _should_block(flagged, options):
+        return 1
+
     return 0
 
 
@@ -1032,9 +1059,9 @@ def main(argv: list[str] | None = None) -> int:
         Exit code: 0 for success/advisory, non-zero for errors.
     """
     args = argv if argv is not None else sys.argv[1:]
-    json_mode, threshold, max_flagged, trend_compare_path = _parse_args(args)
+    json_mode, threshold, max_flagged, trend_compare_path, blocking = _parse_args(args)
     output_mode = OutputMode.JSON if json_mode else OutputMode.TEXT
-    options = ReportOptions(output_mode, threshold, max_flagged, trend_compare_path)
+    options = ReportOptions(output_mode, threshold, max_flagged, trend_compare_path, blocking)
     return _generate_report(options)
 
 

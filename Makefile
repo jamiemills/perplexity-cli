@@ -231,8 +231,8 @@ semgrep-advisory-report:  ## Generate advisory Semgrep SARIF and JSON report
 
 .PHONY: coupling-check coupling-report metrics-track arch-check arch-check-dynamic arch-explain
 
-coupling-check:  ## Measure coupling and stability metrics (legacy, now advisory-only)
-	uv run python scripts/check_coupling.py --max-flagged $(MAX_FLAGGED)
+coupling-check:  ## Measure coupling and stability metrics (blocking gate when --max-flagged exceeded)
+	uv run python scripts/check_coupling.py --max-flagged $(MAX_FLAGGED) --blocking
 
 coupling-report:  ## Generate advisory coupling report with trend support
 	uv run python scripts/check_coupling.py --trend-compare quality/baselines/coupling-report.json
