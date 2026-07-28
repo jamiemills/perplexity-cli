@@ -37,14 +37,7 @@ def test_semgrep_config_exists() -> None:
 
 
 def test_no_semgrep_warnings_or_errors_via_wrapper() -> None:
-    """Semgrep wrapper runs in blocking mode and produces valid output.
-
-    NOTE: The wrapper will discover findings from rules elevated from
-    INFO to WARNING in Wave 1B.  These pre-existing findings indicate
-    known codebase conventions that the new severity correctly flags.
-    The test verifies that the wrapper runs end-to-end and classifies
-    findings correctly, not that the codebase is clean.
-    """
+    """Semgrep blocking mode reports a clean ERROR/WARNING source tree."""
     result = subprocess.run(
         [
             "uv",
@@ -75,12 +68,10 @@ def test_no_semgrep_warnings_or_errors_via_wrapper() -> None:
         cwd=str(PROJECT_ROOT),
         timeout=300,
     )
-    assert "Semgrep:" in result.stdout, (
-        f"Wrapper failed to produce output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    assert result.returncode == 0, (
+        f"Semgrep blocking mode failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
-    assert "Semgrep: no findings." not in result.stdout, (
-        "Expected findings from raised-severity rules"
-    )
+    assert "Semgrep: no findings." in result.stdout
 
 
 def test_semgrep_advisory_runs_without_failure() -> None:

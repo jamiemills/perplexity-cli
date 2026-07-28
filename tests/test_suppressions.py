@@ -63,7 +63,7 @@ def _make_pyproject(
 
 def _patch_check_module(monkeypatch, tmp_path: Path, src: Path, pyproject: Path) -> None:
     """Redirect ``check_suppressions`` globals to the temp tree."""
-    monkeypatch.setattr(cs, "SRC", src)
+    monkeypatch.setattr(cs, "SOURCE_ROOTS", (src,))
     monkeypatch.setattr(cs, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(cs, "PYPROJECT", pyproject)
 
