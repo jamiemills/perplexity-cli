@@ -64,9 +64,9 @@ def runner():
 class TestStripReferencesWithMarkdown:
     """Test --strip-references combined with --format markdown."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_strip_references_markdown(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
         """Test that --strip-references works with --format markdown."""
         mock_sm = Mock()
@@ -99,9 +99,9 @@ class TestStripReferencesWithMarkdown:
 class TestStreamWithPlainFormat:
     """Test --stream combined with --format plain."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_stream_plain_format(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
         """Test that --stream works with --format plain."""
         mock_sm = Mock()
@@ -124,9 +124,9 @@ class TestStreamWithPlainFormat:
 class TestFlagPassthrough:
     """Test that flags are correctly passed through to the API layer."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_stream_flag_uses_submit_query(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -147,9 +147,9 @@ class TestFlagPassthrough:
         mock_api.submit_query.assert_called_once()
         mock_api.get_complete_answer.assert_not_called()
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_no_stream_flag_uses_get_complete_answer(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -175,9 +175,9 @@ class TestFlagPassthrough:
 class TestMultipleFlagCombinations:
     """Test various multi-flag combinations work without errors."""
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_strip_references_json_no_stream(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
@@ -203,9 +203,9 @@ class TestMultipleFlagCombinations:
 
         assert result.exit_code == 0
 
-    @patch("perplexity_cli.utils.style_manager.StyleManager")
-    @patch("perplexity_cli.auth.token_manager.TokenManager")
-    @patch("perplexity_cli.api.endpoints.PerplexityAPI")
+    @patch("perplexity_cli.query_runner.StyleManager")
+    @patch("perplexity_cli.query_runner.TokenManager")
+    @patch("perplexity_cli.query_runner.PerplexityAPI")
     def test_stream_strip_references_plain(
         self, mock_api_class, mock_tm_class, mock_sm_class, runner
     ):
