@@ -32,9 +32,7 @@ def _make_api_mock(answer: Answer | None = None):
 
 def _apply_standard_patches(stack, mock_api):
     """Apply standard patches to an ExitStack and return nothing."""
-    stack.enter_context(
-        patch("perplexity_cli.query_runner.TokenManager", return_value=Mock())
-    )
+    stack.enter_context(patch("perplexity_cli.query_runner.TokenManager", return_value=Mock()))
     stack.enter_context(
         patch(
             "perplexity_cli.query_runner.load_token_optional",

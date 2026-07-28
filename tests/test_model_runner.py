@@ -556,9 +556,7 @@ class TestCreateModelService:
         from perplexity_cli.runners.models import _create_model_service
 
         mock_client = MagicMock()
-        with patch(
-            "perplexity_cli.runners.models.ModelService", autospec=True
-        ) as mock_svc_cls:
+        with patch("perplexity_cli.runners.models.ModelService", autospec=True) as mock_svc_cls:
             _create_model_service(mock_client, SubscriptionLevel.PRO)
 
         call_kwargs = mock_svc_cls.call_args
@@ -568,9 +566,7 @@ class TestCreateModelService:
         from perplexity_cli.runners.models import _create_model_service
 
         mock_client = MagicMock()
-        with patch(
-            "perplexity_cli.runners.models.ModelService", autospec=True
-        ) as mock_svc_cls:
+        with patch("perplexity_cli.runners.models.ModelService", autospec=True) as mock_svc_cls:
             _create_model_service(mock_client, SubscriptionLevel.MAX)
 
         call_kwargs = mock_svc_cls.call_args
