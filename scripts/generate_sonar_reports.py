@@ -18,7 +18,9 @@ Usage::
 from __future__ import annotations
 
 import logging
-import subprocess  # nosec B404 — hardcoded tool commands only, no user input
+
+# owner: quality-infrastructure; reason: invokes fixed analyser commands without a shell.
+import subprocess  # nosec B404
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -89,7 +91,8 @@ def _run_tool(spec: ToolSpec) -> bool:
     """
     logger.info("Running %s...", spec.name)
     try:
-        result = subprocess.run(  # nosec B603 — hardcoded commands, no user input
+        # owner: quality-infrastructure; reason: ToolSpec commands are repository constants.
+        result = subprocess.run(  # nosec B603
             spec.command,
             capture_output=True,
             text=True,

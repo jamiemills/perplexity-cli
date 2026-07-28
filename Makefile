@@ -141,7 +141,7 @@ typecheck-pyright:  ## Run type checker (pyright, strict mode)
 typecheck-scripts:  ## Run pyright on quality scripts (strict mode)
 	uv run pyright scripts/
 
-typecheck-all: typecheck typecheck-pyright  ## Run all type checkers
+typecheck-all: typecheck typecheck-pyright typecheck-scripts  ## Run all type checkers
 
 # ---------------------------------------------------------------------------
 # Security and dead-code analysis
@@ -150,7 +150,7 @@ typecheck-all: typecheck typecheck-pyright  ## Run all type checkers
 .PHONY: bandit vulture gitleaks gitleaks-ci security
 
 bandit:  ## Run bandit security linter
-	uv run bandit -c pyproject.toml -r src/
+	uv run bandit -c pyproject.toml -r src/ scripts/
 
 vulture:  ## Run vulture dead-code detector
 	uv run vulture src/ vulture_whitelist.py --min-confidence $(MIN_CONFIDENCE)

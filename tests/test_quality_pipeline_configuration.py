@@ -222,6 +222,12 @@ def test_gitleaks_is_the_only_prepush_stdin_consumer() -> None:
     assert 'scripts/gitleaks_check.sh pre-push "{1}" "{2}"' in pre_push
 
 
+def test_ci_static_checks_quality_script_types_and_security() -> None:
+    """The blocking static lane must include scripts in Pyright and Bandit."""
+    assert "typecheck-all: typecheck typecheck-pyright typecheck-scripts" in MAKEFILE
+    assert "uv run bandit -c pyproject.toml -r src/ scripts/" in MAKEFILE
+
+
 def test_mutmut_ignores_repository_infrastructure_tests() -> None:
     """Mutmut's isolated tree cannot collect tests requiring repository tooling."""
     config = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))

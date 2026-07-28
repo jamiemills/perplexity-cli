@@ -178,6 +178,7 @@ They reject commits that are structurally unsafe before any formatter runs.
 | Gate | Command | Tool | Config |
 |------|---------|------|--------|
 | Pyright | `make typecheck-pyright` | pyright | `[tool.pyright]`, strict mode, Python 3.12 |
+| Quality-script Pyright | `make typecheck-scripts` | pyright | Strict analysis of `scripts/` |
 | ty | `make typecheck` | ty | CLI-only, no config file |
 
 - **Defends against:** type-contract drift, impossible argument types, optional
@@ -189,7 +190,7 @@ They reject commits that are structurally unsafe before any formatter runs.
 
 | Gate | Command | Tool | Config |
 |------|---------|------|--------|
-| Bandit | `make bandit` | bandit | `[tool.bandit]`, no global rule skips |
+| Bandit | `make bandit` | bandit | `[tool.bandit]`, scans `src/` and `scripts/`, no global rule skips |
 | Vulture | `make vulture` | vulture | `[tool.vulture]`, min_confidence 80, whitelist |
 
 - **Bandit:** scans for unsafe subprocess use, weak randomness, hardcoded
