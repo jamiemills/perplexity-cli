@@ -157,11 +157,24 @@ gates, and repair loops per phase.
 
 | Item | Status | Blocker |
 |------|--------|---------|
-| B1 Scheduled mutation | Pending | Requires `git push` + `workflow_dispatch` |
-| B2 Scorecard OIDC/SARIF | Pending | Requires `git push` + `workflow_dispatch` |
+| B1 Scheduled mutation | Local validation complete | Requires `git push` + `workflow_dispatch` |
+| B2 Scorecard OIDC/SARIF | Local validation complete (checklist written) | Requires `git push` + `workflow_dispatch` |
 | B3 Safety credentials | Pending | Requires `git push` + repo secret verification |
 | B4 macOS wheel smoke | Pending | Requires `git push` + CI observation |
 | B5 Actionlint pinning | Complete | Verified at 1.7.12.24 via uvx |
+
+### CSM Run (20260728-0100) — Items 2, 3, 5, 8, 9
+
+| Phase | Work | Status |
+|-------|------|--------|
+| P2 | Move 52 function-local imports to top level (7 runner files) | ✅ 55→4 findings |
+| P1 | Fix 95+ test mock patch targets (14 test files) | ✅ 2,267 tests pass |
+| P3A | Full mutmut run (9,229 mutants, 4 children) | ✅ 5,150 killed (55.8%) |
+| P3B | Scorecard local validation + checklist | ✅ |
+| P3C | Gitleaks end-to-end verification + checklist | ✅ |
+| P4 | Mutation baseline + docs | ✅ |
+| P5 | Final local acceptance | Pending |
+| P6 | Push + CI monitor + fix cycle | Pending |
 
 ### Final Acceptance (S_FINAL_ACCEPTANCE — Complete)
 
@@ -171,13 +184,15 @@ gates, and repair loops per phase.
 | `make ci` (2,267 tests, 93% coverage) | Pass |
 | `make semgrep` | 0 findings |
 | `make gitleaks-ci` (630 commits) | 0 leaks |
-| `make ratchets` (83 identities, 3 arch) | Pass |
+| `make ratchets` (83 identities, 4 arch) | Pass |
 | `make opencode-check` (109 tests) | Pass |
 | `make opencode-audit` | 0 vulnerabilities |
 | `make import-linter` (12 contracts) | 0 broken |
 | `make arch-check` (4 baselined) | Pass |
 | `make coupling-check` (34/40 flagged) | Pass |
+| `make mutate-full-policy` (9,229 mutants) | 55.8% kill rate |
 
 ### Remaining Work
 
-B1-B4 require `git push` to validate. No local work remains.
+P5 (final acceptance re-run) and P6 (push + CI cycle) remain.
+B1-B4 require `git push` to validate.

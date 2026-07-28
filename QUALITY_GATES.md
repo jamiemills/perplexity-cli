@@ -371,6 +371,23 @@ intentional review.
 testing asks whether tests would notice if the logic were wrong — stricter
 than coverage. Scoped to changed files to keep latency acceptable at push time.
 
+### Mutation Testing (Full)
+
+`make mutate-full-policy` runs mutmut on the entire `src/perplexity_cli/` tree
+(9,229 mutants) and classifies results via `scripts/mutation_policy.py`.
+First full run baseline (2026-07-28):
+
+| Category | Count | % |
+|----------|-------|---|
+| Killed | 5,150 | 55.8% |
+| Survived | 3,698 | 40.1% |
+| Timeout | 233 | 2.5% |
+| Skipped | 148 | 1.6% |
+
+Mutation score: **58.2%** (killed / (killed + survived)). Survived mutants
+are tracked in `quality/evidence/mutation-report.json`. The scheduled workflow
+(`mutation-scheduled.yml`) runs this weekly and uploads the report as an artefact.
+
 ### Property Tests
 
 Hypothesis tests verify invariants over many generated examples. Profiles
