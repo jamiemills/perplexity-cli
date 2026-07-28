@@ -8,6 +8,8 @@ only need to be made in one place.
 
 from __future__ import annotations
 
+from perplexity_cli.utils.config import get_perplexity_base_url
+
 
 def _resolve_base_url(base_url: str | None) -> str:
     """Resolve the base URL, loading from configuration if not provided.
@@ -20,8 +22,6 @@ def _resolve_base_url(base_url: str | None) -> str:
     """
     if base_url is not None:
         return base_url
-    from perplexity_cli.utils.config import get_perplexity_base_url
-
     return get_perplexity_base_url()
 
 

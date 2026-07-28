@@ -6,6 +6,8 @@ CLI commands, covering both success and error responses.
 
 from __future__ import annotations
 
+import json
+import sys
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -141,9 +143,6 @@ def write_envelope(
     output:
         Writable file-like object.  Defaults to ``sys.stdout``.
     """
-    import json
-    import sys
-
     out = output if output is not None else sys.stdout
     envelope_dict = envelope_to_dict(env, include_schema=include_schema)
     out.write(json.dumps(envelope_dict, default=str) + "\n")

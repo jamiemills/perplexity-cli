@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from typing import Final, cast
 
-from perplexity_cli.utils.config import get_config_paths
+from perplexity_cli.utils.config import get_config_paths, get_save_cookies_enabled
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
 from perplexity_cli.utils.exceptions import AuthenticationError
 from perplexity_cli.utils.file_permissions import verify_secure_permissions
@@ -118,8 +118,6 @@ class TokenManager:
             "created_at": datetime.now().isoformat(),
         }
         if cookies:
-            from perplexity_cli.utils.config import get_save_cookies_enabled
-
             if get_save_cookies_enabled():
                 encrypted_cookies = encrypt_token(json.dumps(cookies))
                 token_record["cookies"] = encrypted_cookies

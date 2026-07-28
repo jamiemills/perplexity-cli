@@ -7,6 +7,7 @@ import click
 from perplexity_cli.commands._ctx import ClickValue, record_output_flags
 from perplexity_cli.commands._examples import DOCTOR_SECURITY_JSON_EXAMPLE
 from perplexity_cli.commands._help_sections import HelpSectionConfig, add_help_sections
+from perplexity_cli.runners import run_doctor_security_command
 
 
 @click.group(
@@ -93,7 +94,6 @@ def doctor_security(ctx: click.Context, **flags: ClickValue) -> None:
         Cookie storage enabled: True
     """
     record_output_flags(ctx, flags)
-    from perplexity_cli.runners import run_doctor_security_command
 
     run_doctor_security_command()
 

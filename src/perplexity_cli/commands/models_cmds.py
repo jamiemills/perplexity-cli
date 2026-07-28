@@ -8,6 +8,7 @@ from perplexity_cli.commands._ctx import ClickValue, _ensure_ctx_obj, record_out
 from perplexity_cli.commands._examples import MODELS_LIST_JSON_EXAMPLE
 from perplexity_cli.commands._help_refs import AUTH_LOGIN_HELP_REF
 from perplexity_cli.commands._help_sections import HelpSectionConfig, add_help_sections
+from perplexity_cli.runners.models import run_models_list_command
 
 
 @click.group(
@@ -91,7 +92,6 @@ def models_list(ctx: click.Context, **flags: ClickValue) -> None:
         claude46sonnet  Claude Sonnet 4.6      Pro   Anthropic Claude
     """
     record_output_flags(ctx, flags)
-    from perplexity_cli.runners.models import run_models_list_command
 
     run_models_list_command(ctx.obj)
 

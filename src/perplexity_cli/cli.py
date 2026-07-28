@@ -1,11 +1,14 @@
 """Command-line interface for Perplexity CLI."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import click
 
 from perplexity_cli import commands
 from perplexity_cli.commands import register_commands
+from perplexity_cli.utils.config import get_debug_mode_enabled
 from perplexity_cli.utils.logging import get_default_log_file, setup_logging
 from perplexity_cli.utils.version import get_version
 
@@ -116,8 +119,6 @@ def main(
     # Apply config debug mode if --debug flag not specified
     effective_debug = debug
     if not debug:
-        from perplexity_cli.utils.config import get_debug_mode_enabled
-
         effective_debug = get_debug_mode_enabled()
 
     if effective_debug:

@@ -10,6 +10,7 @@ import click
 from perplexity_cli.commands._ctx import _ensure_ctx_obj
 from perplexity_cli.commands._help_sections import HelpSectionConfig, add_help_sections
 from perplexity_cli.commands._schemas import build_command_schemas
+from perplexity_cli.envelope import Envelope, ErrorEnvelope
 
 
 @click.command(name="schema")
@@ -65,7 +66,6 @@ def schema_cmd(ctx: click.Context) -> None:
         }
     """
     _ensure_ctx_obj(ctx)
-    from perplexity_cli.envelope import Envelope, ErrorEnvelope
 
     schema = {
         "success_envelope": Envelope.model_json_schema(),

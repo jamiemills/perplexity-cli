@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from perplexity_cli.config.defaults import DEFAULT_REQUEST_TIMEOUT
+
 Session: Any = None
 AsyncSession: Any = None
 _curl_cffi_available = False
@@ -63,8 +65,6 @@ def create_sync_session(timeout: int | None = None) -> SessionType[Any]:
         RuntimeError: If curl_cffi is not installed.
     """
     if timeout is None:
-        from perplexity_cli.config.defaults import DEFAULT_REQUEST_TIMEOUT
-
         timeout = DEFAULT_REQUEST_TIMEOUT
 
     _guard_curl_cffi()
@@ -87,8 +87,6 @@ def create_async_session(timeout: int | None = None) -> AsyncSessionType[Any]:
         RuntimeError: If curl_cffi is not installed.
     """
     if timeout is None:
-        from perplexity_cli.config.defaults import DEFAULT_REQUEST_TIMEOUT
-
         timeout = DEFAULT_REQUEST_TIMEOUT
 
     _guard_curl_cffi()

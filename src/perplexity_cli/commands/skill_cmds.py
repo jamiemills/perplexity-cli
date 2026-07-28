@@ -7,6 +7,7 @@ import click
 from perplexity_cli.commands._ctx import ClickValue, _ensure_ctx_obj, record_output_flags
 from perplexity_cli.commands._examples import SKILL_SHOW_JSON_EXAMPLE
 from perplexity_cli.commands._help_sections import HelpSectionConfig, add_help_sections
+from perplexity_cli.runners import run_show_skill_command
 
 
 @click.group(
@@ -88,7 +89,6 @@ def skill_show(ctx: click.Context, **flags: ClickValue) -> None:
         Use perplexity-cli as an alternative to web search ...
     """
     record_output_flags(ctx, flags)
-    from perplexity_cli.runners import run_show_skill_command
 
     run_show_skill_command()
 

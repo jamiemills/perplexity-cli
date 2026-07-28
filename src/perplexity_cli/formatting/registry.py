@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -101,9 +103,6 @@ def resolve_format(explicit_format: str | None, *, no_color: bool = False) -> st
     """
     if explicit_format:
         return explicit_format
-
-    import os
-    import sys
 
     if not sys.stdout.isatty():
         return "plain"
