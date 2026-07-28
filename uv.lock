@@ -1190,6 +1190,7 @@ dev = [
 [package.dev-dependencies]
 dev = [
     { name = "deptry" },
+    { name = "grimp" },
     { name = "hypothesis" },
     { name = "import-linter" },
     { name = "mutmut" },
@@ -1198,6 +1199,7 @@ dev = [
     { name = "pytest-xdist" },
     { name = "radon" },
     { name = "ruamel-yaml" },
+    { name = "tomli" },
     { name = "vulture" },
 ]
 
@@ -1229,6 +1231,7 @@ provides-extras = ["dev"]
 [package.metadata.requires-dev]
 dev = [
     { name = "deptry", specifier = ">=0.20" },
+    { name = "grimp", specifier = ">=3.0" },
     { name = "hypothesis", specifier = ">=6.0" },
     { name = "import-linter", specifier = ">=2.0" },
     { name = "mutmut", specifier = ">=3.0" },
@@ -1237,6 +1240,7 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.0" },
     { name = "radon", specifier = ">=6.0.1" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
+    { name = "tomli", specifier = ">=2.0" },
     { name = "vulture", specifier = ">=2.16" },
 ]
 

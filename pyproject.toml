@@ -185,6 +185,7 @@ reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.deptry]
 extend_exclude = ["vulture_whitelist\\.py"]
+known_first_party = ["scripts"]
 
 [dependency-groups]
 dev = [
@@ -198,6 +199,8 @@ dev = [
     "pip-audit>=2.7",
     "import-linter>=2.0",
     "ruamel.yaml>=0.18",
+    "tomli>=2.0",
+    "grimp>=3.0",
 ]
 
 [tool.deptry.per_rule_ignores]
@@ -212,4 +215,9 @@ DEP002 = [
     "bandit",
     "vulture",
     "refurb",
+]
+DEP004 = [
+    "tomli",
+    "grimp",
+    "ruamel",
 ]
