@@ -140,35 +140,134 @@ def _forbidden_modules_for_layer(
     return modules
 
 
+def _find_nested_in_forbidden(
+    prefixed_layer: set[str],
+    forbidden_modules: list[str],
+) -> set[str]:
+    """Return layer modules that are children of a forbidden package."""
+    return {
+        mod
+        for mod in prefixed_layer
+        if any(mod != f and mod.startswith(f + ".") for f in forbidden_modules)
+    }
+
+
+def _cross_product_ignores(sources: set[str], targets: set[str]) -> list[str]:
+    """Build ``source -> target`` expressions for each pair."""
+    return [
+        f"{source} -> {target}"
+        for source in sorted(sources)
+        for target in sorted(targets)
+        if source != target
+    ]
+
+
+def _compute_ignore_imports(
+    layer_modules: set[str],
+    forbidden_modules: list[str],
+) -> list[str]:
+    """Compute ignore_imports for same-layer modules inside forbidden packages.
+
+    When a layer has modules physically nested inside a forbidden parent
+    package (e.g. ``api.models`` in ports, but ``api`` in adapter),
+    import-linter flags the import as forbidden.  This function returns
+    ignore expressions so intra-layer imports are permitted.
+
+    Args:
+        layer_modules: All modules belonging to the current layer.
+        forbidden_modules: Prefixed forbidden module paths.
+
+    Returns:
+        List of ``source -> target`` ignore expressions.
+    """
+    prefixed_layer = {_prefix(m) for m in layer_modules if m != "."}
+    nested = _find_nested_in_forbidden(prefixed_layer, forbidden_modules)
+    if not nested:
+        return []
+    top_level = prefixed_layer - nested
+    return _cross_product_ignores(top_level, nested) + _cross_product_ignores(nested, nested)
+
+
+def _filter_by_raw(combined: list[str], raw_modules: list[str]) -> list[str]:
+    """Keep only entries in *combined* that match a prefixed raw module."""
+    prefixed = {_prefix(s) for s in raw_modules}
+    return [m for m in combined if m in prefixed]
+
+
+def _non_root_modules(layer_name: str, classification: dict[str, set[str]]) -> list[str]:
+    """Return sorted modules for a layer, excluding the root sentinel."""
+    return sorted(m for m in classification.get(layer_name, set()) if m != ".")
+
+
+def _resolve_module_lists(
+    layer_name: str,
+    allowed: set[str],
+    all_layers: set[str],
+    classification: dict[str, set[str]],
+) -> tuple[list[str], list[str]] | None:
+    """Resolve deduplicated source and forbidden module lists for a layer."""
+    raw_sources = _non_root_modules(layer_name, classification)
+    raw_forbidden = _forbidden_modules_for_layer(allowed, all_layers, classification)
+    if not raw_sources or not raw_forbidden:
+        return None
+    combined = _deduplicate_modules(_prefix_modules(raw_sources + raw_forbidden))
+    sources = _filter_by_raw(combined, raw_sources)
+    forbidden = _filter_by_raw(combined, raw_forbidden)
+    if not sources or not forbidden:
+        return None
+    return sources, forbidden
+
+
+def _build_single_layer_contract(
+    layer_name: str,
+    allowed: set[str],
+    all_layers: set[str],
+    classification: dict[str, set[str]],
+) -> dict[str, Any] | None:
+    """Build a forbidden contract for a single layer, or None if not applicable."""
+    resolved = _resolve_module_lists(layer_name, allowed, all_layers, classification)
+    if resolved is None:
+        return None
+    source_modules, forbidden_modules = resolved
+    return _assemble_contract(layer_name, source_modules, forbidden_modules, classification)
+
+
+def _assemble_contract(
+    layer_name: str,
+    source_modules: list[str],
+    forbidden_modules: list[str],
+    classification: dict[str, set[str]],
+) -> dict[str, Any]:
+    """Assemble the contract dict with optional ignore_imports."""
+    contract: dict[str, Any] = {
+        "name": f"{layer_name} must not import non-allowed layers",
+        "type": "forbidden",
+        "source_modules": "\n    ".join(source_modules),
+        "forbidden_modules": "\n    ".join(forbidden_modules),
+    }
+    ignore_imports = _compute_ignore_imports(
+        classification.get(layer_name, set()),
+        forbidden_modules,
+    )
+    if ignore_imports:
+        contract["ignore_imports"] = "\n    ".join(ignore_imports)
+    return contract
+
+
 def _build_forbidden_contracts(
     classification: dict[str, set[str]],
 ) -> list[dict[str, Any]]:
     """Build forbidden contracts for each dependency direction violation."""
-    contracts: list[dict[str, Any]] = []
     architecture = _load_toml(TOML_PATH)
     layers = _as_object_list(architecture.get("layers", []))
     layer_allowed = _get_layer_allowed(layers)
     all_layers = set(layer_allowed.keys())
 
+    contracts: list[dict[str, Any]] = []
     for layer_name, allowed in sorted(layer_allowed.items()):
-        raw_sources = sorted(m for m in classification.get(layer_name, set()) if m != ".")
-        raw_forbidden = _forbidden_modules_for_layer(allowed, all_layers, classification)
-        if not raw_sources or not raw_forbidden:
-            continue
-        combined = _deduplicate_modules(_prefix_modules(raw_sources + raw_forbidden))
-        source_modules = [m for m in combined if any(m == _prefix(s) for s in raw_sources)]
-        forbidden_modules = [m for m in combined if any(m == _prefix(s) for s in raw_forbidden)]
-        if not source_modules or not forbidden_modules:
-            continue
-        contracts.append(
-            {
-                "name": f"{layer_name} must not import non-allowed layers",
-                "type": "forbidden",
-                "source_modules": "\n    ".join(source_modules),
-                "forbidden_modules": "\n    ".join(forbidden_modules),
-            }
-        )
-
+        contract = _build_single_layer_contract(layer_name, allowed, all_layers, classification)
+        if contract is not None:
+            contracts.append(contract)
     return contracts
 
 
@@ -320,6 +419,10 @@ def _append_contracts(lines: list[str], start_id: int, contracts: list[dict[str,
             lines.append(f"    {contract['source_modules']!s}")
             lines.append("forbidden_modules =")
             lines.append(f"    {contract['forbidden_modules']!s}")
+        if "ignore_imports" in contract:
+            lines.append("ignore_imports =")
+            lines.append(f"    {contract['ignore_imports']!s}")
+            lines.append("unmatched_ignore_imports_alerting = none")
         lines.append("")
     return contract_id
 

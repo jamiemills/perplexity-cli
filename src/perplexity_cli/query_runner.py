@@ -29,6 +29,7 @@ from perplexity_cli.envelope import Meta, envelope_to_dict, success_envelope
 from perplexity_cli.error_handler import handle_error
 from perplexity_cli.formatting import get_formatter, list_formatters
 from perplexity_cli.formatting.context import OutputOptions, RenderContext
+from perplexity_cli.ports import QueryGateway
 from perplexity_cli.query_streaming import stream_query_response
 from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.config import get_config_paths, get_save_cookies_enabled
@@ -436,7 +437,7 @@ def _handle_fallback_error(exc: Exception, logger: logging.Logger, debug_mode: D
 
 
 def _fetch_and_render(
-    api: PerplexityAPI,
+    api: QueryGateway,
     query_input: QueryInput,
     render: RenderContext,
     trace: TraceContext,

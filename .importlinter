@@ -63,6 +63,7 @@ forbidden_modules =
     perplexity_cli.session_log
     perplexity_cli.cli
     perplexity_cli.command_runner
+    perplexity_cli.ports
     perplexity_cli.commands
     perplexity_cli.completion_commands
     perplexity_cli.error_handler
@@ -70,8 +71,100 @@ forbidden_modules =
     perplexity_cli.help_json
     perplexity_cli.mcp_server
     perplexity_cli.runners
+ignore_imports =
+    perplexity_cli._types -> perplexity_cli.config.defaults
+    perplexity_cli._types -> perplexity_cli.config.models
+    perplexity_cli.envelope -> perplexity_cli.config.defaults
+    perplexity_cli.envelope -> perplexity_cli.config.models
+    perplexity_cli.models -> perplexity_cli.config.defaults
+    perplexity_cli.models -> perplexity_cli.config.models
+    perplexity_cli.models.model_config -> perplexity_cli.config.defaults
+    perplexity_cli.models.model_config -> perplexity_cli.config.models
+    perplexity_cli.ndjson -> perplexity_cli.config.defaults
+    perplexity_cli.ndjson -> perplexity_cli.config.models
+    perplexity_cli.config.defaults -> perplexity_cli.config.models
+    perplexity_cli.config.models -> perplexity_cli.config.defaults
+unmatched_ignore_imports_alerting = none
 
 [importlinter:contract:4]
+name = ports must not import non-allowed layers
+type = forbidden
+source_modules =
+    perplexity_cli.ports
+forbidden_modules =
+    perplexity_cli.api
+    perplexity_cli.attachments
+    perplexity_cli.auth
+    perplexity_cli.config
+    perplexity_cli.threads
+    perplexity_cli.utils
+    perplexity_cli.exit_codes
+    perplexity_cli.query_runner
+    perplexity_cli.query_streaming
+    perplexity_cli.services
+    perplexity_cli.session_log
+    perplexity_cli.cli
+    perplexity_cli.command_runner
+    perplexity_cli.commands
+    perplexity_cli.completion_commands
+    perplexity_cli.error_handler
+    perplexity_cli.formatting
+    perplexity_cli.help_json
+    perplexity_cli.mcp_server
+    perplexity_cli.runners
+ignore_imports =
+    perplexity_cli.ports -> perplexity_cli.api.contracts
+    perplexity_cli.ports -> perplexity_cli.api.models
+    perplexity_cli.ports -> perplexity_cli.auth.models
+    perplexity_cli.ports -> perplexity_cli.threads.models
+    perplexity_cli.ports -> perplexity_cli.utils.attachment_models
+    perplexity_cli.ports -> perplexity_cli.utils.rate_limiter_models
+    perplexity_cli.ports -> perplexity_cli.utils.upstream_contracts
+    perplexity_cli.api.contracts -> perplexity_cli.api.models
+    perplexity_cli.api.contracts -> perplexity_cli.auth.models
+    perplexity_cli.api.contracts -> perplexity_cli.threads.models
+    perplexity_cli.api.contracts -> perplexity_cli.utils.attachment_models
+    perplexity_cli.api.contracts -> perplexity_cli.utils.rate_limiter_models
+    perplexity_cli.api.contracts -> perplexity_cli.utils.upstream_contracts
+    perplexity_cli.api.models -> perplexity_cli.api.contracts
+    perplexity_cli.api.models -> perplexity_cli.auth.models
+    perplexity_cli.api.models -> perplexity_cli.threads.models
+    perplexity_cli.api.models -> perplexity_cli.utils.attachment_models
+    perplexity_cli.api.models -> perplexity_cli.utils.rate_limiter_models
+    perplexity_cli.api.models -> perplexity_cli.utils.upstream_contracts
+    perplexity_cli.auth.models -> perplexity_cli.api.contracts
+    perplexity_cli.auth.models -> perplexity_cli.api.models
+    perplexity_cli.auth.models -> perplexity_cli.threads.models
+    perplexity_cli.auth.models -> perplexity_cli.utils.attachment_models
+    perplexity_cli.auth.models -> perplexity_cli.utils.rate_limiter_models
+    perplexity_cli.auth.models -> perplexity_cli.utils.upstream_contracts
+    perplexity_cli.threads.models -> perplexity_cli.api.contracts
+    perplexity_cli.threads.models -> perplexity_cli.api.models
+    perplexity_cli.threads.models -> perplexity_cli.auth.models
+    perplexity_cli.threads.models -> perplexity_cli.utils.attachment_models
+    perplexity_cli.threads.models -> perplexity_cli.utils.rate_limiter_models
+    perplexity_cli.threads.models -> perplexity_cli.utils.upstream_contracts
+    perplexity_cli.utils.attachment_models -> perplexity_cli.api.contracts
+    perplexity_cli.utils.attachment_models -> perplexity_cli.api.models
+    perplexity_cli.utils.attachment_models -> perplexity_cli.auth.models
+    perplexity_cli.utils.attachment_models -> perplexity_cli.threads.models
+    perplexity_cli.utils.attachment_models -> perplexity_cli.utils.rate_limiter_models
+    perplexity_cli.utils.attachment_models -> perplexity_cli.utils.upstream_contracts
+    perplexity_cli.utils.rate_limiter_models -> perplexity_cli.api.contracts
+    perplexity_cli.utils.rate_limiter_models -> perplexity_cli.api.models
+    perplexity_cli.utils.rate_limiter_models -> perplexity_cli.auth.models
+    perplexity_cli.utils.rate_limiter_models -> perplexity_cli.threads.models
+    perplexity_cli.utils.rate_limiter_models -> perplexity_cli.utils.attachment_models
+    perplexity_cli.utils.rate_limiter_models -> perplexity_cli.utils.upstream_contracts
+    perplexity_cli.utils.upstream_contracts -> perplexity_cli.api.contracts
+    perplexity_cli.utils.upstream_contracts -> perplexity_cli.api.models
+    perplexity_cli.utils.upstream_contracts -> perplexity_cli.auth.models
+    perplexity_cli.utils.upstream_contracts -> perplexity_cli.threads.models
+    perplexity_cli.utils.upstream_contracts -> perplexity_cli.utils.attachment_models
+    perplexity_cli.utils.upstream_contracts -> perplexity_cli.utils.rate_limiter_models
+unmatched_ignore_imports_alerting = none
+
+[importlinter:contract:5]
 name = Adapter independence: api_adapter
 type = forbidden
 source_modules =
@@ -89,7 +182,7 @@ forbidden_modules =
     perplexity_cli.threads.scraper
     perplexity_cli.threads.utils
 
-[importlinter:contract:5]
+[importlinter:contract:6]
 name = Adapter independence: auth_adapter
 type = forbidden
 source_modules =
@@ -107,7 +200,7 @@ forbidden_modules =
     perplexity_cli.threads.scraper
     perplexity_cli.threads.utils
 
-[importlinter:contract:6]
+[importlinter:contract:7]
 name = Adapter independence: attachments_adapter
 type = forbidden
 source_modules =
@@ -122,7 +215,7 @@ forbidden_modules =
     perplexity_cli.threads.scraper
     perplexity_cli.threads.utils
 
-[importlinter:contract:7]
+[importlinter:contract:8]
 name = Adapter independence: threads_adapter
 type = forbidden
 source_modules =
@@ -140,7 +233,7 @@ forbidden_modules =
     perplexity_cli.auth.token_manager
     perplexity_cli.auth.utils
 
-[importlinter:contract:8]
+[importlinter:contract:9]
 name = Adapter independence: config_adapter
 type = forbidden
 source_modules =
@@ -159,7 +252,7 @@ forbidden_modules =
     perplexity_cli.threads.scraper
     perplexity_cli.threads.utils
 
-[importlinter:contract:9]
+[importlinter:contract:10]
 name = Adapter independence: utils_adapter
 type = forbidden
 source_modules =
@@ -192,7 +285,7 @@ forbidden_modules =
     perplexity_cli.threads.scraper
     perplexity_cli.threads.utils
 
-[importlinter:contract:10]
+[importlinter:contract:11]
 name = Independence (cycles): formatting
 type = independence
 modules =
@@ -203,7 +296,7 @@ modules =
     perplexity_cli.formatting.registry
     perplexity_cli.formatting.rich
 
-[importlinter:contract:11]
+[importlinter:contract:12]
 name = Independence (cycles): commands
 type = independence
 modules =
@@ -217,7 +310,7 @@ modules =
     perplexity_cli.commands.style_cmds
     perplexity_cli.commands.threads_cmds
 
-[importlinter:contract:12]
+[importlinter:contract:13]
 name = Independence (cycles): runners
 type = independence
 modules =

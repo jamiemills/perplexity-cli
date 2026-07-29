@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any
 import click
 from click import ClickException
 
-from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.api.models import (
     Answer,
     QueryInput,
@@ -25,6 +24,7 @@ from perplexity_cli.api.models import (
 from perplexity_cli.envelope import Meta
 from perplexity_cli.formatting.context import RenderContext
 from perplexity_cli.ndjson import NDJSONWriter
+from perplexity_cli.ports import QueryGateway
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
@@ -136,7 +136,7 @@ def _render_stream_references(
 
 
 def _run_stream_loop(
-    api: PerplexityAPI,
+    api: QueryGateway,
     query_input: QueryInput,
     ndjson_writer: NDJSONWriter | None,
 ) -> tuple[str, list[WebResult]]:
@@ -258,7 +258,7 @@ def _handle_stream_error(error: Exception) -> None:
 
 
 def stream_query_response(
-    api: PerplexityAPI,
+    api: QueryGateway,
     query_input: QueryInput,
     render: RenderContext,
     trace: TraceContext,
