@@ -1,9 +1,21 @@
 # =============================================================================
-# Pre-commit: 3-stage pipeline (piped = sequential stages, abort on failure)
+# Pre-commit: 5-stage pipeline (piped = sequential stages, abort on failure)
 #
-#   Stage 1  Read-only linters & validators  (parallel, ~4s)
-#   Stage 2  Auto-fixers                     (piped,    ~0.7s)
-#   Stage 3  Unit tests (no coverage)        (single,   ~21s)
+#   Stage 1  Reject partial staging           (guard,    ~0.1s)
+#   Stage 2  Read-only linters & validators   (parallel, ~4s)
+#   Stage 3  Auto-fixers — fix then format    (piped,    ~0.7s)
+#   Stage 4  Re-run read-only linters         (parallel, regression guard)
+#   Stage 5  Unit tests (no coverage)         (single,   ~21s)
+#
+# Ordering guarantees:
+#   * Every read-only check runs in a stage BEFORE any step that modifies
+#     files, so semantic errors surface on the original staged content.
+#   * `ruff check --fix` runs BEFORE `ruff format` (fix then format), so
+#     formatting is applied to already-fixed code and is never undone.
+#   * The read-only linters are re-run AFTER the auto-fixers to catch any
+#     regression a fixer may have introduced.
+#   * Commits that stage only part of a file's changes are rejected up
+#     front, before any fixer can re-stage and mask the partial edit.
 #
 # Check commands are defined in the Makefile (single source of truth).
 # Staged-file auto-fixers remain here as they need git-specific behaviour.
@@ -17,17 +29,41 @@ pre-commit:
   piped: true
   jobs:
     # -----------------------------------------------------------------
-    # Stage 1: read-only linters and validators (parallel)
+    # Stage 1: reject partial staging (guard)
     #
-    # None of these modify files. Running them first gives the fastest
-    # possible feedback on real errors that no fixer can address.
-    # Commands delegate to Makefile targets for consistency with CI.
+    # Aborts when a staged file also has unstaged modifications. This
+    # must run before the auto-fixers: once a fixer re-stages a file the
+    # partial edit would be silently committed. Runs first so the rest
+    # of the pipeline only ever sees a consistent index/worktree pair.
+    # -----------------------------------------------------------------
+    - name: reject-partial-staging
+      run: |
+        staged=$(git diff --cached --name-only --diff-filter=ACMR)
+        [ -z "$staged" ] && exit 0
+        if ! git diff --quiet -- $staged; then
+          echo "ERROR: unstaged changes detected in files that are staged."
+          echo "Stage the complete change or stash partial edits. Affected files:"
+          git diff --name-only -- $staged | sed 's/^/  /'
+          exit 1
+        fi
+
+    # -----------------------------------------------------------------
+    # Stage 2: read-only linters and validators (parallel)
+    #
+    # None of these modify files. Running them before any fixer gives
+    # the fastest possible feedback on real errors that no fixer can
+    # address, and validates the original staged content. Commands
+    # delegate to Makefile targets for consistency with CI.
     # Wall time: ~4s (semgrep is the bottleneck).
     # -----------------------------------------------------------------
     - name: lint-and-validate
       group:
         parallel: true
         jobs:
+          - name: ruff-check
+            glob: "*.py"
+            run: make lint
+
           - name: pyright-check
             glob: "*.py"
             run: make typecheck-pyright
@@ -115,25 +151,29 @@ pre-commit:
             run: make infisical-scan
 
     # -----------------------------------------------------------------
-    # Stage 2: auto-fixers (piped -- sequential to avoid file races)
+    # Stage 3: auto-fixers (piped -- sequential to avoid file races)
     #
-    # These modify staged files and re-stage the result.  This is
+    # These modify staged files and re-stage the result. This is
     # git-specific behaviour that cannot be expressed in the Makefile,
     # so commands remain inline here.
+    #
+    # Order is fix-then-format: `ruff check --fix` runs first so its
+    # edits are canonical, then `ruff format` lays out the fixed code.
+    # Running format before fix could undo fixes or create conflicts.
     # Wall time: ~0.7s sequential.
     # -----------------------------------------------------------------
     - name: fix-formatting
       group:
         piped: true
         jobs:
+          - name: ruff-check-fix
+            glob: "*.py"
+            run: uv run ruff check --fix {staged_files}
+            stage_fixed: true
+
           - name: ruff-format
             glob: "*.py"
             run: uv run ruff format {staged_files}
-            stage_fixed: true
-
-          - name: ruff-check
-            glob: "*.py"
-            run: uv run ruff check --fix {staged_files}
             stage_fixed: true
 
           - name: trailing-whitespace
@@ -145,9 +185,53 @@ pre-commit:
             stage_fixed: true
 
     # -----------------------------------------------------------------
-    # Stage 3: unit tests without coverage (fail-fast)
+    # Stage 4: re-run read-only linters (regression guard)
     #
-    # Runs only when stages 1 and 2 pass. Coverage enforcement is
+    # The auto-fixers in stage 3 rewrite staged files. Re-running the
+    # read-only linters on the fixed content catches any regression a
+    # fixer introduced (e.g. an unused import removed mid-expression,
+    # or a fix that pushes complexity over a radon threshold).
+    # -----------------------------------------------------------------
+    - name: lint-after-fix
+      group:
+        parallel: true
+        jobs:
+          - name: ruff-check-rerun
+            glob: "*.py"
+            run: make lint
+
+          - name: pyright-check-rerun
+            glob: "*.py"
+            run: make typecheck-pyright
+
+          - name: ty-check-rerun
+            glob: "*.py"
+            run: make typecheck
+
+          - name: bandit-rerun
+            glob: "*.py"
+            run: make bandit
+
+          - name: vulture-rerun
+            glob: "*.py"
+            run: make vulture
+
+          - name: radon-cc-rerun
+            glob: "*.py"
+            run: make complexity-cc
+
+          - name: radon-mi-rerun
+            glob: "*.py"
+            run: make complexity-mi
+
+          - name: semgrep-rerun
+            glob: "*.{py,yml,yaml,ts}"
+            run: make semgrep
+
+    # -----------------------------------------------------------------
+    # Stage 5: unit tests without coverage (fail-fast)
+    #
+    # Runs only when all previous stages pass. Coverage enforcement is
     # deferred to pre-push to keep commits fast.
     # Wall time: ~21s.
     # -----------------------------------------------------------------
