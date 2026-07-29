@@ -582,7 +582,11 @@ class TestExportRunnerMutationKillers:
         record.created_at = "2025-06-01"
         record.url = "https://obj.ai"
         payload = _thread_payload(record)
-        assert payload == {"title": "Obj Title", "created_at": "2025-06-01", "url": "https://obj.ai"}
+        assert payload == {
+            "title": "Obj Title",
+            "created_at": "2025-06-01",
+            "url": "https://obj.ai",
+        }
 
     def test_thread_payload_from_object_missing_attr(self):
         from perplexity_cli.runners.export import _thread_payload

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -43,18 +42,18 @@ from perplexity_cli.config.defaults import (
     DEFAULT_UPLOAD_TIMEOUT,
 )
 from perplexity_cli.mcp_server import (
-    MCPQueryResult,
-    ServerConfig,
     _DEFAULT_HOST,
     _DEFAULT_PATH,
     _DEFAULT_PORT,
+    _TOOL_OUTPUT_LIMIT,
+    MCPQueryResult,
+    ServerConfig,
     _format_json_response,
     _friendly_error_message,
     _normalise_output_format,
     _render_answer,
     _search_mode_for_query_mode,
     _server_meta,
-    _TOOL_OUTPUT_LIMIT,
 )
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
@@ -80,7 +79,9 @@ from perplexity_cli.utils.retry import (
 from perplexity_cli.utils.version import get_api_version
 
 
-def _make_http_error(status: int, headers: dict[str, str] | None = None) -> PerplexityHTTPStatusError:
+def _make_http_error(
+    status: int, headers: dict[str, str] | None = None
+) -> PerplexityHTTPStatusError:
     request = SimpleRequest(method="POST", url="https://www.perplexity.ai/api")
     response = SimpleResponse(
         status_code=status, headers=headers or {}, text="error body", request=request
@@ -108,7 +109,7 @@ class TestClientConstants:
         assert DEEP_RESEARCH_MODE_KEYS == ("searchModeOverride", "search_mode", "workflow_key")
 
     def test_deep_research_mode_values_exact(self) -> None:
-        assert DEEP_RESEARCH_MODE_VALUES == frozenset({"research", "deep_research", "RESEARCH"})
+        assert frozenset({"research", "deep_research", "RESEARCH"}) == DEEP_RESEARCH_MODE_VALUES
 
     def test_default_request_timeout_is_60(self) -> None:
         assert DEFAULT_REQUEST_TIMEOUT == 60
@@ -394,7 +395,9 @@ class TestBuildPerplexityHeaders:
         assert headers["Content-Type"] == "multipart/form-data"
 
     def test_authorization_bearer_prefix(self) -> None:
-        headers = build_perplexity_headers("my-jwt-token", header_extras=(None, "https://ppl.example"))
+        headers = build_perplexity_headers(
+            "my-jwt-token", header_extras=(None, "https://ppl.example")
+        )
         assert headers["Authorization"] == "Bearer my-jwt-token"
 
     def test_no_authorization_without_token(self) -> None:
@@ -410,17 +413,23 @@ class TestBuildPerplexityHeaders:
         assert headers["Referer"] == "https://www.perplexity.ai/"
 
     def test_referer_strips_existing_trailing_slash(self) -> None:
-        headers = build_perplexity_headers("tok", header_extras=(None, "https://www.perplexity.ai/"))
+        headers = build_perplexity_headers(
+            "tok", header_extras=(None, "https://www.perplexity.ai/")
+        )
         assert headers["Referer"] == "https://www.perplexity.ai/"
 
     def test_csrf_token_from_cookies(self) -> None:
         cookies = {"csrftoken": "abc123", "other": "val"}
-        headers = build_perplexity_headers("tok", cookies=cookies, header_extras=(None, "https://x.com"))
+        headers = build_perplexity_headers(
+            "tok", cookies=cookies, header_extras=(None, "https://x.com")
+        )
         assert headers["X-CSRFToken"] == "abc123"
 
     def test_no_csrf_without_csrftoken_cookie(self) -> None:
         cookies = {"session": "val"}
-        headers = build_perplexity_headers("tok", cookies=cookies, header_extras=(None, "https://x.com"))
+        headers = build_perplexity_headers(
+            "tok", cookies=cookies, header_extras=(None, "https://x.com")
+        )
         assert "X-CSRFToken" not in headers
 
     def test_accept_header_from_extras(self) -> None:
@@ -458,7 +467,10 @@ class TestCookies:
 
 class TestRedactionHelpers:
     def test_redact_url_normal(self) -> None:
-        assert redact_url("https://www.perplexity.ai/api/query") == "https://www.perplexity.ai/<redacted>"
+        assert (
+            redact_url("https://www.perplexity.ai/api/query")
+            == "https://www.perplexity.ai/<redacted>"
+        )
 
     def test_redact_url_http(self) -> None:
         assert redact_url("http://example.com/path") == "http://example.com/<redacted>"
@@ -571,7 +583,9 @@ class TestQueryParamsDefaults:
         assert params.search_implementation_mode == "multi_step"
 
     def test_validate_search_mode_invalid_raises(self) -> None:
-        with pytest.raises(ValueError, match='search_implementation_mode must be "standard" or "multi_step"'):
+        with pytest.raises(
+            ValueError, match='search_implementation_mode must be "standard" or "multi_step"'
+        ):
             QueryParams(search_implementation_mode="turbo")
 
 
@@ -1096,7 +1110,7 @@ class TestUploadManagerHelpers:
         from perplexity_cli.attachments.upload_manager import _diagnose_upload_entry_error
 
         msg = _diagnose_upload_entry_error({"error": "server broke"})
-        assert "API failed to generate upload URL: server broke" == msg
+        assert msg == "API failed to generate upload URL: server broke"
 
     def test_diagnose_empty_response(self) -> None:
         from perplexity_cli.attachments.upload_manager import _diagnose_upload_entry_error

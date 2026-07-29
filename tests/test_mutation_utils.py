@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
-import stat
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -26,30 +24,23 @@ from perplexity_cli.utils.config import (
     clear_feature_config_cache,
     clear_urls_cache,
     get_config_dir,
-    get_debug_mode_enabled,
-    get_feature_config,
     get_feature_config_path,
     get_model_config_endpoint,
     get_perplexity_base_url,
     get_query_endpoint,
-    get_rate_limiting_config,
     get_s3_bucket_url,
-    get_save_cookies_enabled,
     get_thread_list_url,
     get_upload_url_endpoint,
-    get_urls,
     get_user_settings_endpoint,
     set_feature,
 )
 from perplexity_cli.utils.encryption import (
+    _ENCRYPTED_TOKEN_VERSION_PREFIX,
     _build_key_material,
     _decrypt_with_current_format,
     _derive_encryption_key_legacy,
     _derive_fernet_key,
-    _ENCRYPTED_TOKEN_VERSION_PREFIX,
-    _PER_MESSAGE_SALT_BYTES,
     decrypt_token,
-    derive_encryption_key,
     encrypt_token,
 )
 from perplexity_cli.utils.exceptions import (
@@ -73,7 +64,6 @@ from perplexity_cli.utils.file_handler import (
     _should_include_file,
     _should_skip_directory_entry,
     load_attachments,
-    resolve_file_arguments,
 )
 from perplexity_cli.utils.http_errors import (
     classify_http_error,
@@ -146,7 +136,9 @@ class TestConfigPaths:
 
 
 class TestGetConfigDir:
-    def test_perplexity_config_dir_env(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_perplexity_config_dir_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         custom = tmp_path / "custom-config"
         monkeypatch.setenv("PERPLEXITY_CONFIG_DIR", str(custom))
         result = get_config_dir()
@@ -283,7 +275,9 @@ class TestApplyRateLimitingPeriod:
     def test_invalid_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("PERPLEXITY_RATE_LIMITING_PERIOD", "xyz")
         config: dict = {}
-        with pytest.raises(ConfigurationError, match="Invalid PERPLEXITY_RATE_LIMITING_PERIOD: xyz"):
+        with pytest.raises(
+            ConfigurationError, match="Invalid PERPLEXITY_RATE_LIMITING_PERIOD: xyz"
+        ):
             _apply_rate_limiting_period(config)
 
 
@@ -500,7 +494,9 @@ class TestEncryptionKeyMaterial:
         with patch(
             "perplexity_cli.utils.encryption._build_key_material", side_effect=OSError("fail")
         ):
-            with pytest.raises(ConfigurationError, match="Failed to derive encryption key \\(legacy\\)"):
+            with pytest.raises(
+                ConfigurationError, match="Failed to derive encryption key \\(legacy\\)"
+            ):
                 _derive_encryption_key_legacy()
 
 
@@ -742,7 +738,9 @@ class TestLoadAttachmentsTooMany:
 class TestFileAttachmentModel:
     def test_empty_filename_raises(self) -> None:
         with pytest.raises(ValueError, match="non-empty"):
-            FileAttachment(filename="", content_type="text/plain", data=base64.b64encode(b"x").decode())
+            FileAttachment(
+                filename="", content_type="text/plain", data=base64.b64encode(b"x").decode()
+            )
 
     def test_filename_256_chars_raises(self) -> None:
         with pytest.raises(ValueError, match="<=255"):

@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import json
 import os
-import stat
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock, call, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -171,9 +170,7 @@ class TestExportR3:
         with patch("perplexity_cli.runners.export.write_threads_csv") as mock_csv:
             _output_export_results(result, mode, logger)
         mock_csv.assert_not_called()
-        logger.info.assert_called_once_with(
-            "Exported %s threads (JSON only, no CSV written)", 1
-        )
+        logger.info.assert_called_once_with("Exported %s threads (JSON only, no CSV written)", 1)
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["result"]["output_path"] is None
 
@@ -522,7 +519,9 @@ class TestConfigR3:
 
         mock_ctx = Mock()
         mock_ctx.obj = None
-        with patch("perplexity_cli.runners.config.click.get_current_context", return_value=mock_ctx):
+        with patch(
+            "perplexity_cli.runners.config.click.get_current_context", return_value=mock_ctx
+        ):
             assert _get_ctx_obj_dict() == {}
 
     def test_get_ctx_obj_dict_returns_obj(self) -> None:
@@ -530,7 +529,9 @@ class TestConfigR3:
 
         mock_ctx = Mock()
         mock_ctx.obj = {"json": True}
-        with patch("perplexity_cli.runners.config.click.get_current_context", return_value=mock_ctx):
+        with patch(
+            "perplexity_cli.runners.config.click.get_current_context", return_value=mock_ctx
+        ):
             assert _get_ctx_obj_dict() == {"json": True}
 
     def test_get_include_schema_true(self) -> None:
@@ -538,7 +539,9 @@ class TestConfigR3:
 
         mock_ctx = Mock()
         mock_ctx.obj = {"schema": True}
-        with patch("perplexity_cli.runners.config.click.get_current_context", return_value=mock_ctx):
+        with patch(
+            "perplexity_cli.runners.config.click.get_current_context", return_value=mock_ctx
+        ):
             assert _get_include_schema() == "with_schema"
 
     def test_get_include_schema_false(self) -> None:
@@ -552,7 +555,9 @@ class TestConfigR3:
 
         mock_ctx = Mock()
         mock_ctx.obj = {"json": True}
-        with patch("perplexity_cli.runners.config.click.get_current_context", return_value=mock_ctx):
+        with patch(
+            "perplexity_cli.runners.config.click.get_current_context", return_value=mock_ctx
+        ):
             assert _get_json_mode_from_ctx() == "json"
 
     def test_handle_style_error_json_calls_handle_error(self) -> None:
@@ -713,7 +718,9 @@ class TestStatusR3:
 
         mock_ctx = Mock()
         mock_ctx.obj = [1, 2, 3]
-        with patch("perplexity_cli.runners.status.click.get_current_context", return_value=mock_ctx):
+        with patch(
+            "perplexity_cli.runners.status.click.get_current_context", return_value=mock_ctx
+        ):
             assert _ctx_to_dict() == {}
 
     def test_ctx_to_dict_none_ctx(self) -> None:
@@ -727,7 +734,9 @@ class TestStatusR3:
 
         mock_ctx = Mock()
         mock_ctx.obj = {"schema": True}
-        with patch("perplexity_cli.runners.status.click.get_current_context", return_value=mock_ctx):
+        with patch(
+            "perplexity_cli.runners.status.click.get_current_context", return_value=mock_ctx
+        ):
             assert _get_include_schema() == "with_schema"
 
     def test_get_include_schema_default(self) -> None:
@@ -773,9 +782,7 @@ class TestStatusR3:
         from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError
 
         with patch("perplexity_cli.runners.status.PerplexityAPI") as mock_api:
-            mock_api.return_value.__enter__ = Mock(
-                side_effect=PerplexityHTTPStatusError("err")
-            )
+            mock_api.return_value.__enter__ = Mock(side_effect=PerplexityHTTPStatusError("err"))
             mock_api.return_value.__exit__ = Mock(return_value=False)
             assert _verify_token("t", {}, Mock()) is False
 
@@ -832,9 +839,7 @@ class TestStatusR3:
         mock_tm.token_path = mock_token_path
         mock_tm_class.return_value = mock_tm
 
-        mock_api_class.return_value.__enter__ = Mock(
-            side_effect=PerplexityRequestError("down")
-        )
+        mock_api_class.return_value.__enter__ = Mock(side_effect=PerplexityRequestError("down"))
         mock_api_class.return_value.__exit__ = Mock(return_value=False)
 
         run_status_command(verify="verify")
@@ -858,9 +863,7 @@ class TestStatusR3:
         mock_tm.token_path = mock_token_path
         mock_tm_class.return_value = mock_tm
 
-        mock_api_class.return_value.__enter__ = Mock(
-            side_effect=PerplexityRequestError("down")
-        )
+        mock_api_class.return_value.__enter__ = Mock(side_effect=PerplexityRequestError("down"))
         mock_api_class.return_value.__exit__ = Mock(return_value=False)
 
         run_status_command(verify="verify", output_format="json")
@@ -1051,9 +1054,7 @@ class TestModelsR3:
 
         with patch("perplexity_cli.runners.models.handle_error") as mock_handle:
             with pytest.raises(SystemExit):
-                _handle_list_error(
-                    PerplexityHTTPStatusError("err"), "json", Mock()
-                )
+                _handle_list_error(PerplexityHTTPStatusError("err"), "json", Mock())
         mock_handle.assert_called_once()
 
     def test_handle_list_error_human_no_handle_error(self) -> None:

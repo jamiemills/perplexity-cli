@@ -3,23 +3,17 @@
 from __future__ import annotations
 
 import logging
-import threading
 from io import StringIO
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 from perplexity_cli.api.client import (
-    HEADER_PAIR_SIZE,
-    HTTP_STATUS_FORBIDDEN,
-    HTTP_STATUS_TOO_MANY_REQUESTS,
-    HTTP_STATUS_UNAUTHORISED,
     RetryHandler,
     SSEClient,
     SSEParser,
     _coerce_header_mapping,
     _coerce_header_pair,
-    _is_deep_research_request,
     _is_json_object,
     _is_request_exception,
     _iter_object_values,
@@ -32,9 +26,9 @@ from perplexity_cli.api.client import (
     _ResponseAdapter,
     _StreamContextAdapter,
 )
-from perplexity_cli.api.models import Answer, HttpRequestContext, WebResult
+from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.auth.models import AuthContext
-from perplexity_cli.formatting.rich import RichFormatter, _HEADER_LEVEL_2, _SECTION_HEADER_STYLE
+from perplexity_cli.formatting.rich import _HEADER_LEVEL_2, _SECTION_HEADER_STYLE, RichFormatter
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
     PerplexityRequestError,
@@ -42,10 +36,11 @@ from perplexity_cli.utils.exceptions import (
     SimpleResponse,
     UpstreamSchemaError,
 )
-from perplexity_cli.utils.retry import get_backoff_delay
 
 
-def _make_http_error(status: int, headers: dict[str, str] | None = None) -> PerplexityHTTPStatusError:
+def _make_http_error(
+    status: int, headers: dict[str, str] | None = None
+) -> PerplexityHTTPStatusError:
     request = SimpleRequest(method="POST", url="https://www.perplexity.ai/api")
     response = SimpleResponse(
         status_code=status, headers=headers or {}, text="error body", request=request
@@ -62,14 +57,14 @@ class TestReadTransportValue:
         def factory() -> object:
             raise AttributeError("missing")
 
-        with pytest.raises(RuntimeError, match="Expected transport attribute for test.ctx"):
+        with pytest.raises(RuntimeError, match=r"Expected transport attribute for test\.ctx"):
             _read_transport_value(factory, "test.ctx")
 
     def test_raises_runtime_error_on_type_error(self) -> None:
         def factory() -> object:
             raise TypeError("bad type")
 
-        with pytest.raises(RuntimeError, match="Expected transport attribute for other.ctx"):
+        with pytest.raises(RuntimeError, match=r"Expected transport attribute for other\.ctx"):
             _read_transport_value(factory, "other.ctx")
 
     def test_preserves_cause_chain(self) -> None:
@@ -93,7 +88,9 @@ class TestRequireStr:
             _require_str(123, "ctx")
 
     def test_rejects_none(self) -> None:
-        with pytest.raises(RuntimeError, match="Expected string transport attribute for my.field"):
+        with pytest.raises(
+            RuntimeError, match=r"Expected string transport attribute for my\.field"
+        ):
             _require_str(None, "my.field")
 
     def test_rejects_bytes(self) -> None:
@@ -150,7 +147,9 @@ class TestRequireBytesOrStr:
         assert _require_bytes_or_str(b"", "ctx") == b""
 
     def test_rejects_int(self) -> None:
-        with pytest.raises(RuntimeError, match="Expected bytes-or-string transport attribute for ctx"):
+        with pytest.raises(
+            RuntimeError, match="Expected bytes-or-string transport attribute for ctx"
+        ):
             _require_bytes_or_str(42, "ctx")
 
     def test_rejects_list(self) -> None:
@@ -305,7 +304,7 @@ class TestResponseAdapter:
     def test_iter_lines_rejects_non_callable(self) -> None:
         mock = Mock(spec=[])
         adapter = _ResponseAdapter(mock)
-        with pytest.raises(RuntimeError, match="Expected callable response.iter_lines"):
+        with pytest.raises(RuntimeError, match=r"Expected callable response\.iter_lines"):
             list(adapter.iter_lines())
 
 
@@ -371,7 +370,7 @@ class TestSSEParserDecodeLine:
         assert SSEParser._decode_line("") == ""
 
     def test_utf8_bytes(self) -> None:
-        assert SSEParser._decode_line("café".encode("utf-8")) == "café"
+        assert SSEParser._decode_line("café".encode()) == "café"
 
 
 class TestSSEParserParseEdgeCases:
@@ -834,7 +833,9 @@ class TestRichFormatterPrintFormattedText:
 class TestRichFormatterRenderCodeBlock:
     def test_fallback_format_exact(self) -> None:
         formatter = RichFormatter()
-        with patch("perplexity_cli.formatting.rich.Syntax", side_effect=ValueError("unknown lexer")):
+        with patch(
+            "perplexity_cli.formatting.rich.Syntax", side_effect=ValueError("unknown lexer")
+        ):
             result = formatter._render_code_block("invalid_lang_xyz_999", "some code")
         assert result == "```invalid_lang_xyz_999\nsome code\n```"
 

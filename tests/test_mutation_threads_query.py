@@ -8,12 +8,10 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 import time
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime
 from io import StringIO
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -34,7 +32,6 @@ from perplexity_cli.threads.models import (
     CacheContent,
     CacheFormat,
     CacheMetadata,
-    DateRange,
     _validate_thread_dict,
 )
 from perplexity_cli.threads.scraper import (
@@ -45,7 +42,6 @@ from perplexity_cli.threads.scraper import (
     _TOTAL_THREADS_ARG_INDEX,
     BatchProcessingContext,
     ThreadScraper,
-    _build_batch_processing_context,
     _build_legacy_batch_processing_context,
     _convert_cache_thread_dicts,
     _extract_total_threads,
@@ -53,11 +49,9 @@ from perplexity_cli.threads.scraper import (
     _get_str_field,
     _handle_http_error,
     _has_more_pages,
-    _is_in_date_range,
     _is_progress_callback,
     _parse_single_thread,
     _report_progress,
-    _to_iso8601,
     _validate_batch_processing_arg_count,
     _validate_date_params,
 )
@@ -427,7 +421,10 @@ class TestProcessThreadBatchContext:
             scraper._process_thread_batch(
                 [{"last_query_datetime": "2026-06-01T00:00:00+00:00", "slug": "s", "title": "T"}],
                 threads,
-                "a", "b", "c", "d",
+                "a",
+                "b",
+                "c",
+                "d",
             )
 
 
@@ -448,7 +445,9 @@ class TestBuildLegacyBatchContext:
         assert ctx.total_threads == 99
 
     def test_progress_callback_at_index_two(self):
-        cb = lambda c, t: None
+        def cb(c, t):
+            return None
+
         ctx = _build_legacy_batch_processing_context((None, None, cb))
         assert ctx.progress_callback is cb
 
@@ -1048,11 +1047,11 @@ class TestCacheFormatConstraints:
     """Kill mutations in version constraints."""
 
     def test_version_zero_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, KeyError)):
             CacheFormat(version=0, cache="data")
 
     def test_version_two_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, KeyError)):
             CacheFormat(version=2, cache="data")
 
     def test_version_one_accepted(self):
@@ -1074,12 +1073,12 @@ class TestCacheContentConstraints:
 
     def test_version_zero_rejected(self):
         meta = CacheMetadata(last_sync_time=datetime(2025, 1, 1, tzinfo=UTC))
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, KeyError)):
             CacheContent(version=0, metadata=meta)
 
     def test_version_two_rejected(self):
         meta = CacheMetadata(last_sync_time=datetime(2025, 1, 1, tzinfo=UTC))
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, KeyError)):
             CacheContent(version=2, metadata=meta)
 
     def test_empty_threads_default(self):
@@ -1289,7 +1288,9 @@ class TestTryDispatchKnownErrorMessages:
 
         logger = get_logger()
         with patch("perplexity_cli.query_runner.handle_network_error"):
-            assert _try_dispatch_known_error(PerplexityRequestError("net"), logger, "normal") is True
+            assert (
+                _try_dispatch_known_error(PerplexityRequestError("net"), logger, "normal") is True
+            )
 
     def test_runtime_error_returns_false(self):
         from perplexity_cli.query_runner import _try_dispatch_known_error
@@ -1478,8 +1479,9 @@ class TestInitStreamErrorHandlers:
         assert handlers[3][0] is KeyboardInterrupt
 
     def test_fifth_handler_is_click_and_oserror(self):
-        from perplexity_cli.query_streaming import _init_stream_error_handlers
         from click import ClickException
+
+        from perplexity_cli.query_streaming import _init_stream_error_handlers
 
         handlers = _init_stream_error_handlers()
         assert handlers[4][0] == (ClickException, OSError)

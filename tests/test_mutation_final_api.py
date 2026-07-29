@@ -440,7 +440,7 @@ class TestSSEParserEdgeCases:
         assert result == {"a": "b", "c": 1}
 
     def test_decode_line_bytes_utf8(self) -> None:
-        assert SSEParser._decode_line("héllo".encode("utf-8")) == "héllo"
+        assert SSEParser._decode_line("héllo".encode()) == "héllo"
 
     def test_decode_line_string_passthrough(self) -> None:
         assert SSEParser._decode_line("already string") == "already string"
@@ -483,7 +483,9 @@ class TestTransportValidation:
     def test_require_int_exact_message(self) -> None:
         with pytest.raises(RuntimeError) as exc_info:
             _require_int("200", "response.status_code")
-        assert str(exc_info.value) == "Expected integer transport attribute for response.status_code"
+        assert (
+            str(exc_info.value) == "Expected integer transport attribute for response.status_code"
+        )
 
     def test_require_bool_exact_message(self) -> None:
         with pytest.raises(RuntimeError) as exc_info:
@@ -493,7 +495,10 @@ class TestTransportValidation:
     def test_require_bytes_or_str_exact_message(self) -> None:
         with pytest.raises(RuntimeError) as exc_info:
             _require_bytes_or_str(42, "response.content")
-        assert str(exc_info.value) == "Expected bytes-or-string transport attribute for response.content"
+        assert (
+            str(exc_info.value)
+            == "Expected bytes-or-string transport attribute for response.content"
+        )
 
     def test_require_json_object_or_none_exact_message(self) -> None:
         with pytest.raises(RuntimeError) as exc_info:
@@ -518,7 +523,9 @@ class TestTransportValidation:
     def test_coerce_header_mapping_non_mapping_exact_message(self) -> None:
         with pytest.raises(RuntimeError) as exc_info:
             _coerce_header_mapping("not a mapping", "response.headers")
-        assert str(exc_info.value) == "Expected mapping-like transport attribute for response.headers"
+        assert (
+            str(exc_info.value) == "Expected mapping-like transport attribute for response.headers"
+        )
 
     def test_response_adapter_iter_lines_not_callable_exact_message(self) -> None:
         resp = Mock(spec=[])
@@ -662,7 +669,13 @@ class TestHeaderConstruction:
     def test_get_headers_exact_keys(self) -> None:
         client = SSEClient(auth=AuthContext(token="test-token"))
         headers = client.get_headers()
-        assert set(headers.keys()) == {"Content-Type", "Origin", "Referer", "Accept", "Authorization"}
+        assert set(headers.keys()) == {
+            "Content-Type",
+            "Origin",
+            "Referer",
+            "Accept",
+            "Authorization",
+        }
 
     def test_get_headers_content_type(self) -> None:
         client = SSEClient(auth=AuthContext(token="test-token"))
@@ -847,16 +860,22 @@ class TestSSEClientStreamPost:
     def test_stream_post_deep_research_timeout(self) -> None:
         client = SSEClient(auth=AuthContext(token="tok"), timeout=60, max_retries=1)
         client._client = self._make_ok_session([])
-        list(client.stream_post("https://x.com", {"params": {"search_implementation_mode": "multi_step"}}))
+        list(
+            client.stream_post(
+                "https://x.com", {"params": {"search_implementation_mode": "multi_step"}}
+            )
+        )
         assert client._client.stream.call_args[1]["timeout"] == 360
 
     def test_stream_post_yields_parsed_events(self) -> None:
         client = SSEClient(auth=AuthContext(token="tok"), max_retries=1)
-        client._client = self._make_ok_session([
-            b"event: message",
-            b'data: {"status": "complete"}',
-            b"",
-        ])
+        client._client = self._make_ok_session(
+            [
+                b"event: message",
+                b'data: {"status": "complete"}',
+                b"",
+            ]
+        )
         results = list(client.stream_post("https://x.com", {}))
         assert results == [{"status": "complete"}]
 
@@ -1036,7 +1055,7 @@ class TestConstants:
         assert DEEP_RESEARCH_MODE_KEYS == ("searchModeOverride", "search_mode", "workflow_key")
 
     def test_deep_research_mode_values(self) -> None:
-        assert DEEP_RESEARCH_MODE_VALUES == frozenset({"research", "deep_research", "RESEARCH"})
+        assert frozenset({"research", "deep_research", "RESEARCH"}) == DEEP_RESEARCH_MODE_VALUES
 
 
 class TestConsumeSleepAttempt:
@@ -1150,7 +1169,11 @@ class TestLogRequestContext:
     def test_deep_research_logs_timeout(self, caplog: pytest.LogCaptureFixture) -> None:
         client = SSEClient(auth=AuthContext(token="tok"))
         client.logger.setLevel(logging.DEBUG)
-        ctx = HttpRequestContext(url="https://x.com/api", headers={"Content-Type": "application/json"}, effective_timeout=360)
+        ctx = HttpRequestContext(
+            url="https://x.com/api",
+            headers={"Content-Type": "application/json"},
+            effective_timeout=360,
+        )
         with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
             client._log_request_context(ctx, query_mode="deep_research")
         messages = [r.getMessage() for r in caplog.records]
@@ -1160,7 +1183,11 @@ class TestLogRequestContext:
     def test_default_mode_no_deep_research_log(self, caplog: pytest.LogCaptureFixture) -> None:
         client = SSEClient(auth=AuthContext(token="tok"))
         client.logger.setLevel(logging.DEBUG)
-        ctx = HttpRequestContext(url="https://x.com/api", headers={"Content-Type": "application/json"}, effective_timeout=60)
+        ctx = HttpRequestContext(
+            url="https://x.com/api",
+            headers={"Content-Type": "application/json"},
+            effective_timeout=60,
+        )
         with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
             client._log_request_context(ctx, query_mode="default")
         messages = [r.getMessage() for r in caplog.records]
@@ -1186,7 +1213,9 @@ class TestLogCookieContext:
         assert any("Cookies: None (no Cloudflare bypass)" in m for m in messages)
 
     def test_with_cookies_logs_count(self, caplog: pytest.LogCaptureFixture) -> None:
-        client = SSEClient(auth=AuthContext(token="tok", cookies={"cf_clearance": "x", "session": "y"}))
+        client = SSEClient(
+            auth=AuthContext(token="tok", cookies={"cf_clearance": "x", "session": "y"})
+        )
         client.logger.setLevel(logging.DEBUG)
         with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
             client._log_cookie_context()

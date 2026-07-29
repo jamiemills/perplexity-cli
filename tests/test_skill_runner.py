@@ -3,7 +3,11 @@
 import json
 from unittest.mock import patch
 
-from perplexity_cli.runners.skill import _load_skill_content, _resolve_ctx_flags, run_show_skill_command
+from perplexity_cli.runners.skill import (
+    _load_skill_content,
+    _resolve_ctx_flags,
+    run_show_skill_command,
+)
 
 
 class TestRunShowSkillCommand:
@@ -103,7 +107,9 @@ class TestSkillRunnerMutationKillers:
 
     def test_load_skill_content_fallback_exact_string(self):
         with patch("perplexity_cli.runners.skill.files") as mock_files:
-            mock_files.return_value.joinpath.return_value.read_text.side_effect = FileNotFoundError()
+            mock_files.return_value.joinpath.return_value.read_text.side_effect = (
+                FileNotFoundError()
+            )
             result = _load_skill_content()
 
         assert result == (

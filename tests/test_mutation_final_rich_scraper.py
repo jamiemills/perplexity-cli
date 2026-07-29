@@ -7,12 +7,12 @@ and error-message verification that existing tests do not cover.
 from __future__ import annotations
 
 from io import StringIO
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 from perplexity_cli.api.models import Answer, WebResult
-from perplexity_cli.formatting.rich import RichFormatter, _HEADER_LEVEL_2, _SECTION_HEADER_STYLE
+from perplexity_cli.formatting.rich import _HEADER_LEVEL_2, _SECTION_HEADER_STYLE, RichFormatter
 from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.threads.scraper import (
     BatchProcessingContext,
@@ -50,7 +50,6 @@ from perplexity_cli.utils.exceptions import (
     SimpleResponse,
     UpstreamSchemaError,
 )
-
 
 # ---------------------------------------------------------------------------
 # formatting/rich.py – exact ANSI and markup assertions
@@ -639,7 +638,9 @@ class TestResponseProtocolChecks:
 
     def test_require_response_invalid_raises_exact(self) -> None:
         resp = Mock(spec=[])
-        with pytest.raises(UpstreamSchemaError, match="Malformed HTTP response object from upstream session"):
+        with pytest.raises(
+            UpstreamSchemaError, match="Malformed HTTP response object from upstream session"
+        ):
             _require_response(resp)
 
 
@@ -650,11 +651,15 @@ class TestGetCacheStrFieldExact:
         assert _get_cache_str_field({"title": "Hello"}, "title") == "Hello"
 
     def test_missing_field_exact_message(self) -> None:
-        with pytest.raises(UpstreamSchemaError, match="Malformed cached thread record: missing title"):
+        with pytest.raises(
+            UpstreamSchemaError, match="Malformed cached thread record: missing title"
+        ):
             _get_cache_str_field({}, "title")
 
     def test_non_string_exact_message(self) -> None:
-        with pytest.raises(UpstreamSchemaError, match="Malformed cached thread record: missing url"):
+        with pytest.raises(
+            UpstreamSchemaError, match="Malformed cached thread record: missing url"
+        ):
             _get_cache_str_field({"url": 123}, "url")
 
     def test_none_value_raises(self) -> None:
@@ -728,11 +733,15 @@ class TestGetStrFieldExact:
         assert _get_str_field({}, "slug", "") == ""
 
     def test_non_string_raises_exact_message(self) -> None:
-        with pytest.raises(UpstreamSchemaError, match="Malformed thread slug in upstream API response"):
+        with pytest.raises(
+            UpstreamSchemaError, match="Malformed thread slug in upstream API response"
+        ):
             _get_str_field({"slug": 42}, "slug")
 
     def test_missing_no_default_raises(self) -> None:
-        with pytest.raises(UpstreamSchemaError, match="Malformed thread title in upstream API response"):
+        with pytest.raises(
+            UpstreamSchemaError, match="Malformed thread title in upstream API response"
+        ):
             _get_str_field({}, "title")
 
     def test_none_value_raises(self) -> None:
@@ -753,7 +762,9 @@ class TestExtractTotalThreadsExact:
         assert _extract_total_threads({}, None) == 0
 
     def test_non_int_raises_exact_message(self) -> None:
-        with pytest.raises(UpstreamSchemaError, match="Malformed total_threads value in upstream API response"):
+        with pytest.raises(
+            UpstreamSchemaError, match="Malformed total_threads value in upstream API response"
+        ):
             _extract_total_threads({"total_threads": "bad"}, None)
 
     def test_float_raises(self) -> None:
@@ -777,7 +788,9 @@ class TestParseSingleThreadExact:
         assert record.url.endswith("/search/test-query")
 
     def test_empty_timestamp_raises_exact(self) -> None:
-        with pytest.raises(UpstreamSchemaError, match="Malformed thread timestamp in upstream API response"):
+        with pytest.raises(
+            UpstreamSchemaError, match="Malformed thread timestamp in upstream API response"
+        ):
             _parse_single_thread({"last_query_datetime": ""}, None)
 
     def test_missing_timestamp_raises(self) -> None:
@@ -892,7 +905,9 @@ class TestValidateDateParamsExact:
         _validate_date_params("2026-06-15", None)
 
     def test_invalid_from_exact_message(self) -> None:
-        with pytest.raises(ValueError, match="Invalid from_date 'garbage': expected YYYY-MM-DD format"):
+        with pytest.raises(
+            ValueError, match="Invalid from_date 'garbage': expected YYYY-MM-DD format"
+        ):
             _validate_date_params("garbage", None)
 
     def test_invalid_to_exact_message(self) -> None:
@@ -913,7 +928,9 @@ class TestHandleHttpErrorExact:
         return PerplexityHTTPStatusError(f"HTTP {status}", response=resp)
 
     def test_401_raises_authentication_error_exact(self) -> None:
-        with pytest.raises(AuthenticationError, match="Authentication failed. Token may be expired."):
+        with pytest.raises(
+            AuthenticationError, match=r"Authentication failed\. Token may be expired\."
+        ):
             _handle_http_error(self._make_error(401))
 
     def test_401_message_includes_reauth_command(self) -> None:
@@ -1102,7 +1119,9 @@ class TestThreadScraperMergeAndSave:
             ThreadRecord(title="New", url="u", created_at="2026-06-01T00:00:00Z"),
         ]
         scraper = ThreadScraper(token="tok", cache_manager=cm)
-        result = scraper._merge_and_save("2026-01-01", None, [ThreadRecord(title="C", url="u", created_at="c")], [])
+        result = scraper._merge_and_save(
+            "2026-01-01", None, [ThreadRecord(title="C", url="u", created_at="c")], []
+        )
         assert len(result) == 1
         assert result[0].title == "New"
 

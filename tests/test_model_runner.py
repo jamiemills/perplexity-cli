@@ -681,7 +681,7 @@ class TestModelRunnerMutationKillers:
         output = format_model_table(entries)
         lines = output.split("\n")
         assert len(lines) == 3
-        assert all(c == "-" or c == " " for c in lines[1])
+        assert all(c in {"-", " "} for c in lines[1])
 
     def test_format_model_table_default_label_suffix(self) -> None:
         from perplexity_cli.runners.models import format_model_table

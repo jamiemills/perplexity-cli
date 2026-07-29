@@ -7,14 +7,11 @@ boolean negations, and return value swaps that existing tests do not catch.
 from __future__ import annotations
 
 import json
-import logging
 import os
-import stat
 import time
 from datetime import UTC, datetime, timezone
 from io import StringIO
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -41,10 +38,8 @@ from perplexity_cli.api.client import (
 from perplexity_cli.api.models import (
     Answer,
     Block,
-    HttpRequestContext,
     QueryInput,
     QueryParams,
-    QueryRequest,
     SSEMessage,
     TraceContext,
     WebResult,
@@ -58,7 +53,6 @@ from perplexity_cli.threads.date_parser import (
     _check_before_end,
     _parse_day_end,
     _parse_day_start,
-    is_in_date_range,
     to_iso8601,
 )
 from perplexity_cli.threads.exporter import ThreadRecord, write_threads_csv
@@ -66,7 +60,6 @@ from perplexity_cli.threads.models import CacheContent, CacheFormat, CacheMetada
 from perplexity_cli.threads.scraper import (
     BatchProcessingContext,
     _build_batch_processing_context,
-    _build_legacy_batch_processing_context,
     _coerce_optional_int,
     _coerce_optional_str,
     _coerce_progress_callback,
@@ -91,7 +84,6 @@ from perplexity_cli.utils.exceptions import (
 )
 from perplexity_cli.utils.logging import get_logger
 
-
 # ---------------------------------------------------------------------------
 # api/client.py – transport validators and helpers
 # ---------------------------------------------------------------------------
@@ -107,14 +99,14 @@ class TestReadTransportValue:
         def factory():
             raise AttributeError("missing")
 
-        with pytest.raises(RuntimeError, match="Expected transport attribute for test.ctx"):
+        with pytest.raises(RuntimeError, match=r"Expected transport attribute for test\.ctx"):
             _read_transport_value(factory, "test.ctx")
 
     def test_raises_runtime_error_on_type_error(self):
         def factory():
             raise TypeError("bad type")
 
-        with pytest.raises(RuntimeError, match="Expected transport attribute for test.ctx"):
+        with pytest.raises(RuntimeError, match=r"Expected transport attribute for test\.ctx"):
             _read_transport_value(factory, "test.ctx")
 
     def test_preserves_cause_chain(self):
@@ -412,7 +404,7 @@ class TestResponseAdapter:
     def test_iter_lines_not_callable(self):
         resp = Mock(spec=[])
         adapter = _ResponseAdapter(resp)
-        with pytest.raises(RuntimeError, match="Expected callable response.iter_lines"):
+        with pytest.raises(RuntimeError, match=r"Expected callable response\.iter_lines"):
             list(adapter.iter_lines())
 
 
@@ -977,7 +969,9 @@ class TestQueryParamsValidation:
         assert params.search_implementation_mode == "multi_step"
 
     def test_invalid_mode_raises(self):
-        with pytest.raises(ValueError, match='search_implementation_mode must be "standard" or "multi_step"'):
+        with pytest.raises(
+            ValueError, match='search_implementation_mode must be "standard" or "multi_step"'
+        ):
             QueryParams(search_implementation_mode="invalid")
 
 
@@ -1184,7 +1178,9 @@ class TestCoerceProgressCallback:
         assert _coerce_progress_callback(None) is None
 
     def test_callable(self):
-        cb = lambda current, total: None
+        def cb(current, total):
+            return None
+
         assert _coerce_progress_callback(cb) is cb
 
     def test_rejects_non_callable(self):
@@ -1381,7 +1377,12 @@ class TestCacheManagerValidateOuterFormat:
     def test_not_encrypted_raises(self, cache_manager):
         with pytest.raises(Exception, match="not encrypted"):
             cache_manager._validate_outer_format(
-                {"version": 1, "encrypted": False, "cache": "data", "created_at": "2025-01-01T00:00:00"}
+                {
+                    "version": 1,
+                    "encrypted": False,
+                    "cache": "data",
+                    "created_at": "2025-01-01T00:00:00",
+                }
             )
 
     def test_empty_cache_raises(self, cache_manager):
@@ -1393,7 +1394,12 @@ class TestCacheManagerValidateOuterFormat:
     def test_whitespace_cache_raises(self, cache_manager):
         with pytest.raises(Exception, match="Cache file has invalid format"):
             cache_manager._validate_outer_format(
-                {"version": 1, "encrypted": True, "cache": "   ", "created_at": "2025-01-01T00:00:00"}
+                {
+                    "version": 1,
+                    "encrypted": True,
+                    "cache": "   ",
+                    "created_at": "2025-01-01T00:00:00",
+                }
             )
 
 
@@ -1472,7 +1478,14 @@ class TestCacheManagerGetCoverageError:
 
     def test_returns_none_on_configuration_error(self, cache_manager):
         cache_manager.cache_path.write_text(
-            json.dumps({"version": 1, "encrypted": False, "cache": "x", "created_at": "2025-01-01T00:00:00"}),
+            json.dumps(
+                {
+                    "version": 1,
+                    "encrypted": False,
+                    "cache": "x",
+                    "created_at": "2025-01-01T00:00:00",
+                }
+            ),
             encoding="utf-8",
         )
         os.chmod(cache_manager.cache_path, 0o600)
@@ -1622,7 +1635,9 @@ class TestWriteThreadsCsv:
 
     def test_writes_correct_csv(self, tmp_path):
         records = [
-            ThreadRecord(title="Thread 1", url="https://example.com/1", created_at="2025-01-01T00:00:00Z"),
+            ThreadRecord(
+                title="Thread 1", url="https://example.com/1", created_at="2025-01-01T00:00:00Z"
+            ),
         ]
         output = tmp_path / "out.csv"
         result = write_threads_csv(records, output_path=output)
@@ -1635,8 +1650,12 @@ class TestWriteThreadsCsv:
 
     def test_multiple_records_order(self, tmp_path):
         records = [
-            ThreadRecord(title="First", url="https://example.com/1", created_at="2025-01-02T00:00:00Z"),
-            ThreadRecord(title="Second", url="https://example.com/2", created_at="2025-01-01T00:00:00Z"),
+            ThreadRecord(
+                title="First", url="https://example.com/1", created_at="2025-01-02T00:00:00Z"
+            ),
+            ThreadRecord(
+                title="Second", url="https://example.com/2", created_at="2025-01-01T00:00:00Z"
+            ),
         ]
         output = tmp_path / "out.csv"
         write_threads_csv(records, output_path=output)
@@ -1722,7 +1741,7 @@ class TestCacheContentValidation:
             )
 
     def test_thread_not_dict_raises(self):
-        with pytest.raises((ValueError, Exception), match="dictionary|dict"):
+        with pytest.raises((ValueError, Exception), match=r"dictionary|dict"):
             CacheContent(
                 version=1,
                 metadata=CacheMetadata(last_sync_time=datetime(2025, 1, 1, tzinfo=UTC)),
@@ -1899,9 +1918,12 @@ class TestBuildJsonEnvelope:
     def test_envelope_structure(self):
         from perplexity_cli.query_runner import _build_json_envelope
 
-        answer = Answer(text="Test answer", references=[
-            WebResult(name="Ref", url="https://example.com", snippet="Snip"),
-        ])
+        answer = Answer(
+            text="Test answer",
+            references=[
+                WebResult(name="Ref", url="https://example.com", snippet="Snip"),
+            ],
+        )
         trace = TraceContext(trace_id="trace-1", start_time=time.monotonic())
         result = _build_json_envelope(answer, trace, "no_schema")
         parsed = json.loads(result)

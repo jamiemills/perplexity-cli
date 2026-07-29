@@ -7,18 +7,26 @@ OAuth token extraction, and upload manager field validation.
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import os
 import stat
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from perplexity_cli.attachments.upload_manager import (
+    _S3_UPLOAD_SUCCESS_STATUS,
+    AttachmentUploader,
+    _diagnose_upload_entry_error,
+    _extract_error_response_text,
+    _is_object_mapping,
+    _normalise_upload_fields,
+    _validate_s3_object_url,
+)
 from perplexity_cli.auth.oauth_handler import (
     ChromeDevToolsClient,
     _extract_token,
@@ -37,15 +45,6 @@ from perplexity_cli.auth.token_manager import (
     _extract_token_string,
     _extract_version,
 )
-from perplexity_cli.attachments.upload_manager import (
-    _S3_UPLOAD_SUCCESS_STATUS,
-    AttachmentUploader,
-    _diagnose_upload_entry_error,
-    _extract_error_response_text,
-    _is_object_mapping,
-    _normalise_upload_fields,
-    _validate_s3_object_url,
-)
 from perplexity_cli.config.defaults import (
     DEFAULT_AUTH_POLL_INTERVAL,
     DEFAULT_AUTH_TIMEOUT,
@@ -58,6 +57,9 @@ from perplexity_cli.config.defaults import (
 from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.threads.scraper import (
+    BatchProcessingContext,
+    ThreadScraper,
+    _build_batch_processing_context,
     _coerce_optional_int,
     _coerce_optional_str,
     _coerce_progress_callback,
@@ -67,13 +69,10 @@ from perplexity_cli.threads.scraper import (
     _legacy_context_value,
     _require_response,
     _response_core_members,
-    BatchProcessingContext,
-    ThreadScraper,
-    _build_batch_processing_context,
 )
 from perplexity_cli.utils.exceptions import (
-    AuthenticationError,
     AttachmentUploadError,
+    AuthenticationError,
     ConfigurationError,
     UpstreamSchemaError,
 )
@@ -227,7 +226,9 @@ class TestCoercionHelpers:
         assert _coerce_progress_callback(None) is None
 
     def test_coerce_callback_callable(self):
-        cb = lambda c, t: None
+        def cb(c, t):
+            return None
+
         assert _coerce_progress_callback(cb) is cb
 
     def test_coerce_callback_non_callable_raises(self):
@@ -326,9 +327,7 @@ class TestLoadCachedThreads:
 
     def test_cache_with_threads(self):
         cm = MagicMock()
-        cm.load_cache.return_value = {
-            "threads": [{"title": "T", "url": "U", "created_at": "C"}]
-        }
+        cm.load_cache.return_value = {"threads": [{"title": "T", "url": "U", "created_at": "C"}]}
         scraper = ThreadScraper(token='{"user": {"accessToken": "t"}}', cache_manager=cm)
         result = scraper._load_cached_threads()
         assert len(result) == 1
@@ -381,9 +380,7 @@ class TestPrepareFetch:
     """Kill mutations in fetch preparation."""
 
     def test_force_refresh_returns_empty_and_original_dates(self):
-        scraper = ThreadScraper(
-            token='{"user": {"accessToken": "t"}}', force_refresh=True
-        )
+        scraper = ThreadScraper(token='{"user": {"accessToken": "t"}}', force_refresh=True)
         threads, fetch_from, fetch_to = scraper._prepare_fetch("2026-01-01", "2026-06-01")
         assert threads == []
         assert fetch_from == "2026-01-01"
@@ -909,15 +906,11 @@ class TestValidateOuterFormat:
 
     def test_not_encrypted_raises(self, cache_manager):
         with pytest.raises(ConfigurationError, match="not encrypted"):
-            cache_manager._validate_outer_format(
-                {"version": 1, "encrypted": False, "cache": "x"}
-            )
+            cache_manager._validate_outer_format({"version": 1, "encrypted": False, "cache": "x"})
 
     def test_empty_cache_raises(self, cache_manager):
         with pytest.raises((ConfigurationError, Exception)):
-            cache_manager._validate_outer_format(
-                {"version": 1, "encrypted": True, "cache": ""}
-            )
+            cache_manager._validate_outer_format({"version": 1, "encrypted": True, "cache": ""})
 
 
 # ---------------------------------------------------------------------------
@@ -1083,9 +1076,7 @@ class TestResolveAuthDefaults:
         assert poll == DEFAULT_AUTH_POLL_INTERVAL
 
     def test_all_provided_uses_given(self):
-        url, port, timeout, poll = _resolve_auth_defaults(
-            "https://custom.ai", 1234, 60, 0.5
-        )
+        url, port, timeout, poll = _resolve_auth_defaults("https://custom.ai", 1234, 60, 0.5)
         assert url == "https://custom.ai"
         assert port == 1234
         assert timeout == 60
@@ -1442,9 +1433,7 @@ class TestBuildUploadMetadata:
         from perplexity_cli.utils.attachment_models import FileAttachment
 
         data = base64.b64encode(b"hello world").decode()
-        attachment = FileAttachment(
-            filename="test.txt", content_type="text/plain", data=data
-        )
+        attachment = FileAttachment(filename="test.txt", content_type="text/plain", data=data)
         metadata, uuid_map = AttachmentUploader._build_upload_metadata([attachment])
         assert len(metadata) == 1
         file_uuid = next(iter(metadata))
@@ -1534,7 +1523,7 @@ class TestHandleS3Response:
         attachment = FileAttachment(
             filename="f.pdf", content_type="application/pdf", data="aGVsbG8="
         )
-        with pytest.raises(AttachmentUploadError, match="S3 upload failed for f.pdf"):
+        with pytest.raises(AttachmentUploadError, match=r"S3 upload failed for f\.pdf"):
             AttachmentUploader._handle_s3_response(resp, upload_data, attachment)
 
     def test_204_non_string_url_raises(self):
@@ -1556,9 +1545,7 @@ class TestHandleS3Response:
         resp.status_code = 500
         resp.text = "Internal"
         upload_data = {}
-        attachment = FileAttachment(
-            filename="doc.txt", content_type="text/plain", data="aGVsbG8="
-        )
+        attachment = FileAttachment(filename="doc.txt", content_type="text/plain", data="aGVsbG8=")
         with pytest.raises(AttachmentUploadError, match="status 500"):
             AttachmentUploader._handle_s3_response(resp, upload_data, attachment)
 
@@ -1573,9 +1560,7 @@ class TestValidateUploadResponse:
 
     def test_valid_response_passes(self):
         response = {
-            "results": {
-                "uuid1": {"fields": {"k": "v"}, "s3_object_url": "https://s3.com/f"}
-            }
+            "results": {"uuid1": {"fields": {"k": "v"}, "s3_object_url": "https://s3.com/f"}}
         }
         AttachmentUploader._validate_upload_response(response)
 

@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import sys
 from unittest.mock import patch
 
 import pytest
@@ -754,7 +752,9 @@ class TestOutputOptions:
         assert opts.include_schema is False
 
     def test_custom_values(self) -> None:
-        opts = OutputOptions(output_format="json", strip_references=True, json_mode=True, include_schema=True)
+        opts = OutputOptions(
+            output_format="json", strip_references=True, json_mode=True, include_schema=True
+        )
         assert opts.output_format == "json"
         assert opts.strip_references is True
         assert opts.json_mode is True
