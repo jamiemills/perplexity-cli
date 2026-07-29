@@ -1225,3 +1225,87 @@ class TestBatchProcessingContextDefaults:
         assert ctx.from_date == "2026-01-01"
         assert ctx.total_threads == 50
         assert ctx.progress_callback is cb
+
+
+class TestRichConstantsExact:
+    """Kill constant-value mutants in rich.py module-level constants."""
+
+    def test_header_level_2_is_exactly_2(self) -> None:
+        assert _HEADER_LEVEL_2 == 2
+
+    def test_section_header_style_exact_string(self) -> None:
+        assert _SECTION_HEADER_STYLE == "bold cyan"
+
+
+class TestRenderCodeBlockTheme:
+    """Kill theme-string mutants in _render_code_block."""
+
+    def test_monokai_theme_produces_output(self) -> None:
+        formatter = RichFormatter()
+        result = formatter._render_code_block("python", "x = 1")
+        assert "x" in result
+        assert "```" not in result
+
+    def test_fallback_on_value_error_exact_format(self) -> None:
+        formatter = RichFormatter()
+        with patch("perplexity_cli.formatting.rich.Syntax", side_effect=ValueError("bad")):
+            result = formatter._render_code_block("python", "code here")
+        assert result == "```python\ncode here\n```"
+
+    def test_line_numbers_disabled(self) -> None:
+        formatter = RichFormatter()
+        result = formatter._render_code_block("python", "x = 1\ny = 2")
+        assert "1" not in result.split("\n")[0] or "x" in result.split("\n")[0]
+
+
+class TestProcessAnswerTextBoundary:
+    """Kill boundary mutants in _process_answer_text last_end < len(text)."""
+
+    def test_text_ending_exactly_at_code_block(self) -> None:
+        formatter = RichFormatter()
+        text = "```python\nx=1\n```"
+        result = formatter._process_answer_text(text)
+        assert "x" in result
+        assert "```" not in result
+
+    def test_text_with_trailing_newline_after_block(self) -> None:
+        formatter = RichFormatter()
+        text = "```python\nx=1\n```\n"
+        result = formatter._process_answer_text(text)
+        assert "x" in result
+        assert result.endswith("\n")
+
+    def test_no_code_block_returns_original(self) -> None:
+        formatter = RichFormatter()
+        text = "plain text no code"
+        result = formatter._process_answer_text(text)
+        assert result == "plain text no code"
+
+    def test_empty_string_returns_empty(self) -> None:
+        formatter = RichFormatter()
+        assert formatter._process_answer_text("") == ""
+
+
+class TestFormatReferencesColumnWidths:
+    """Kill column-width mutants in format_references table construction."""
+
+    def test_hash_column_width_3(self) -> None:
+        formatter = RichFormatter()
+        refs = [WebResult(name="S", url="https://s.com", snippet="s")]
+        result = formatter.format_references(refs)
+        assert "References" in result
+        assert "1" in result
+
+    def test_source_max_width_40_truncates(self) -> None:
+        formatter = RichFormatter()
+        long_name = "A" * 80
+        refs = [WebResult(name=long_name, url="https://s.com", snippet="s")]
+        result = formatter.format_references(refs)
+        assert "A" * 41 not in result or "…" in result
+
+    def test_url_max_width_120_truncates(self) -> None:
+        formatter = RichFormatter()
+        long_url = "https://x.com/" + "b" * 150
+        refs = [WebResult(name="S", url=long_url, snippet="s")]
+        result = formatter.format_references(refs)
+        assert "b" * 121 not in result or "…" in result

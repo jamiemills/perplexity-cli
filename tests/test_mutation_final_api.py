@@ -1231,3 +1231,114 @@ class TestNetworkErrorHandling:
         handler = RetryHandler(logging.getLogger("t"), max_retries=5)
         assert handler.handle_network_error(PerplexityRequestError("t"), attempt=0) == 1
         assert handler.handle_network_error(PerplexityRequestError("t"), attempt=3) == 4
+
+
+class TestSSEParseLineSliceIndices:
+    """Kill off-by-one mutants in _parse_line slice operations."""
+
+    def test_event_no_space_after_colon(self) -> None:
+        event_type, data_lines = SSEParser._parse_line("event:x", None, [])
+        assert event_type == "x"
+        assert data_lines == []
+
+    def test_data_no_space_after_colon(self) -> None:
+        event_type, data_lines = SSEParser._parse_line("data:x", "msg", [])
+        assert data_lines == ["x"]
+        assert event_type == "msg"
+
+    def test_event_single_char_preserved(self) -> None:
+        event_type, _ = SSEParser._parse_line("event:Z", None, [])
+        assert event_type == "Z"
+
+    def test_data_single_char_preserved(self) -> None:
+        _, data_lines = SSEParser._parse_line("data:Z", "e", [])
+        assert data_lines == ["Z"]
+
+    def test_event_prefix_not_matched_by_data(self) -> None:
+        event_type, data_lines = SSEParser._parse_line("data:hello", None, [])
+        assert event_type is None
+        assert data_lines == ["hello"]
+
+    def test_data_prefix_not_matched_by_event(self) -> None:
+        event_type, data_lines = SSEParser._parse_line("event:hello", "prev", [])
+        assert event_type == "hello"
+        assert data_lines == []
+
+
+class TestLogResponseHeadersCfRay:
+    """Kill string-replacement mutants in _log_response_headers label logic."""
+
+    def test_cf_ray_label_exact(self, caplog: pytest.LogCaptureFixture) -> None:
+        client = SSEClient(auth=AuthContext(token="tok"))
+        client.logger.setLevel(logging.DEBUG)
+        resp = Mock()
+        resp.status_code = 200
+        resp.reason = "OK"
+        resp.headers = {"cf-ray": "ray-abc-123"}
+        adapter = _ResponseAdapter(resp)
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            client._log_response_headers(adapter)
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("Cloudflare Ray: ray-abc-123" in m for m in messages)
+
+    def test_all_three_headers_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        client = SSEClient(auth=AuthContext(token="tok"))
+        client.logger.setLevel(logging.DEBUG)
+        resp = Mock()
+        resp.status_code = 200
+        resp.reason = "OK"
+        resp.headers = {"cf-ray": "r1", "cf-cache-status": "HIT", "server": "cloudflare"}
+        adapter = _ResponseAdapter(resp)
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            client._log_response_headers(adapter)
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("Cloudflare Ray: r1" in m for m in messages)
+        assert any("Cloudflare Cache Status: HIT" in m for m in messages)
+        assert any("Server: cloudflare" in m for m in messages)
+
+
+class TestLogHTTPErrorBodyTruncation:
+    """Kill boundary mutants in _log_http_error_context body[:500] slice."""
+
+    def test_body_truncated_at_500_chars(self, caplog: pytest.LogCaptureFixture) -> None:
+        logger = logging.getLogger("test.trunc500")
+        logger.setLevel(logging.DEBUG)
+        handler = RetryHandler(logger, max_retries=3)
+        request = SimpleRequest(method="POST", url="https://x.com")
+        long_body = "A" * 600
+        response = SimpleResponse(status_code=500, headers={}, text=long_body, request=request)
+        error = PerplexityHTTPStatusError("err", request=request, response=response)
+        with patch("perplexity_cli.api.client.redact_response_text", side_effect=lambda x: x):
+            with caplog.at_level(logging.DEBUG, logger="test.trunc500"):
+                handler._log_http_error_context(error)
+        messages = [r.getMessage() for r in caplog.records]
+        body_msgs = [m for m in messages if "Response body preview" in m]
+        assert len(body_msgs) == 1
+        assert "A" * 500 in body_msgs[0]
+        assert "A" * 501 not in body_msgs[0]
+
+
+class TestNetworkErrorLogArithmetic:
+    """Kill arithmetic mutants in handle_network_error log messages."""
+
+    def test_curl_error_logs_attempt_plus_1(self, caplog: pytest.LogCaptureFixture) -> None:
+        from curl_cffi.requests.exceptions import RequestException
+
+        logger = logging.getLogger("test.net.curl.log")
+        logger.setLevel(logging.DEBUG)
+        handler = RetryHandler(logger, max_retries=3)
+        with caplog.at_level(logging.DEBUG, logger="test.net.curl.log"):
+            with pytest.raises(PerplexityRequestError):
+                handler.handle_network_error(RequestException("fail"), attempt=2)
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("Network error after 3 attempts" in m for m in messages)
+
+    def test_exhausted_logs_attempt_plus_1(self, caplog: pytest.LogCaptureFixture) -> None:
+        logger = logging.getLogger("test.net.exhaust.log")
+        logger.setLevel(logging.DEBUG)
+        handler = RetryHandler(logger, max_retries=1)
+        with caplog.at_level(logging.DEBUG, logger="test.net.exhaust.log"):
+            with pytest.raises(PerplexityRequestError):
+                handler.handle_network_error(PerplexityRequestError("t"), attempt=0)
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("Network error after 1 attempts" in m for m in messages)
