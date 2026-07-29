@@ -32,6 +32,7 @@ if os.environ.get("MUTANT_UNDER_TEST"):
 import pytest
 from click.testing import CliRunner
 from hypothesis import settings
+from hypothesis.database import DirectoryBasedExampleDatabase
 
 from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.utils.config import clear_feature_config_cache, clear_urls_cache
@@ -40,10 +41,40 @@ from perplexity_cli.utils.config import clear_feature_config_cache, clear_urls_c
 # Hypothesis profiles
 # ---------------------------------------------------------------------------
 
-settings.register_profile("dev", max_examples=10, print_blob=False)
-settings.register_profile("push", max_examples=50, print_blob=False)
-settings.register_profile("ci", max_examples=1000, deadline=500)
-settings.register_profile("fast", max_examples=3, print_blob=False)
+_NORMAL_DB = DirectoryBasedExampleDatabase(".hypothesis")
+
+settings.register_profile(
+    "dev",
+    max_examples=10,
+    deadline=500,
+    database=_NORMAL_DB,
+    derandomize=False,
+    print_blob=False,
+)
+settings.register_profile(
+    "push",
+    max_examples=50,
+    deadline=500,
+    database=_NORMAL_DB,
+    derandomize=False,
+    print_blob=False,
+)
+settings.register_profile(
+    "ci",
+    max_examples=1000,
+    deadline=500,
+    database=_NORMAL_DB,
+    derandomize=False,
+    print_blob=False,
+)
+settings.register_profile(
+    "fast",
+    max_examples=3,
+    deadline=500,
+    database=_NORMAL_DB,
+    derandomize=False,
+    print_blob=False,
+)
 
 # ---------------------------------------------------------------------------
 

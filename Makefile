@@ -320,6 +320,7 @@ test:  ## Run tests without coverage (fail-fast, parallel)
 
 test-coverage-report:  ## Run tests and produce coverage reports
 	uv run pytest tests/ -q --tb=line -x -n auto --dist loadfile \
+		-m "not property" \
 		--cov=perplexity_cli --cov-report=term-missing \
 		--cov-report=json --cov-report=xml:coverage.xml
 
@@ -332,13 +333,13 @@ test-fuzz:  ## Run fuzz tests
 	uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz
 
 test-property:  ## Run property-based tests (dev profile, 10 examples)
-	uv run pytest tests/test_property.py -v --tb=short --hypothesis-profile=dev
+	uv run pytest tests/test_property.py -v --tb=short -m property --hypothesis-profile=dev
 
 test-property-push:  ## Run property-based tests (push profile, 50 examples)
-	uv run pytest tests/test_property.py -v --tb=short --hypothesis-profile=push
+	uv run pytest tests/test_property.py -v --tb=short -m property --hypothesis-profile=push
 
 test-property-ci:  ## Run property-based tests (CI profile, 1000 examples)
-	uv run pytest tests/test_property.py -v --tb=short --hypothesis-profile=ci
+	uv run pytest tests/test_property.py -v --tb=short -m property --hypothesis-profile=ci
 
 # ---------------------------------------------------------------------------
 # Diff coverage
