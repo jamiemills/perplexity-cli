@@ -1,7 +1,9 @@
 """Test file attachment JSON serialization in HTTP requests."""
 
+from __future__ import annotations
+
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
 
 import pytest
@@ -10,14 +12,16 @@ from perplexity_cli.api.client import SSEClient
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.utils.attachment_models import FileAttachment
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 class TestFileAttachmentRequestSerialization:
     """Test file attachment serialization in HTTP requests."""
 
-    def test_stream_post_with_attachments_json_serializable(self):
+    def test_stream_post_with_attachments_json_serializable(self, tmp_path: Path) -> None:
         """Test that requests with file attachments are JSON serializable."""
-        # Create test file attachment
-        test_file = Path("/tmp/test_attachment_req.txt")
+        test_file = tmp_path / "test_attachment_req.txt"
         test_file.write_text("Test content for attachment", encoding="utf-8")
         attachment = FileAttachment.from_file(test_file)
 
@@ -42,12 +46,11 @@ class TestFileAttachmentRequestSerialization:
         except TypeError as e:
             pytest.fail(f"JSON serialization failed: {e}")
 
-    def test_stream_post_with_attachments_sent_correctly(self):
+    def test_stream_post_with_attachments_sent_correctly(self, tmp_path: Path) -> None:
         """Test that file attachments are sent correctly in stream_post."""
         client = SSEClient(auth=AuthContext(token="test-token"))
 
-        # Create test file attachment
-        test_file = Path("/tmp/test_attachment2_req.txt")
+        test_file = tmp_path / "test_attachment2_req.txt"
         test_file.write_text("Another test", encoding="utf-8")
         attachment = FileAttachment.from_file(test_file)
 

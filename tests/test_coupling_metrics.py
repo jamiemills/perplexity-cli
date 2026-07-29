@@ -293,10 +293,12 @@ class TestFormatJson:
 
 def _run_coupling_script(
     args: list[str],
-    tmpdir: str = "/tmp/opencode/pxcli-coupling/tmp",
+    tmpdir: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run the check_coupling.py script in the project root with TMPDIR set."""
-    env = {**__import__("os").environ, "TMPDIR": tmpdir}
+    import tempfile
+
+    env = {**__import__("os").environ, "TMPDIR": tmpdir or tempfile.gettempdir()}
     return subprocess.run(
         [sys.executable, "scripts/check_coupling.py", *args],
         cwd=PROJECT_ROOT,
@@ -364,11 +366,11 @@ class TestTrendCompare:
         assert report["trend"]["added"] == []
         assert report["trend"]["removed"] == []
 
-    def test_trend_compare_missing_file_fails(self) -> None:
+    def test_trend_compare_missing_file_fails(self, tmp_path: Path) -> None:
         result = _run_coupling_script(
             [
                 "--trend-compare",
-                "/tmp/opencode/nonexistent_coupling_report.json",
+                str(tmp_path / "nonexistent_coupling_report.json"),
                 "--json",
             ]
         )

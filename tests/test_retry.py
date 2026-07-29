@@ -65,26 +65,21 @@ class TestRetryUtilities:
         error = PerplexityHTTPStatusError("Not found", request=req, response=resp)
         assert is_retryable_error(error) is False
 
-    def test_sleep_with_backoff(self):
+    def test_sleep_with_backoff(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test sleep with backoff calculation."""
-        import time
-
-        start = time.time()
+        delays: list[float] = []
+        monkeypatch.setattr("perplexity_cli.utils.retry.time.sleep", delays.append)
         sleep_with_backoff(0, base_delay=0.01, max_delay=1.0)
-        elapsed = time.time() - start
-        # Should sleep approximately 0.01 seconds
-        assert 0.005 <= elapsed <= 0.1
+        assert len(delays) == 1
+        assert delays[0] == pytest.approx(0.01, abs=0.002)
 
-    def test_sleep_with_backoff_max_delay(self):
+    def test_sleep_with_backoff_max_delay(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that backoff respects max delay."""
-        import time
-
-        start = time.time()
-        sleep_with_backoff(10, base_delay=1.0, max_delay=0.1)  # Max should cap it
-        elapsed = time.time() - start
-        # Should sleep approximately max_delay (0.1) seconds, not 2^10.
-        # Loose bound because time.sleep() can oversleep under OS load (flaky on CI).
-        assert elapsed <= 0.5
+        delays: list[float] = []
+        monkeypatch.setattr("perplexity_cli.utils.retry.time.sleep", delays.append)
+        sleep_with_backoff(10, base_delay=1.0, max_delay=0.1)
+        assert len(delays) == 1
+        assert delays[0] <= 0.1
 
     def test_get_backoff_delay_without_jitter(self):
         """Test deterministic backoff delay when jitter is disabled."""
@@ -125,6 +120,12 @@ class TestRetryUtilities:
         resp = SimpleResponse(status_code=429, request=req)
         error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
         assert get_retry_after_delay(error) is None
+
+
+@pytest.fixture(autouse=True)
+def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace tenacity's real sleep with a no-op for deterministic tests."""
+    monkeypatch.setattr("tenacity.nap.sleep", lambda _seconds: None)
 
 
 class TestRetryWithBackoff:

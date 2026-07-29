@@ -1,11 +1,40 @@
 """Tests for the RateLimiter token bucket implementation."""
 
-import asyncio
-import time
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import pytest
 
 from perplexity_cli.utils.rate_limiter import RateLimiter
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+class _FakeClock:
+    """Deterministic replacement for ``time.monotonic`` and ``asyncio.sleep``."""
+
+    def __init__(self, start: float = 1000.0) -> None:
+        self.now = start
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+    async def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+@pytest.fixture
+def fake_clock(monkeypatch: pytest.MonkeyPatch) -> _FakeClock:
+    """Patch the rate-limiter module to use a controllable fake clock."""
+    clock = _FakeClock()
+    monkeypatch.setattr("perplexity_cli.utils.rate_limiter.time.monotonic", clock.monotonic)
+    monkeypatch.setattr("perplexity_cli.utils.rate_limiter.asyncio.sleep", clock.sleep)
+    return clock
 
 
 class TestRateLimiterInitialisation:
@@ -57,12 +86,10 @@ class TestRateLimiterInitialisation:
         with pytest.raises(ValueError, match="period_seconds must be greater than 0"):
             RateLimiter(requests_per_period=10, period_seconds=-1.0)
 
-    def test_initial_last_refill_time_is_set(self):
-        """Test that last_refill_time is initialised to a recent monotonic time."""
-        before = time.monotonic()
+    def test_initial_last_refill_time_is_set(self, fake_clock: _FakeClock) -> None:
+        """Test that last_refill_time is initialised to the current monotonic time."""
         limiter = RateLimiter(requests_per_period=10, period_seconds=60.0)
-        after = time.monotonic()
-        assert before <= limiter._state.last_refill_time <= after
+        assert limiter._state.last_refill_time == fake_clock.now
 
 
 class TestRateLimiterAcquire:
@@ -89,70 +116,54 @@ class TestRateLimiterAcquire:
         assert limiter._state.tokens < 1.0
 
     @pytest.mark.asyncio
-    async def test_acquire_waits_when_bucket_empty(self):
+    async def test_acquire_waits_when_bucket_empty(self, fake_clock: _FakeClock) -> None:
         """Test that acquire() waits when no tokens are available."""
-        # Use a very short period so the test runs quickly
         limiter = RateLimiter(requests_per_period=1, period_seconds=0.1)
 
-        # First acquire should be immediate
         wait1 = await limiter.acquire()
         assert wait1 == pytest.approx(0.0)
 
-        # Second acquire should wait (bucket is empty)
-        start = time.monotonic()
         wait2 = await limiter.acquire()
-        elapsed = time.monotonic() - start
 
         assert wait2 > 0.0
-        assert elapsed >= 0.05  # Should have waited a meaningful amount
 
     @pytest.mark.asyncio
-    async def test_acquire_updates_statistics(self):
+    async def test_acquire_updates_statistics(self, fake_clock: _FakeClock) -> None:
         """Test that acquire() correctly updates total_requests and total_wait_time."""
         limiter = RateLimiter(requests_per_period=2, period_seconds=0.1)
 
         await limiter.acquire()
         await limiter.acquire()
-        # Third call will need to wait
         await limiter.acquire()
 
         assert limiter.total_requests == 3
         assert limiter.total_wait_time > 0.0
 
     @pytest.mark.asyncio
-    async def test_tokens_do_not_exceed_capacity(self):
+    async def test_tokens_do_not_exceed_capacity(self, fake_clock: _FakeClock) -> None:
         """Test that tokens never accumulate beyond the configured capacity."""
         limiter = RateLimiter(requests_per_period=5, period_seconds=0.05)
 
-        # Consume one token
         await limiter.acquire()
 
-        # Wait long enough for full refill and then some
-        await asyncio.sleep(0.15)
+        fake_clock.advance(0.15)
 
-        # Trigger refill by acquiring
         await limiter.acquire()
 
-        # Tokens should not exceed capacity (5) minus the one just consumed
         assert limiter._state.tokens <= 5.0
 
     @pytest.mark.asyncio
-    async def test_token_refill_over_time(self):
+    async def test_token_refill_over_time(self, fake_clock: _FakeClock) -> None:
         """Test that tokens are refilled based on elapsed time."""
         limiter = RateLimiter(requests_per_period=10, period_seconds=0.1)
 
-        # Consume all tokens
         for _ in range(10):
             await limiter.acquire()
 
-        # Wait for some refill
-        await asyncio.sleep(0.05)
+        fake_clock.advance(0.05)
 
-        # Next acquire should refill tokens based on elapsed time
         wait_time = await limiter.acquire()
 
-        # After 0.05s with 10 req/0.1s = 100 req/s, we should have earned ~5 tokens
-        # so we should not need to wait
         assert wait_time == pytest.approx(0.0)
 
 
@@ -186,13 +197,11 @@ class TestRateLimiterGetStats:
         assert stats["period_seconds"] == pytest.approx(60.0)
 
     @pytest.mark.asyncio
-    async def test_get_stats_average_wait_calculation(self):
+    async def test_get_stats_average_wait_calculation(self, fake_clock: _FakeClock) -> None:
         """Test that average_wait_per_request is calculated correctly."""
         limiter = RateLimiter(requests_per_period=1, period_seconds=0.05)
 
-        # First request: no wait
         await limiter.acquire()
-        # Second request: will wait
         await limiter.acquire()
 
         stats = limiter.get_stats()

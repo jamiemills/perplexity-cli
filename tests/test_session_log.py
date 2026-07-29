@@ -113,8 +113,10 @@ class TestSessionLoggerFactory:
         expected = Path.home() / ".local" / "share" / "pxcli" / "sessions"
         assert SessionLogger.get_sessions_dir() == expected
 
-    def test_sessions_dir_xdg(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_sessions_dir_xdg(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         from perplexity_cli.session_log import SessionLogger
 
-        monkeypatch.setenv("XDG_DATA_HOME", "/tmp/test")
-        assert SessionLogger.get_sessions_dir() == Path("/tmp/test/pxcli/sessions")
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        assert SessionLogger.get_sessions_dir() == tmp_path / "pxcli" / "sessions"

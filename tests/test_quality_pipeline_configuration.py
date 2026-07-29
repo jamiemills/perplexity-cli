@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tomllib
 from pathlib import Path
@@ -14,6 +15,7 @@ from scripts import agent_check
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
 LEFTHOOK = (PROJECT_ROOT / "lefthook.yml").read_text(encoding="utf-8")
+MAKE_BIN = shutil.which("make") or "make"
 
 
 def _write_executable(path: Path, exit_code: int) -> None:
@@ -81,7 +83,7 @@ def test_safety_gate_rejects_missing_credentials(tmp_path: Path) -> None:
     env.pop("SAFETY_API_KEY", None)
     env["PATH"] = str(tmp_path)
     result = subprocess.run(
-        ["/usr/bin/make", "safety-gate"],
+        [MAKE_BIN, "safety-gate"],
         cwd=PROJECT_ROOT,
         env=env,
         capture_output=True,
@@ -98,7 +100,7 @@ def test_safety_gate_accepts_explicit_credentials(tmp_path: Path) -> None:
     env["SAFETY_API_KEY"] = "not-a-secret"
     env["PATH"] = str(tmp_path)
     result = subprocess.run(
-        ["/usr/bin/make", "safety-gate"],
+        [MAKE_BIN, "safety-gate"],
         cwd=PROJECT_ROOT,
         env=env,
         capture_output=True,
@@ -117,7 +119,7 @@ def test_safety_gate_propagates_infisical_result(
     env.pop("SAFETY_API_KEY", None)
     env["PATH"] = str(tmp_path)
     result = subprocess.run(
-        ["/usr/bin/make", "safety-gate"],
+        [MAKE_BIN, "safety-gate"],
         cwd=PROJECT_ROOT,
         env=env,
         capture_output=True,
@@ -136,7 +138,7 @@ def test_local_safety_skips_when_infisical_has_no_credentials(tmp_path: Path) ->
     env["PATH"] = str(tmp_path)
 
     result = subprocess.run(
-        ["/usr/bin/make", "safety"],
+        [MAKE_BIN, "safety"],
         cwd=PROJECT_ROOT,
         env=env,
         capture_output=True,
@@ -159,7 +161,7 @@ def test_local_safety_propagates_authenticated_scan_failure(tmp_path: Path) -> N
     env["PATH"] = str(tmp_path)
 
     result = subprocess.run(
-        ["/usr/bin/make", "safety"],
+        [MAKE_BIN, "safety"],
         cwd=PROJECT_ROOT,
         env=env,
         capture_output=True,
