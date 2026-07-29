@@ -1,6 +1,5 @@
 {
   "fingerprints": [
-    "pyproject.toml:0:mutmut-do-not-mutate:**/formatting/registry.py",
     "scripts/agent_check.py:202:nosec",
     "scripts/agent_check.py:24:nosec",
     "scripts/architecture_model.py:427:nosemgrep:boolean-flag-argument",
