@@ -26,6 +26,7 @@ from dateutil import parser as dateutil_parser
 from perplexity_cli.envelope import ErrorCode
 from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
+from perplexity_cli.utils import session_factory
 from perplexity_cli.utils.config import get_perplexity_base_url, get_thread_list_url
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
 from perplexity_cli.utils.exceptions import (
@@ -53,6 +54,9 @@ if TYPE_CHECKING:
 def _load_request_exception_type() -> tuple[type[Exception], bool]:
     """Load the curl_cffi network exception type when available."""
     try:
+        # Kept function-local: curl_cffi is a native library that may fail to
+        # load on unsupported platforms, so the import must remain guarded
+        # inside this try/except rather than moved to module top level.
         from curl_cffi.requests.exceptions import RequestException
 
         return RequestException, True
@@ -331,13 +335,12 @@ def _create_async_session(timeout: int = _DEFAULT_TIMEOUT_SECONDS) -> AsyncSessi
         msg = "curl_cffi is required but could not be imported"
         raise RuntimeError(msg)
 
-    from perplexity_cli.utils.session_factory import AsyncSession
-
-    if AsyncSession is None:
+    async_session_cls = session_factory.AsyncSession
+    if async_session_cls is None:
         msg = "AsyncSession from session_factory resolved to None"
         raise RuntimeError(msg)
 
-    return AsyncSession(impersonate="chrome", timeout=timeout)
+    return async_session_cls(impersonate="chrome", timeout=timeout)
 
 
 def _is_in_date_range(dt: datetime, from_date: str | None, to_date: str | None) -> bool:

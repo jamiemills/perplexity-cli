@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Literal
 
 import click
 
+from perplexity_cli import attachments
 from perplexity_cli._types import DebugMode, OutputFormat, QueryOptions, SchemaInclusion
 from perplexity_cli.api.endpoints import PerplexityAPI
 from perplexity_cli.api.models import QueryInput, TraceContext
@@ -253,10 +254,8 @@ def _do_s3_upload(
     Returns:
         List of uploaded attachment URLs.
     """
-    from perplexity_cli.attachments import AttachmentUploader
-
     logger.debug("Starting S3 upload for attachments")
-    uploader = AttachmentUploader(token=token, cookies=cookies)
+    uploader = attachments.AttachmentUploader(token=token, cookies=cookies)
     try:
         attachment_urls = run_async(uploader.upload_files(file_attachments))
     except AttachmentUploadError as e:

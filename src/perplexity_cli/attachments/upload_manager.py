@@ -45,6 +45,9 @@ except ImportError:  # pragma: no cover
 def _get_async_session_class() -> type[Any] | None:
     """Return AsyncSession or None when curl_cffi is unavailable."""
     try:
+        # Kept function-local: curl_cffi is a native library that may fail to
+        # load on unsupported platforms, so the import must remain guarded
+        # inside this try/except rather than moved to module top level.
         from curl_cffi.requests import AsyncSession
 
         return AsyncSession
