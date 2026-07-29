@@ -9,7 +9,7 @@ import pytest
 from perplexity_cli.utils.rate_limiter import RateLimiter
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    pass
 
 
 class _FakeClock:

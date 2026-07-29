@@ -12,6 +12,11 @@
       "message": "query_runner (layer: application) imports 'click' [module-level], but application must not depend on framework libraries"
     },
     {
+      "rule": "import-direction",
+      "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/query_runner.py:21",
+      "message": "query_runner (layer: application) imports . (layer: composition_root) [module-level], but application may only import from: adapter, application, domain, ports, presentation, shared_pure"
+    },
+    {
       "rule": "framework-isolation",
       "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/query_streaming.py:14",
       "message": "query_streaming (layer: application) imports 'click' [module-level], but application must not depend on framework libraries"

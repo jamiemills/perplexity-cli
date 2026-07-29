@@ -108,14 +108,20 @@ def _try_parse(source: str, filename: str) -> ast.Module | None:
         return None
 
 
-def _classify_source(source: str, filename: str = "<string>", is_init: bool = False) -> str:
+# owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
+def _classify_source(  # nosemgrep: boolean-flag-argument
+    source: str, filename: str = "<string>", is_init: bool = False
+) -> str:
     tree = _try_parse(source, filename)
     if tree is None:
         return "executable"
     return _classify_from_tree(tree, is_init=is_init)
 
 
-def _classify_from_tree(tree: ast.Module, is_init: bool = False) -> str:
+# owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
+def _classify_from_tree(  # nosemgrep: boolean-flag-argument
+    tree: ast.Module, is_init: bool = False
+) -> str:
     if not tree.body:
         return "empty"
     if len(tree.body) == 1 and _is_docstring_node(tree.body[0]):
@@ -125,7 +131,10 @@ def _classify_from_tree(tree: ast.Module, is_init: bool = False) -> str:
     return "executable"
 
 
-def _is_statement_free(body: list[ast.stmt], is_init: bool) -> bool:
+# owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
+def _is_statement_free(  # nosemgrep: boolean-flag-argument
+    body: list[ast.stmt], is_init: bool
+) -> bool:
     """Return True if *body* contains no executable statements."""
     if _all_import_or_docstring(body):
         return True
@@ -138,9 +147,7 @@ def _all_import_or_docstring(body: list[ast.stmt]) -> bool:
 
 def _all_init_stub(body: list[ast.stmt]) -> bool:
     """Return True if every node is a docstring, import, or constant assignment."""
-    return all(
-        _is_docstring_node(n) or _is_import_node(n) or _is_constant_assign(n) for n in body
-    )
+    return all(_is_docstring_node(n) or _is_import_node(n) or _is_constant_assign(n) for n in body)
 
 
 def _is_constant_assign(node: ast.AST) -> bool:
@@ -168,43 +175,6 @@ def _load_report(path: str) -> dict[str, Any]:
         sys.exit(2)
     with report_path.open() as f:
         return json.load(f)
-
-
-def _format_module_name(filepath: Any) -> str:
-    return str(filepath).replace("src/perplexity_cli/", "").replace(".py", "")
-
-
-def _check_module_entry(
-    filepath: Any,
-    entry: Any,
-    min_coverage: float,
-) -> tuple[str, float, int, int] | None:
-    entry_dict = _entry_as_dict(entry)
-    summary = _summary_from_entry(entry_dict)
-    pct = summary.get("percent_covered", 0.0)
-    if not isinstance(pct, (int, float)) or pct >= min_coverage:
-        return None
-    module = _format_module_name(filepath)
-    stmts = summary.get("num_statements", 0)
-    miss = summary.get("missing_lines", 0)
-    return (module, float(pct), int(stmts), int(miss))
-
-
-def _check_modules(
-    coverage_data: dict[str, Any], min_coverage: float
-) -> list[tuple[str, float, int, int]]:
-    """Return a list of (module, percentage, statements, missing) for failing modules."""
-    files: object = coverage_data.get("files")
-    if not isinstance(files, dict) or not files:
-        msg = "Coverage report contains no module entries."
-        raise ValueError(msg)
-    failures: list[tuple[str, float, int, int]] = []
-    typed_files = cast(dict[str, Any], files)
-    for filepath, entry in sorted(typed_files.items()):
-        result = _check_module_entry(filepath, entry, min_coverage)
-        if result is not None:
-            failures.append(result)
-    return failures
 
 
 # ---------------------------------------------------------------------------
@@ -381,8 +351,12 @@ def _print_validation_errors(errors: list[str]) -> None:
 
 
 def _print_success(coverage_data: dict[str, Any], min_coverage: float) -> None:
-    totals = coverage_data.get("totals", {})
-    total_pct = totals.get("percent_covered", 0.0) if isinstance(totals, dict) else 0.0
+    totals: object = coverage_data.get("totals", {})
+    if isinstance(totals, dict):
+        typed_totals = cast(dict[str, Any], totals)
+        total_pct = float(typed_totals.get("percent_covered", 0.0))
+    else:
+        total_pct = 0.0
     file_count = len(coverage_data.get("files", {}))
     print(
         f"Per-module coverage check passed: all {file_count} modules "

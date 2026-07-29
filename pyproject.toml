@@ -207,6 +207,7 @@ dev = [
 
 [tool.deptry.per_rule_ignores]
 DEP002 = [
+    "diff-cover",
     "pytest",
     "pytest-mock",
     "pytest-cov",
