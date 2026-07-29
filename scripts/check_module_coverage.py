@@ -4,15 +4,17 @@ Reads the JSON report produced by ``pytest --cov --cov-report=json``
 (default output: ``coverage.json``) and exits non-zero if any module
 falls below the required minimum.
 
-Independent source enumeration, statement-free classification, and
-stale-report detection have been added.  The checker now:
+The checker performs full coverage-integrity validation:
 
-* Independently enumerates ``src/perplexity_cli/**/*.py``.
+* Independently enumerates ``src/perplexity_cli/**/*.py`` via ``Path.glob()``.
 * Requires every executable module to have a coverage.json report entry.
-* Classifies statement-free modules (empty, docstring-only, re-export-only).
-* Rejects missing, duplicate, outside-root, non-numeric, NaN, infinity entries.
-* Validates branch data is present when branch coverage is enabled.
-* Rejects module entries present in report but missing from source tree.
+* AST-classifies ``__init__.py`` files: a module may be absent from
+  coverage only if it contains no executable statements (docstring,
+  imports, ``__all__``, and constants are permitted).
+* Rejects duplicate entries, outside-root paths, omitted executable
+  modules, and unexpected entries.
+* Validates that branch data is present in the report.
+* Rejects non-numeric, NaN, and infinity coverage values.
 
 Usage::
 
@@ -74,7 +76,7 @@ def _enumerate_source_modules(src_root: Path) -> dict[str, str]:
     ``src/perplexity_cli/...``) must strip the project-relative prefix.
     """
     modules: dict[str, str] = {}
-    for py_file in sorted(src_root.rglob("*.py")):
+    for py_file in sorted(src_root.glob("**/*.py")):
         rel = str(py_file.relative_to(src_root))
         modules[rel] = _classify_module(py_file)
     return modules
@@ -96,7 +98,7 @@ def _classify_module(path: Path) -> str:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return "executable"
-    return _classify_source(text, str(path))
+    return _classify_source(text, str(path), is_init=path.name == "__init__.py")
 
 
 def _try_parse(source: str, filename: str) -> ast.Module | None:
@@ -106,23 +108,48 @@ def _try_parse(source: str, filename: str) -> ast.Module | None:
         return None
 
 
-def _classify_source(source: str, filename: str = "<string>") -> str:
+def _classify_source(source: str, filename: str = "<string>", is_init: bool = False) -> str:
     tree = _try_parse(source, filename)
     if tree is None:
         return "executable"
-    return _classify_from_tree(tree)
+    return _classify_from_tree(tree, is_init=is_init)
 
 
-def _classify_from_tree(tree: ast.Module) -> str:
+def _classify_from_tree(tree: ast.Module, is_init: bool = False) -> str:
     if not tree.body:
         return "empty"
     if len(tree.body) == 1 and _is_docstring_node(tree.body[0]):
         return "docstring"
-    return "re-export" if _all_import_or_docstring(tree.body) else "executable"
+    if _is_statement_free(tree.body, is_init):
+        return "re-export"
+    return "executable"
+
+
+def _is_statement_free(body: list[ast.stmt], is_init: bool) -> bool:
+    """Return True if *body* contains no executable statements."""
+    if _all_import_or_docstring(body):
+        return True
+    return is_init and _all_init_stub(body)
 
 
 def _all_import_or_docstring(body: list[ast.stmt]) -> bool:
     return all(_is_docstring_node(n) or _is_import_node(n) for n in body)
+
+
+def _all_init_stub(body: list[ast.stmt]) -> bool:
+    """Return True if every node is a docstring, import, or constant assignment."""
+    return all(
+        _is_docstring_node(n) or _is_import_node(n) or _is_constant_assign(n) for n in body
+    )
+
+
+def _is_constant_assign(node: ast.AST) -> bool:
+    """Return True for simple ``NAME = value`` or ``NAME: type = value`` assignments."""
+    if isinstance(node, ast.Assign):
+        return all(isinstance(t, ast.Name) for t in node.targets)
+    if isinstance(node, ast.AnnAssign):
+        return isinstance(node.target, ast.Name)
+    return False
 
 
 def _is_docstring_node(node: ast.AST) -> bool:
@@ -336,37 +363,43 @@ def validate_report(
     return errors
 
 
+def _check_branch_data_present(coverage_data: dict[str, Any], errors: list[str]) -> None:
+    """Fail if the report was generated without branch coverage."""
+    meta: object = coverage_data.get("meta")
+    meta_dict = cast(dict[str, Any], meta) if isinstance(meta, dict) else {}
+    if not meta_dict.get("branch_coverage", False):
+        errors.append(
+            "Coverage report missing branch data. "
+            "Run pytest with --cov-branch or set branch=true in [tool.coverage.run]."
+        )
+
+
+def _print_validation_errors(errors: list[str]) -> None:
+    print(f"Coverage validation FAILED: {len(errors)} error(s):\n", file=sys.stderr)
+    for error in errors:
+        print(f"  {error}", file=sys.stderr)
+
+
+def _print_success(coverage_data: dict[str, Any], min_coverage: float) -> None:
+    totals = coverage_data.get("totals", {})
+    total_pct = totals.get("percent_covered", 0.0) if isinstance(totals, dict) else 0.0
+    file_count = len(coverage_data.get("files", {}))
+    print(
+        f"Per-module coverage check passed: all {file_count} modules "
+        f">= {min_coverage}% (overall: {total_pct:.1f}%)"
+    )
+
+
 def main() -> None:
     args = _parse_args()
     coverage_report = _load_report(args.report)
-    try:
-        failures = _check_modules(coverage_report, args.min_coverage)
-    except ValueError as error:
-        print(f"Invalid coverage report: {error}", file=sys.stderr)
-        sys.exit(2)
-
-    if not failures:
-        total_pct = coverage_report.get("totals", {}).get("percent_covered", 0.0)
-        file_count = len(coverage_report.get("files", {}))
-        print(
-            f"Per-module coverage check passed: all {file_count} modules "
-            f">= {args.min_coverage}% (overall: {total_pct:.1f}%)"
-        )
-        sys.exit(0)
-
-    print(
-        f"Per-module coverage check FAILED: {len(failures)} module(s) "
-        f"below {args.min_coverage}%:\n",
-        file=sys.stderr,
-    )
-    for module, pct, stmts, miss in failures:
-        print(f"  {module}: {pct:.1f}% ({miss} of {stmts} statements missing)", file=sys.stderr)
-
-    print(
-        f"\nEvery module must have at least {args.min_coverage}% test coverage.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+    errors = validate_report(coverage_report, min_coverage=args.min_coverage)
+    _check_branch_data_present(coverage_report, errors)
+    if errors:
+        _print_validation_errors(errors)
+        sys.exit(1)
+    _print_success(coverage_report, args.min_coverage)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

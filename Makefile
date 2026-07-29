@@ -347,12 +347,17 @@ test-property-ci:  ## Run property-based tests (CI profile, 1000 examples)
 
 .PHONY: diff-coverage
 
-diff-coverage:  ## Check coverage on changed lines
+BASE_SHA ?= origin/main
+TESTED_SHA ?= HEAD
+
+diff-coverage:  ## Check coverage on changed lines (BASE_SHA, TESTED_SHA accepted)
 	@if [ ! -f coverage.xml ]; then \
 		echo "coverage.xml not found -- run 'make test-coverage' first."; \
 		exit 2; \
 	fi
-	uvx diff-cover coverage.xml --fail-under=$(DIFF_COVERAGE_THRESHOLD)
+	uv run diff-cover coverage.xml \
+		--compare-branch=$(BASE_SHA) \
+		--fail-under=$(DIFF_COVERAGE_THRESHOLD)
 
 # ---------------------------------------------------------------------------
 # Safety
@@ -480,6 +485,8 @@ endif
 ifeq ($(CHECK_DEPTRY),true)
 CHECK_PREREQS += deptry
 endif
+
+CHECK_PREREQS += module-coverage
 
 check: $(CHECK_PREREQS)  ## Run all static checks
 

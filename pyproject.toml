@@ -53,6 +53,7 @@ dev = [
     "lefthook>=2.1.6",
     "bandit>=1.7.7",
     "vulture>=2.14",
+    "diff-cover>=9.0",
 ]
 
 [project.urls]
