@@ -88,7 +88,8 @@ def load_counts(name: str) -> dict[str, int]:
         return {}
     baseline_payload: object = json.loads(path.read_text())
     if not isinstance(baseline_payload, dict):
-        raise TypeError("Counts baseline must contain a JSON object")
+        msg = "Counts baseline must contain a JSON object"
+        raise TypeError(msg)
     entries = cast(dict[object, object], baseline_payload)
     return {str(path_name): _to_int(count) for path_name, count in entries.items()}
 
@@ -96,7 +97,8 @@ def load_counts(name: str) -> dict[str, int]:
 def _to_int(value: object) -> int:
     """Convert a scalar JSON count to an integer."""
     if not isinstance(value, (str, int, float)):
-        raise TypeError("Baseline counts must be numeric values")
+        msg = "Baseline counts must be numeric values"
+        raise TypeError(msg)
     return int(value)
 
 
@@ -126,7 +128,8 @@ def _fingerprint_items(payload: object) -> Iterable[object]:
         entries = cast(dict[object, object], payload)
         items = entries.get("fingerprints", entries)
     if not isinstance(items, Iterable):
-        raise TypeError("Fingerprint baseline must contain an iterable")
+        msg = "Fingerprint baseline must contain an iterable"
+        raise TypeError(msg)
     return cast(Iterable[object], items)
 
 

@@ -65,7 +65,8 @@ class MetricSnapshot:
 def _git_log(revisions: int) -> list[tuple[str, str, str]]:
     """Return list of (hash, date, message) for the last *revisions* commits."""
     if revisions <= 0:
-        raise ValueError("revisions must be positive")
+        msg = "revisions must be positive"
+        raise ValueError(msg)
     # owner: quality-infrastructure; reason: validated integer count is passed to fixed git argv without a shell
     result = subprocess.run(  # nosec B603 B607
         [
@@ -353,9 +354,11 @@ def _positive_revisions(value: str) -> int:
     try:
         revisions = int(value)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError("must be an integer") from exc
+        msg = "must be an integer"
+        raise argparse.ArgumentTypeError(msg) from exc
     if revisions <= 0:
-        raise argparse.ArgumentTypeError("must be greater than zero")
+        msg = "must be greater than zero"
+        raise argparse.ArgumentTypeError(msg)
     return revisions
 
 

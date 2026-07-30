@@ -84,11 +84,13 @@ def _parse_results(stdout: str, stderr: str) -> list[str]:
         message = stderr.strip() or "Semgrep produced unparseable JSON output."
         raise RuntimeError(message) from error
     if not isinstance(raw_payload, dict):
-        raise RuntimeError("Semgrep JSON output is not an object.")
+        msg = "Semgrep JSON output is not an object."
+        raise RuntimeError(msg)
     semgrep_payload = cast(dict[str, Any], raw_payload)
     errors = semgrep_payload.get("errors", [])
     if errors:
-        raise RuntimeError(f"Semgrep reported analysis errors: {errors}")
+        msg = f"Semgrep reported analysis errors: {errors}"
+        raise RuntimeError(msg)
     results = _validated_results(semgrep_payload.get("results", []))
     arch_results = [result for result in results if result.get("check_id") in ARCH_RULE_IDS]
     return sorted({_fingerprint(r) for r in arch_results})
@@ -97,17 +99,20 @@ def _parse_results(stdout: str, stderr: str) -> list[str]:
 def _validated_results(raw_results: object) -> list[dict[str, Any]]:
     """Validate and type-narrow Semgrep's result list."""
     if not isinstance(raw_results, list):
-        raise RuntimeError("Semgrep results field is not a list.")
+        msg = "Semgrep results field is not a list."
+        raise RuntimeError(msg)
     typed_results = cast(list[object], raw_results)
     if any(not isinstance(item, dict) for item in typed_results):
-        raise RuntimeError("Semgrep results field contains a non-object result.")
+        msg = "Semgrep results field contains a non-object result."
+        raise RuntimeError(msg)
     return [cast(dict[str, Any], item) for item in typed_results]
 
 
 def collect_findings() -> list[str]:
     """Run semgrep with the canonical config and return sorted architecture fingerprints."""
     if not CONFIG.is_file():
-        raise RuntimeError(f"Semgrep config not found: {CONFIG}")
+        msg = f"Semgrep config not found: {CONFIG}"
+        raise RuntimeError(msg)
     cmd = [
         "uvx",
         "--from",

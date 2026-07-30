@@ -222,7 +222,8 @@ def _logical_source_lines(text: str) -> list[str]:
             continue
         while line.rstrip().endswith("\\"):
             if index >= len(physical_lines):
-                raise MakefileSchemaError("unterminated backslash continuation")
+                msg = "unterminated backslash continuation"
+                raise MakefileSchemaError(msg)
             line = line.rstrip()[:-1] + " " + physical_lines[index].strip()
             index += 1
         logical_lines.append(line)
@@ -238,7 +239,8 @@ def _consume_source_line(line: str, state: _SourceParseState) -> None:
     if not statement:
         return
     if _UNSUPPORTED_DIRECTIVE_PATTERN.match(statement):
-        raise MakefileSchemaError(f"unsupported Make directive: {statement}")
+        msg = f"unsupported Make directive: {statement}"
+        raise MakefileSchemaError(msg)
     assignment = _VARIABLE_ASSIGNMENT_PATTERN.match(statement)
     if assignment is not None:
         _record_source_variable(assignment, state)
@@ -249,7 +251,8 @@ def _consume_source_line(line: str, state: _SourceParseState) -> None:
 def _associate_source_recipe(recipe: str, state: _SourceParseState) -> None:
     """Associate one recipe line with every target in the preceding rule."""
     if not state.current_targets:
-        raise MakefileSchemaError("recipe has no preceding supported target rule")
+        msg = "recipe has no preceding supported target rule"
+        raise MakefileSchemaError(msg)
     for target in state.current_targets:
         state.recipes[target].append(recipe)
 
@@ -270,14 +273,16 @@ def _record_source_rule(statement: str, state: _SourceParseState) -> tuple[str, 
     _reject_basic_rule_syntax(expanded, statement)
     match = _TARGET_RULE_PATTERN.match(expanded)
     if match is None:
-        raise MakefileSchemaError(f"unrecognised Makefile statement: {statement}")
+        msg = f"unrecognised Makefile statement: {statement}"
+        raise MakefileSchemaError(msg)
     _reject_target_specific_assignment(match, statement)
     _reject_double_colon_rule(expanded, statement)
     names, prereqs = _extract_target_pieces(match)
     if names == [".PHONY"]:
         return ()
     if not names or any(name.startswith(".") for name in names):
-        raise MakefileSchemaError(f"unsupported special target rule: {statement}")
+        msg = f"unsupported special target rule: {statement}"
+        raise MakefileSchemaError(msg)
     _accumulate_rule(_pair_targets_with_prereqs(names, prereqs), state.prereqs)
     return tuple(names)
 
@@ -285,19 +290,22 @@ def _record_source_rule(statement: str, state: _SourceParseState) -> tuple[str, 
 def _reject_basic_rule_syntax(expanded: str, statement: str) -> None:
     """Reject unsupported static rule operators except target assignments."""
     if any(token in expanded for token in (";", "|", "%")):
-        raise MakefileSchemaError(f"unsupported target rule syntax: {statement}")
+        msg = f"unsupported target rule syntax: {statement}"
+        raise MakefileSchemaError(msg)
 
 
 def _reject_double_colon_rule(expanded: str, statement: str) -> None:
     """Reject double-colon rules after target assignment detection."""
     if "::" in expanded:
-        raise MakefileSchemaError(f"unsupported target rule syntax: {statement}")
+        msg = f"unsupported target rule syntax: {statement}"
+        raise MakefileSchemaError(msg)
 
 
 def _reject_target_specific_assignment(match: re.Match[str], statement: str) -> None:
     """Reject target-specific variable assignment operators."""
     if _TARGET_SPECIFIC_ASSIGNMENT_PATTERN.match(match.group("rest").strip()):
-        raise MakefileSchemaError(f"unsupported target-specific variable assignment: {statement}")
+        msg = f"unsupported target-specific variable assignment: {statement}"
+        raise MakefileSchemaError(msg)
 
 
 def _expand_source_variables(
@@ -310,14 +318,17 @@ def _expand_source_variables(
     def replace(match: re.Match[str]) -> str:
         name = match.group("paren") or match.group("brace")
         if not _VARIABLE_NAME_PATTERN.fullmatch(name):
-            raise MakefileSchemaError(f"unsupported dynamic Make expression: {match.group(0)}")
+            msg = f"unsupported dynamic Make expression: {match.group(0)}"
+            raise MakefileSchemaError(msg)
         if name in stack:
-            raise MakefileSchemaError(f"cyclic Make variable reference: {name}")
+            msg = f"cyclic Make variable reference: {name}"
+            raise MakefileSchemaError(msg)
         return _expand_source_variables(variables.get(name, ""), variables, (*stack, name))
 
     expanded = _VARIABLE_REFERENCE_PATTERN.sub(replace, value)
     if "$" in expanded:
-        raise MakefileSchemaError(f"unsupported Make expansion: {expanded}")
+        msg = f"unsupported Make expansion: {expanded}"
+        raise MakefileSchemaError(msg)
     return expanded
 
 

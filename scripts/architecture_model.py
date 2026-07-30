@@ -78,7 +78,8 @@ def _load_toml(path: Path) -> dict[str, object]:
             loaded: object = tomllib.load(f)
             table = _as_table(loaded)
             if table is None:
-                raise TypeError("TOML root must be a table")
+                msg = "TOML root must be a table"
+                raise TypeError(msg)
             return dict(table)
     except FileNotFoundError:
         print(f"TOML file not found: {path}", file=sys.stderr)

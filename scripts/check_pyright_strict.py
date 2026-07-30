@@ -106,7 +106,8 @@ def _required_object(mapping: dict[str, object], key: str) -> dict[str, object]:
     """Return a required JSON object field or raise a schema error."""
     value = mapping.get(key)
     if not _is_object_dict(value):
-        raise RuntimeError(f"Pyright diagnostic field '{key}' must be an object.")
+        msg = f"Pyright diagnostic field '{key}' must be an object."
+        raise RuntimeError(msg)
     return value
 
 
@@ -114,7 +115,8 @@ def _required_string(mapping: dict[str, object], key: str) -> str:
     """Return a required JSON string field or raise a schema error."""
     value = mapping.get(key)
     if not isinstance(value, str):
-        raise RuntimeError(f"Pyright diagnostic field '{key}' must be a string.")
+        msg = f"Pyright diagnostic field '{key}' must be a string."
+        raise RuntimeError(msg)
     return value
 
 
@@ -122,7 +124,8 @@ def _required_int(mapping: dict[str, object], key: str) -> int:
     """Return a required JSON integer field or raise a schema error."""
     value = mapping.get(key)
     if not isinstance(value, int) or isinstance(value, bool):
-        raise RuntimeError(f"Pyright diagnostic field '{key}' must be an integer.")
+        msg = f"Pyright diagnostic field '{key}' must be an integer."
+        raise RuntimeError(msg)
     return value
 
 
@@ -137,7 +140,8 @@ def _position(value: dict[str, object]) -> DiagnosticPosition:
 def _diagnostic(value: object) -> PyrightDiagnostic:
     """Validate one decoded Pyright diagnostic."""
     if not _is_object_dict(value):
-        raise RuntimeError("Every Pyright generalDiagnostics entry must be an object.")
+        msg = "Every Pyright generalDiagnostics entry must be an object."
+        raise RuntimeError(msg)
     range_value = _required_object(value, "range")
     start_value = _required_object(range_value, "start")
     return {
@@ -153,10 +157,12 @@ def _parse_diagnostics(stdout: str) -> list[PyrightDiagnostic]:
     """Decode and validate the diagnostics array from Pyright JSON."""
     decoded: object = json.loads(stdout or "{}")
     if not _is_object_dict(decoded):
-        raise RuntimeError("Pyright JSON root must be an object.")
+        msg = "Pyright JSON root must be an object."
+        raise RuntimeError(msg)
     raw_diagnostics = decoded.get("generalDiagnostics", [])
     if not _is_object_list(raw_diagnostics):
-        raise RuntimeError("Pyright generalDiagnostics must be an array.")
+        msg = "Pyright generalDiagnostics must be an array."
+        raise RuntimeError(msg)
     diagnostics: list[PyrightDiagnostic] = []
     for value in raw_diagnostics:
         diagnostics.append(_diagnostic(value))

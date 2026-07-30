@@ -180,9 +180,8 @@ def _parse_semgrep_invocation(semgrep_args: list[str]) -> SemgrepInvocation:
     args = _scanner_parser().parse_args(semgrep_args)
     values = (*args.config, *args.exclude, *args.json_output, *args.sarif_output, *args.targets)
     if any(not _safe_argv_value(value) for value in values):
-        raise SemgrepInvocationError(
-            "Semgrep argument values must be non-empty and free of control characters."
-        )
+        msg = "Semgrep argument values must be non-empty and free of control characters."
+        raise SemgrepInvocationError(msg)
     return SemgrepInvocation(
         configs=tuple(args.config),
         severities=tuple(args.severity),
@@ -205,7 +204,8 @@ def _safe_argv_value(value: str) -> bool:
 def _validate_timeout(timeout: int) -> None:
     """Reject non-positive scanner timeouts through invocation classification."""
     if timeout <= 0:
-        raise SemgrepInvocationError("timeout must be greater than zero")
+        msg = "timeout must be greater than zero"
+        raise SemgrepInvocationError(msg)
 
 
 def _fail_malformed(message: str, result: subprocess.CompletedProcess[str]) -> NoReturn:

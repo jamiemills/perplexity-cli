@@ -471,7 +471,8 @@ def validate_directory(directory: Path, yaml_parser: YAML) -> list[FileReport]:
         List of :class:`FileReport`, sorted by file name.
     """
     if not directory.is_dir():
-        raise NotADirectoryError(f"workflow directory not found: {directory}")
+        msg = f"workflow directory not found: {directory}"
+        raise NotADirectoryError(msg)
     paths = sorted([*directory.glob("*.yml"), *directory.glob("*.yaml")])
     logger.info("Scanning %d workflow file(s) in %s", len(paths), directory)
     return [validate_file(path, yaml_parser) for path in paths]

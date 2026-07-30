@@ -61,7 +61,8 @@ def _load_toml(path: Path) -> ObjectMap:
         loaded: object = tomllib.load(toml_file)
     mapping = _as_object_map(loaded)
     if mapping is None:
-        raise ValueError("architecture TOML root must be a mapping")
+        msg = "architecture TOML root must be a mapping"
+        raise ValueError(msg)
     return mapping
 
 

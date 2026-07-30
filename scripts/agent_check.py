@@ -416,9 +416,11 @@ def _normalise_pre_commit_options(
     unknown = set(legacy_options) - {"skip_tests", "skip_fixers"}
     if unknown:
         unexpected = next(iter(sorted(unknown)))
-        raise TypeError(f"_run_pre_commit() got an unexpected keyword argument '{unexpected}'")
+        msg = f"_run_pre_commit() got an unexpected keyword argument '{unexpected}'"
+        raise TypeError(msg)
     if options is not None and legacy_options:
-        raise TypeError("options cannot be combined with skip_tests or skip_fixers")
+        msg = "options cannot be combined with skip_tests or skip_fixers"
+        raise TypeError(msg)
     if options is not None:
         return options
     return PreCommitOptions(

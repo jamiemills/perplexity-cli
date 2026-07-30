@@ -93,11 +93,11 @@ select = [
     "C90",   "PL",    "ARG",   "RET",
     "SIM",   "BLE",   "FBT",   "TRY",
     "T20",   "ERA",   "PTH",   "PERF",
+    "EM",    "RSE",
 ]
 ignore = [
     "E501",    "D105",   "D107",   "D301",
     "PLC0415",
-    "TRY003",  "EM101",  "EM102",
     "G004",    "G201",
     "FBT001",  "FBT002",  "FBT003",
     "TRY004",  "TRY300",  "TRY301",  "TRY401",
@@ -128,7 +128,7 @@ convention = "google"
     "D", "S101", "PLR2004",
     "T201","SIM117","SIM118","SIM105","SIM101",
     "ARG001","ARG002","ARG005",
-    "PLW1510","PLR0913","C901",
+    "PLW1510","PLR0913","C901","EM101","EM102","TRY003",
     "ERA001",
     "PTH100","PTH118","PTH120","PLW0108","PLR1722",
     "RUF059","RET504","RUF003","B011","F841","F821",

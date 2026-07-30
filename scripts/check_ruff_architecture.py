@@ -109,10 +109,12 @@ def collect_findings() -> list[str]:
     if is_tool_error:
         raise RuntimeError(result.stderr.strip() or f"Ruff exited with status {result.returncode}.")
     if not isinstance(raw_items, list):
-        raise RuntimeError("Ruff JSON output is not a list.")
+        msg = "Ruff JSON output is not a list."
+        raise RuntimeError(msg)
     typed_items = cast(list[object], raw_items)
     if any(not isinstance(item, dict) for item in typed_items):
-        raise RuntimeError("Ruff JSON output contains a non-object diagnostic.")
+        msg = "Ruff JSON output contains a non-object diagnostic."
+        raise RuntimeError(msg)
     items = [cast(dict[str, Any], item) for item in typed_items]
     return sorted({_fingerprint(item) for item in items})
 

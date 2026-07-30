@@ -61,7 +61,8 @@ def _parse_conf(path: Path) -> dict[str, str]:
                 if parsed is not None:
                     result[parsed[0]] = parsed[1]
     except OSError as exc:
-        raise OSError(f"Failed to read quality gates config at {path}: {exc}") from exc
+        msg = f"Failed to read quality gates config at {path}: {exc}"
+        raise OSError(msg) from exc
     return result
 
 

@@ -83,14 +83,17 @@ def _parse_module_source(module_name: str) -> ast.AST:
     """
     resolved = _resolve_source_path(module_name)
     if resolved is None:
-        raise FileReadError(f"Source file not found for {module_name}")
+        msg = f"Source file not found for {module_name}"
+        raise FileReadError(msg)
     try:
         source = resolved.read_text(encoding="utf-8")
         return ast.parse(source)
     except SyntaxError as exc:
-        raise SyntaxErrorInSource(f"Syntax error in {module_name}: {exc}") from exc
+        msg = f"Syntax error in {module_name}: {exc}"
+        raise SyntaxErrorInSource(msg) from exc
     except (OSError, UnicodeDecodeError) as exc:
-        raise FileReadError(f"Could not read {module_name}: {exc}") from exc
+        msg = f"Could not read {module_name}: {exc}"
+        raise FileReadError(msg) from exc
 
 
 # ---------------------------------------------------------------------------

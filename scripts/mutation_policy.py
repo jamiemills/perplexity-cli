@@ -379,7 +379,8 @@ def _run_mutmut(args: tuple[str, ...]) -> str:
         raise MutmutUnavailableError(str(exc)) from exc
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
-        raise MutmutUnavailableError(f"mutmut exited {result.returncode}: {detail}")
+        msg = f"mutmut exited {result.returncode}: {detail}"
+        raise MutmutUnavailableError(msg)
     return result.stdout
 
 
@@ -398,7 +399,8 @@ def parse_version_text(text: str) -> str:
     """
     match = _VERSION_PATTERN.match(text)
     if match is None:
-        raise MutmutUnavailableError(f"Unparseable mutmut version output: {text!r}")
+        msg = f"Unparseable mutmut version output: {text!r}"
+        raise MutmutUnavailableError(msg)
     return match.group("version")
 
 

@@ -344,9 +344,11 @@ def _count_classes(filepath: Path) -> tuple[int, int]:
         source = filepath.read_text(encoding="utf-8")
         tree = ast.parse(source)
     except SyntaxError as exc:
-        raise SyntaxErrorInSource(f"Syntax error in {filepath}: {exc}") from exc
+        msg = f"Syntax error in {filepath}: {exc}"
+        raise SyntaxErrorInSource(msg) from exc
     except (OSError, UnicodeDecodeError) as exc:
-        raise FileReadError(f"Could not read {filepath}: {exc}") from exc
+        msg = f"Could not read {filepath}: {exc}"
+        raise FileReadError(msg) from exc
 
     return _count_abstract_classes(tree)
 
@@ -451,10 +453,12 @@ def _flagged_metrics(metrics: Sequence[ModuleMetrics], threshold: float) -> list
 def _as_json_object(value: object, path: Path) -> dict[str, object]:
     """Validate and narrow a parsed JSON report object."""
     if not isinstance(value, dict):
-        raise FileReadError(f"Trend-compare file {path} must contain a JSON object")
+        msg = f"Trend-compare file {path} must contain a JSON object"
+        raise FileReadError(msg)
     entries = cast(dict[object, object], value)
     if not all(isinstance(key, str) for key in entries):
-        raise FileReadError(f"Trend-compare file {path} contains a non-string key")
+        msg = f"Trend-compare file {path} contains a non-string key"
+        raise FileReadError(msg)
     return cast(dict[str, object], entries)
 
 
@@ -473,17 +477,20 @@ def _load_previous_report(previous_path: Path) -> dict[str, object]:
     try:
         raw = previous_path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise FileReadError(f"Cannot read trend-compare file {previous_path}: {exc}") from exc
+        msg = f"Cannot read trend-compare file {previous_path}: {exc}"
+        raise FileReadError(msg) from exc
 
     try:
         loaded: object = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise FileReadError(f"Invalid JSON in trend-compare file {previous_path}: {exc}") from exc
+        msg = f"Invalid JSON in trend-compare file {previous_path}: {exc}"
+        raise FileReadError(msg) from exc
 
     previous = _as_json_object(loaded, previous_path)
     if previous.get("report_version") != "1":
         ver = previous.get("report_version")
-        raise FileReadError(f"Unsupported report version {ver} in {previous_path}")
+        msg = f"Unsupported report version {ver} in {previous_path}"
+        raise FileReadError(msg)
     return previous
 
 
