@@ -102,14 +102,14 @@ class TestParseArgs:
         """Required arguments are parsed correctly when provided."""
         import sys as _sys
 
-        _sys_argv = _sys.argv[:]
+        sys_argv = _sys.argv[:]
         _sys.argv = ["coverage_policy.py", "--unit-coverage", "/tmp/test.coverage"]
         try:
             args = _parse_args()
             assert args.unit_coverage == "/tmp/test.coverage"
             assert args.min_coverage is not None
         finally:
-            _sys.argv = _sys_argv
+            _sys.argv = sys_argv
 
     def test_missing_required_arg(self) -> None:
         with pytest.raises(SystemExit) as exc:

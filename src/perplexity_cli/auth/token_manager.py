@@ -184,7 +184,7 @@ class TokenManager:
         with open(self.token_path, encoding="utf-8") as f:
             token_record: dict[str, object] = json.load(f)
 
-        if not token_record.get("encrypted", False):
+        if not token_record.get("encrypted"):
             self.logger.warning("Token file is not encrypted")
             msg = "Token file is not encrypted. Please re-authenticate with: pxcli auth login"
             raise AuthenticationError(msg)
@@ -320,9 +320,7 @@ class TokenManager:
         Args:
             cookies: The validated cookies dictionary.
         """
-        cf_cookies = {
-            k: v for k, v in cookies.items() if k.startswith(("cf", "__cf"))
-        }
+        cf_cookies = {k: v for k, v in cookies.items() if k.startswith(("cf", "__cf"))}
         self.logger.debug(
             "Loaded %s cookies, including %s Cloudflare cookies", len(cookies), len(cf_cookies)
         )

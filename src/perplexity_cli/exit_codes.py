@@ -45,7 +45,7 @@ _EXCEPTION_EXIT_CODE_TABLE: list[tuple[type, int]] = [
 def _exit_code_for_http_error(exc: PerplexityHTTPStatusError) -> int:
     """Determine exit code for an HTTP status error."""
     status = exc.response.status_code
-    if status in (_HTTP_STATUS_UNAUTHORISED, _HTTP_STATUS_FORBIDDEN):
+    if status in {_HTTP_STATUS_UNAUTHORISED, _HTTP_STATUS_FORBIDDEN}:
         return AUTH_REQUIRED
     if status == _HTTP_STATUS_TOO_MANY_REQUESTS or status >= _HTTP_STATUS_SERVER_ERROR_THRESHOLD:
         return TRANSIENT

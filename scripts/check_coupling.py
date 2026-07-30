@@ -277,9 +277,9 @@ def _resolve_source_path(module_rel: str) -> Path | None:
 def _is_abstract_base(base: ast.expr) -> bool:
     """Return True if *base* is ABC or Protocol."""
     if isinstance(base, ast.Name):
-        return base.id in ("ABC", "Protocol")
+        return base.id in {"ABC", "Protocol"}
     if isinstance(base, ast.Attribute):
-        return base.attr in ("ABC", "Protocol")
+        return base.attr in {"ABC", "Protocol"}
     return False
 
 
@@ -1071,7 +1071,7 @@ def _collect_and_report(
 
 def _resolve_trend(
     flagged_identities: set[str], options: ReportOptions
-) -> TrendReport | None | int:
+) -> TrendReport | int | None:
     """Compute trend comparison, returning None if no trend path is configured."""
     if not options.trend_compare_path:
         return None

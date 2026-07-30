@@ -119,7 +119,7 @@ def _collect_coverage_config_identities(pyproject: Path) -> list[str]:
     if not pyproject.is_file():
         return []
     try:
-        config = tomllib.loads(pyproject.read_text())
+        config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
         return []
 
@@ -139,7 +139,7 @@ def _collect_mutmut_config_identities(pyproject: Path) -> list[str]:
     if not pyproject.is_file():
         return []
     try:
-        config = tomllib.loads(pyproject.read_text())
+        config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
         return []
 

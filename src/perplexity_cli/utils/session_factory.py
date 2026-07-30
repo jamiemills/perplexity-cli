@@ -32,8 +32,6 @@ except ImportError as _exc:  # pragma: no cover
     )
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from curl_cffi.requests import AsyncSession as AsyncSessionType
     from curl_cffi.requests import Session as SessionType
 

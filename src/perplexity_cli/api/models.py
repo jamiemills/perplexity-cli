@@ -209,7 +209,7 @@ class QueryParams(BaseModel):
         Raises:
             ValueError: If mode is not 'standard' or 'multi_step'.
         """
-        if v not in ["standard", "multi_step"]:
+        if v not in {"standard", "multi_step"}:
             msg = 'search_implementation_mode must be "standard" or "multi_step"'
             raise ValueError(msg)
         return v
@@ -360,7 +360,7 @@ class Block(BaseModel):
 
     def extract_plan_info(self) -> dict[str, object] | None:
         """Extract progress details from a plan-oriented block."""
-        if self.intended_usage not in ["pro_search_steps", "plan"]:
+        if self.intended_usage not in {"pro_search_steps", "plan"}:
             return None
 
         plan_block = _as_object_dict(self.content.get("plan_block"))

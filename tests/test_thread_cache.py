@@ -68,7 +68,7 @@ class TestThreadCacheManager:
         cache_manager.save_cache(sample_threads)
 
         # Read raw file content
-        with open(cache_manager.cache_path) as f:
+        with open(cache_manager.cache_path, encoding="utf-8") as f:
             content = json.load(f)
 
         # Should have encryption wrapper
@@ -385,7 +385,7 @@ class TestCacheEncryption:
         cache_manager.save_cache(threads)
 
         # Read raw file
-        with open(cache_manager.cache_path) as f:
+        with open(cache_manager.cache_path, encoding="utf-8") as f:
             content = f.read()
 
         # Should not contain plaintext thread title

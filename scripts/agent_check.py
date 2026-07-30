@@ -424,8 +424,8 @@ def _normalise_pre_commit_options(
     if options is not None:
         return options
     return PreCommitOptions(
-        run_tests=not legacy_options.get("skip_tests", False),
-        run_fixers=not legacy_options.get("skip_fixers", False),
+        run_tests=not legacy_options.get("skip_tests"),
+        run_fixers=not legacy_options.get("skip_fixers"),
     )
 
 

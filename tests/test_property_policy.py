@@ -67,7 +67,7 @@ def _parse_property_test_functions(source_path: Path) -> dict[str, dict[str, obj
     Returns:
         dict mapping function name to ``{has_given, has_property_marker, lineno}``.
     """
-    tree = ast.parse(source_path.read_text())
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
     result: dict[str, dict[str, object]] = {}
 
     for node in ast.walk(tree):
@@ -328,11 +328,11 @@ def test_hypothesis_imports_are_used() -> None:
                     name = deco.id
                 if isinstance(deco, ast.Attribute):
                     name = deco.attr
-                if name in ("given", "example"):
+                if name in {"given", "example"}:
                     used_constructs[name] = used_constructs.get(name, 0) + 1
         if isinstance(node, ast.Call):
             name = _unpack_decorator_name(node.func)
-            if name in ("assume", "settings"):
+            if name in {"assume", "settings"}:
                 used_constructs[name] = used_constructs.get(name, 0) + 1
 
     assert used_constructs.get("given", 0) > 0, (

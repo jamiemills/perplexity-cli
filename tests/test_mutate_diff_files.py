@@ -304,10 +304,10 @@ class TestDiscoverNewFeatures:
         _manifest, exit_code = mutate_diff_files.discover_mutate_diff_files(
             base_sha=sha1, tested_sha=sha2
         )
-        assert exit_code in (
+        assert exit_code in {
             mutate_diff_files.EXIT_SOURCE_CHANGES,
             mutate_diff_files.EXIT_NO_PRODUCTION_CHANGES,
-        )
+        }
 
     def test_rename_detection(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Renames between commits are detected."""

@@ -689,4 +689,4 @@ def test_json_output_produces_valid_trend_when_compared() -> None:
     assert "previous_flagged_count" in trend
     assert "delta" in trend
     assert "direction" in trend
-    assert trend["direction"] in ("improved", "regressed", "unchanged")
+    assert trend["direction"] in {"improved", "regressed", "unchanged"}

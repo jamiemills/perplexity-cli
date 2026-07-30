@@ -307,7 +307,7 @@ def _add_if_forbidden_adapter(
     if other_mapping is None:
         return
     other_name = other_mapping.get("name", "")
-    if other_name in (group_name, *may_import):
+    if other_name in {group_name, *may_import}:
         return
     for mod in _as_object_list(other_mapping.get("modules", [])):
         if isinstance(mod, str):

@@ -63,7 +63,7 @@
     "src/perplexity_cli/auth/token_manager.py:212:nosemgrep:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
     "src/perplexity_cli/auth/token_manager.py:217:nosemgrep:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
     "src/perplexity_cli/auth/token_manager.py:272:nosemgrep:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
-    "src/perplexity_cli/auth/token_manager.py:342:nosemgrep:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
+    "src/perplexity_cli/auth/token_manager.py:340:nosemgrep:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
     "src/perplexity_cli/auth/token_manager.py:91:nosemgrep:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
     "src/perplexity_cli/auth/utils.py:86:nosemgrep:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
     "src/perplexity_cli/ndjson.py:88:nosemgrep:boolean-flag-argument",
@@ -82,7 +82,7 @@
     "src/perplexity_cli/utils/retry.py:134:nosec",
     "src/perplexity_cli/utils/session_factory.py:27:no-cover",
     "src/perplexity_cli/utils/session_factory.py:28:no-cover",
-    "src/perplexity_cli/utils/session_factory.py:72:no-cover",
-    "src/perplexity_cli/utils/session_factory.py:94:no-cover"
+    "src/perplexity_cli/utils/session_factory.py:70:no-cover",
+    "src/perplexity_cli/utils/session_factory.py:92:no-cover"
   ]
 }

@@ -36,7 +36,7 @@ class TestStyleManagerBasic:
                 sm.save_style("be concise")
 
                 assert style_path.exists()
-                with open(style_path) as f:
+                with open(style_path, encoding="utf-8") as f:
                     data = json.load(f)
                     assert data["style"] == "be concise"
                     assert "created_at" in data
@@ -168,7 +168,7 @@ class TestStyleManagerErrorHandling:
             style_path = Path(tmpdir) / "style.json"
 
             # Write corrupted JSON
-            with open(style_path, "w") as f:
+            with open(style_path, "w", encoding="utf-8") as f:
                 f.write("{invalid json")
 
             with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
@@ -183,7 +183,7 @@ class TestStyleManagerErrorHandling:
         with tempfile.TemporaryDirectory() as tmpdir:
             style_path = Path(tmpdir) / "style.json"
 
-            with open(style_path, "w") as f:
+            with open(style_path, "w", encoding="utf-8") as f:
                 json.dump({"created_at": "2025-01-01"}, f)
 
             with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:

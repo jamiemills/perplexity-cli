@@ -346,7 +346,7 @@ def write_report(report: MutationReport, report_path: Path) -> None:
     """
     report_path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(report_to_dict(report), indent=2) + "\n"
-    report_path.write_text(payload)
+    report_path.write_text(payload, encoding="utf-8")
     logger.info("Mutation report written to %s", report_path)
 
 

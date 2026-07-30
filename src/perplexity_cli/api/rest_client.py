@@ -67,10 +67,10 @@ class RestClient:
             RuntimeError: If curl_cffi is not installed.
         """
         if self._client is None:
-            _sf = import_module("perplexity_cli.utils.session_factory")
+            sf = import_module("perplexity_cli.utils.session_factory")
             self._client = cast(
                 "Session[Response]",
-                _sf.create_sync_session(timeout=self.timeout),
+                sf.create_sync_session(timeout=self.timeout),
             )
         return self._client
 

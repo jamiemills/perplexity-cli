@@ -368,7 +368,7 @@ def test_web_result_roundtrip(name: str, url: str, snippet: str | None) -> None:
 @settings()
 def test_query_params_rejects_invalid_search_mode(mode: str) -> None:
     """search_implementation_mode rejects values other than standard or multi_step."""
-    if mode in ("standard", "multi_step"):
+    if mode in {"standard", "multi_step"}:
         params = QueryParams(search_implementation_mode=mode)
         assert params.search_implementation_mode == mode
     else:

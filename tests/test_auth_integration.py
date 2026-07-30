@@ -181,7 +181,7 @@ class TestErrorRecovery:
     def test_recover_from_corrupted_token(self, token_manager):
         """Test recovery when token file is corrupted."""
         # Write corrupted file
-        with open(token_manager.token_path, "w") as f:
+        with open(token_manager.token_path, "w", encoding="utf-8") as f:
             f.write("not valid json")
 
         import os

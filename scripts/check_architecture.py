@@ -794,7 +794,7 @@ def _process_single_flag(
     arg: str, flags: dict[str, str | bool | None], raw: list[str], idx: int
 ) -> int:
     """Process one CLI flag, returning the new index."""
-    if arg in ("--json", "--explain", "--update-baseline", "--no-baseline"):
+    if arg in {"--json", "--explain", "--update-baseline", "--no-baseline"}:
         flags[_flag_key_for_arg(arg)] = True
     elif arg == "--toml":
         flags["toml"] = _consume_toml_arg(raw, idx)

@@ -43,7 +43,7 @@ class SessionLogger:
     @staticmethod
     def is_enabled() -> bool:
         """Check if session logging is enabled via PXCLI_SESSION_LOG env var."""
-        return os.environ.get("PXCLI_SESSION_LOG", "").lower() in ("true", "1", "yes")
+        return os.environ.get("PXCLI_SESSION_LOG", "").lower() in {"true", "1", "yes"}
 
     @classmethod
     def create(cls) -> SessionLogger:

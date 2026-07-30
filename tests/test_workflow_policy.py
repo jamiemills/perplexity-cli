@@ -166,7 +166,7 @@ def _capture_json_output(directory: Path) -> dict:
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         exit_code = wfp.main(["--dir", str(directory), "--json"])
-    assert exit_code in (wfp.EXIT_PASS, wfp.EXIT_FAIL)
+    assert exit_code in {wfp.EXIT_PASS, wfp.EXIT_FAIL}
     return json.loads(buffer.getvalue())
 
 

@@ -301,11 +301,11 @@ class TestConfigRunnerExactStrings:
     def test_config_change_messages_constant_contents(self) -> None:
         from perplexity_cli.runners.config import _CONFIG_CHANGE_MESSAGES
 
-        assert _CONFIG_CHANGE_MESSAGES[("debug_mode", "disabled")] == (
+        assert _CONFIG_CHANGE_MESSAGES["debug_mode", "disabled"] == (
             "[INFO] Debug mode disabled.",
             "  Use --debug flag for one-time debug output.",
         )
-        assert _CONFIG_CHANGE_MESSAGES[("save_cookies", "disabled")] == (
+        assert _CONFIG_CHANGE_MESSAGES["save_cookies", "disabled"] == (
             "[INFO] Cookie storage disabled.",
             "  Only JWT token will be saved on next authentication.",
         )

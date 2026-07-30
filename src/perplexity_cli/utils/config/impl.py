@@ -365,7 +365,7 @@ def _apply_rate_limiting_enabled(config_dict: dict[str, Any]) -> None:
     """Apply the PERPLEXITY_RATE_LIMITING_ENABLED override if set."""
     if "PERPLEXITY_RATE_LIMITING_ENABLED" in os.environ:
         enabled_str = os.environ["PERPLEXITY_RATE_LIMITING_ENABLED"].lower()
-        config_dict["enabled"] = enabled_str in ("true", "1", "yes")
+        config_dict["enabled"] = enabled_str in {"true", "1", "yes"}
 
 
 def _apply_rate_limiting_rps(config_dict: dict[str, Any]) -> None:
@@ -475,11 +475,11 @@ def _apply_feature_env_overrides(feature_dict: dict[str, Any]) -> None:
     """
     if "PERPLEXITY_SAVE_COOKIES" in os.environ:
         value = os.environ["PERPLEXITY_SAVE_COOKIES"].lower()
-        feature_dict["save_cookies"] = value in ("true", "1", "yes")
+        feature_dict["save_cookies"] = value in {"true", "1", "yes"}
 
     if "PERPLEXITY_DEBUG_MODE" in os.environ:
         value = os.environ["PERPLEXITY_DEBUG_MODE"].lower()
-        feature_dict["debug_mode"] = value in ("true", "1", "yes")
+        feature_dict["debug_mode"] = value in {"true", "1", "yes"}
 
 
 @lru_cache(maxsize=1)

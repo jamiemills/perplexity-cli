@@ -93,7 +93,7 @@ def handle_unexpected_cli_error(
     Exits with status code 1.
     """
     user_message, log_message, include_debug_hint = message_tuple
-    logger.exception("%s: %s", log_message, error)
+    logger.error("%s: %s", log_message, error)
     click.echo(user_message, err=True)
 
     if debug_mode == "debug":

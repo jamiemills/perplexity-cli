@@ -191,7 +191,7 @@ def _load_report(path: str) -> dict[str, Any]:
         print(f"Coverage report not found: {path}", file=sys.stderr)
         print("Run pytest with --cov --cov-report=json first.", file=sys.stderr)
         sys.exit(2)
-    with report_path.open() as f:
+    with report_path.open(encoding="utf-8") as f:
         return json.load(f)
 
 

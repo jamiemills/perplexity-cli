@@ -278,7 +278,7 @@ class TestCliEndToEnd:
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             exit_code = mkp.main(["--makefile", str(makefile), "--json"])
-        assert exit_code in (mkp.EXIT_PASS, mkp.EXIT_FAIL)
+        assert exit_code in {mkp.EXIT_PASS, mkp.EXIT_FAIL}
         payload = json.loads(buffer.getvalue())
         for key in ("pass", "makefile", "target_count", "targets", "findings"):
             assert key in payload

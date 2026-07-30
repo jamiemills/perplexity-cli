@@ -29,7 +29,7 @@ def _resolve_ctx_flags(json_mode: bool | None) -> tuple[OutputFormat, SchemaIncl
     ctx: click.Context | None = click.get_current_context(silent=True)
     ctx_obj: dict[str, Any] = cast(dict[str, Any], ctx.obj if ctx is not None and ctx.obj else {})
     resolved_json: bool = resolve_json_flag(json_mode, ctx_obj)
-    include_schema: bool = bool(ctx_obj.get("schema", False))
+    include_schema: bool = bool(ctx_obj.get("schema"))
     return (
         "json" if resolved_json else "human",
         "with_schema" if include_schema else "no_schema",

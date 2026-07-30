@@ -19,8 +19,7 @@ class TestTokenManager:
     def temp_token_file(self):
         """Create a temporary token file for testing."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            token_file = Path(temp_dir) / "token.json"
-            yield token_file
+            yield Path(temp_dir) / "token.json"
 
     @pytest.fixture
     def token_manager(self, temp_token_file, monkeypatch):
@@ -56,7 +55,7 @@ class TestTokenManager:
         test_token = "test_session_token_12345"
         token_manager.save_token(test_token)
 
-        with open(temp_token_file) as f:
+        with open(temp_token_file, encoding="utf-8") as f:
             data = json.load(f)
 
         # Token should be encrypted and stored with metadata
@@ -153,7 +152,7 @@ class TestTokenManager:
     def test_load_token_handles_corrupted_json(self, token_manager, temp_token_file):
         """Test that load_token handles corrupted JSON."""
         # Write corrupted JSON
-        with open(temp_token_file, "w") as f:
+        with open(temp_token_file, "w", encoding="utf-8") as f:
             f.write("{invalid json")
         os.chmod(temp_token_file, 0o600)
 

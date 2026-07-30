@@ -99,7 +99,7 @@ class TestModeSelection:
 
             pytest.skip("CI environment may not have full git history")
         result = _run_script("ci-full")
-        assert result.returncode in (0, 10)
+        assert result.returncode in {0, 10}
 
 
 # ---------------------------------------------------------------------------
@@ -135,11 +135,11 @@ class TestVersionValidation:
     def test_supported_version_accepted(self) -> None:
         result = self._run_with_mock_gitleaks("8.30.1")
         # Supported version; may succeed (0) or find leaks (10) due to repo content.
-        assert result.returncode in (0, 10)
+        assert result.returncode in {0, 10}
 
     def test_supported_version_accepted_with_leading_v(self) -> None:
         result = self._run_with_mock_gitleaks("v8.30.1")
-        assert result.returncode in (0, 10)
+        assert result.returncode in {0, 10}
 
     def test_unsupported_version_rejected_older(self) -> None:
         result = self._run_with_mock_gitleaks("8.29.0")
@@ -270,7 +270,7 @@ class TestOidHandling:
             "https://example.com/repo.git",
             stdin_text=stdin,
         )
-        assert result.returncode in (0, 10)
+        assert result.returncode in {0, 10}
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +357,7 @@ class TestExitCodes:
 
     def test_ci_full_exit_code_is_zero_or_ten(self) -> None:
         result = _run_script("ci-full")
-        assert result.returncode in (0, 10)
+        assert result.returncode in {0, 10}
 
     def test_range_mode_exit_code_zero_or_ten(self) -> None:
         base = subprocess.check_output(
@@ -367,7 +367,7 @@ class TestExitCodes:
             ["git", "rev-parse", "HEAD"], text=True, cwd=PROJECT_ROOT
         ).strip()
         result = _run_script("range", base, head)
-        assert result.returncode in (0, 10)
+        assert result.returncode in {0, 10}
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +381,6 @@ class TestCiNoSkipBackwardCompat:
     def test_ci_no_skip_triggers_ci_full(self) -> None:
         """With CI_NO_SKIP=true, backward-compat invocation scans full history."""
         result = _run_script(env_extra={"CI_NO_SKIP": "true"})
-        assert result.returncode in (0, 10)
+        assert result.returncode in {0, 10}
         combined = result.stdout + result.stderr
         assert "CI full-history" in combined or "scanning" in combined.lower()

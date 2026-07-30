@@ -154,7 +154,7 @@ def _generate_json_report(combined_data: Path, workdir: Path) -> dict[str, Any]:
         print(f"coverage json failed: {result.stderr}", file=sys.stderr)
         sys.exit(2)
 
-    with open(json_path) as f:
+    with open(json_path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -247,7 +247,7 @@ def main() -> None:
 
 
 def _write_report(report: dict[str, Any], path: str) -> None:
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
         f.write("\n")
 

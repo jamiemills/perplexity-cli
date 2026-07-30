@@ -35,7 +35,7 @@ class SubscriptionLevel(enum.Enum):
             True if the user can access models of the given tier.
         """
         if self is SubscriptionLevel.MAX:
-            return tier in ("pro", "max")
+            return tier in {"pro", "max"}
         if self is SubscriptionLevel.PRO:
             return tier == "pro"
         return False
@@ -194,7 +194,7 @@ class UserSettings(BaseModel):
     @property
     def is_subscriber(self) -> bool:
         """Return whether the user has an active subscription."""
-        return self.subscription_status not in ("none", "", "null")
+        return self.subscription_status not in {"none", "", "null"}
 
     def infer_subscription_level(self) -> SubscriptionLevel:
         """Infer the user's subscription level from settings fields.
