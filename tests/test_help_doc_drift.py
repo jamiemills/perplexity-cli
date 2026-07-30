@@ -145,11 +145,11 @@ class TestModelsListHelpSections:
 
 
 class TestCacheFilenameIsHyphenated:
-    """Help text must use ``threads-cache.json`` (matches ``utils/config.py``).
+    """Help text must use ``threads-cache.json`` (matches ``utils/config/impl.py``).
 
     Click wraps long lines, so we assert against the source strings in the
     ``*_cmds.py`` modules rather than the rendered (and possibly wrapped)
-    help output.  ``utils/config.py`` uses the hyphenated filename; every
+    help output.  ``utils/config/impl.py`` uses the hyphenated filename; every
     help string must agree.
     """
 
@@ -168,7 +168,9 @@ class TestCacheFilenameIsHyphenated:
 
     def test_implementation_uses_hyphenated_cache_filename(self) -> None:
         """``ConfigPaths.cache_path`` must use the hyphenated filename."""
-        source = (PROJECT_ROOT / "src/perplexity_cli/utils/config.py").read_text(encoding="utf-8")
+        source = (PROJECT_ROOT / "src/perplexity_cli/utils/config/impl.py").read_text(
+            encoding="utf-8"
+        )
         assert '"threads-cache.json"' in source
 
 

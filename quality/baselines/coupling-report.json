@@ -1,7 +1,7 @@
 {
   "report_version": "1",
-  "total_modules": 95,
-  "flagged_count": 35,
+  "total_modules": 97,
+  "flagged_count": 36,
   "flagged_identities": [
     "api.endpoints",
     "api.models",
@@ -27,6 +27,7 @@
     "threads.cache_manager",
     "threads.scraper",
     "utils.config",
+    "utils.config.contracts",
     "utils.encryption",
     "utils.file_permissions",
     "utils.http_errors",
@@ -189,7 +190,7 @@
     },
     {
       "module": "config.models",
-      "ca": 4,
+      "ca": 5,
       "ce": 0,
       "instability": 0.0,
       "abstractness": 0.0,
@@ -203,7 +204,8 @@
         "config",
         "runners.export",
         "runners.status",
-        "utils.config"
+        "utils.config.contracts",
+        "utils.config.impl"
       ]
     },
     {
@@ -468,7 +470,7 @@
         "threads.cache_manager",
         "threads.scraper",
         "threads.utils",
-        "utils.config",
+        "utils.config.impl",
         "utils.encryption",
         "utils.file_handler",
         "utils.file_permissions",
@@ -594,8 +596,8 @@
       "advisory": true,
       "finding_id": "utils.config",
       "dependencies": [
-        "config.models",
-        "utils.exceptions"
+        "utils.config.contracts",
+        "utils.config.impl"
       ],
       "dependents": [
         "api.endpoints",
@@ -849,6 +851,25 @@
       "dependents": [
         "query_runner",
         "query_streaming"
+      ]
+    },
+    {
+      "module": "utils.config.contracts",
+      "ca": 2,
+      "ce": 1,
+      "instability": 0.333,
+      "abstractness": 0.0,
+      "distance": 0.667,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.config.contracts",
+      "dependencies": [
+        "config.models"
+      ],
+      "dependents": [
+        "utils.config",
+        "utils.config.impl"
       ]
     },
     {
@@ -1387,6 +1408,26 @@
       ],
       "dependents": [
         "runners"
+      ]
+    },
+    {
+      "module": "utils.config.impl",
+      "ca": 1,
+      "ce": 3,
+      "instability": 0.75,
+      "abstractness": 0.0,
+      "distance": 0.25,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.config.impl",
+      "dependencies": [
+        "config.models",
+        "utils.config.contracts",
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "utils.config"
       ]
     },
     {
@@ -2106,5 +2147,5 @@
       "dependents": []
     }
   ],
-  "timestamp": "2026-07-30T05:33:02.018019+00:00"
+  "timestamp": "2026-07-30T20:05:19.081557+00:00"
 }

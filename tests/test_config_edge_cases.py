@@ -30,12 +30,12 @@ class TestCorruptedConfigJson:
         config_path.write_text("{invalid json content!!!", encoding="utf-8")
 
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_config_paths",
+            "perplexity_cli.utils.config.impl.get_config_paths",
             lambda: ConfigPaths(config_dir),
         )
         # Prevent _ensure_user_feature_config from overwriting our corrupt file
         monkeypatch.setattr(
-            "perplexity_cli.utils.config._ensure_user_feature_config",
+            "perplexity_cli.utils.config.impl._ensure_user_feature_config",
             lambda: None,
         )
 
@@ -55,11 +55,11 @@ class TestCorruptedConfigJson:
         urls_path.write_text("not valid json!", encoding="utf-8")
 
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_config_paths",
+            "perplexity_cli.utils.config.impl.get_config_paths",
             lambda: ConfigPaths(tmp_path),
         )
         monkeypatch.setattr(
-            "perplexity_cli.utils.config._ensure_user_urls_config",
+            "perplexity_cli.utils.config.impl._ensure_user_urls_config",
             lambda: None,
         )
 
@@ -81,11 +81,11 @@ class TestMissingUrlsJson:
         urls_path = config_dir / "urls.json"
 
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_config_paths",
+            "perplexity_cli.utils.config.impl.get_config_paths",
             lambda: ConfigPaths(config_dir),
         )
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_config_dir",
+            "perplexity_cli.utils.config.impl.get_config_dir",
             lambda: config_dir,
         )
 
@@ -247,7 +247,7 @@ class TestRateLimitingValidation:
 
     def test_negative_requests_per_period_raises(self):
         """Test that negative requests_per_period in config raises RuntimeError."""
-        with patch("perplexity_cli.utils.config.get_config_paths") as mock_paths:
+        with patch("perplexity_cli.utils.config.impl.get_config_paths") as mock_paths:
             import tempfile
 
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -270,7 +270,7 @@ class TestRateLimitingValidation:
 
     def test_zero_period_seconds_raises(self):
         """Test that zero period_seconds in config raises RuntimeError."""
-        with patch("perplexity_cli.utils.config.get_config_paths") as mock_paths:
+        with patch("perplexity_cli.utils.config.impl.get_config_paths") as mock_paths:
             import tempfile
 
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -297,7 +297,7 @@ class TestRateLimitingValidation:
         The runtime code does not perform manual validation of the enabled field;
         Pydantic's bool coercion accepts string values like 'yes'.
         """
-        with patch("perplexity_cli.utils.config.get_config_paths") as mock_paths:
+        with patch("perplexity_cli.utils.config.impl.get_config_paths") as mock_paths:
             import tempfile
 
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -319,7 +319,7 @@ class TestRateLimitingValidation:
         urls_path.write_text(json.dumps({"rate_limiting": "bad"}), encoding="utf-8")
 
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_config_paths", lambda: ConfigPaths(tmp_path)
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(tmp_path)
         )
 
         with pytest.raises(RuntimeError, match="rate_limiting section must be a dictionary"):
@@ -337,9 +337,11 @@ class TestGetUrlsEdgeCases:
         urls_path.write_text(json.dumps({"other": "data"}), encoding="utf-8")
 
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_config_paths", lambda: ConfigPaths(tmp_path)
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(tmp_path)
         )
-        monkeypatch.setattr("perplexity_cli.utils.config._ensure_user_urls_config", lambda: None)
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.impl._ensure_user_urls_config", lambda: None
+        )
 
         with pytest.raises(RuntimeError, match="missing 'perplexity' section"):
             get_urls()
@@ -354,9 +356,11 @@ class TestGetUrlsEdgeCases:
         urls_path.write_text(json.dumps({"perplexity": "not a dict"}), encoding="utf-8")
 
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_config_paths", lambda: ConfigPaths(tmp_path)
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(tmp_path)
         )
-        monkeypatch.setattr("perplexity_cli.utils.config._ensure_user_urls_config", lambda: None)
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.impl._ensure_user_urls_config", lambda: None
+        )
 
         with pytest.raises(RuntimeError, match="must be a dictionary"):
             get_urls()
@@ -416,11 +420,11 @@ class TestFeatureConfigValidation:
         config_path.write_text(json.dumps({"features": "bad"}), encoding="utf-8")
 
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_config_paths",
+            "perplexity_cli.utils.config.impl.get_config_paths",
             lambda: ConfigPaths(config_dir),
         )
         monkeypatch.setattr(
-            "perplexity_cli.utils.config._ensure_user_feature_config",
+            "perplexity_cli.utils.config.impl._ensure_user_feature_config",
             lambda: None,
         )
 

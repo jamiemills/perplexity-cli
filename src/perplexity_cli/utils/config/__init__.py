@@ -30,10 +30,6 @@ from perplexity_cli.utils.config.impl import (
     set_feature,
 )
 
-_get_default_feature_config = default_feature_config
-_get_default_rate_limiting = default_rate_limiting
-_is_str_dict = is_str_dict
-
 __all__ = [
     "ConfigPaths",
     "FeatureConfig",

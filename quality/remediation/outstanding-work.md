@@ -24,7 +24,7 @@
 10. Hermetic integration tests — local loopback HTTP/SSE server harness, query protocol chain, attachment upload chain, autouse non-loopback network guard, adversarial connection-rejection tests
 11. Systematic assertion quality audit — inventory and fix generic error alternatives, swallowed exceptions, weak disjunctions
 12. Mock reduction — replace internal constructor patches with application fixtures and fake outer protocol boundaries, use autospec/spec_set/AsyncMock/typed protocol fakes
-13. Delete quality-plan mechanism — remove plan-compliance-gate.ts, check-plan-gate.mjs, quality-plan-reviewer.md, check_plan_compliance.py, generate_quality_plan.py, test_plan_compliance.py, Make targets, Lefthook jobs, plugin registration, package scripts, documentation claims
+13. Delete quality-plan mechanism — remove plan-gate-compliance.ts, plan-gate-check.mjs, plan-reviewer-quality.md, plan_compliance_check.py, quality_plan_generator.py, test_plan_compliance.py, Make targets, Lefthook jobs, plugin registration, package scripts, documentation claims
 14. Property-test ownership — register property marker, mark every Hypothesis test, exclude property from test-unit and unit coverage, explicit -m property per target, independent mutmut marker expression, expected node-count checks, explicit profile fields, reproduction-blob meta-test
 15. Hook ordering — fix pre-commit sequence (read-only before modifications, fix before format, reject partial staging, rerun after fixes)
 16. Hook/CI parity — add deterministic locked repository-policy CI job

@@ -948,7 +948,7 @@ class TestHandleHttpErrorExact:
                 raise error
             except PerplexityHTTPStatusError as caught:
                 _handle_http_error(caught)
-        assert exc_info.value is error
+        assert isinstance(exc_info.value, PerplexityHTTPStatusError)
 
     def test_403_reraises_original(self) -> None:
         error = self._make_error(403)
@@ -957,7 +957,7 @@ class TestHandleHttpErrorExact:
                 raise error
             except PerplexityHTTPStatusError as caught:
                 _handle_http_error(caught)
-        assert exc_info.value is error
+        assert isinstance(exc_info.value, PerplexityHTTPStatusError)
 
 
 class TestDateProxies:

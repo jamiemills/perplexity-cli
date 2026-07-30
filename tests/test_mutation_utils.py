@@ -12,15 +12,6 @@ import pytest
 from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.config import (
     ConfigPaths,
-    _apply_feature_env_overrides,
-    _apply_rate_limiting_enabled,
-    _apply_rate_limiting_period,
-    _apply_rate_limiting_rps,
-    _apply_url_env_overrides,
-    _get_default_feature_config,
-    _get_default_rate_limiting,
-    _is_str_dict,
-    _merge_rate_limiting_section,
     clear_feature_config_cache,
     clear_urls_cache,
     get_config_dir,
@@ -33,6 +24,23 @@ from perplexity_cli.utils.config import (
     get_upload_url_endpoint,
     get_user_settings_endpoint,
     set_feature,
+)
+from perplexity_cli.utils.config.contracts import (
+    default_feature_config as _get_default_feature_config,
+)
+from perplexity_cli.utils.config.contracts import (
+    default_rate_limiting as _get_default_rate_limiting,
+)
+from perplexity_cli.utils.config.contracts import (
+    is_str_dict as _is_str_dict,
+)
+from perplexity_cli.utils.config.impl import (
+    _apply_feature_env_overrides,
+    _apply_rate_limiting_enabled,
+    _apply_rate_limiting_period,
+    _apply_rate_limiting_rps,
+    _apply_url_env_overrides,
+    _merge_rate_limiting_section,
 )
 from perplexity_cli.utils.encryption import (
     _ENCRYPTED_TOKEN_VERSION_PREFIX,
@@ -385,7 +393,7 @@ class TestSetFeature:
         config_dir = tmp_path / "config"
         config_dir.mkdir()
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_config_paths", lambda: ConfigPaths(config_dir)
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(config_dir)
         )
         set_feature("save_cookies", True)
         data = json.loads((config_dir / "config.json").read_text())
@@ -398,7 +406,7 @@ class TestSetFeature:
         config_dir = tmp_path / "config"
         config_dir.mkdir()
         monkeypatch.setattr(
-            "perplexity_cli.utils.config.get_config_paths", lambda: ConfigPaths(config_dir)
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(config_dir)
         )
         set_feature("debug_mode", False)
         data = json.loads((config_dir / "config.json").read_text())
