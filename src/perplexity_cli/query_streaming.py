@@ -286,5 +286,5 @@ def stream_query_response(
             _write_ndjson_result(ndjson_writer, accumulated_text, references, trace)
         else:
             _render_stream_references(render, accumulated_text, references)
-    except Exception as e:
+    except Exception as e:  # catch-all CLI error handler
         _handle_stream_error(e)

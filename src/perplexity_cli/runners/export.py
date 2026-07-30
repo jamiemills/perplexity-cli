@@ -616,7 +616,7 @@ def run_export_threads_command(
         _handle_known_error(e, prepared.output_mode.json_mode, prepared.logger)
     except PerplexityHTTPStatusError as e:
         _handle_http_status_error(e, prepared.output_mode.json_mode, typed_ctx_obj, prepared.logger)
-    except Exception as e:
+    except Exception as e:  # catch-all CLI error handler
         _handle_unexpected_error(
             e,
             prepared.output_mode.json_mode,

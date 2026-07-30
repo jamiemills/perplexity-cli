@@ -89,7 +89,7 @@ def _detect_subscription_level(client: Any) -> SubscriptionLevel:
         level = settings.infer_subscription_level()
         logger.debug("Detected subscription level: %s", level.value)
         return level
-    except Exception as exc:
+    except Exception as exc:  # catch-all CLI error handler
         logger.warning(
             "Could not detect subscription level, defaulting to Pro: %s",
             exc,
@@ -272,7 +272,7 @@ def _execute_models_list(
         level = _detect_subscription_level(client)
         service = _create_model_service(client, level)
         entries = service.list_available_models()
-    except Exception as exc:
+    except Exception as exc:  # catch-all CLI error handler
         _handle_list_error(exc, output_format, logger)
         return  # unreachable; _handle_list_error always exits
 

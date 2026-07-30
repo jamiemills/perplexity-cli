@@ -136,16 +136,10 @@ def classify_http_error(
             "Wait a moment and retry.",
         )
     if status >= _HTTP_SERVER_ERROR_FLOOR:
-        return (
-            ErrorCode.network_error,
-            f"Server error (HTTP {status}).",
-            "Try again later.",
-        )
-    return (
-        ErrorCode.network_error,
-        f"HTTP error {status}.",
-        None,
-    )
+        msg, fix = f"Server error (HTTP {status}).", "Try again later."
+    else:
+        msg, fix = f"HTTP error {status}.", None
+    return (ErrorCode.network_error, msg, fix)
 
 
 def classify_network_error(

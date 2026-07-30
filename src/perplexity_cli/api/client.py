@@ -380,12 +380,12 @@ class SSEParser:
     """
 
     @staticmethod
-    def parse(response: _ResponseAdapter, logger: logging.Logger) -> Iterator[JsonObject]:
+    def parse(response: _ResponseAdapter, _logger: logging.Logger) -> Iterator[JsonObject]:
         """Parse an SSE stream from *response* into JSON events.
 
         Args:
             response: A streaming HTTP response (curl_cffi Response).
-            logger: Logger for debug output.
+            _logger: Logger reserved for future debug output.
 
         Yields:
             Parsed JSON dictionary per SSE event.
@@ -741,10 +741,7 @@ class SSEClient:
         params_value = json_data.get("params")
         params: JsonObject = params_value if _is_json_object(params_value) else {}
         is_deep_research = _is_deep_research_request(params)
-        if is_deep_research:
-            effective_timeout = DEFAULT_DEEP_RESEARCH_TIMEOUT
-        else:
-            effective_timeout = self.timeout
+        effective_timeout = DEFAULT_DEEP_RESEARCH_TIMEOUT if is_deep_research else self.timeout
         return is_deep_research, effective_timeout
 
     def _log_request_context(
@@ -844,7 +841,7 @@ class SSEClient:
             try:
                 yield from self._execute_stream_request(ctx, attempt)
                 return
-            except Exception as e:
+            except Exception as e:  # catch-all CLI error handler
                 attempt = self._retry_stream_error(e, attempt)
 
     def _execute_stream_request(

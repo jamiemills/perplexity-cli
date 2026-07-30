@@ -135,7 +135,8 @@ convention = "google"
 ]
 "tests/fixtures/**/*.py" = ["ALL"]
 "vulture_whitelist.py" = ["B018", "D", "F821"]
-"scripts/**/*.py" = ["D", "T20"]
+"scripts/**/*.py" = ["D", "T20", "FBT", "PLC0415", "PLR0911", "PLR0912", "BLE001", "SIM108", "ARG004", "PLE0704", "PLR0133", "PLW2901"]
+"src/**/*.py" = ["FBT"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

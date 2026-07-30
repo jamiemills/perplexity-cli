@@ -57,7 +57,9 @@ def _load_request_exception_type() -> tuple[type[Exception], bool]:
         # Kept function-local: curl_cffi is a native library that may fail to
         # load on unsupported platforms, so the import must remain guarded
         # inside this try/except rather than moved to module top level.
-        from curl_cffi.requests.exceptions import RequestException
+        from curl_cffi.requests.exceptions import (
+            RequestException,  # optional dependency (curl_cffi)
+        )
 
         return RequestException, True
     except ImportError:  # pragma: no cover
@@ -460,7 +462,7 @@ def _handle_http_error(e: PerplexityHTTPStatusError) -> None:
     if error_code == ErrorCode.rate_limited:
         msg = "Rate limit exceeded while fetching threads. Please try again later."
         raise RateLimitError(msg) from e
-    raise
+    raise PerplexityHTTPStatusError(str(e), response=e.response) from e
 
 
 def _has_more_pages(thread_data: list[ThreadPayload]) -> bool:

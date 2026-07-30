@@ -70,12 +70,8 @@ def to_iso8601(dt: datetime) -> str:
         >>> to_iso8601(dt)
         '2025-12-23T13:51:50Z'
     """
-    # If naive datetime, assume UTC
-    if dt.tzinfo is None:
-        utc_dt = dt.replace(tzinfo=UTC)
-    else:
-        # Convert to UTC
-        utc_dt = dt.astimezone(UTC)
+    # If naive datetime, assume UTC; otherwise convert to UTC
+    utc_dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
     # Format as ISO 8601 and replace +00:00 with Z
     iso_str = utc_dt.isoformat()

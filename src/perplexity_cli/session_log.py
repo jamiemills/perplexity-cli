@@ -27,7 +27,7 @@ class SessionLogger:
             enabled: ``"enabled"`` or ``"disabled"``. When ``"disabled"``, all methods are no-ops.
         """
         self._session_id = session_id
-        self._enabled = enabled == "enabled" == "enabled"
+        self._enabled = enabled == "enabled"
 
     @staticmethod
     def get_sessions_dir() -> Path:

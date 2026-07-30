@@ -346,9 +346,7 @@ class Block(BaseModel):
         if value_dict is None:
             return None
         text = value_dict.get("text")
-        if isinstance(text, str):
-            return text
-        return None
+        return text if isinstance(text, str) else None
 
     def _extract_from_answer_block(self) -> str | None:
         """Extract text from an answer block."""

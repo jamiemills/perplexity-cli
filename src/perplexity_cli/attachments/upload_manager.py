@@ -48,7 +48,9 @@ def _get_async_session_class() -> type[Any] | None:
         # Kept function-local: curl_cffi is a native library that may fail to
         # load on unsupported platforms, so the import must remain guarded
         # inside this try/except rather than moved to module top level.
-        from curl_cffi.requests import AsyncSession
+        from curl_cffi.requests import (
+            AsyncSession,  # optional dependency (curl_cffi)
+        )
 
         return AsyncSession
     except ImportError:  # pragma: no cover

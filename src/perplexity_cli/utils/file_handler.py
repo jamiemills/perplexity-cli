@@ -150,8 +150,8 @@ def _process_attach_args(attach_args: list[str] | None, files: set[Path]) -> Non
     if not attach_args:
         return
     for attach_str in attach_args:
-        for path_str in attach_str.split(","):
-            path_str = path_str.strip()
+        for raw_path in attach_str.split(","):
+            path_str = raw_path.strip()
             if path_str:
                 _resolve_attach_path(path_str, files)
 

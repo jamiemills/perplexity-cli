@@ -553,7 +553,7 @@ def _handle_query_error(
         fn()
     except KeyboardInterrupt:
         _handle_keyboard_interrupt(output_format, logger)
-    except Exception as exc:
+    except Exception as exc:  # catch-all CLI error handler
         _handle_query_exception(exc, ctx_obj, output_format)
 
 

@@ -158,6 +158,15 @@ class RichFormatter(Formatter):
 
         return string_buffer.getvalue().rstrip()
 
+    @staticmethod
+    def _header_style(level: int) -> str:
+        """Return the Rich style string for a markdown header level."""
+        if level == 1:
+            return "bold bright_cyan"
+        if level == _HEADER_LEVEL_2:
+            return _SECTION_HEADER_STYLE
+        return "bold white"
+
     def _print_formatted_text(self, text: str) -> None:
         """Print text with markdown styling but left-aligned.
 
@@ -169,17 +178,9 @@ class RichFormatter(Formatter):
             # Check for headers (###, ##, #)
             header_match = re.match(r"^(#{1,6})\s+(\S.*)$", line)
             if header_match:
-                hashes = header_match.group(1)
                 content = header_match.group(2)
-                level = len(hashes)
-                # Style based on header level
-                if level == 1:
-                    style = "bold bright_cyan"
-                elif level == _HEADER_LEVEL_2:
-                    style = _SECTION_HEADER_STYLE
-                else:
-                    style = "bold white"
-                self.console.print(Text(content, style=style))
+                level = len(header_match.group(1))
+                self.console.print(Text(content, style=self._header_style(level)))
             else:
                 # Regular text - handle inline markdown
                 # Simple approach: just print as-is (Rich will still render markdown markup)

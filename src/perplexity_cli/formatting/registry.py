@@ -104,10 +104,6 @@ def resolve_format(explicit_format: str | None, *, no_color: bool = False) -> st
     if explicit_format:
         return explicit_format
 
-    if not sys.stdout.isatty():
-        return "plain"
-    if os.environ.get("NO_COLOR") is not None:
-        return "plain"
-    if no_color:
+    if not sys.stdout.isatty() or os.environ.get("NO_COLOR") is not None or no_color:
         return "plain"
     return "rich"
