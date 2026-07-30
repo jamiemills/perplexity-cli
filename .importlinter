@@ -258,6 +258,8 @@ type = forbidden
 source_modules =
     perplexity_cli.utils.async_bridge
     perplexity_cli.utils.config
+    perplexity_cli.utils.config.contracts
+    perplexity_cli.utils.config.impl
     perplexity_cli.utils.cookies
     perplexity_cli.utils.encryption
     perplexity_cli.utils.file_handler

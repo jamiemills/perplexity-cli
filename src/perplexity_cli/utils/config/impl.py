@@ -1,4 +1,4 @@
-"""Configuration and path management utilities."""
+"""IO operations for configuration: file reads, env reads, and caching."""
 
 from __future__ import annotations
 
@@ -6,19 +6,19 @@ import json
 import logging
 import os
 from functools import lru_cache
-
-# nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2  # noqa: ERA001
-from importlib import resources
+from importlib import (  # nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2  # project targets 3.12+
+    resources,
+)
 from pathlib import Path
-from typing import Any, TypeGuard
+from typing import Any
 
 from perplexity_cli.config.models import FeatureConfig, RateLimitConfig, URLConfig
+from perplexity_cli.utils.config.contracts import (
+    default_feature_config,
+    default_rate_limiting,
+    is_str_dict,
+)
 from perplexity_cli.utils.exceptions import ConfigurationError
-
-
-def _is_str_dict(value: object) -> TypeGuard[dict[str, Any]]:
-    """Type guard that narrows an object to dict[str, Any]."""
-    return isinstance(value, dict)
 
 
 class ConfigPaths:
@@ -82,11 +82,9 @@ def get_config_dir() -> Path:
     if configured_dir:
         config_dir = Path(configured_dir).expanduser()
     elif os.name == "nt":
-        # Windows
         base_dir = Path(os.getenv("APPDATA", str(Path.home() / "AppData" / "Roaming")))
         config_dir = base_dir / "perplexity-cli"
     else:
-        # Linux/macOS — respect XDG_CONFIG_HOME
         xdg_config = os.getenv("XDG_CONFIG_HOME")
         base_dir = Path(xdg_config) if xdg_config else Path.home() / ".config"
         config_dir = base_dir / "perplexity-cli"
@@ -191,7 +189,7 @@ def get_urls() -> URLConfig:
         raise ConfigurationError(msg)
 
     perplexity_config = urls_dict["perplexity"]
-    if not _is_str_dict(perplexity_config):
+    if not is_str_dict(perplexity_config):
         msg = "'perplexity' section must be a dictionary"
         raise ConfigurationError(msg)
 
@@ -308,19 +306,6 @@ def get_user_settings_endpoint() -> str:
     return url_config.user_settings_endpoint
 
 
-def _get_default_rate_limiting() -> dict[str, Any]:
-    """Get default rate limiting configuration.
-
-    Returns:
-        dict: Default rate limiting settings.
-    """
-    return {
-        "enabled": True,
-        "requests_per_period": 20,
-        "period_seconds": 60,
-    }
-
-
 def _load_rate_limiting_from_file(config_dict: dict[str, Any]) -> None:
     """Load rate limiting settings from urls.json into config_dict in place.
 
@@ -356,7 +341,7 @@ def _merge_rate_limiting_section(urls_data: dict[str, Any], config_dict: dict[st
     if "rate_limiting" not in urls_data:
         return
     user_config = urls_data["rate_limiting"]
-    if not _is_str_dict(user_config):
+    if not is_str_dict(user_config):
         msg = "rate_limiting section must be a dictionary"
         raise ConfigurationError(msg)
     config_dict.update(user_config)
@@ -420,7 +405,7 @@ def get_rate_limiting_config() -> RateLimitConfig:
     Raises:
         RuntimeError: If configuration is invalid.
     """
-    config_dict = _get_default_rate_limiting()
+    config_dict = default_rate_limiting()
     _load_rate_limiting_from_file(config_dict)
     _apply_rate_limiting_env_overrides(config_dict)
 
@@ -440,21 +425,6 @@ def get_feature_config_path() -> Path:
     return get_config_paths().feature_config_path
 
 
-def _get_default_feature_config() -> dict[str, Any]:
-    """Get default feature configuration.
-
-    Returns:
-        Dictionary with default feature settings.
-    """
-    return {
-        "version": 1,
-        "features": {
-            "save_cookies": False,
-            "debug_mode": False,
-        },
-    }
-
-
 def _ensure_user_feature_config() -> None:
     """Ensure user feature configuration file exists.
 
@@ -463,7 +433,7 @@ def _ensure_user_feature_config() -> None:
     config_path = get_config_paths().feature_config_path
 
     if not config_path.exists():
-        defaults = _get_default_feature_config()
+        defaults = default_feature_config()
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(config_path, "w", encoding="utf-8") as f:
@@ -486,7 +456,7 @@ def _load_feature_config_from_file() -> dict[str, Any]:
             user_config = json.load(f)
         if "features" in user_config:
             features = user_config["features"]
-            if not _is_str_dict(features):
+            if not is_str_dict(features):
                 msg = "Feature configuration 'features' section must be a dictionary"
                 raise ConfigurationError(msg)
             feature_dict.update(features)
@@ -591,23 +561,18 @@ def set_feature(key: str, value: object) -> None:
         msg = f"Feature value must be boolean, got {type(value).__name__}"
         raise ConfigurationError(msg)
 
-    # Load current config (as Pydantic model)
     feature_config = get_feature_config()
 
-    # Create updated feature dict
     feature_dict = {
         "save_cookies": feature_config.save_cookies,
         "debug_mode": feature_config.debug_mode,
     }
     feature_dict[key] = value
 
-    # Prepare the file content with version and features structure
     config_content = {"version": 1, "features": feature_dict}
 
-    # Write to file
     config_path = get_config_paths().feature_config_path
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config_content, f, indent=2)
 
-    # Clear cache so next call loads fresh config
     clear_feature_config_cache()

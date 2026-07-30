@@ -118,6 +118,8 @@ modules = [
     "utils",
     "utils.async_bridge",
     "utils.config",
+    "utils.config.contracts",
+    "utils.config.impl",
     "utils.cookies",
     "utils.encryption",
     "utils.file_handler",
@@ -238,6 +240,8 @@ name = "utils_adapter"
 modules = [
     "utils.async_bridge",
     "utils.config",
+    "utils.config.contracts",
+    "utils.config.impl",
     "utils.cookies",
     "utils.encryption",
     "utils.file_handler",
