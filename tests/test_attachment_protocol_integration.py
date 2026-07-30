@@ -54,7 +54,9 @@ class TestAttachmentProtocolIntegration:
         _setup_s3_upload_response(harness_server, status_code=204)
 
         with patch(
-            "perplexity_cli.attachments.upload_manager.uuid.uuid4", return_value="uuid-chain"
+            "perplexity_cli.attachments.upload_manager.uuid.uuid4",
+            return_value="uuid-chain",
+            autospec=True,
         ):
             uploader = AttachmentUploader(token="token-1")
             urls = run_async(uploader.upload_files([attachment]))
@@ -77,7 +79,9 @@ class TestAttachmentProtocolIntegration:
         _setup_s3_upload_response(harness_server, status_code=204)
 
         with patch(
-            "perplexity_cli.attachments.upload_manager.uuid.uuid4", return_value="uuid-bytes"
+            "perplexity_cli.attachments.upload_manager.uuid.uuid4",
+            return_value="uuid-bytes",
+            autospec=True,
         ):
             uploader = AttachmentUploader(token="token-2")
             run_async(uploader.upload_files([attachment]))
@@ -104,7 +108,9 @@ class TestAttachmentProtocolIntegration:
         _setup_s3_upload_response(harness_server, status_code=500, body="internal error")
 
         with patch(
-            "perplexity_cli.attachments.upload_manager.uuid.uuid4", return_value="uuid-fail"
+            "perplexity_cli.attachments.upload_manager.uuid.uuid4",
+            return_value="uuid-fail",
+            autospec=True,
         ):
             uploader = AttachmentUploader(token="token-3")
 

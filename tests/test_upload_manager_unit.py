@@ -13,40 +13,37 @@ from perplexity_cli.attachments.upload_manager import (
     _validate_s3_object_url,
 )
 from perplexity_cli.utils.exceptions import UpstreamSchemaError
+from tests.helpers.fake_transport import FakeHttpResponse
 
 
 class TestExtractErrorResponseText:
     """Tests for _extract_error_response_text()."""
 
     def test_extracts_text_from_response(self) -> None:
-        response = Mock()
-        response.text = "Error occurred"
+        response = FakeHttpResponse(text="Error occurred")
         result = _extract_error_response_text(response)
         assert result == "Error occurred"
 
     def test_truncates_to_500_chars(self) -> None:
-        response = Mock()
-        response.text = "x" * 600
+        response = FakeHttpResponse(text="x" * 600)
         result = _extract_error_response_text(response)
         assert len(result) == 500
 
     def test_falls_back_to_content_when_text_empty(self) -> None:
-        response = Mock()
-        response.text = ""
-        response.content = b"binary error"
+        response = FakeHttpResponse(text="", content=b"binary error")
         result = _extract_error_response_text(response)
         assert "binary error" in result
 
     def test_handles_text_none(self) -> None:
-        response = Mock()
-        response.text = None
-        response.content = b"fallback"
+        response = FakeHttpResponse(text=None, content=b"fallback")
         result = _extract_error_response_text(response)
         assert "fallback" in result
         assert len(result) <= 500
 
     def test_handles_attribute_error(self) -> None:
-        response = Mock(spec=[])
+        # A spec-restricted Mock with no attributes exercises the
+        # AttributeError fallback path that FakeHttpResponse cannot model.
+        response = Mock(spec_set=[])
         result = _extract_error_response_text(response)
         assert result == ""
 
