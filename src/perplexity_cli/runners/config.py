@@ -221,7 +221,7 @@ def _handle_set_config_error(
     if output_format == "json":
         handle_error(e, "pxcli config set", output_format="json")
     click.echo(f"[ERROR] Failed to update configuration: {e}", err=True)
-    logger.error("Configuration update failed: %s", e, exc_info=True)
+    logger.error("Configuration update failed: %s", e)
     sys.exit(1)
 
 

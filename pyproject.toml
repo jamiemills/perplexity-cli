@@ -94,16 +94,16 @@ select = [
     "SIM",   "BLE",   "FBT",   "TRY",
     "T20",   "ERA",   "PTH",   "PERF",
     "EM",    "RSE",
+    "LOG",   "G",     "DTZ",   "SLOT",
+    "PIE",
 ]
 ignore = [
     "E501",    "D105",   "D107",   "D301",
     "PLC0415",
-    "G004",    "G201",
     "FBT001",  "FBT002",  "FBT003",
-    "TRY004",  "TRY300",  "TRY301",  "TRY401",
     "BLE001",
-    "PTH123",  "PTH101",
-    "PERF401", "PERF403",
+    "TRY300",  "DTZ005",  "DTZ006",  "TRY401",  "LOG007",  "G201",    "G004",    "TRY004",  "TRY301",
+    "PTH123",  "PTH101",  "PERF401",  "PERF403",
     "PLR0911", "PLR0912",  "PLR0915",
     "PLR0133", "PLW2901",  "PLE0704",
     "SIM108",
@@ -128,14 +128,16 @@ convention = "google"
     "D", "S101", "PLR2004",
     "T201","SIM117","SIM118","SIM105","SIM101",
     "ARG001","ARG002","ARG005",
-    "PLW1510","PLR0913","C901","EM101","EM102","TRY003",
+    "PLW1510","PLR0913","C901","EM101","EM102","TRY003","DTZ001",
     "ERA001",
     "PTH100","PTH118","PTH120","PLW0108","PLR1722",
     "RUF059","RET504","RUF003","B011","F841","F821",
 ]
 "tests/fixtures/**/*.py" = ["ALL"]
 "vulture_whitelist.py" = ["B018", "D", "F821"]
-"scripts/**/*.py" = ["D", "T20", "FBT", "PLC0415", "PLR0911", "PLR0912", "BLE001", "SIM108", "ARG004", "PLE0704", "PLR0133", "PLW2901"]
+"scripts/**/*.py" = [ "PERF401", "TRY004", "PTH123", "TRY301","D", "T20", "FBT", "PLC0415", "PLR0911", "PLR0912", "BLE001",
+    "TRY300",  "DTZ005",  "DTZ006",  "TRY401",  "LOG007",  "G201",    "G004",    "TRY004",  "TRY301",
+    "PTH123",  "PTH101",  "PERF401",  "PERF403", "SIM108", "ARG004", "PLE0704", "PLR0133", "PLW2901"]
 "src/**/*.py" = ["FBT"]
 
 [tool.pytest.ini_options]

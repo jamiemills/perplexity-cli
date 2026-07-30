@@ -782,7 +782,7 @@ class SSEClient:
             return
 
         cookie_names = list(cookies.keys())
-        cf_cookies = [c for c in cookie_names if c.startswith("cf") or c.startswith("__cf")]
+        cf_cookies = [c for c in cookie_names if c.startswith(("cf", "__cf"))]
         self.logger.debug(
             "Cookies: %s total, %s Cloudflare-related",
             len(cookies),

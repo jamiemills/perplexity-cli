@@ -172,7 +172,6 @@ class TestAddHelpSections:
         @click.command("test")
         def _testcmd() -> None:
             """A minimal test command."""
-            pass
 
         config = HelpSectionConfig(exit_codes=True)
         cmd: click.Command = add_help_sections(_testcmd, config)
@@ -189,7 +188,6 @@ class TestAddHelpSections:
         @click.command("full")
         def _fullcmd() -> None:
             """A command with all help sections enabled."""
-            pass
 
         config = HelpSectionConfig(
             json_example='{"ok": true}',

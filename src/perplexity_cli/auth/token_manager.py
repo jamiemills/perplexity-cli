@@ -321,7 +321,7 @@ class TokenManager:
             cookies: The validated cookies dictionary.
         """
         cf_cookies = {
-            k: v for k, v in cookies.items() if k.startswith("cf") or k.startswith("__cf")
+            k: v for k, v in cookies.items() if k.startswith(("cf", "__cf"))
         }
         self.logger.debug(
             "Loaded %s cookies, including %s Cloudflare cookies", len(cookies), len(cf_cookies)

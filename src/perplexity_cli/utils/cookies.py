@@ -18,6 +18,6 @@ def to_curl_cffi_cookies(cookies: Mapping[str, str] | None) -> Cookies | dict[st
 
     jar = Cookies()
     for name, value in cookies.items():
-        secure = name.startswith("__Secure-") or name.startswith("__Host-")
+        secure = name.startswith(("__Secure-", "__Host-"))
         jar.set(name, value, secure=secure)
     return jar

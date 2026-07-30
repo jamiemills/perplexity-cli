@@ -210,7 +210,6 @@ class Formatter(ABC):
         Returns:
             Formatted answer text.
         """
-        pass
 
     @abstractmethod
     def format_references(self, references: list[WebResult]) -> str:
@@ -222,7 +221,6 @@ class Formatter(ABC):
         Returns:
             Formatted references string.
         """
-        pass
 
     def format_complete(self, answer: Answer, strip_references: bool = False) -> str:
         """Format complete answer with references.

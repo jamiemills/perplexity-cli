@@ -289,7 +289,7 @@ def _extract_uses_ref(uses_value: Any) -> str | None:
     """Return the external action reference, or None for local/reusable uses."""
     if not isinstance(uses_value, str):
         return None
-    if uses_value.startswith("./") or uses_value.startswith("docker://"):
+    if uses_value.startswith(("./", "docker://")):
         return None
     match = EXTERNAL_ACTION_PATTERN.match(uses_value)
     if match is None:

@@ -91,14 +91,14 @@ class TestResponseCoreMembers:
     """Kill mutations in response core member extraction."""
 
     def test_returns_tuple_for_valid_object(self):
-        obj = SimpleNamespace(ok=True, json=lambda: {})
+        obj = SimpleNamespace(ok=True, json=dict)
         result = _response_core_members(obj)
         assert result is not None
         assert result[0] is True
         assert callable(result[1])
 
     def test_returns_none_on_missing_ok(self):
-        obj = SimpleNamespace(json=lambda: {})
+        obj = SimpleNamespace(json=dict)
         assert _response_core_members(obj) is None
 
     def test_returns_none_on_missing_json(self):
@@ -106,7 +106,7 @@ class TestResponseCoreMembers:
         assert _response_core_members(obj) is None
 
     def test_ok_false_still_returns_tuple(self):
-        obj = SimpleNamespace(ok=False, json=lambda: {})
+        obj = SimpleNamespace(ok=False, json=dict)
         result = _response_core_members(obj)
         assert result is not None
         assert result[0] is False
@@ -150,19 +150,19 @@ class TestIsResponseProtocol:
     """Kill mutations in response protocol guard."""
 
     def test_ok_true_callable_json_passes(self):
-        obj = SimpleNamespace(ok=True, json=lambda: {})
+        obj = SimpleNamespace(ok=True, json=dict)
         assert _is_response_protocol(obj) is True
 
     def test_ok_false_with_int_status_passes(self):
-        obj = SimpleNamespace(ok=False, json=lambda: {}, status_code=500)
+        obj = SimpleNamespace(ok=False, json=dict, status_code=500)
         assert _is_response_protocol(obj) is True
 
     def test_ok_false_without_status_fails(self):
-        obj = SimpleNamespace(ok=False, json=lambda: {})
+        obj = SimpleNamespace(ok=False, json=dict)
         assert _is_response_protocol(obj) is False
 
     def test_ok_not_bool_fails(self):
-        obj = SimpleNamespace(ok=1, json=lambda: {})
+        obj = SimpleNamespace(ok=1, json=dict)
         assert _is_response_protocol(obj) is False
 
     def test_json_not_callable_fails(self):
@@ -182,7 +182,7 @@ class TestRequireResponse:
     """Kill mutations in response validation."""
 
     def test_valid_response_passes(self):
-        obj = SimpleNamespace(ok=True, json=lambda: {})
+        obj = SimpleNamespace(ok=True, json=dict)
         assert _require_response(obj) is obj
 
     def test_invalid_raises_upstream_schema_error(self):
@@ -190,7 +190,7 @@ class TestRequireResponse:
             _require_response(object())
 
     def test_ok_false_with_status_passes(self):
-        obj = SimpleNamespace(ok=False, json=lambda: {}, status_code=404)
+        obj = SimpleNamespace(ok=False, json=dict, status_code=404)
         assert _require_response(obj) is obj
 
 
