@@ -88,12 +88,15 @@ class TestAttachmentsIntegration:
         )
 
         assert result.exit_code == 0
-        assert "Test answer" in result.output
+        assert result.exception is None
+        assert "Test answer" in result.stdout
+        assert "[ERROR]" not in result.stdout
         call_args = mock_api.get_complete_answer.call_args
         assert call_args is not None
         assert call_args[0][0] == "What is this file?"
         attachments = call_args[1]["extra_params"][0]
         assert attachments == [s3_url]
+        mock_uploader.upload_files.assert_awaited_once()
 
     # -- Multiple attachments -----------------------------------------------
 
@@ -119,11 +122,13 @@ class TestAttachmentsIntegration:
         )
 
         assert result.exit_code == 0
-        assert "Test answer" in result.output
+        assert result.exception is None
+        assert "Test answer" in result.stdout
+        assert "[ERROR]" not in result.stdout
         call_args = mock_api.get_complete_answer.call_args
         attachments = call_args[1]["extra_params"][0]
-        assert len(attachments) == 2
-        assert all(isinstance(url, str) and url.startswith("https://") for url in attachments)
+        assert attachments == s3_urls
+        mock_uploader.upload_files.assert_awaited_once()
 
     # -- Repeated attach flags ----------------------------------------------
 
@@ -156,8 +161,12 @@ class TestAttachmentsIntegration:
         )
 
         assert result.exit_code == 0
+        assert result.exception is None
+        assert "Test answer" in result.stdout
+        assert "[ERROR]" not in result.stdout
         attachments = mock_api.get_complete_answer.call_args[1]["extra_params"][0]
-        assert len(attachments) == 2
+        assert attachments == s3_urls
+        mock_uploader.upload_files.assert_awaited_once()
 
     # -- Nonexistent file ---------------------------------------------------
 
@@ -172,8 +181,15 @@ class TestAttachmentsIntegration:
         )
 
         assert result.exit_code == 1
-        assert "Failed to load attachments" in result.output
-        assert "File or directory not found" in result.output
+        assert isinstance(result.exception, SystemExit)
+        assert result.exception.code == 1
+        # Exact attachment-failure contract goes to stderr, never stdout.
+        assert (
+            "[ERROR] Failed to load attachments: "
+            "File or directory not found: /nonexistent/file.txt" in result.stderr
+        )
+        assert "[ERROR]" not in result.stdout
+        assert result.stdout == ""
 
     # -- Directory attachment -----------------------------------------------
 
@@ -199,9 +215,12 @@ class TestAttachmentsIntegration:
         )
 
         assert result.exit_code == 0
+        assert result.exception is None
+        assert "Test answer" in result.stdout
+        assert "[ERROR]" not in result.stdout
         attachments = mock_api.get_complete_answer.call_args[1]["extra_params"][0]
-        assert len(attachments) == 3
-        assert all(isinstance(url, str) and url.startswith("https://") for url in attachments)
+        assert attachments == s3_urls
+        mock_uploader.upload_files.assert_awaited_once()
 
     # -- Directory skips hidden / sensitive ---------------------------------
 
@@ -226,8 +245,15 @@ class TestAttachmentsIntegration:
         )
 
         assert result.exit_code == 0
+        assert result.exception is None
+        assert "Test answer" in result.stdout
+        assert "[ERROR]" not in result.stdout
         attachments = mock_api.get_complete_answer.call_args[1]["extra_params"][0]
         assert attachments == s3_urls
+        # Sensitive / hidden files must never be uploaded.
+        assert all(".env" not in url and ".hidden" not in url for url in attachments)
+        assert all("private.key" not in url for url in attachments)
+        mock_uploader.upload_files.assert_awaited_once()
 
     # -- Too many directory files -------------------------------------------
 

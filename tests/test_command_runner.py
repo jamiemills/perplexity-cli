@@ -35,7 +35,11 @@ def test_run_auth_command_saves_token_and_cookies(capsys):
         run_auth_command(ctx_obj=None, port=9222)
 
     captured = capsys.readouterr()
-    assert "Authentication successful" in captured.out
+    assert "[OK] Authentication successful!" in captured.out
+    assert "[OK] Token saved to:" in captured.out
+    assert "[OK] 1 cookies saved (including Cloudflare cookies)" in captured.out
+    assert "Authenticating with Perplexity.ai..." in captured.out
+    assert "[ERROR]" not in captured.out
     mock_tm.save_token.assert_called_once_with("token-123", cookies={"cf_clearance": "cookie-1"})
 
 
@@ -48,7 +52,11 @@ def test_run_logout_command_reports_no_credentials(capsys):
         run_logout_command()
 
     captured = capsys.readouterr()
-    assert "No stored credentials found." in captured.out
+    assert captured.out.strip() == "No stored credentials found."
+    assert "[ERROR]" not in captured.out
+    # Nothing to clear: token_exists() is the only token-manager interaction.
+    mock_tm.token_exists.assert_called_once_with()
+    mock_tm.save_token.assert_not_called()
 
 
 def test_run_auth_command_handles_authentication_error(capsys):
@@ -67,7 +75,10 @@ def test_run_auth_command_handles_authentication_error(capsys):
 
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
-    assert "Authentication failed: Chrome not found" in captured.err
+    assert "[ERROR] Authentication failed: Chrome not found" in captured.err
+    assert "Troubleshooting:" in captured.err
+    assert "[ERROR]" not in captured.out
+    assert "Authentication successful" not in captured.out
 
 
 def test_run_set_config_command_updates_setting(capsys):
@@ -79,7 +90,11 @@ def test_run_set_config_command_updates_setting(capsys):
         run_set_config_command("debug_mode", "true")
 
     captured = capsys.readouterr()
-    assert "Configuration updated: debug_mode = True" in captured.out
+    assert captured.out.startswith("[OK] Configuration updated: debug_mode = True\n")
+    # Contextual contract message for enabling debug mode must also be emitted.
+    assert "[INFO] Debug mode enabled." in captured.out
+    assert "All commands will now log at DEBUG level." in captured.out
+    assert "[ERROR]" not in captured.out
     mock_set_feature.assert_called_once_with("debug_mode", True)
     mock_clear_cache.assert_called_once()
 
@@ -94,7 +109,8 @@ def test_run_set_config_command_handles_configuration_error(capsys):
 
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
-    assert "Failed to update configuration: bad config" in captured.err
+    assert captured.err.strip() == "[ERROR] Failed to update configuration: bad config"
+    assert "[ERROR]" not in captured.out
 
 
 def test_run_show_config_command_displays_config_and_env_overrides(capsys, monkeypatch):
@@ -115,8 +131,11 @@ def test_run_show_config_command_displays_config_and_env_overrides(capsys, monke
 
     captured = capsys.readouterr()
     assert "Perplexity CLI Configuration" in captured.out
+    assert "Config file: /tmp/config.json" in captured.out
     assert "save_cookies: True" in captured.out
+    assert "debug_mode:   False" in captured.out
     assert "PERPLEXITY_SAVE_COOKIES=true" in captured.out
+    assert "[ERROR]" not in captured.out
 
 
 def test_run_export_threads_command_forwards_filters_and_writes_csv(capsys):
@@ -160,7 +179,8 @@ def test_run_export_threads_command_forwards_filters_and_writes_csv(capsys):
         )
 
     captured = capsys.readouterr()
-    assert "Export complete" in captured.out
+    assert "[OK] Export complete" in captured.out
+    assert "[ERROR]" not in captured.out
     mock_scraper_class.assert_called_once_with(
         token="token-123",
         cookies={"cf_clearance": "cookie-1"},
@@ -203,4 +223,6 @@ def test_run_export_threads_command_handles_invalid_date(capsys):
 
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
-    assert "Invalid date format: bad date" in captured.err
+    assert "[ERROR] Invalid date format: bad date" in captured.err
+    assert "Please use YYYY-MM-DD format (e.g., 2025-12-23)" in captured.err
+    assert "[ERROR]" not in captured.out

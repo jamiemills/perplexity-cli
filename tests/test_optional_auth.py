@@ -1,5 +1,6 @@
 """Tests for optional authentication in query command."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from perplexity_cli.api.models import Answer
@@ -34,6 +35,7 @@ class TestLoadTokenOptional:
 
         assert token is None
         assert cookies is None
+        mock_tm.load_token.assert_called_once_with()
 
     @patch("perplexity_cli.query_runner.TokenManager")
     def test_load_token_optional_token_exists(self, mock_tm_class):
@@ -51,6 +53,7 @@ class TestLoadTokenOptional:
 
         assert token == test_token
         assert cookies == test_cookies
+        mock_tm.load_token.assert_called_once_with()
 
     @patch("perplexity_cli.query_runner.TokenManager")
     def test_load_token_optional_no_exit_on_missing_token(self, mock_tm_class):
@@ -67,6 +70,7 @@ class TestLoadTokenOptional:
 
         assert token is None
         assert cookies is None
+        mock_tm.load_token.assert_called_once_with()
 
 
 class TestQueryWithoutAuthentication:
@@ -99,11 +103,15 @@ class TestQueryWithoutAuthentication:
         result = runner.invoke(query, ["test question"])
 
         assert result.exit_code == 0
-        assert "Test answer without auth" in result.output
-        # Verify API was called with None token
+        assert result.exception is None
+        assert result.stdout.strip() == "Test answer without auth"
+        assert "[ERROR]" not in result.stdout
+        # Verify API was called with None token and None cookies
         mock_api_class.assert_called_once()
         call_args = mock_api_class.call_args
         assert call_args[0][0] is None  # token is first positional arg
+        assert call_args[0][1] is None  # cookies is second positional arg
+        mock_api.get_complete_answer.assert_called_once()
 
     @patch("perplexity_cli.query_runner.StyleManager")
     @patch("perplexity_cli.query_runner.TokenManager")
@@ -136,12 +144,15 @@ class TestQueryWithoutAuthentication:
         result = runner.invoke(query, ["test question"])
 
         assert result.exit_code == 0
-        assert "Test answer with auth" in result.output
+        assert result.exception is None
+        assert result.stdout.strip() == "Test answer with auth"
+        assert "[ERROR]" not in result.stdout
         # Verify API was called with token
         mock_api_class.assert_called_once()
         call_args = mock_api_class.call_args
         assert call_args[0][0] == test_token  # token is first positional arg
         assert call_args[0][1] == test_cookies  # cookies is second positional arg
+        mock_api.get_complete_answer.assert_called_once()
 
     @patch("perplexity_cli.query_runner.StyleManager")
     @patch("perplexity_cli.query_runner.TokenManager")
@@ -166,7 +177,11 @@ class TestQueryWithoutAuthentication:
         result = runner.invoke(query, ["--format", "plain", "test question"])
 
         assert result.exit_code == 0
-        assert "Plain text answer" in result.output
+        assert result.exception is None
+        assert result.stdout.strip() == "Plain text answer"
+        assert "[ERROR]" not in result.stdout
+        # Plain format must not emit JSON structure
+        assert "{" not in result.stdout
 
     @patch("perplexity_cli.query_runner.StyleManager")
     @patch("perplexity_cli.query_runner.TokenManager")
@@ -191,7 +206,9 @@ class TestQueryWithoutAuthentication:
         result = runner.invoke(query, ["--format", "markdown", "test question"])
 
         assert result.exit_code == 0
-        assert "Markdown answer" in result.output
+        assert result.exception is None
+        assert result.stdout.strip() == "# Markdown answer"
+        assert "[ERROR]" not in result.stdout
 
     @patch("perplexity_cli.query_runner.StyleManager")
     @patch("perplexity_cli.query_runner.TokenManager")
@@ -216,7 +233,16 @@ class TestQueryWithoutAuthentication:
         result = runner.invoke(query, ["--format", "json", "test question"])
 
         assert result.exit_code == 0
-        assert "JSON answer" in result.output
+        assert result.exception is None
+        assert "[ERROR]" not in result.stdout
+        # Exact JSON envelope contract: keys, command, result body, and meta.
+        envelope = json.loads(result.stdout)
+        assert set(envelope) == {"ok", "command", "result", "meta", "next_actions"}
+        assert envelope["ok"] is True
+        assert envelope["command"] == "pxcli query"
+        assert envelope["result"] == {"answer": "JSON answer", "references": []}
+        assert envelope["meta"] is None
+        assert envelope["next_actions"] == []
 
     @patch("perplexity_cli.query_runner.StyleManager")
     @patch("perplexity_cli.query_runner.TokenManager")
@@ -248,8 +274,13 @@ class TestQueryWithoutAuthentication:
         result = runner.invoke(query, ["--strip-references", "test question"])
 
         assert result.exit_code == 0
-        # References should be stripped
-        assert "[1]" not in result.output or "References" not in result.output.split("[1]")[0]
+        assert result.exception is None
+        # Citation markers are stripped from the answer body...
+        assert "[1]" not in result.stdout
+        # ...and the references section is omitted entirely.
+        assert "References" not in result.stdout
+        # The answer body itself must still be rendered.
+        assert "Answer with" in result.stdout
 
 
 class TestQueryAuthenticationErrors:
@@ -287,8 +318,13 @@ class TestQueryAuthenticationErrors:
 
         # Should exit with error code
         assert result.exit_code == 1
-        assert "[ERROR] Authentication failed" in result.output
-        assert "Re-authenticate with" in result.output
+        assert isinstance(result.exception, SystemExit)
+        assert result.exception.code == 1
+        # Exact 401 contract messages go to stderr, never stdout.
+        assert "[ERROR] Authentication failed. Token may be expired." in result.stderr
+        assert "Re-authenticate with: perplexity-cli auth" in result.stderr
+        assert "[ERROR]" not in result.stdout
+        assert result.stdout == ""
 
     @patch("perplexity_cli.query_runner.StyleManager")
     @patch("perplexity_cli.query_runner.TokenManager")
@@ -322,7 +358,12 @@ class TestQueryAuthenticationErrors:
 
         # Should exit with error code
         assert result.exit_code == 1
-        assert "[ERROR] Rate limit exceeded" in result.output
+        assert isinstance(result.exception, SystemExit)
+        assert result.exception.code == 1
+        # Exact 429 contract message goes to stderr, never stdout.
+        assert "[ERROR] Rate limit exceeded. Please wait and try again." in result.stderr
+        assert "[ERROR]" not in result.stdout
+        assert result.stdout == ""
 
 
 class TestAttachmentAuthentication:
@@ -343,9 +384,15 @@ class TestAttachmentAuthentication:
 
         # Should exit with error code
         assert result.exit_code == 1
-        # Should show authentication error
-        assert "File attachments require authentication" in result.output
-        assert "pxcli auth login" in result.output
+        assert isinstance(result.exception, SystemExit)
+        assert result.exception.code == 1
+        # Exact auth-required contract messages go to stderr, never stdout.
+        assert "[ERROR] File attachments require authentication." in result.stderr
+        assert "Please authenticate first with: pxcli auth login" in result.stderr
+        assert "[ERROR]" not in result.stdout
+        assert result.stdout == ""
+        # File resolution was attempted before the auth gate tripped.
+        mock_resolve_files.assert_called_once()
 
     @patch("perplexity_cli.query_runner.resolve_file_arguments")
     @patch("perplexity_cli.query_runner.TokenManager")
@@ -364,9 +411,15 @@ class TestAttachmentAuthentication:
 
         # Should exit with error code
         assert result.exit_code == 1
-        # Should show authentication error
-        assert "File attachments require authentication" in result.output
-        assert "pxcli auth login" in result.output
+        assert isinstance(result.exception, SystemExit)
+        assert result.exception.code == 1
+        # Exact auth-required contract messages go to stderr, never stdout.
+        assert "[ERROR] File attachments require authentication." in result.stderr
+        assert "Please authenticate first with: pxcli auth login" in result.stderr
+        assert "[ERROR]" not in result.stdout
+        assert result.stdout == ""
+        # The inline file path was resolved from the query text before the auth gate.
+        mock_resolve_files.assert_called_once()
 
     @patch("perplexity_cli.query_runner.StyleManager")
     @patch("perplexity_cli.query_runner.run_async")
@@ -428,4 +481,14 @@ class TestAttachmentAuthentication:
 
         # Should succeed
         assert result.exit_code == 0
-        assert "Answer with attachment" in result.output
+        assert result.exception is None
+        assert result.stdout.strip() == "Answer with attachment"
+        assert "[ERROR]" not in result.stdout
+        # The uploaded attachment URL is forwarded to the query API.
+        mock_api.get_complete_answer.assert_called_once()
+        api_call = mock_api.get_complete_answer.call_args
+        assert api_call[0][0] == "test question"
+        assert api_call[1]["extra_params"][0] == ["https://s3.example.com/file.txt"]
+        # upload_files coroutine is created and handed to run_async (mocked here).
+        mock_uploader.upload_files.assert_called_once()
+        mock_run_async.assert_called_once()
