@@ -2,7 +2,7 @@
 
 These tests verify the Safety scanning pipeline using fake local executables
 instead of network-dependent ``uvx`` calls.  Integration tests are marked
-with ``@pytest.mark.integration`` and remain hermetic — they exercise the
+with ``@pytest.mark.hermetic_integration`` and remain hermetic — they exercise the
 command construction and failure propagation without live network usage.
 
 For true end-to-end scanning, the ``make safety`` target is exercised in CI.
@@ -183,7 +183,7 @@ def test_agent_check_safety_stage_copies_pyproject_toml(tmp_path, monkeypatch) -
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
+@pytest.mark.hermetic_integration
 def test_no_scan_failing_vulnerabilities_hermetic(tmp_path, monkeypatch) -> None:
     """Safety scan using the fake scanner finds no vulnerabilities."""
     cmd, stage = agent_check._build_safety_command(tmp_path)
@@ -194,7 +194,7 @@ def test_no_scan_failing_vulnerabilities_hermetic(tmp_path, monkeypatch) -> None
         stage.cleanup()
 
 
-@pytest.mark.integration
+@pytest.mark.hermetic_integration
 def test_safety_cli_available_hermetic() -> None:
     """Fake safety script is present and runnable."""
     assert FAKE_SAFETY.is_file()

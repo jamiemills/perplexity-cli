@@ -419,7 +419,7 @@ class TestCLICommands:
         assert "Troubleshooting" in result.output
 
 
-@pytest.mark.integration
+@pytest.mark.real_api
 class TestCLIIntegration:
     """Integration tests for CLI with real components."""
 

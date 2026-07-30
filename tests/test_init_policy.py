@@ -58,6 +58,17 @@ def _is_all_assign(node: ast.stmt) -> bool:
     return any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets)
 
 
+def _is_protocol_classdef(node: ast.stmt) -> bool:
+    """Return True for ``class X(Protocol):`` definitions (declarative interfaces)."""
+    if not isinstance(node, ast.ClassDef):
+        return False
+    return any(
+        (isinstance(b, ast.Name) and b.id == "Protocol")
+        or (isinstance(b, ast.Attribute) and b.attr == "Protocol")
+        for b in node.bases
+    )
+
+
 def _classify_statement(node: ast.stmt) -> str:
     """Classify a single AST statement as allowed or executable."""
     if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
@@ -70,6 +81,8 @@ def _classify_statement(node: ast.stmt) -> str:
         return "__version__"
     if _is_simple_literal_assign(node):
         return "constant"
+    if _is_protocol_classdef(node):
+        return "protocol"
     return "executable"
 
 

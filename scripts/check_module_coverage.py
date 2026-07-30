@@ -142,7 +142,9 @@ def _is_statement_free(  # nosemgrep: boolean-flag-argument
 
 
 def _all_import_or_docstring(body: list[ast.stmt]) -> bool:
-    return all(_is_docstring_node(n) or _is_import_node(n) for n in body)
+    return all(
+        _is_docstring_node(n) or _is_import_node(n) or _is_protocol_classdef(n) for n in body
+    )
 
 
 def _all_init_stub(body: list[ast.stmt]) -> bool:
@@ -167,6 +169,22 @@ def _is_import_node(node: ast.AST) -> bool:
     return isinstance(node, (ast.Import, ast.ImportFrom))
 
 
+def _is_protocol_classdef(node: ast.AST) -> bool:
+    """Return True for ``class X(Protocol):`` definitions (declarative interfaces)."""
+    if not isinstance(node, ast.ClassDef):
+        return False
+    return any(_is_protocol_base(base) for base in node.bases)
+
+
+def _is_protocol_base(base: ast.expr) -> bool:
+    """Return True if a base expression references ``Protocol``."""
+    if isinstance(base, ast.Name):
+        return base.id == "Protocol"
+    if isinstance(base, ast.Attribute):
+        return base.attr == "Protocol"
+    return False
+
+
 def _load_report(path: str) -> dict[str, Any]:
     report_path = Path(path)
     if not report_path.is_file():
@@ -175,6 +193,43 @@ def _load_report(path: str) -> dict[str, Any]:
         sys.exit(2)
     with report_path.open() as f:
         return json.load(f)
+
+
+def _format_module_name(filepath: Any) -> str:
+    """Format a file path as a module name for display."""
+    return str(filepath).replace("src/perplexity_cli/", "").replace(".py", "")
+
+
+def _check_module_entry(
+    filepath: Any, entry: Any, min_coverage: float
+) -> tuple[str, float, int, int] | None:
+    """Check a single module entry against the coverage threshold."""
+    entry_dict = _entry_as_dict(entry)
+    summary = _summary_from_entry(entry_dict)
+    pct = summary.get("percent_covered", 0.0)
+    if not isinstance(pct, (int, float)) or pct >= min_coverage:
+        return None
+    module = _format_module_name(filepath)
+    stmts = summary.get("num_statements", 0)
+    miss = summary.get("missing_lines", 0)
+    return (module, float(pct), int(stmts), int(miss))
+
+
+def _check_modules(
+    coverage_data: dict[str, Any], min_coverage: float
+) -> list[tuple[str, float, int, int]]:
+    """Return a list of (module, percentage, statements, missing) for failing modules."""
+    files: object = coverage_data.get("files")
+    if not isinstance(files, dict) or not files:
+        msg = "Coverage report contains no module entries."
+        raise ValueError(msg)
+    typed_files = cast(dict[str, Any], files)
+    failures: list[tuple[str, float, int, int]] = []
+    for filepath, entry in sorted(typed_files.items()):
+        result = _check_module_entry(filepath, entry, min_coverage)
+        if result is not None:
+            failures.append(result)
+    return failures
 
 
 # ---------------------------------------------------------------------------
@@ -378,3 +433,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# Exported for test use (tests/test_module_coverage.py imports these directly).
+__all__ = ["_check_modules", "_format_module_name", "main"]

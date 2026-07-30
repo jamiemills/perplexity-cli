@@ -144,7 +144,6 @@ class TestHermeticAPIIntegration:
         assert harness_server.request_count == 0
 
 
-@pytest.mark.integration
 @pytest.mark.real_api
 @pytest.mark.slow
 @pytest.mark.skipif(
@@ -232,7 +231,6 @@ class TestPerplexityAPIIntegration:
         assert len(answer2.text) > 0
 
 
-@pytest.mark.integration
 @pytest.mark.real_api
 @pytest.mark.slow
 @pytest.mark.skipif(

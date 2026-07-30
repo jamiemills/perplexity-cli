@@ -140,12 +140,12 @@ convention = "google"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = '--strict-markers -v -m "not integration and not real_api and not manual and not real_user_config and not fuzz"'
+addopts = '--strict-markers -v'
 asyncio_default_fixture_loop_scope = "function"
 strict_config = true
 strict_xfail = true
 markers = [
-    "integration: marks tests as integration tests",
+    "hermetic_integration: marks tests as hermetic integration tests (loopback only, no real network)",
     "security: marks tests as security tests",
     "slow: marks tests as slow-running",
     "real_api: marks tests that call the real Perplexity API (skipped in CI)",

@@ -313,14 +313,14 @@ mutate-browse:  ## Browse mutation results in interactive TUI
 # Testing
 # ---------------------------------------------------------------------------
 
-.PHONY: test test-coverage-report module-coverage test-coverage test-fuzz test-property test-property-push test-property-ci
+.PHONY: test test-coverage-report module-coverage test-coverage test-fuzz test-integration test-property test-property-push test-property-ci
 
 test:  ## Run tests without coverage (fail-fast, parallel)
-	uv run pytest tests/ -q --tb=line -x -n auto
+	uv run pytest tests/ -q --tb=line -x -n auto -m "not property and not hermetic_integration and not real_api and not manual and not real_user_config and not fuzz"
 
 test-coverage-report:  ## Run tests and produce coverage reports
 	uv run pytest tests/ -q --tb=line -x -n auto --dist loadfile \
-		-m "not property" \
+		-m "not property and not hermetic_integration and not real_api and not manual and not real_user_config and not fuzz" \
 		--cov=perplexity_cli --cov-report=term-missing \
 		--cov-report=json --cov-report=xml:coverage.xml
 
@@ -331,6 +331,9 @@ test-coverage: test-coverage-report module-coverage  ## Run tests with coverage 
 
 test-fuzz:  ## Run fuzz tests
 	uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz
+
+test-integration:  ## Run hermetic integration tests (loopback only)
+	uv run pytest tests/ -q --tb=short -m hermetic_integration
 
 test-property:  ## Run property-based tests (dev profile, 10 examples)
 	uv run pytest tests/test_property.py -v --tb=short -m property --hypothesis-profile=dev
