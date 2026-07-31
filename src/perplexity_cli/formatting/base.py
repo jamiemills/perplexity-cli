@@ -7,7 +7,7 @@ import re
 import sys
 from abc import ABC, abstractmethod
 
-from perplexity_cli.api.models import Answer, WebResult
+from perplexity_cli.contracts.query import Answer, WebResult
 
 
 def _is_structural_line(stripped: str) -> bool:

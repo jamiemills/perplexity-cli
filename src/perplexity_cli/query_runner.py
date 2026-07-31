@@ -21,10 +21,10 @@ import click
 from perplexity_cli import attachments
 from perplexity_cli._types import DebugMode, OutputFormat, QueryOptions, SchemaInclusion
 from perplexity_cli.api.endpoints import PerplexityAPI
-from perplexity_cli.api.models import QueryInput, TraceContext
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.auth.utils import load_token_optional
+from perplexity_cli.contracts.query import QueryInput, TraceContext
 from perplexity_cli.envelope import Meta, envelope_to_dict, success_envelope
 from perplexity_cli.error_handler import handle_error
 from perplexity_cli.formatting import get_formatter, list_formatters
@@ -54,7 +54,7 @@ from perplexity_cli.utils.version import get_version
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from perplexity_cli.api.models import Answer
+    from perplexity_cli.contracts.query import Answer
     from perplexity_cli.formatting.base import Formatter
     from perplexity_cli.utils.attachment_models import FileAttachment
 

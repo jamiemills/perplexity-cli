@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from perplexity_cli.formatting.base import Formatter
 
 if TYPE_CHECKING:
-    from perplexity_cli.api.models import Answer, WebResult
+    from perplexity_cli.contracts.query import Answer, WebResult
 
 
 class JSONFormatter(Formatter):

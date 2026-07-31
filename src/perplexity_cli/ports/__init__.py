@@ -12,7 +12,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import Protocol, runtime_checkable
 
-from perplexity_cli.api.models import Answer, QueryInput, SSEMessage
+from perplexity_cli.api.models import SSEMessage
+from perplexity_cli.contracts.query import Answer, QueryInput
 from perplexity_cli.models.model_config import ModelConfigEntry
 from perplexity_cli.utils.attachment_models import FileAttachment
 

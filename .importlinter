@@ -90,6 +90,8 @@ unmatched_ignore_imports_alerting = none
 name = ports must not import non-allowed layers
 type = forbidden
 source_modules =
+    perplexity_cli.contracts
+    perplexity_cli.contracts.query
     perplexity_cli.ports
 forbidden_modules =
     perplexity_cli.api
@@ -113,9 +115,11 @@ forbidden_modules =
     perplexity_cli.mcp_server
     perplexity_cli.runners
 ignore_imports =
+    perplexity_cli.contracts.query -> perplexity_cli.utils.upstream_contracts
     perplexity_cli.ports -> perplexity_cli.api.contracts
     perplexity_cli.ports -> perplexity_cli.api.models
     perplexity_cli.ports -> perplexity_cli.auth.models
+    perplexity_cli.ports -> perplexity_cli.contracts.query
     perplexity_cli.ports -> perplexity_cli.threads.models
     perplexity_cli.ports -> perplexity_cli.utils.attachment_models
     perplexity_cli.ports -> perplexity_cli.utils.rate_limiter_models

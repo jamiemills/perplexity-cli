@@ -73,6 +73,8 @@ modules = [
     "api.contracts",
     "api.models",
     "auth.models",
+    "contracts",
+    "contracts.query",
     "ports",
     "threads.models",
     "utils.attachment_models",
