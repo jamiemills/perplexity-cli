@@ -205,6 +205,7 @@ dev = [
     "ruamel.yaml>=0.18",
     "tomli>=2.0",
     "grimp>=3.0",
+    "atheris>=3.1.0",
 ]
 
 [tool.deptry.per_rule_ignores]
