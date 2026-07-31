@@ -1321,7 +1321,7 @@ dev = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "atheris" },
+    { name = "atheris", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "deptry" },
     { name = "grimp" },
     { name = "hypothesis" },
@@ -1364,7 +1364,7 @@ provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "atheris", specifier = ">=3.1.0" },
+    { name = "atheris", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = ">=3.1.0" },
     { name = "deptry", specifier = ">=0.20" },
     { name = "grimp", specifier = ">=3.0" },
     { name = "hypothesis", specifier = ">=6.0" },
