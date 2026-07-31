@@ -1,4 +1,8 @@
-"""Exit code constants and exception-to-exit-code mapping."""
+"""Exit code constants and exception-to-exit-code mapping.
+
+Defines the process exit codes used across the CLI and maps the typed
+exceptions raised by the API and auth layers onto those codes.
+"""
 
 from __future__ import annotations
 
