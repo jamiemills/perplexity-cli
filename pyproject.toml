@@ -138,7 +138,7 @@ convention = "google"
 "scripts/**/*.py" = [ "DOC", "FURB", "PERF401", "TRY004", "PTH123", "TRY301","D", "T20", "FBT", "PLC0415", "PLR0911", "PLR0912", "BLE001",
     "TRY300",  "DTZ005",  "DTZ006",  "TRY401",  "LOG007",  "G201",    "G004",    "TRY004",  "TRY301",
     "PTH123",  "PTH101",  "PERF401",  "PERF403", "SIM108", "ARG004", "PLE0704", "PLR0133", "PLW2901"]
-"src/**/*.py" = [ "DOC", "FURB","FBT"]
+"src/**/*.py" = [ "DOC", "FURB", "FBT", "E402", "D" ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
