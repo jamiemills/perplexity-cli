@@ -124,14 +124,14 @@ max-nested-blocks = 3
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = [ "DOC", "FURB",
+"tests/**/*.py" = [
     "D", "S101", "PLR2004",
     "T201","SIM117","SIM118","SIM105","SIM101",
     "ARG001","ARG002","ARG005",
     "PLW1510","PLR0913","C901","EM101","EM102","TRY003","DTZ001",
     "ERA001",
     "PTH100","PTH118","PTH120","PLW0108","PLR1722",
-    "RUF059","RET504","RUF003","B011","F841","F821",
+    "RUF059","RET504","RUF003","B011","F841",
 ]
 "tests/fixtures/**/*.py" = ["ALL"]
 "vulture_whitelist.py" = ["B018", "D", "F821"]
