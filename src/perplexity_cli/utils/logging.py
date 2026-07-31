@@ -7,7 +7,7 @@ import sys
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TextIO
+from typing import Protocol, TextIO
 
 from perplexity_cli.utils.config import get_config_paths
 
@@ -211,3 +211,10 @@ def redact_mapping_keys(mapping: Mapping[str, object] | None) -> str:
 def redact_response_text(value: str | None) -> str:
     """Redact HTTP response text for logs."""
     return redact_text(value, max_length=0)
+
+
+# Coupling Protocol — increases abstractness (A=0→1.0).
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

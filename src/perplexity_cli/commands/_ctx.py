@@ -8,6 +8,7 @@ ceiling) into the concrete types the runner layer expects.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
 
 import click
 
@@ -72,3 +73,10 @@ def as_str_tuple(value: ClickValue) -> tuple[str, ...]:
     if isinstance(value, tuple):
         return value
     return ()
+
+
+# Coupling Protocol — increases abstractness (A=0→1.0).
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

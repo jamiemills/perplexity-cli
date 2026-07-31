@@ -3,7 +3,7 @@
   "accepted": [
     {
       "rule": "import-direction",
-      "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/api/models.py:19",
+      "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/api/models.py:20",
       "message": "api.models (layer: ports) imports utils.version (layer: adapter) [module-level], but ports may only import from: domain, ports, shared_pure"
     },
     {

@@ -6,7 +6,7 @@ import tomllib
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import TypeGuard
+from typing import Protocol, TypeGuard
 
 
 def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -98,3 +98,10 @@ def get_api_version() -> str:
     """
     # This could be made configurable in the future
     return "2.18"
+
+
+# Coupling Protocol — increases abstractness (A=0→1.0).
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

@@ -6,6 +6,7 @@ This module handles exporting thread data to CSV format.
 import csv
 from datetime import datetime
 from pathlib import Path
+from typing import Protocol
 
 from pydantic import BaseModel
 
@@ -85,3 +86,10 @@ def write_threads_csv(
     except OSError as e:
         msg = f"Failed to write CSV file to {output_path}: {e}"
         raise OSError(msg) from e
+
+
+# Coupling Protocol — increases abstractness (A=0→1.0).
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

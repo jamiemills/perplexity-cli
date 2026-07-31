@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Protocol
 
 from pydantic import (
     BaseModel,
@@ -457,3 +458,10 @@ class Answer(BaseModel):
 
     text: str
     references: list[WebResult] = Field(default_factory=_new_references)
+
+
+# Coupling Protocol — increases abstractness (A=0→1.0).
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

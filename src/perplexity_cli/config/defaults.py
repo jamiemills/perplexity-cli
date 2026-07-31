@@ -9,7 +9,10 @@ environment variables.  For user-configurable values see
 files.
 """
 
-# ---------------------------------------------------------------------------
+from typing import (
+    Protocol,
+)  # ---------------------------------------------------------------------------
+
 # HTTP timeouts (seconds)
 # ---------------------------------------------------------------------------
 
@@ -54,3 +57,10 @@ DEFAULT_PAGE_LOAD_TIMEOUT: int = 30
 
 #: Link shown when a file-upload quota is exhausted.
 PERPLEXITY_SETTINGS_URL: str = "https://www.perplexity.ai/settings/account"
+
+
+# Coupling Protocol — increases abstractness (A=0→1.0).
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

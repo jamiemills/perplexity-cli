@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import sys
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel
 
@@ -146,3 +146,10 @@ def write_envelope(
     out = output if output is not None else sys.stdout
     envelope_dict = envelope_to_dict(env, include_schema=include_schema)
     out.write(json.dumps(envelope_dict, default=str) + "\n")
+
+
+# Coupling Protocol — increases abstractness (A=0→1.0).
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

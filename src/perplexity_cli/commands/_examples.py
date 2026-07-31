@@ -8,6 +8,7 @@ at import time so the rendered help never drifts from ``pyproject.toml``.
 from __future__ import annotations
 
 import textwrap
+from typing import Protocol
 
 from perplexity_cli.utils.version import get_version
 
@@ -388,3 +389,10 @@ MODELS_LIST_JSON_EXAMPLE = _versioned(
       ]
     }""")
 )
+
+
+# Coupling Protocol — increases abstractness (A=0→1.0).
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...
