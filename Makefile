@@ -286,8 +286,8 @@ ifndef MODULE
 endif
 	uv run mutmut run src/perplexity_cli/$(MODULE)/
 
-mutate-diff:
-	@mapfile -t files < <(uv run python scripts/discover_mutate_diff_files.py); \
+mutate-diff:  ## Run mutation testing on files changed between BASE_SHA and TESTED_SHA
+	@mapfile -t files < <(uv run python scripts/discover_mutate_diff_files.py --base-sha $(BASE_SHA) --tested-sha $(TESTED_SHA)); \
 	if [ "$${#files[@]}" -eq 0 ]; then \
 		echo "No source files changed -- skipping mutation tests."; \
 		exit 0; \

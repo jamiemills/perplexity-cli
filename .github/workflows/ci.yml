@@ -300,3 +300,56 @@ jobs:
 
       - name: Run compatibility tests
         run: make ci-test-compat
+
+  diff-coverage:
+    name: Diff Coverage (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --locked --group dev
+
+      - name: Run tests with coverage
+        run: make test-coverage-report
+
+      - name: Check diff coverage
+        run: make diff-coverage BASE_SHA=${{ github.event.pull_request.base.sha }} TESTED_SHA=${{ github.event.pull_request.head.sha }}
+
+  mutation-diff:
+    name: Mutation Diff (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --locked --group dev
+
+      - name: Run mutation diff
+        run: make mutate-diff BASE_SHA=${{ github.event.pull_request.base.sha }} TESTED_SHA=${{ github.event.pull_request.head.sha }}
