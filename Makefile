@@ -21,7 +21,8 @@ SEMGREP_TARGETS ?= .
 SEMGREP_OPTIONS := \
 	$(SEMGREP_SEVERITY) \
 	--exclude tests/ \
-	--exclude '.semgrep-community-*.yml'
+	--exclude '.semgrep-community-*.yml' \
+	--exclude '.github/'
 
 # ---------------------------------------------------------------------------
 # Development setup

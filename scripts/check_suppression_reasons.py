@@ -117,11 +117,11 @@ def _load_baseline() -> set[str]:
     if not path.is_file():
         return set()
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        baseline = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         logger.warning("Could not parse baseline %s", path)
         return set()
-    fingerprints = data.get("fingerprints", [])
+    fingerprints = baseline.get("fingerprints", [])
     return {str(fp) for fp in fingerprints}
 
 
