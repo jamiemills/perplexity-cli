@@ -2,11 +2,11 @@
 
 ## Control
 - Plan ID: fuzz-secrets-pr-validation
-- Status: ready
-- Current CSM state: NOT_STARTED
-- Cycle: 0
-- Last checkpoint: `6a87133` (atheris dep added, local only)
-- Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
+- Status: complete
+- Current CSM state: COMPLETE
+- Cycle: 1
+- Last checkpoint: 2026-07-31 — tag `fuzz-secrets-pr-complete` at `eb62217`
+- Next transition: none (complete)
 - Active tasks: none
 - Blockers: none
 
@@ -120,7 +120,7 @@ Strictly serial: T002/T003 both edit ci.yml (different sections but same file �
 
 ## Numbered Plan
 
-### 1. [pending] Platform-gate atheris + push master
+### 1. [completed] Platform-gate atheris + push master
 - Task ID: T001
 - Depends on: none
 - Parallel group: serial
@@ -137,7 +137,7 @@ Strictly serial: T002/T003 both edit ci.yml (different sections but same file �
 - Acceptance evidence: `origin/master` updated; CI run link showing both
 - Recovery note: if macOS still fails, revert platform marker; evidence captured for repair
 
-### 2. [pending] Make fuzz authority blocking
+### 2. [completed] Make fuzz authority blocking
 - Task ID: T002
 - Depends on: T001
 - Parallel group: serial
@@ -166,7 +166,7 @@ Strictly serial: T002/T003 both edit ci.yml (different sections but same file �
 - Acceptance evidence: AC2 met
 - Recovery note: `git checkout` individual files to revert
 
-### 3. [pending] Restrict safety job + add pip-audit
+### 3. [completed] Restrict safety job + add pip-audit
 - Task ID: T003
 - Depends on: T002
 - Parallel group: serial
@@ -182,7 +182,7 @@ Strictly serial: T002/T003 both edit ci.yml (different sections but same file �
 - Acceptance evidence: AC3 met
 - Recovery note: revert ci.yml + test file together (test pins workflow structure)
 
-### 4. [pending] Validate PR-only jobs via real PR
+### 4. [completed] Validate PR-only jobs via real PR
 - Task ID: T004
 - Depends on: T003 (pushed to origin)
 - Parallel group: serial
@@ -205,7 +205,7 @@ Strictly serial: T002/T003 both edit ci.yml (different sections but same file �
 - Acceptance evidence: AC4 met — screenshots/logs of both jobs
 - Recovery note: PR can be closed/rebranched freely (no protection)
 
-### 5. [pending] Final verification + checkpoint
+### 5. [completed] Final verification + checkpoint
 - Task ID: T005
 - Depends on: T004
 - Parallel group: serial
@@ -261,6 +261,19 @@ Strictly serial: T002/T003 both edit ci.yml (different sections but same file �
 | 2026-07-31 | 0 | DRAFT→CRITIQUE | none | 4 HIGH (macOS wheels, importorskip=skip, module-abort kills enforcement, unused import) + MEDIUMs — all remediated | REMEDIATE |
 | 2026-07-31 | 0 | REMEDIATE→VERIFY | none | T001 platform-gates atheris; T002 uses pytest.fail in _run_harness; T003 enumerates exact test changes; risks updated | VERIFY |
 | 2026-07-31 | 0 | VERIFY→SAVED | none | Primary review: AC1-5 map to T001-T005; serial ci.yml single-writer; recovery notes present; evidence-based | SAVED |
+| 2026-07-31 | 1 | NOT_STARTED→RECOVER→VALIDATE | T001 | Clean tree; macos wheel risk confirmed (H1); gates pass | SELECT |
+| 2026-07-31 | 1 | DISPATCH→INTEGRATE | T001 | Platform-gate + uv lock + push 57a36df; CI 30662298801 success (macos green, fuzz running) | INTEGRATE |
+| 2026-07-31 | 1 | INTEGRATE→VERIFY | T002 | pytest.fail guard in _run_harness, skipif removed, continue-on-error removed, Makefile authoritative; 17+4 tests pass; committed d59e464 | VERIFY |
+| 2026-07-31 | 1 | VERIFY→INTEGRATE | T003 | safety push-only + pip-audit job + 2 new workflow-config tests; 14/14 pass; committed eb62217 | VERIFY |
+| 2026-07-31 | 1 | VERIFY→INTEGRATE | T004 | PR #14: diff-coverage 2m6s pass, mutation-diff 3m18s pass (1 file mutated), safety skipped, pip-audit pass, macos pass; PR closed, branch deleted | VERIFY |
+| 2026-07-31 | 1 | VERIFY→REVIEW | T005 | Full suite 4480 passed; make check 3x; tree clean; origin synced | REVIEW |
+| 2026-07-31 | 1 | REVIEW→CHECKPOINT→COMPLETE | all | 0 HIGH/MEDIUM; 2 LOW admin items (plan status, tag) resolved | COMPLETE |
 
 ## Completion Review
-<filled by csm-build when all criteria are verified>
+- **AC1** (push + platform gate): atheris gated to linux/x86_64 (pyproject:208); macos dry-run passes; CI run 30662296554 green with Fuzz Status 17 passed + macOS green.
+- **AC2** (fuzz authority): continue-on-error removed; skipif/_HAS_ATHERIS gone; pytest.fail guard inside _run_harness (test_fuzz.py:42-46); Makefile:520 authoritative; 17 fuzz + 4 enforcement tests pass.
+- **AC3** (secrets): safety `if: github.event_name == 'push'` (ci.yml:257); pip-audit job credential-free (ci.yml:278-298); workflow-config tests 14/14 (incl. new push-only + credential-free tests).
+- **AC4** (PR validation): PR #14 — Diff Coverage pass 2m6s, Mutation Diff pass 3m18s (Mutating 1 changed file), Safety skipped on PR, Pip Audit pass, macOS pass, Fuzz Status pass. PR closed.
+- **AC5** (assessment + gates): p0-assessment ranks 2+4 updated; make check 3x pass; full suite 4480 passed / 4 skipped (pre-existing env skips); tree clean.
+- Review: 0 HIGH/MEDIUM; 2 LOW administrative items resolved (plan marked complete, tag created).
+- Tag: `fuzz-secrets-pr-complete`.
