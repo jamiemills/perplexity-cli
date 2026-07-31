@@ -484,6 +484,9 @@ endif
 ifeq ($(CHECK_DYNAMIC_IMPORTS),true)
 CHECK_PREREQS += arch-check-dynamic
 endif
+ifeq ($(CHECK_SUPPRESSION_REASONS),true)
+CHECK_PREREQS += suppression-reasons
+endif
 
 ifeq ($(CHECK_DEPTRY),true)
 CHECK_PREREQS += deptry
@@ -527,7 +530,7 @@ ci-trusted: ci safety-gate  ## Full CI plus authenticated Safety for trusted cod
 # Quality gates
 # ---------------------------------------------------------------------------
 
-ratchets: file-size suppression-ratchet ruff-architecture typecheck-strict-ratchet semgrep-architecture  ## Run all quality gates
+ratchets: file-size suppression-ratchet suppression-reasons ruff-architecture typecheck-strict-ratchet semgrep-architecture  ## Run all quality gates
 
 file-size:  ## Hard gate: block oversized source files
 	@uv run python scripts/check_file_size.py --max-lines $(FILE_SIZE_CAP); \
@@ -539,6 +542,9 @@ file-size:  ## Hard gate: block oversized source files
 
 suppression-ratchet:  ## Ratchet: block new/grown inline suppressions
 	uv run python scripts/check_suppressions.py
+
+suppression-reasons:  ## Enforce owner;reason format on new suppression comments
+	uv run python scripts/check_suppression_reasons.py
 
 ruff-architecture:  ## Hard gate: complexity/parameter findings (C901/PLR0913/ARG)
 	@uv run ruff check --select C901,PLR0913,PLR2004,ARG001,ARG002 \
