@@ -88,7 +88,7 @@ class TokenManager:
             cookie_count = len(cookies) if cookies else 0
             saved_cookie_count = cookie_count if saved_cookies else 0
             # owner: security - arguments are a redacted path and cookie count, never values.
-            self.logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            self.logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: auth-team; reason: token redacted before logging
                 "Token saved to %s with %s cookies",
                 redact_path(self.token_path),
                 saved_cookie_count,
@@ -159,7 +159,7 @@ class TokenManager:
 
             cookie_count = len(cookies) if cookies else 0
             # owner: security - arguments are a redacted path and cookie count, never values.
-            self.logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            self.logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: auth-team; reason: token redacted before logging
                 "Token loaded from %s with %s cookies",
                 redact_path(self.token_path),
                 cookie_count,
@@ -209,12 +209,12 @@ class TokenManager:
             age_days = (datetime.now() - created_at).days
             if age_days > TOKEN_AGE_WARNING_DAYS:
                 # owner: security - the argument is an age count, not credential material.
-                self.logger.warning(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                self.logger.warning(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: auth-team; reason: token redacted before logging
                     "Token is %s days old, may be expired", age_days
                 )
             else:
                 # owner: security - the argument is an age count, not credential material.
-                self.logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                self.logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: auth-team; reason: token redacted before logging
                     "Token age: %s days", age_days
                 )
         except (ValueError, TypeError):
@@ -269,7 +269,7 @@ class TokenManager:
             self.logger.debug("Token is v2 format but no cookies stored")
         else:
             # owner: security - the argument is a public file-format version number.
-            self.logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            self.logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: auth-team; reason: token redacted before logging
                 "Token is v%s format (no cookies)", version
             )
 
@@ -337,7 +337,7 @@ class TokenManager:
                 self.token_path.unlink()
                 # Audit log: token cleared
                 # owner: security - the only argument is the redacted token-file path.
-                self.logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                self.logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: auth-team; reason: token redacted before logging
                     "Token cleared from %s", redact_path(self.token_path)
                 )
             except OSError as e:

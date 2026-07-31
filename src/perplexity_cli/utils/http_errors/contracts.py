@@ -19,11 +19,15 @@ class HttpErrorClassifier(Protocol):
 
     def classify_http_error(
         self, error: PerplexityHTTPStatusError
-    ) -> tuple[ErrorCode, str, str | None]: ...
+    ) -> tuple[ErrorCode, str, str | None]:
+        """Classify an HTTP status error into a structured error tuple."""
+        ...
 
     def classify_network_error(
         self, error: PerplexityRequestError
-    ) -> tuple[ErrorCode, str, str | None]: ...
+    ) -> tuple[ErrorCode, str, str | None]:
+        """Classify a network error into a structured error tuple."""
+        ...
 
 
 @runtime_checkable
@@ -40,7 +44,9 @@ class HttpErrorHandler(Protocol):
             "Unexpected error",
             False,
         ),
-    ) -> None: ...
+    ) -> None:
+        """Handle an unexpected top-level CLI error consistently."""
+        ...
 
     def handle_http_error(
         self,
@@ -48,7 +54,9 @@ class HttpErrorHandler(Protocol):
         logger: logging.Logger,
         debug_mode: str = "normal",
         context: str | None = None,
-    ) -> None: ...
+    ) -> None:
+        """Handle an HTTP status error with a user-friendly message."""
+        ...
 
     def handle_network_error(
         self,
@@ -56,14 +64,18 @@ class HttpErrorHandler(Protocol):
         logger: logging.Logger,
         debug_mode: str = "normal",
         context: str | None = None,
-    ) -> None: ...
+    ) -> None:
+        """Handle a network request error with a user-friendly message."""
+        ...
 
 
 @runtime_checkable
 class HttpStatusClassifier(Protocol):
     """Protocol for converting raw HTTP responses into typed errors."""
 
-    def raise_http_status_error(self, response: object, *, method: str = "POST") -> None: ...
+    def raise_http_status_error(self, response: object, *, method: str = "POST") -> None:
+        """Convert a raw HTTP response into a typed status error."""
+        ...
 
 
 class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]

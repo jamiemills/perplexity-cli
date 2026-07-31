@@ -10,7 +10,7 @@ import click
 
 from perplexity_cli._types import DebugMode, OutputFormat, SchemaInclusion
 from perplexity_cli.auth.oauth_handler import authenticate_sync
-from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.auth.token_manager import TokenManager  # construction-only
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
 from perplexity_cli.runners._utils import resolve_json_flag
@@ -67,7 +67,7 @@ def _handle_auth_success(
     tm = TokenManager()
     tm.save_token(token, cookies=cookies)
     # owner: security - the only argument is the redacted token-file path.
-    get_logger().info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+    get_logger().info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: auth-team; reason: token redacted before logging
         "Token and cookies saved to %s", redact_path(tm.token_path)
     )
 
@@ -181,7 +181,7 @@ def _execute_auth(
         logger.debug("Calling authenticate_sync")
         token, cookies = authenticate_sync(port=port)
         # owner: security - the argument is a cookie count, never a token or cookie value.
-        logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: auth-team; reason: token redacted before logging
             "Token and %s cookies extracted successfully", len(cookies)
         )
         _handle_auth_success(

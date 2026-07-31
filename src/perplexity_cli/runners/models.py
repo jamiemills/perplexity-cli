@@ -15,7 +15,7 @@ import click
 from perplexity_cli._types import OutputFormat, SchemaInclusion
 from perplexity_cli.api.rest_client import RestClient
 from perplexity_cli.auth.models import AuthContext
-from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.auth.token_manager import TokenManager  # construction-only
 from perplexity_cli.auth.utils import load_token_optional
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error

@@ -6,7 +6,7 @@ import json
 import logging
 import os
 from functools import lru_cache
-from importlib import (  # nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2  # project targets 3.12+
+from importlib import (  # nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2  # owner: quality-infrastructure; reason: project targets 3.12+, importlib.resources exists
     resources,
 )
 from pathlib import Path
@@ -91,7 +91,7 @@ def get_config_dir() -> Path:
 
     try:
         # owner: api-contract - public getter is documented to create the resolved directory.
-        config_dir.mkdir(  # nosemgrep: getter-with-side-effects
+        config_dir.mkdir(  # nosemgrep: getter-with-side-effects  # owner: quality-infrastructure; reason: mkdir is a deliberate side effect of config init
             parents=True, exist_ok=True
         )
     except OSError as e:

@@ -131,7 +131,7 @@ def get_backoff_delay(
         return delay
 
     jitter_window = delay * jitter_factor
-    jitter = _rng.uniform(-jitter_window, jitter_window)  # nosec B311
+    jitter = _rng.uniform(-jitter_window, jitter_window)  # nosec B311  # owner: security-review; reason: jitter uniformity not security-significant
     return max(0.0, min(delay + jitter, max_delay))
 
 

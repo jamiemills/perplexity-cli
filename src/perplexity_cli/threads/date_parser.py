@@ -1,11 +1,10 @@
-from typing import Protocol
-
 """Date parsing utilities for thread export functionality.
 
 This module handles parsing and formatting of thread creation timestamps.
 """
 
 from datetime import UTC, datetime, tzinfo
+from typing import Protocol
 
 from dateutil import parser as dateutil_parser
 

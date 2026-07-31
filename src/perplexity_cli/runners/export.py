@@ -14,9 +14,10 @@ import click
 from dateutil import parser as dateutil_parser
 
 from perplexity_cli._types import OutputFormat, SchemaInclusion
-from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.auth.token_manager import TokenManager  # construction-only
 from perplexity_cli.envelope import success_envelope, write_envelope
 from perplexity_cli.error_handler import handle_error
+from perplexity_cli.ports import AuthTokenStore
 from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.threads.exporter import write_threads_csv
 from perplexity_cli.threads.scraper import ThreadScraper
@@ -135,7 +136,7 @@ class ExportResult:
 # ---------------------------------------------------------------------------
 
 
-def _create_token_manager() -> TokenManager:
+def _create_token_manager() -> AuthTokenStore:
     """Create the token manager used by this runner."""
     return TokenManager()
 
@@ -323,7 +324,7 @@ def _setup_rate_limiter(logger: logging.Logger) -> ExportRateLimiterProtocol | N
 
 
 # owner: api-contract - stable tested runner helper contract.
-def _handle_cache_clear(  # nosemgrep: boolean-flag-argument
+def _handle_cache_clear(  # nosemgrep: boolean-flag-argument  # owner: cli-team; reason: click option flag signature
     cache_manager: ThreadCacheManager,
     clear_cache: bool,
     output_format: OutputFormat,

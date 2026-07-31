@@ -105,11 +105,11 @@ def log_query_debug_context(
 
     token_path = get_config_paths().token_path
     # owner: security - the argument is a redacted token-file path.
-    logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+    logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: quality-infrastructure; reason: token redacted before logging
         "Token path: %s", redact_path(token_path)
     )
     # owner: security - the argument is only a token-file presence boolean.
-    logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+    logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: quality-infrastructure; reason: token redacted before logging
         "Token exists: %s", token_path.exists()
     )
     logger.debug("Cookie storage enabled: %s", get_save_cookies_enabled())

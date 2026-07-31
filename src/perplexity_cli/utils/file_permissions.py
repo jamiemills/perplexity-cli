@@ -1,10 +1,9 @@
-from typing import Protocol
-
 """File permission utilities for secure file handling."""
 
 import logging
 import stat
 from pathlib import Path
+from typing import Protocol
 
 from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationError
 

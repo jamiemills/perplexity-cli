@@ -1,10 +1,12 @@
 """Authentication utilities for CLI commands."""
 
+from __future__ import annotations
+
 import logging
 
 import click
 
-from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.ports import AuthTokenStore
 from perplexity_cli.utils.exceptions import AuthenticationError
 from perplexity_cli.utils.logging import redact_text
 from perplexity_cli.utils.session_token import extract_session_token
@@ -13,7 +15,7 @@ __all__ = ["extract_session_token"]
 
 
 def load_or_prompt_token(
-    tm: TokenManager,
+    tm: AuthTokenStore,
     logger: logging.Logger,
     command_context: str = "operation",
 ) -> tuple[str, dict[str, str] | None]:
@@ -23,7 +25,7 @@ def load_or_prompt_token(
     prompts the user to authenticate and exits with helpful message.
 
     Args:
-        tm: TokenManager instance to use for loading.
+        tm: AuthTokenStore instance to use for loading.
         logger: Logger instance for logging authentication attempts.
         command_context: Context string for error messages (e.g., "query").
 
@@ -59,7 +61,7 @@ def load_or_prompt_token(
 
 
 def load_token_optional(
-    tm: TokenManager,
+    tm: AuthTokenStore,
     logger: logging.Logger,
 ) -> tuple[str | None, dict[str, str] | None]:
     """Load authentication token if available, otherwise return None values.
@@ -69,7 +71,7 @@ def load_token_optional(
     Used by commands that can operate with or without authentication.
 
     Args:
-        tm: TokenManager instance to use for loading.
+        tm: AuthTokenStore instance to use for loading.
         logger: Logger instance for logging authentication attempts.
 
     Returns:
@@ -83,7 +85,7 @@ def load_token_optional(
         token, cookies = tm.load_token()
     except AuthenticationError as e:
         # owner: security - exception text is fully redacted before logging.
-        logger.warning(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        logger.warning(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: auth-team; reason: token redacted before logging
             "Stored token is unusable; proceeding without authentication: %s",
             redact_text(str(e), max_length=0),
         )

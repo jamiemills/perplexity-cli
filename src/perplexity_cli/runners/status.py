@@ -12,10 +12,11 @@ from typing import TYPE_CHECKING, Any, Literal, TypeGuard, cast
 import click
 
 from perplexity_cli._types import OutputFormat, SchemaInclusion
-from perplexity_cli.api.endpoints import PerplexityAPI
+from perplexity_cli.api.endpoints import PerplexityAPI  # construction-only
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.config.defaults import DEFAULT_STATUS_CHECK_TIMEOUT
 from perplexity_cli.envelope import success_envelope, write_envelope
+from perplexity_cli.ports import QueryGateway
 from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.utils.config import get_feature_config
 from perplexity_cli.utils.exceptions import (
@@ -144,7 +145,7 @@ def run_doctor_security_command(*, output_format: OutputFormat | None = None) ->
 
 
 # owner: api-contract - stable tested runner helper contract.
-def _build_status_envelope(  # nosemgrep: boolean-flag-argument
+def _build_status_envelope(  # nosemgrep: boolean-flag-argument  # owner: cli-team; reason: click option flag signature
     authenticated: bool,
     tm: TokenManager,
     token_info: tuple[object, object, object] = (None, 0, None),
@@ -171,6 +172,7 @@ def _verify_token(
     """Run token verification against the API."""
     try:
         logger.debug("Verifying token validity")
+        api: QueryGateway
         with PerplexityAPI(
             token=token, cookies=cookies, timeout=DEFAULT_STATUS_CHECK_TIMEOUT
         ) as api:

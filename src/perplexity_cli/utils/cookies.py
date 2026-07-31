@@ -1,8 +1,7 @@
-from typing import Protocol
-
 """Cookie helpers for curl_cffi request clients."""
 
 from collections.abc import Mapping
+from typing import Protocol
 
 from curl_cffi.requests import Cookies
 

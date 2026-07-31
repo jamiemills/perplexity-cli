@@ -1,5 +1,3 @@
-from typing import Protocol
-
 """Async-to-sync bridge with nested event loop support.
 
 This module defines the **single sync/async boundary** for the CLI.
@@ -30,6 +28,7 @@ Current consumers:
 import asyncio
 import concurrent.futures
 from collections.abc import Coroutine
+from typing import Protocol
 
 
 def run_async[T](coro: Coroutine[object, object, T]) -> T:

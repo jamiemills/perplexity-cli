@@ -1,5 +1,3 @@
-from typing import Protocol
-
 """Token encryption utilities using deterministic machine-derived keys.
 
 This module provides symmetric encryption for stored authentication tokens.
@@ -14,6 +12,7 @@ import os
 import secrets
 import socket
 from functools import lru_cache
+from typing import Protocol
 
 from cryptography.fernet import Fernet, InvalidToken
 

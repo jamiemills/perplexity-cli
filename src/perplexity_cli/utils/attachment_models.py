@@ -24,7 +24,7 @@ class FileAttachment(BaseModel):
         description="MIME type of the file (e.g., 'text/plain', 'application/json')",
     )
     # owner: api-contract - ``data`` is a stable serialised attachment schema field.
-    data: str = Field(  # nosemgrep: meaningless-name
+    data: str = Field(  # nosemgrep: meaningless-name  # owner: quality-infrastructure; reason: upstream API field name must match payload
         ...,
         description="Base64-encoded file content",
     )

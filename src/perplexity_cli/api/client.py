@@ -769,7 +769,7 @@ class SSEClient:
             )
 
         # owner: security - the argument is only a presence boolean, never the token value.
-        self.logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        self.logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: quality-infrastructure; reason: message redacted before logging
             "Authentication: Bearer token present=%s", bool(self.auth.token)
         )
         self._log_cookie_context()

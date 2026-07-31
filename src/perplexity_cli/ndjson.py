@@ -85,7 +85,7 @@ class NDJSONWriter:
         self.write_event(ChunkEvent(text=text))
 
     # owner: api-contract - ``ok`` is part of the stable public event-writer API.
-    def result(  # nosemgrep: boolean-flag-argument
+    def result(  # nosemgrep: boolean-flag-argument  # owner: cli-team; reason: schema API boolean flag
         self,
         ok: bool,
         command: str,

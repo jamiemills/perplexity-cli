@@ -10,12 +10,13 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 from pydantic import BaseModel, Field
 
-from perplexity_cli.api.endpoints import PerplexityAPI
+from perplexity_cli.api.endpoints import PerplexityAPI  # construction-only
 from perplexity_cli.api.models import Answer
-from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.auth.token_manager import TokenManager  # construction-only
 from perplexity_cli.auth.utils import load_token_optional
 from perplexity_cli.formatting import get_formatter
 from perplexity_cli.formatting.base import Formatter
+from perplexity_cli.ports import QueryGateway
 from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, PerplexityRequestError
 from perplexity_cli.utils.logging import get_logger
 
@@ -166,6 +167,7 @@ def _request_answer(query: str, mode: QueryMode) -> Answer:
     """Fetch an answer from Perplexity for the requested research depth."""
     token, cookies = _load_authentication()
     search_mode = _search_mode_for_query_mode(mode)
+    api: QueryGateway
     with PerplexityAPI(token, cookies) as api:
         return api.get_complete_answer(query, search_implementation_mode=search_mode)
 
