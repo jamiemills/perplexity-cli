@@ -2,11 +2,11 @@
 
 ## Control
 - Plan ID: hygiene-cleanup-2026-07-31
-- Status: ready
-- Current CSM state: NOT_STARTED
-- Cycle: 0
-- Last checkpoint: `653876b` (final hardening cleanup complete, tag `hardening-final-complete`)
-- Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
+- Status: complete
+- Current CSM state: COMPLETE
+- Cycle: 1
+- Last checkpoint: 2026-07-31 — tag `hygiene-cleanup-complete` at `bc53a9c`
+- Next transition: none (complete)
 - Active tasks: none
 - Blockers: none
 
@@ -101,7 +101,7 @@ T006 (test fix) ─────────┘
 
 ## Numbered Plan
 
-### 1. [pending] Remove dead rules from tests/** per-file-ignores
+### 1. [completed] Remove dead rules from tests/** per-file-ignores
 - Task ID: T001
 - Depends on: none
 - Parallel group: G1
@@ -114,7 +114,7 @@ T006 (test fix) ─────────┘
 - Acceptance evidence: per-file-ignores has 29 rules; gates pass
 - Recovery note: `git checkout pyproject.toml` restores
 
-### 2. [pending] Format 91 grandfathered suppressions
+### 2. [completed] Format 91 grandfathered suppressions
 - Task ID: T002
 - Depends on: none
 - Parallel group: G1
@@ -132,7 +132,7 @@ T006 (test fix) ─────────┘
 - Acceptance evidence: baseline refreshed, formatted ≥ 115, all gates pass
 - Recovery note: revert per-file with `git checkout <file>`; baseline regenerable via `--update-baseline`
 
-### 3. [pending] Fix click-echo exclusion globs + refresh semgrep-architecture baseline
+### 3. [completed] Fix click-echo exclusion globs + refresh semgrep-architecture baseline
 - Task ID: T003
 - Depends on: none
 - Parallel group: G1
@@ -145,7 +145,7 @@ T006 (test fix) ─────────┘
 - Acceptance evidence: 0 click-echo baselined findings
 - Recovery note: `git checkout .semgrep.yml` + regenerate baseline
 
-### 4. [pending] Close out outstanding-work item 13
+### 4. [completed] Close out outstanding-work item 13
 - Task ID: T004
 - Depends on: none
 - Parallel group: G1
@@ -156,7 +156,7 @@ T006 (test fix) ─────────┘
 - Acceptance evidence: doc updated
 - Recovery note: `git checkout quality/remediation/outstanding-work.md`
 
-### 5. [pending] Refresh coupling baseline
+### 5. [completed] Refresh coupling baseline
 - Task ID: T005
 - Depends on: T002 (serial — T002 edits `scripts/check_coupling.py` lines 51-52; baseline refresh must run after)
 - Parallel group: G1 (runs after T002 completes)
@@ -173,7 +173,7 @@ T006 (test fix) ─────────┘
 - Acceptance evidence: baseline refreshed, trend test green
 - Recovery note: baseline regenerable via redirect; 29 < MAX_FLAGGED=30 so no gate risk
 
-### 6. [pending] Make command_runner config test hermetic
+### 6. [completed] Make command_runner config test hermetic
 - Task ID: T006
 - Depends on: none
 - Parallel group: G1
@@ -187,7 +187,7 @@ T006 (test fix) ─────────┘
 - Acceptance evidence: flake eliminated
 - Recovery note: `git checkout tests/test_command_runner.py`
 
-### 7. [pending] Final integration verification
+### 7. [completed] Final integration verification
 - Task ID: T007
 - Depends on: T001, T002, T003, T004, T005, T006
 - Parallel group: none (serial final)
@@ -242,6 +242,22 @@ T006 (test fix) ─────────┘
 | 2026-07-31 | 0 | RESEARCH→DRAFT | none | Draft written: 7 tasks, 5 workstreams, disjoint file ownership | DRAFT |
 | 2026-07-31 | 0 | DRAFT→CRITIQUE | none | 1 HIGH (T005 refresh cmd), 2 MEDIUM (427 glob, T002/T005 race), 6 LOW — all remediated | REMEDIATE |
 | 2026-07-31 | 0 | REMEDIATE→VERIFY | none | T005 rewritten (--json redirect, coupling-check), T003 covers both globs, T005 serial after T002, text fixes L1-L4 | SAVED |
+| 2026-07-31 | 1 | NOT_STARTED→RECOVER→VALIDATE→SELECT | T001-T006 | Baseline clean; dispatched 5 parallel agents | DISPATCH |
+| 2026-07-31 | 1 | DISPATCH→INTEGRATE | T002,T003,T004,T006 | T002 4495a04 (116/9 formatted), T003 c1f9e4d (2 fingerprints), T004 470a828, T006 4865ee0 | INTEGRATE |
+| 2026-07-31 | 1 | INTEGRATE→VERIFY | T001 | pyproject.toml edit verified + committed c31e676 | VERIFY |
+| 2026-07-31 | 1 | VERIFY→REPAIR | T005,T007 | T005 baseline refresh 9fd7e0c (29/103); full suite: 2 failures — semgrep test missing .github/ exclusion + command_runner leaked-handler JSON on stderr | REPAIR |
+| 2026-07-31 | 1 | REPAIR→VERIFY | all | bc53a9c: both fixes; full suite 4479 passed / 0 failed | VERIFY |
+| 2026-07-31 | 1 | VERIFY→REVIEW | all | 0 HIGH/MEDIUM; 3 LOW (missing tag, AC1 arithmetic 116 vs 117, long lines) — tag created | CHECKPOINT |
+| 2026-07-31 | 1 | CHECKPOINT→COMPLETE | T007 | Tag `hygiene-cleanup-complete` created; all AC1-7 met | COMPLETE |
 
 ## Completion Review
-<filled by csm-build when all criteria are verified>
+- **AC1** (suppressions): 125 total / 116 formatted / 9 grandfathered (fixtures only). Two-comment pattern verified everywhere. `make suppression-reasons` passes.
+- **AC2** (tests ignores): F821/DOC/FURB removed; 29 rules remain; `ruff check tests/` clean.
+- **AC3** (click-echo): both `.semgrep.yml` globs fixed; baseline = 2 function-local-import only; 0 click-echo.
+- **AC4** (item 13): outstanding-work.md:27 COMPLETE (2026-07-31).
+- **AC5** (coupling test): baseline 29/103; test_coupling_metrics.py 52 passed.
+- **AC6** (command_runner): hermetic (output_format="human" + handler clear); passes in full suite.
+- **AC7** (gates): `make check` exit 0; full suite 4479 passed / 0 failed / 4 skipped (pre-existing coverage-binary skips).
+- No suppressions added (net -1 = docstring false-positive removal).
+- Review: 0 HIGH/MEDIUM; 3 LOW (tag created, AC1 arithmetic noted, long lines cosmetic).
+- Tag: `hygiene-cleanup-complete`.
