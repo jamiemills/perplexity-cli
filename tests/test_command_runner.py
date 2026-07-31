@@ -105,7 +105,7 @@ def test_run_set_config_command_handles_configuration_error(capsys):
         mock_set_feature.side_effect = ConfigurationError("bad config")
 
         with pytest.raises(SystemExit) as exc_info:
-            run_set_config_command("save_cookies", "true")
+            run_set_config_command("save_cookies", "true", output_format="human")
 
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
