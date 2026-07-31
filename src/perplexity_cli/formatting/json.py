@@ -65,7 +65,7 @@ class JSONFormatter(Formatter):
                     "index": i,
                     "title": ref.name,
                     "url": ref.url,
-                    "snippet": ref.snippet if ref.snippet else None,
+                    "snippet": ref.snippet or None,
                 }
                 for i, ref in enumerate(answer.references, 1)
             ]

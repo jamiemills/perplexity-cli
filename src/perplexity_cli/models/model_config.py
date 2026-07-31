@@ -163,7 +163,7 @@ class ModelConfigResponse(BaseModel):
         Falls back to all config entries if the intersection is empty.
         """
         filtered = [entry for entry in self.config if entry.model_id in model_ids]
-        return filtered if filtered else list(self.config)
+        return filtered or list(self.config)
 
 
 class UserSettings(BaseModel):

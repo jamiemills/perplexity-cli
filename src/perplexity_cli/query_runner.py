@@ -174,7 +174,7 @@ def _resolve_and_upload(
     """
     file_paths = resolve_file_arguments(
         [query_text],
-        attach_args=attachment_list if attachment_list else None,
+        attach_args=attachment_list or None,
     )
     if not file_paths:
         return []

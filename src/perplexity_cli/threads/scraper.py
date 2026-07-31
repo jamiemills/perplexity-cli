@@ -922,7 +922,7 @@ class ThreadScraper:
         filtered: list[ThreadRecord] = []
         for thread in threads:
             # Parse ISO 8601 timestamp back to datetime
-            dt = datetime.fromisoformat(thread.created_at.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(thread.created_at)
 
             if _is_in_date_range(dt, from_date, to_date):
                 filtered.append(thread)
