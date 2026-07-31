@@ -445,7 +445,7 @@ def _fetch_and_render(
     """Fetch a complete answer and render it.
 
     Args:
-        api: The PerplexityAPI instance.
+        api: The QueryGateway instance.
         query_input: Query text, attachment URLs, and model preference.
         render: Formatter and output options.
         trace: Trace and timing context.

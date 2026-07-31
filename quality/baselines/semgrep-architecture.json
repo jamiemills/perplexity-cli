@@ -1,6 +1,15 @@
 {
   "fingerprints": [
     "src/perplexity_cli/attachments/upload_manager.py:51:function-local-import",
-    "src/perplexity_cli/threads/scraper.py:60:function-local-import"
+    "src/perplexity_cli/threads/scraper.py:60:function-local-import",
+    "src/perplexity_cli/utils/http_errors/impl.py:102:click-echo-outside-presentation",
+    "src/perplexity_cli/utils/http_errors/impl.py:104:click-echo-outside-presentation",
+    "src/perplexity_cli/utils/http_errors/impl.py:106:click-echo-outside-presentation",
+    "src/perplexity_cli/utils/http_errors/impl.py:196:click-echo-outside-presentation",
+    "src/perplexity_cli/utils/http_errors/impl.py:198:click-echo-outside-presentation",
+    "src/perplexity_cli/utils/http_errors/impl.py:201:click-echo-outside-presentation",
+    "src/perplexity_cli/utils/http_errors/impl.py:225:click-echo-outside-presentation",
+    "src/perplexity_cli/utils/http_errors/impl.py:228:click-echo-outside-presentation",
+    "src/perplexity_cli/utils/http_errors/impl.py:97:click-echo-outside-presentation"
   ]
 }

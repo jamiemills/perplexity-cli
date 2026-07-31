@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Coroutine, Iterator
 from pathlib import Path
+from types import TracebackType
 from typing import Protocol, runtime_checkable
 
 from perplexity_cli.api.models import Answer, QueryInput, SSEMessage
@@ -22,6 +23,19 @@ class QueryGateway(Protocol):
 
     Satisfied structurally by ``api.endpoints.PerplexityAPI``.
     """
+
+    def __enter__(self) -> QueryGateway:
+        """Enter the runtime context, returning self for use in ``with`` blocks."""
+        ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Exit the runtime context, releasing resources."""
+        ...
 
     def submit_query(self, query_input: QueryInput) -> Iterator[SSEMessage]:
         """Submit a query and stream SSE responses.
