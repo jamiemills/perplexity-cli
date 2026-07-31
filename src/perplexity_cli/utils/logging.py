@@ -218,3 +218,33 @@ class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
     """Abstract coupling protocol."""
 
     ...
+
+
+class _CouplingProto1(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol #1."""
+
+    ...
+
+
+class _CouplingProto2(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol #2."""
+
+    ...
+
+
+class _CouplingProto3(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol #3."""
+
+    ...
+
+
+class _CouplingProto4(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol #4."""
+
+    ...
+
+
+class _CouplingProto5(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol #5."""
+
+    ...
