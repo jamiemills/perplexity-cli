@@ -39,7 +39,7 @@
 **Definition** (outstanding-work.md item 2): run authenticated Safety only post-merge or from immutable trusted code; keep credential-free `pip-audit` on PRs.
 
 **Current state:**
-- `ci.yml:254-280` `safety` job runs with `SAFETY_API_KEY` (`ci.yml:279`) on: pushes to master, workflow_dispatch, schedule **and** same-repo PRs (`if: github.event_name != 'pull_request' || (head.repo.full_name == github.repository && actor != 'dependabot[bot]')`). Same-repo PR branches are not immutable trusted code, so the secret is exposed to PR-triggered runs.
+- `ci.yml:254-280` `safety` job runs with `SAFETY_API_KEY` (`ci.yml:279`) on: pushes to master, workflow_dispatch **and** same-repo PRs (`if: github.event_name != 'pull_request' || (head.repo.full_name == github.repository && actor != 'dependabot[bot]')`). Same-repo PR branches are not immutable trusted code, so the secret is exposed to PR-triggered runs.
 - Fork PRs and dependabot PRs are correctly excluded (no `pull_request_target`, so the secret is not leaked to untrusted forks).
 - `publish-to-pypi.yml:54` also passes `SAFETY_API_KEY` to `make ci-trusted` — this is post-merge trusted (tag push), acceptable.
 - `pip-audit` (credential-free) exists as a Make target (`Makefile:262`) and in the local `ci` composite (`Makefile:526`), but is **not wired into any GitHub workflow** (grep over `.github/workflows/` returns zero matches).
