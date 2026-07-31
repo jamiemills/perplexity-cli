@@ -2,11 +2,11 @@
 
 ## Control
 - Plan ID: final-hardening-cleanup
-- Status: ready
-- Current CSM state: NOT_STARTED
-- Cycle: 0
-- Last checkpoint: `hardening-complete-v3` at `542eb7e`
-- Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
+- Status: complete
+- Current CSM state: COMPLETE
+- Cycle: 1
+- Last checkpoint: 2026-07-31 — tag `hardening-final-complete` at `f178975`
+- Next transition: none (complete)
 - Active tasks: none
 - Blockers: none
 
@@ -139,7 +139,7 @@ Phases 1-4 are all independent. Serial within phases where noted.
 
 ## Numbered Plan
 
-### 1. [pending] Remove dead per-file-ignores
+### 1. [completed] Remove dead per-file-ignores
 - Task ID: T001
 - Depends on: none
 - Parallel group: G1
@@ -151,7 +151,7 @@ Phases 1-4 are all independent. Serial within phases where noted.
 - Acceptance evidence: Gate passes, line removed
 - Recovery note: `git revert` to restore
 
-### 2. [pending] Review and format src/ suppressions
+### 2. [completed] Review and format src/ suppressions
 - Task ID: T002a
 - Depends on: none
 - Parallel group: G1
@@ -168,7 +168,7 @@ Phases 1-4 are all independent. Serial within phases where noted.
 - Acceptance evidence: 22 suppressions formatted, baselines updated
 - Recovery note: Restore per-file with git checkout to revert individual files
 
-### 3. [pending] Ports migration — 6 file refactor
+### 3. [completed] Ports migration — 6 file refactor
 - Task ID: T002b
 - Depends on: none
 - Parallel group: G1
@@ -186,7 +186,7 @@ Phases 1-4 are all independent. Serial within phases where noted.
 - Acceptance evidence: 6 files refactored, import-linter passes, test suite passes
 - Recovery note: Checkpoint tag `hardening-t002b-done` before proceeding. Revert individual files with `git checkout`.
 
-### 4. [pending] Transport-mock upload orchestration tests
+### 4. [completed] Transport-mock upload orchestration tests
 - Task ID: T003
 - Depends on: none
 - Parallel group: G1
@@ -205,7 +205,7 @@ Phases 1-4 are all independent. Serial within phases where noted.
 - Acceptance evidence: `test_upload_orchestration.py` exists with ≥4 passing tests
 - Recovery note: Delete `test_upload_orchestration.py` to revert
 
-### 5. [pending] Stale reference cleanup
+### 5. [completed] Stale reference cleanup
 - Task ID: T004
 - Depends on: T001 (serial — both touch pyproject.toml)
 - Parallel group: G1 (runs with T006)
@@ -218,7 +218,7 @@ Phases 1-4 are all independent. Serial within phases where noted.
 - Acceptance evidence: Stale reference gone, grep confirms zero traces
 - Recovery note: Restore the mutmut ignore line to revert
 
-### 6. [pending] P0 assessment document
+### 6. [completed] P0 assessment document
 - Task ID: T005
 - Depends on: none
 - Parallel group: G1 (runs with T004)
@@ -232,7 +232,7 @@ Phases 1-4 are all independent. Serial within phases where noted.
 - Acceptance evidence: `quality/remediation/p0-assessment.md` exists and is comprehensive
 - Recovery note: Remove file to revert
 
-### 7. [pending] Final integration verification
+### 7. [completed] Final integration verification
 - Task ID: T006
 - Depends on: T001, T002a, T002b, T003, T004, T005
 - Parallel group: none (serial final)
@@ -288,3 +288,19 @@ Phases 1-4 are all independent. Serial within phases where noted.
 | 2026-07-31 | 0 | DRAFT→CRITIQUE | none | Draft v1 sent to critique agent | CRITIQUE |
 | 2026-07-31 | 0 | CRITIQUE→REMEDIATE | none | 16 findings: 7 HIGH, 4 MEDIUM, 5 LOW. All resolved in v2. | VERIFY |
 | 2026-07-31 | 0 | VERIFY→SAVED | none | Primary agent verified: all H findings addressed, all tasks actionable, no write conflicts | SAVED |
+| 2026-07-31 | 1 | NOT_STARTED→RECOVER→VALIDATE→SELECT | T001,T002a,T002b,T003,T005 | Baseline clean; dispatched 5 parallel agents | DISPATCH |
+| 2026-07-31 | 1 | DISPATCH→INTEGRATE | T003,T005 | T003 committed 01d3b71 (5 upload tests), T005 committed f4ee64a (P0 assessment) | INTEGRATE |
+| 2026-07-31 | 1 | INTEGRATE→VERIFY | T001,T002a,T002b | R1 premise wrong: 37 D/E402 findings existed. Fixed: import-before-docstring in 5 files, Protocol docstrings, owner;reason on 22 suppressions (two-comment pattern), ports migration in 6 files. Committed f044e0d | VERIFY |
+| 2026-07-31 | 1 | VERIFY→INTEGRATE | T004 | Removed stale mutmut ref, fixed double-quote TOML break, marked item 13 partial. Committed cdfc7a7 | VERIFY |
+| 2026-07-31 | 1 | VERIFY→CHECKPOINT | T006 | Refresh suppression baseline (143), tags hardening-t001-done + hardening-final-complete. Committed 49a5c5e + 0b34859 | CHECKPOINT |
+| 2026-07-31 | 1 | REVIEW→REPAIR | all | 0 HIGH/MEDIUM, 3 LOW: click-echo fallback accepted (documented), schedule claim fixed (f178975), plan evidence corrected in commit msg | COMPLETE |
+
+## Completion Review
+- **AC1** (dead ignores removed): `"src/**/*.py"` line deleted from pyproject.toml; 37 underlying D100/D102/E402 findings fixed (import-before-docstring pattern in 5 files, Protocol method docstrings in 2 contracts files). `ruff check src/` clean.
+- **AC2** (gates pass, 0 new suppressions): `make check` passes all 13 gates. `make suppression-reasons`: 35 formatted / 91 grandfathered / 0 unformatted. No new suppression comments added.
+- **AC3** (ports migration): `auth/utils.py` both fns use `AuthTokenStore`; `runners/{auth,export,models}.py` construction-only; `runners/status.py` + `mcp_server.py` use `QueryGateway` annotations with concrete construction. `import-linter` 13/13 kept.
+- **AC4** (upload tests): `tests/test_upload_orchestration.py` — 5 transport-level tests (success, 500 presigned, 429 rate-limit, S3 failure, network guard). All pass with hermetic query tests (15 passed).
+- **AC5** (stale reference): `test_plan_compliance` removed from mutmut pytest_add_cli_args; only doc references remain. `test_removed_plan_gate.py` passes (3/3).
+- **AC6** (P0 assessment): `quality/remediation/p0-assessment.md` exists, all 6 ranks assessed + classified (feasible-now / needs-github-admin / needs-opencode-config).
+- Review: 0 HIGH/MEDIUM findings. 3 LOW resolved (click-echo fallback documented, schedule claim fixed, plan evidence corrected).
+- Known pre-existing failures (not from this work): `test_coupling_metrics::TestTrendCompare::test_trend_compare_against_self_is_unchanged` (stale coupling-report.json baseline), `test_command_runner::test_run_set_config_command_handles_configuration_error` (xdist flake).
