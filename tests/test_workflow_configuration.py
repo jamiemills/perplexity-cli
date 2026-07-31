@@ -100,21 +100,33 @@ def test_release_drafter_omits_noisy_and_feature_branch_triggers() -> None:
     assert "pull-requests: read" in release
 
 
-def test_trusted_safety_job_excludes_forks_and_dependabot() -> None:
-    """Safety secrets must only be exposed to explicitly trusted changes."""
+def test_trusted_safety_job_runs_only_on_push() -> None:
+    """Safety secrets must only be exposed on trusted push events."""
     ci_text = _workflow_texts()["ci.yml"]
     ci = _load_workflow("ci.yml")
     safety = ci["jobs"]["safety"]
     if_condition = str(safety.get("if", ""))
-    assert "github.event_name != 'pull_request'" in if_condition
-    assert "github.event.pull_request.head.repo.full_name == github.repository" in if_condition
-    assert "github.actor != 'dependabot[bot]'" in if_condition
+    assert "github.event_name == 'push'" in if_condition
     assert "RUN_SAFETY_FOR_DEPENDABOT" not in if_condition
     recipe = " ".join(
         str(step.get("run", "")) for step in safety.get("steps") or [] if isinstance(step, dict)
     )
     assert "make safety-gate" in recipe
     assert "pull_request_target" not in ci_text
+
+
+def test_pip_audit_job_is_credential_free() -> None:
+    """PR CI must include a credential-free dependency audit."""
+    ci = _load_workflow("ci.yml")
+    pip_audit = ci["jobs"]["pip-audit"]
+    assert "timeout-minutes" in pip_audit
+    recipe = " ".join(
+        str(step.get("run", "")) for step in pip_audit.get("steps") or [] if isinstance(step, dict)
+    )
+    assert "make pip-audit" in recipe
+    for step in pip_audit.get("steps") or []:
+        if isinstance(step, dict):
+            assert "env" not in step, f"pip-audit step must not use secrets: {step.get('name')}"
 
 
 def test_scorecard_has_required_least_privileges() -> None:

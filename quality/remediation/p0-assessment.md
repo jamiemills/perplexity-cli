@@ -39,18 +39,15 @@
 **Definition** (outstanding-work.md item 2): run authenticated Safety only post-merge or from immutable trusted code; keep credential-free `pip-audit` on PRs.
 
 **Current state:**
-- `ci.yml:254-280` `safety` job runs with `SAFETY_API_KEY` (`ci.yml:279`) on: pushes to master, workflow_dispatch **and** same-repo PRs (`if: github.event_name != 'pull_request' || (head.repo.full_name == github.repository && actor != 'dependabot[bot]')`). Same-repo PR branches are not immutable trusted code, so the secret is exposed to PR-triggered runs.
-- Fork PRs and dependabot PRs are correctly excluded (no `pull_request_target`, so the secret is not leaked to untrusted forks).
+- **IN-REPO HALF COMPLETE (2026-07-31):** `safety` job restricted to `if: github.event_name == 'push'` (master only — no SAFETY_API_KEY exposure on any PR); credential-free `pip-audit` job added to ci.yml (runs on push + PR, `timeout-minutes: 10`, no secrets); workflow-configuration tests updated (`test_trusted_safety_job_runs_only_on_push`, `test_pip_audit_job_is_credential_free`).
 - `publish-to-pypi.yml:54` also passes `SAFETY_API_KEY` to `make ci-trusted` — this is post-merge trusted (tag push), acceptable.
-- `pip-audit` (credential-free) exists as a Make target (`Makefile:262`) and in the local `ci` composite (`Makefile:526`), but is **not wired into any GitHub workflow** (grep over `.github/workflows/` returns zero matches).
 
-**What's missing:**
-- Restrict the authenticated `safety` job to `push: master` (and scheduled/trusted refs), or scope the secret to a protected GitHub environment.
-- Add a credential-free `pip-audit` step to the PR CI lane.
+**What's missing (admin half):**
+- Scope the `SAFETY_API_KEY` secret to a protected GitHub deployment environment (server-side, needs admin).
 
-**Blocker:** the workflow rewrite is in-repo; binding `SAFETY_API_KEY` to a protected deployment environment is server-side (admin).
+**Blocker:** the in-repo half is complete; binding `SAFETY_API_KEY` to a protected deployment environment is server-side (admin).
 
-**Effort:** M.
+**Effort:** M (in-repo half done).
 
 **Classification:** `feasible-now` (workflow + Makefile changes) with a `needs-github-admin` component (protected environment / secret scoping).
 
