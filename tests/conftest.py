@@ -18,6 +18,7 @@ if os.environ.get("MUTANT_UNDER_TEST"):
         "test_gitleaks_integration.py",
         "test_gitleaks_prepush.py",
         "test_import_graph.py",
+        "test_init_policy.py",
         "test_make_policy.py",
         "test_mutate_diff_files.py",
         "test_mutation_policy.py",
@@ -25,6 +26,7 @@ if os.environ.get("MUTANT_UNDER_TEST"):
         "test_quality_ratchets.py",
         "test_removed_plan_gate.py",
         "test_semgrep_wrapper.py",
+        "test_suppression_reasons.py",
         "test_suppressions.py",
         "test_workflow_policy.py",
     ]
