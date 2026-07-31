@@ -2,11 +2,11 @@
 
 ## Control
 - Plan ID: remaining-hardening-v3
-- Status: ready
-- Current CSM state: NOT_STARTED
-- Cycle: 0
-- Last checkpoint: none
-- Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
+- Status: complete
+- Current CSM state: COMPLETE
+- Cycle: 1
+- Last checkpoint: 2026-07-31 12:15 — tag `hardening-complete-v3` at `705c44f`
+- Next transition: none (complete)
 - Active tasks: none
 - Blockers: none
 
@@ -72,7 +72,7 @@ All three tasks are independent — no shared file writes.
 
 ## Numbered Plan
 
-### 1. [pending] Enable FURB rules for src/ and fix findings
+### 1. [completed] Enable FURB rules for src/ and fix findings
 - Task ID: T001
 - Depends on: none
 - Parallel group: G1
@@ -85,7 +85,7 @@ All three tasks are independent — no shared file writes.
 - Acceptance evidence: `make check` passes, no FURB findings in src/
 - Recovery note: Re-add `"FURB"` to per-file-ignores to revert
 
-### 2. [pending] Add suppression-reason enforcement meta-test
+### 2. [completed] Add suppression-reason enforcement meta-test
 - Task ID: T002
 - Depends on: none
 - Parallel group: G1
@@ -106,7 +106,7 @@ All three tasks are independent — no shared file writes.
 - Acceptance evidence: Script exists, baseline exists, gate toggle exists, gate passes, meta-test covers synthetic case
 - Recovery note: Disable `CHECK_SUPPRESSION_REASONS` toggle to revert
 
-### 3. [pending] Wire diff-coverage and mutmut-diff to CI
+### 3. [completed] Wire diff-coverage and mutmut-diff to CI
 - Task ID: T003
 - Depends on: none
 - Parallel group: G1
@@ -131,7 +131,7 @@ All three tasks are independent — no shared file writes.
 - Acceptance evidence: Both CI jobs exist in ci.yml, actionlint passes
 - Recovery note: Remove the 2 jobs from ci.yml to revert
 
-### 4. [pending] Final verification
+### 4. [completed] Final verification
 - Task ID: T004
 - Depends on: T001, T002, T003
 - Parallel group: none (sequential final check)
@@ -172,3 +172,16 @@ All three tasks are independent — no shared file writes.
 | 2026-07-31 | 0 | DISCOVER→RESEARCH | none | R&D runs R1-R5 completed | RESEARCH |
 | 2026-07-31 | 0 | RESEARCH→DRAFT | none | Draft plan written | DRAFT |
 | 2026-07-31 | 0 | DRAFT→CRITIQUE→REMEDIATE→VERIFY→SAVED | none | Plan verified and saved | SAVED |
+| 2026-07-31 | 1 | NOT_STARTED→RECOVER→VALIDATE→SELECT | T001,T002,T003 | Baseline make check passes, all gates true | DISPATCH |
+| 2026-07-31 | 1 | DISPATCH→INTEGRATE | T002,T003 | T002 commit 32ffcde (suppression reasons), T003 commit c578267 (CI jobs) | DISPATCH |
+| 2026-07-31 | 1 | DISPATCH→INTEGRATE | T001 | FURB un-suppressed, 4 findings auto-fixed, commit 2d28444 | VERIFY |
+| 2026-07-31 | 1 | VERIFY→REPAIR | all | Semgrep: `.github/` analysis errors + `data` meaningless-name; excluded `.github/`, renamed variable. Commit 705c44f | CHECKPOINT |
+| 2026-07-31 | 1 | CHECKPOINT→COMPLETE | T004 | All 12+1 gates pass. Tag `hardening-complete-v3` | COMPLETE |
+
+## Completion Review
+- T001 (FURB): `"FURB"` removed from `src/**/*.py` per-file-ignores. 4 FURB110/FURB162 findings auto-fixed. `ruff check --select FURB src/` exits 0.
+- T002 (Suppression reasons): `scripts/check_suppression_reasons.py` enforces `owner; reason` format on new suppressions. 126 total, 12 formatted, 114 grandfathered. 23 meta-tests pass. Gate `CHECK_SUPPRESSION_REASONS=true`.
+- T003 (CI): `diff-coverage` and `mutation-diff` jobs added to `.github/workflows/ci.yml`. `mutate-diff` Makefile target. `.github/` excluded from semgrep to avoid `${{ }}` false positives.
+- T004 (Verification): `make check` passes all gates. `make suppression-reasons` passes. 23/23 test_suppression_reasons tests pass.
+- All acceptance criteria (AC1-AC5) met.
+- No regressions. No threshold weakening.
