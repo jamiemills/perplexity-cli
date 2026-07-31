@@ -517,7 +517,7 @@ ci-test-coverage: test-coverage ## CI test lane with per-module coverage (Python
 
 ci-test-compat: test ## CI compatibility tests without coverage (Python 3.13/3.14)
 
-ci-fuzz-status: test-fuzz ## CI fuzz status (non-authoritative until rank 4)
+ci-fuzz-status: test-fuzz ## CI fuzz status (authoritative)
 
 ci-property: test-property-$(PROPERTY_PROFILE) ## CI property tests
 

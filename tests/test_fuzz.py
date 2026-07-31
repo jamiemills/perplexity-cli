@@ -23,10 +23,6 @@ import sys
 
 import pytest
 
-# atheris is an optional dependency -- skip fuzz harness tests when absent
-# (e.g. in CI where it is not installed).
-_HAS_ATHERIS = importlib.util.find_spec("atheris") is not None
-
 # Number of fuzz iterations per harness.
 _FUZZ_ITERATIONS = 5_000
 
@@ -37,9 +33,17 @@ _HARNESS_SCRIPT = str(__import__("pathlib").Path(__file__).parent / "_fuzz_harne
 def _run_harness(harness_name: str, iterations: int = _FUZZ_ITERATIONS) -> None:
     """Run a named fuzz harness in a subprocess.
 
+    Fails loudly when atheris is unavailable -- the fuzz lane is
+    authoritative and must not silently skip.
+
     Raises AssertionError with stderr output if the subprocess exits
     with a non-zero code.
     """
+    if importlib.util.find_spec("atheris") is None:
+        pytest.fail(
+            "atheris is not installed -- run 'uv sync --all-extras --group dev' "
+            "(fuzz lane is authoritative and must not skip)"
+        )
     result = subprocess.run(
         [sys.executable, _HARNESS_SCRIPT, harness_name, str(iterations)],
         capture_output=True,
@@ -57,7 +61,6 @@ def _run_harness(harness_name: str, iterations: int = _FUZZ_ITERATIONS) -> None:
 
 
 @pytest.mark.fuzz
-@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzSSEParser:
     """Fuzz tests for the SSE wire-format parser."""
 
@@ -84,7 +87,6 @@ class TestFuzzSSEParser:
 
 
 @pytest.mark.fuzz
-@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzFormatting:
     """Fuzz tests for text transformation functions."""
 
@@ -107,7 +109,6 @@ class TestFuzzFormatting:
 
 
 @pytest.mark.fuzz
-@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzEncryption:
     """Fuzz tests for decryption of corrupt ciphertext."""
 
@@ -122,7 +123,6 @@ class TestFuzzEncryption:
 
 
 @pytest.mark.fuzz
-@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzScraperFields:
     """Fuzz tests for thread-parsing module-level functions."""
 
@@ -141,7 +141,6 @@ class TestFuzzScraperFields:
 
 
 @pytest.mark.fuzz
-@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzContracts:
     """Fuzz tests for upstream payload validation helpers."""
 
@@ -168,7 +167,6 @@ class TestFuzzContracts:
 
 
 @pytest.mark.fuzz
-@pytest.mark.skipif(not _HAS_ATHERIS, reason="atheris not installed")
 class TestFuzzPydanticModels:
     """Fuzz tests for Pydantic model validation with untrusted input."""
 

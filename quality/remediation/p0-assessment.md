@@ -82,11 +82,13 @@
 **Definition** (outstanding-work.md item 4): install and lock Atheris, fail if unavailable, fail if harness count changes, fail if any fuzz test skips.
 
 **Current state:**
+- **COMPLETE (2026-07-31):** atheris>=3.1.0 added to dev group, platform-gated to linux/x86_64 (no macos/aarch64 wheels — verified via `uv sync --python-platform macos`); 17 fuzz tests run and pass; skipif guards replaced with `pytest.fail` inside `_run_harness`; CI `fuzz-status` no longer has `continue-on-error`; Makefile comment says authoritative.
 - 17 harnesses in `tests/_fuzz_harnesses.py` (`_HARNESSES` registry, lines 266-284), driven by `tests/test_fuzz.py` via subprocess (`test_fuzz.py:37-51`).
 - Harness drift is enforced: `TestFuzzHarnessEnforcement` (`test_fuzz.py:193-262`) checks registry ↔ test sync and a hard-coded count of 17 (`test_fuzz.py:258-262`). This class is **not** fuzz-marked, so it runs in the standard suite — count failures already fail CI.
-- `make test-fuzz` (`Makefile:333-334`) runs `pytest tests/test_fuzz.py -m fuzz`.
-- CI `fuzz-status` job (`ci.yml:147-168`) calls `make ci-fuzz-status` (`Makefile:520`), which is `test-fuzz` with the comment `non-authoritative until rank 4`, and the job has `continue-on-error: true` (`ci.yml:151`).
-- **Atheris is not installed or locked**: absent from `pyproject.toml` dependency groups and from `uv.lock` (only the pytest marker docstring mentions it). Every fuzz test carries `@pytest.mark.skipif(not _HAS_ATHERIS, ...)` (`test_fuzz.py:28,60`), and `pytest` exits 0 on an all-skipped run — so `make test-fuzz` silently passes without Atheris.
+- `make test-fuzz` (`Makefile:333-334`) runs `pytest tests/test_fuzz.py -m fuzz` — 17 passed, 4 deselected in ~13s.
+- CI `fuzz-status` job (`ci.yml:147-168`) calls `make ci-fuzz-status` (`Makefile:520`), now blocking (no `continue-on-error`).
+
+**Residual:** the `fuzz` lane fails loudly if atheris is missing on linux/x86_64; macos/aarch64 runs the standard suite (enforcement tests only) since atheris has no wheels there — fuzz lane itself is linux-only.
 
 **What's missing:**
 - Add Atheris to a locked dependency group (e.g. a `fuzz` extra/dev group) and `uv lock`.
