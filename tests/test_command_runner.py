@@ -1,5 +1,6 @@
 """Direct tests for command runner orchestration helpers."""
 
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -101,6 +102,9 @@ def test_run_set_config_command_updates_setting(capsys):
 
 def test_run_set_config_command_handles_configuration_error(capsys):
     """Set-config runner maps configuration failures to exit code 1."""
+    logging.getLogger(
+        "perplexity_cli"
+    ).handlers.clear()  # drop leaked stderr handlers from earlier tests
     with patch("perplexity_cli.runners.config.set_feature") as mock_set_feature:
         mock_set_feature.side_effect = ConfigurationError("bad config")
 
