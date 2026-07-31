@@ -1,7 +1,7 @@
 """Validation helpers for private upstream API payload contracts."""
 
 from collections.abc import Callable
-from typing import Any, TypeGuard
+from typing import Any, Protocol, TypeGuard
 
 from perplexity_cli.utils.exceptions import UpstreamSchemaError
 
@@ -107,3 +107,9 @@ def parse_thread_list_payload(payload: Any) -> list[dict[str, Any]]:
         require_mapping(entry, "Malformed thread entry in upstream API response")
         for entry in thread_entries
     ]
+
+
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

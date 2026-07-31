@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
 import click
 
@@ -94,3 +94,9 @@ def _extract_argument_info(param: click.Argument) -> dict[str, Any]:
         "name": param.name,
         "required": param.required,
     }
+
+
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

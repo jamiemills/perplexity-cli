@@ -8,6 +8,8 @@ only need to be made in one place.
 
 from __future__ import annotations
 
+from typing import Protocol
+
 from perplexity_cli.utils.config import get_perplexity_base_url
 
 
@@ -65,3 +67,9 @@ def build_perplexity_headers(
         headers["X-CSRFToken"] = cookies["csrftoken"]
 
     return headers
+
+
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

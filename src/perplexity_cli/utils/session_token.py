@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TypeGuard
+from typing import Protocol, TypeGuard
 
 from perplexity_cli.utils.exceptions import AuthenticationError
 
@@ -51,3 +51,9 @@ def _validate_access_token(user_data: dict[str, object], raw_token: str) -> str:
         raise AuthenticationError(msg)
 
     return access_token
+
+
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

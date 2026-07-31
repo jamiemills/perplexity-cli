@@ -1,3 +1,5 @@
+from typing import Protocol
+
 """Token encryption utilities using deterministic machine-derived keys.
 
 This module provides symmetric encryption for stored authentication tokens.
@@ -178,3 +180,9 @@ def decrypt_token(encrypted_token: str) -> str:
                     "Please re-authenticate with: perplexity-cli auth"
                 )
                 raise AuthenticationError(msg) from e
+
+
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

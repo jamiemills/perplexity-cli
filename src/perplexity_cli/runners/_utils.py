@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Protocol
+
 
 def resolve_json_flag(json_mode: bool | None, ctx_obj: dict[str, object] | None) -> bool:
     """Resolve the effective JSON mode flag from explicit arg or Click context.
@@ -18,3 +20,9 @@ def resolve_json_flag(json_mode: bool | None, ctx_obj: dict[str, object] | None)
     if not ctx_obj:
         return False
     return bool(ctx_obj.get("json", False))
+
+
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

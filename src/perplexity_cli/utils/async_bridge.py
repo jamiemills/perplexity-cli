@@ -1,3 +1,5 @@
+from typing import Protocol
+
 """Async-to-sync bridge with nested event loop support.
 
 This module defines the **single sync/async boundary** for the CLI.
@@ -55,3 +57,9 @@ def run_async[T](coro: Coroutine[object, object, T]) -> T:
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(asyncio.run, coro)
         return future.result()  # ty: ignore[invalid-return-type]
+
+
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

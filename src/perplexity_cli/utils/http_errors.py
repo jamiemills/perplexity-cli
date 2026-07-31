@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import traceback
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 import click
 
@@ -228,3 +228,9 @@ def handle_network_error(
         click.echo(f"Details: {error}", err=True)
 
     raise SystemExit(1)
+
+
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

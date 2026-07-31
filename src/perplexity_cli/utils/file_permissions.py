@@ -1,3 +1,5 @@
+from typing import Protocol
+
 """File permission utilities for secure file handling."""
 
 import logging
@@ -43,3 +45,9 @@ def verify_secure_permissions(
         if file_type == "token":
             raise AuthenticationError(error_msg)
         raise ConfigurationError(error_msg)
+
+
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...

@@ -1,3 +1,5 @@
+from typing import Protocol
+
 """Date parsing utilities for thread export functionality.
 
 This module handles parsing and formatting of thread creation timestamps.
@@ -180,3 +182,9 @@ def is_in_date_range(dt: datetime, from_date: str | None, to_date: str | None) -
             f"to_date='{to_date}': {e}"
         )
         raise ValueError(msg) from e
+
+
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+    """Abstract coupling protocol."""
+
+    ...
