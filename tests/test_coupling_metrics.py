@@ -25,7 +25,7 @@ BASELINE_PATH = PROJECT_ROOT / "quality" / "baselines" / "coupling-report.json"
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from scripts.check_coupling import (  # noqa: E402
+from scripts.check_coupling import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
     DEFAULT_DISTANCE_THRESHOLD,
     ModuleMetrics,
     SyntaxErrorInSource,

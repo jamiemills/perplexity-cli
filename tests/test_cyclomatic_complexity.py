@@ -81,4 +81,4 @@ def test_maintainability_index_all_a_grade() -> None:
 
 def test_radon_is_importable() -> None:
     """Radon is installed and importable."""
-    import radon  # noqa: F401
+    import radon  # noqa: F401  # owner: quality-infrastructure; reason: optional dependency availability probe

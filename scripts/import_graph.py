@@ -178,10 +178,8 @@ def _collect_module_imports(node: ast.ImportFrom, imports: set[str]) -> None:
 
 def _node_location(node: ast.AST) -> tuple[int, int]:
     """Return the source line and column exposed by an AST node, if any."""
-    # owner: quality-infrastructure; reason: heterogeneous ast.AST nodes expose optional location attributes
-    line = getattr(node, "lineno", 0)  # nosemgrep: getattr-with-string-literal
-    # owner: quality-infrastructure; reason: heterogeneous ast.AST nodes expose optional location attributes
-    column = getattr(node, "col_offset", 0)  # nosemgrep: getattr-with-string-literal
+    line = getattr(node, "lineno", 0)  # nosemgrep: getattr-with-string-literal  # owner: quality-infrastructure; reason: heterogeneous ast.AST nodes expose optional location attributes  # fmt: skip
+    column = getattr(node, "col_offset", 0)  # nosemgrep: getattr-with-string-literal  # owner: quality-infrastructure; reason: heterogeneous ast.AST nodes expose optional location attributes  # fmt: skip
     return line, column
 
 
@@ -206,8 +204,7 @@ def _max_ast_line(tree: ast.AST) -> int:
     """Find the highest line number in an AST."""
     max_so_far = 0
     for node in ast.walk(tree):
-        # owner: quality-infrastructure; reason: heterogeneous ast.AST nodes expose optional location attributes
-        end = getattr(node, "end_lineno", 0) or 0  # nosemgrep: getattr-with-string-literal
+        end = getattr(node, "end_lineno", 0) or 0  # nosemgrep: getattr-with-string-literal  # owner: quality-infrastructure; reason: heterogeneous ast.AST nodes expose optional location attributes  # fmt: skip
         line, _column = _node_location(node)
         max_so_far = max(max_so_far, end, line)
     return max_so_far

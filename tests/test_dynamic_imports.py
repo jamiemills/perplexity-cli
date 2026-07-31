@@ -8,7 +8,7 @@
 - Allows explicitly declared dynamic imports
 - Proves that moving a forbidden static import into a dynamic call still fails
 """
-# noqa: D (tests are exempt from docstring requirements)
+# noqa: D (tests are exempt from docstring requirements)  # owner: quality-infrastructure; reason: test modules exempt from pydocstyle
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import scripts.check_dynamic_imports as cdi  # noqa: E402
-from scripts.check_dynamic_imports import (  # noqa: E402
+import scripts.check_dynamic_imports as cdi  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+from scripts.check_dynamic_imports import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
     AnalysisResult,
     _build_dynamic_allowlist,
     _build_layer_map,

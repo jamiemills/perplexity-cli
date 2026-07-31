@@ -30,9 +30,7 @@ See also: quality/schemas/differential-context-v1.json
 from __future__ import annotations
 
 import logging
-
-# owner: quality-infrastructure; reason: git argv is structurally delimited and always runs without a shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: git argv is structurally delimited and always runs without a shell
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -137,8 +135,7 @@ def _run_git(
     cmd = ["git", *args]
     logger.debug("Running: %s", " ".join(cmd))
     try:
-        # owner: quality-infrastructure; reason: git argv is structurally delimited and shell execution is disabled
-        proc = subprocess.run(  # nosec B603
+        proc = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: git argv is structurally delimited and shell execution is disabled
             cmd,
             cwd=cwd,
             capture_output=True,

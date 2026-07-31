@@ -9,7 +9,7 @@
 - Consumes quality/architecture.toml for classification
 - The --no-baseline and --explain flags work
 """
-# noqa: D (tests are exempt from docstring requirements)
+# noqa: D (tests are exempt from docstring requirements)  # owner: quality-infrastructure; reason: test modules exempt from pydocstyle
 
 from __future__ import annotations
 
@@ -22,8 +22,8 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import scripts.check_architecture as ca  # noqa: E402
-from scripts.check_architecture import (  # noqa: E402
+import scripts.check_architecture as ca  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+from scripts.check_architecture import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
     AnalysisResult,
     Severity,
     _build_adapter_groups,

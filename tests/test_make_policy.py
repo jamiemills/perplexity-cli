@@ -23,7 +23,9 @@ SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts import validate_make_policy as mkp  # noqa: E402
+from scripts import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+    validate_make_policy as mkp,
+)
 
 MAKE_PRESENT: bool = shutil.which("make") is not None
 

@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-import agent_check  # noqa: E402
+import agent_check  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
 
 # ---------------------------------------------------------------------------
 # Helpers

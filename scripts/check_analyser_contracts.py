@@ -20,9 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
-
-# owner: quality-infrastructure; reason: invoke Make with discrete validated argv and no shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: invoke Make with discrete validated argv and no shell
 import sys
 import time
 import tomllib
@@ -521,8 +519,7 @@ def run_analyser(
     stderr_tail = ""
 
     try:
-        # owner: quality-infrastructure; reason: validated Make target is one argv item with no shell
-        proc = subprocess.run(  # nosec B603
+        proc = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: validated Make target is one argv item with no shell
             cmd,
             capture_output=True,
             text=True,
@@ -608,8 +605,7 @@ class CliOptions:
     timeout: int
 
 
-# owner: quality-infrastructure; reason: backwards-compatible private pending selection API
-def _should_skip_pending(  # nosemgrep: boolean-flag-argument
+def _should_skip_pending(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: backwards-compatible private pending selection API
     contract: AnalyserContract, pending_ok: bool
 ) -> bool:
     """Return True if *contract* should be skipped as a pending analyser."""
@@ -628,8 +624,7 @@ def _matches_only_filter(contract: AnalyserContract, only: str | None) -> bool:
     return only in contract.id or only in contract.target
 
 
-# owner: quality-infrastructure; reason: backwards-compatible positional analyser selection API
-def _select_contracts(  # nosemgrep: boolean-flag-argument
+def _select_contracts(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: backwards-compatible positional analyser selection API
     contracts: list[AnalyserContract],
     only: str | None,
     pending_ok: bool,

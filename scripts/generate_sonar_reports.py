@@ -18,9 +18,7 @@ Usage::
 from __future__ import annotations
 
 import logging
-
-# owner: quality-infrastructure; reason: invokes fixed analyser commands without a shell.
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: invokes fixed analyser commands without a shell.
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,8 +89,7 @@ def _run_tool(spec: ToolSpec) -> bool:
     """
     logger.info("Running %s...", spec.name)
     try:
-        # owner: quality-infrastructure; reason: ToolSpec commands are repository constants.
-        result = subprocess.run(  # nosec B603
+        result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: ToolSpec commands are repository constants.
             spec.command,
             capture_output=True,
             text=True,

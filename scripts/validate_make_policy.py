@@ -28,9 +28,7 @@ import argparse
 import json
 import logging
 import re
-
-# owner: quality-infrastructure; reason: fixed make database query runs without a shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: fixed make database query runs without a shell
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -492,8 +490,7 @@ def _run_make_database(makefile: Path) -> str:
     ]
     logger.info("Running: %s", " ".join(cmd))
     try:
-        # owner: quality-infrastructure; reason: only the resolved trusted repository Makefile is queried
-        result = subprocess.run(  # nosec B603
+        result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: only the resolved trusted repository Makefile is queried
             cmd,
             capture_output=True,
             text=True,
@@ -864,8 +861,7 @@ def _build_report_safely(makefile: Path) -> MakeReport | None:
         return None
 
 
-# owner: quality-infrastructure; reason: stable tested helper contract
-def _emit_report(  # nosemgrep: boolean-flag-argument
+def _emit_report(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: stable tested helper contract
     report: MakeReport, json_mode: bool
 ) -> None:
     """Convert the stable boolean contract and emit the report."""

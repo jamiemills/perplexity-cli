@@ -24,9 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
-
-# owner: quality-infrastructure; reason: invoke Git with internally assembled argv and no shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: invoke Git with internally assembled argv and no shell
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,8 +78,7 @@ def _run_git(args: list[str], cwd: Path) -> tuple[int, str, str]:
     """Run an internally assembled Git command without a shell."""
     command = ["git", *args]
     try:
-        # owner: quality-infrastructure; reason: internal Git argv keeps refs discrete and disables shell
-        result = subprocess.run(  # nosec B603
+        result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: internal Git argv keeps refs discrete and disables shell
             command,
             cwd=cwd,
             capture_output=True,
@@ -437,8 +434,7 @@ def _process_diff_context(ctx: DiffContext) -> tuple[MutationManifest, int]:
     return _classify_result(production_files, deletions, renames)
 
 
-# owner: quality-infrastructure; reason: backwards-compatible public discovery API
-def discover_mutate_diff_files(  # nosemgrep: boolean-flag-argument
+def discover_mutate_diff_files(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: backwards-compatible public discovery API
     base_sha: str | None = None,
     tested_sha: str | None = None,
     local: bool = False,

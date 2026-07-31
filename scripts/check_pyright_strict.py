@@ -20,9 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
-
-# owner: quality-infrastructure; reason: invoke Pyright with a static argv and no shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: invoke Pyright with a static argv and no shell
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -189,8 +187,7 @@ def collect_findings() -> list[str]:
     TEMP_CONFIG.write_text(json.dumps(_STRICT_CONFIG), encoding="utf-8")
     cmd = ["uv", "run", "pyright", "-p", str(TEMP_CONFIG), "--outputjson"]
     try:
-        # owner: quality-infrastructure; reason: static argv uses a project-owned config without a shell
-        result = subprocess.run(  # nosec B603
+        result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: static argv uses a project-owned config without a shell
             cmd,
             capture_output=True,
             text=True,

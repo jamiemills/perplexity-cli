@@ -35,7 +35,9 @@ from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _gates import load_gates  # noqa: E402
+from _gates import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+    load_gates,
+)
 
 _gates = load_gates()
 DEFAULT_MIN_COVERAGE = _gates.get_int("MIN_COVERAGE", 85)
@@ -108,8 +110,7 @@ def _try_parse(source: str, filename: str) -> ast.Module | None:
         return None
 
 
-# owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
-def _classify_source(  # nosemgrep: boolean-flag-argument
+def _classify_source(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
     source: str, filename: str = "<string>", is_init: bool = False
 ) -> str:
     tree = _try_parse(source, filename)
@@ -118,8 +119,7 @@ def _classify_source(  # nosemgrep: boolean-flag-argument
     return _classify_from_tree(tree, is_init=is_init)
 
 
-# owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
-def _classify_from_tree(  # nosemgrep: boolean-flag-argument
+def _classify_from_tree(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
     tree: ast.Module, is_init: bool = False
 ) -> str:
     if not tree.body:
@@ -131,8 +131,7 @@ def _classify_from_tree(  # nosemgrep: boolean-flag-argument
     return "executable"
 
 
-# owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
-def _is_statement_free(  # nosemgrep: boolean-flag-argument
+def _is_statement_free(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
     body: list[ast.stmt], is_init: bool
 ) -> bool:
     """Return True if *body* contains no executable statements."""

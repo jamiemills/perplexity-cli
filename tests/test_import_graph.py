@@ -7,7 +7,7 @@
 - fails on syntax/read errors with distinct exit codes
 - returns deterministic ordering
 """
-# noqa: D (tests are exempt from docstring requirements)
+# noqa: D (tests are exempt from docstring requirements)  # owner: quality-infrastructure; reason: test modules exempt from pydocstyle
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.import_graph import (  # noqa: E402
+from scripts.import_graph import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
     FileReadError,
     SyntaxErrorInSource,
     _collect_categorised_imports,

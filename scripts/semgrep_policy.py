@@ -26,9 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
-
-# owner: quality-infrastructure; reason: pinned Semgrep runs as validated argv without a shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: pinned Semgrep runs as validated argv without a shell
 import sys
 from dataclasses import dataclass
 from enum import Enum
@@ -107,8 +105,7 @@ def _validate_install() -> None:
     ``subprocess.TimeoutExpired``.
     """
     try:
-        # owner: quality-infrastructure; reason: fixed pinned Semgrep version probe runs without a shell
-        result = subprocess.run(  # nosec B603 B607
+        result = subprocess.run(  # nosec B603 B607  # owner: quality-infrastructure; reason: fixed pinned Semgrep version probe runs without a shell
             [
                 "uvx",
                 "--from",
@@ -150,8 +147,7 @@ def _run_semgrep(
         "--quiet",
         "--metrics=off",
     ]
-    # owner: quality-infrastructure; reason: all forwarded argv passed the typed Semgrep invocation schema
-    return subprocess.run(  # nosec B603
+    return subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: all forwarded argv passed the typed Semgrep invocation schema
         cmd,
         capture_output=True,
         text=True,
@@ -352,8 +348,7 @@ def _print_summary(
         print(f"  Advisory: {len(advisory)} finding(s)")
 
 
-# owner: quality-infrastructure; reason: stable tested helper contract
-def _report(  # nosemgrep: boolean-flag-argument
+def _report(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: stable tested helper contract
     blocking: list[dict[str, Any]],
     advisory: list[dict[str, Any]],
     is_blocking_mode: bool,

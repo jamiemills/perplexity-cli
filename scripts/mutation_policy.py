@@ -32,9 +32,7 @@ import argparse
 import json
 import logging
 import re
-
-# owner: quality-infrastructure; reason: only the fixed pinned mutmut command is executed without a shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: only the fixed pinned mutmut command is executed without a shell
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -366,8 +364,7 @@ def _run_mutmut(args: tuple[str, ...]) -> str:
     cmd = [*_MUTMUT_PREFIX, *args]
     logger.info("Running: %s", " ".join(cmd))
     try:
-        # owner: quality-infrastructure; reason: args are restricted to the mutmut helper contracts and shell is disabled
-        result = subprocess.run(  # nosec B603
+        result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: args are restricted to the mutmut helper contracts and shell is disabled
             cmd,
             capture_output=True,
             text=True,

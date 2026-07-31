@@ -1,6 +1,6 @@
 """Suppression-reason enforcement gate.
 
-Blocks new inline suppressions (``# noqa``, ``# nosec``, ``# nosemgrep``)
+Blocks new inline suppressions (``# noqa``, ``nosec``, ``# nosemgrep``)
 that lack ``owner:`` and ``reason:`` justification fields.  Existing
 un-annotated suppressions are grandfathered via a fingerprint baseline;
 newly added suppressions must include both fields.

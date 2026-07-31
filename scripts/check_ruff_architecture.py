@@ -20,9 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
-
-# owner: quality-infrastructure; reason: fixed Ruff architecture scan runs without a shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: fixed Ruff architecture scan runs without a shell
 import sys
 from pathlib import Path
 from typing import Any, cast
@@ -89,8 +87,7 @@ def collect_findings() -> list[str]:
         "--no-fix",
         "src",
     ]
-    # owner: quality-infrastructure; reason: fixed project Ruff argv runs without a shell
-    result = subprocess.run(  # nosec B603
+    result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: fixed project Ruff argv runs without a shell
         cmd,
         capture_output=True,
         text=True,

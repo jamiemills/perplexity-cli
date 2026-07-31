@@ -19,9 +19,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-
-# owner: quality-infrastructure; reason: configured analyser argv runs without a shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: configured analyser argv runs without a shell
 import sys
 import time
 from collections.abc import Callable
@@ -198,8 +196,7 @@ def _run_one(analyser: Analyser, cwd: str) -> AnalyserResult:
         if analyser.command_builder is not None:
             cmd, cleanup_target = analyser.command_builder(Path(cwd))
 
-        # owner: quality-infrastructure; reason: configured analyser argv cannot replace the executable and uses no shell
-        proc = subprocess.run(  # nosec B603
+        proc = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: configured analyser argv cannot replace the executable and uses no shell
             cmd,
             capture_output=True,
             text=True,

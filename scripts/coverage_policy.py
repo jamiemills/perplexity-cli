@@ -24,9 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-
-# owner: quality-infrastructure; reason: coverage runs through the active Python without a shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: coverage runs through the active Python without a shell
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -37,8 +35,12 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _gates import load_gates  # noqa: E402
-from check_module_coverage import validate_report  # noqa: E402
+from _gates import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+    load_gates,
+)
+from check_module_coverage import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+    validate_report,
+)
 
 _gates = load_gates()
 DEFAULT_MIN_COVERAGE = _gates.get_int("MIN_COVERAGE", 85)
@@ -126,8 +128,7 @@ def _combine_fragments(
 
     env = {"COVERAGE_FILE": str(combined_data)}
     cmd = [sys.executable, "-m", "coverage", "combine", "--keep", *data_files]
-    # owner: quality-infrastructure; reason: generated fragment paths are passed to the active Python without a shell
-    result = subprocess.run(  # nosec B603
+    result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: generated fragment paths are passed to the active Python without a shell
         cmd, capture_output=True, text=True, env=env, cwd=str(workdir), check=False
     )
     if result.returncode != 0:
@@ -146,8 +147,7 @@ def _generate_json_report(combined_data: Path, workdir: Path) -> dict[str, Any]:
     env = {"COVERAGE_FILE": str(combined_data)}
     json_path = workdir / "coverage.json"
     cmd = [sys.executable, "-m", "coverage", "json", "-o", str(json_path)]
-    # owner: quality-infrastructure; reason: generated report paths are passed to the active Python without a shell
-    result = subprocess.run(  # nosec B603
+    result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: generated report paths are passed to the active Python without a shell
         cmd, capture_output=True, text=True, env=env, cwd=str(workdir), check=False
     )
     if result.returncode != 0:

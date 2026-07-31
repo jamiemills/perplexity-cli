@@ -16,9 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-
-# owner: quality-infrastructure; reason: validated git and radon argv run without a shell
-import subprocess  # nosec B404
+import subprocess  # nosec B404  # owner: quality-infrastructure; reason: validated git and radon argv run without a shell
 import sys
 import tarfile
 import tempfile
@@ -67,8 +65,7 @@ def _git_log(revisions: int) -> list[tuple[str, str, str]]:
     if revisions <= 0:
         msg = "revisions must be positive"
         raise ValueError(msg)
-    # owner: quality-infrastructure; reason: validated integer count is passed to fixed git argv without a shell
-    result = subprocess.run(  # nosec B603 B607
+    result = subprocess.run(  # nosec B603 B607  # owner: quality-infrastructure; reason: validated integer count is passed to fixed git argv without a shell
         [
             "git",
             "log",
@@ -92,8 +89,7 @@ def _git_log(revisions: int) -> list[tuple[str, str, str]]:
 
 def _git_since(since_date: str) -> list[tuple[str, str, str]]:
     """Return list of (hash, date, message) for commits since *since_date*."""
-    # owner: quality-infrastructure; reason: Git date expression is one argv value and shell execution is disabled
-    result = subprocess.run(  # nosec B603 B607
+    result = subprocess.run(  # nosec B603 B607  # owner: quality-infrastructure; reason: Git date expression is one argv value and shell execution is disabled
         [
             "git",
             "log",
@@ -133,8 +129,7 @@ def _checkout_revision(rev: str, tmpdir: str) -> bool:
     if not _is_safe_revision(rev):
         return False
     archive_path = Path(tmpdir) / "src.tar"
-    # owner: quality-infrastructure; reason: validated revision and generated path run as fixed git argv
-    result = subprocess.run(  # nosec B603 B607
+    result = subprocess.run(  # nosec B603 B607  # owner: quality-infrastructure; reason: validated revision and generated path run as fixed git argv
         ["git", "archive", rev, f"{SRC_DIR}/", f"--output={archive_path}"],
         capture_output=True,
         text=True,
@@ -166,8 +161,7 @@ def _is_safe_revision(revision: str) -> bool:
 
 def _run_radon_cc(tmpdir: str) -> tuple[int, str]:
     """Run radon cc on the checked-out source in *tmpdir*.  Returns (violations, worst_rank)."""
-    # owner: quality-infrastructure; reason: generated checkout path runs through the active Python without a shell
-    result = subprocess.run(  # nosec B603
+    result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: generated checkout path runs through the active Python without a shell
         [
             sys.executable,
             "-m",
@@ -195,8 +189,7 @@ def _run_radon_cc(tmpdir: str) -> tuple[int, str]:
 
 def _run_radon_mi(tmpdir: str) -> tuple[int, str]:
     """Run radon mi on the checked-out source in *tmpdir*.  Returns (violations, worst_rank)."""
-    # owner: quality-infrastructure; reason: generated checkout path runs through the active Python without a shell
-    result = subprocess.run(  # nosec B603
+    result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: generated checkout path runs through the active Python without a shell
         [
             sys.executable,
             "-m",

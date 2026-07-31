@@ -56,4 +56,4 @@ def test_whitelist_file_exists() -> None:
 
 def test_vulture_is_importable() -> None:
     """Vulture is installed and importable."""
-    import vulture  # noqa: F401
+    import vulture  # noqa: F401  # owner: quality-infrastructure; reason: optional dependency availability probe

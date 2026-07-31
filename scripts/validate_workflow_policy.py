@@ -346,8 +346,7 @@ def _validate_jobs(workflow: dict[str, Any], file_name: str) -> list[Finding]:
     return findings
 
 
-# owner: quality-infrastructure; reason: stable tested helper contract
-def _validate_one_job(  # nosemgrep: boolean-flag-argument
+def _validate_one_job(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: stable tested helper contract
     job: Any,
     job_name: str,
     file_name: str,
@@ -489,8 +488,7 @@ def _has_blocking_errors(report: PolicyReport) -> bool:
     return False
 
 
-# owner: quality-infrastructure; reason: stable tested helper contract
-def _finding_blocks(  # nosemgrep: boolean-flag-argument
+def _finding_blocks(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: stable tested helper contract
     finding: Finding, strict: bool
 ) -> bool:
     """Convert the stable boolean contract and classify a finding."""

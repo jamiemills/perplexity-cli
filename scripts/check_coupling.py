@@ -48,8 +48,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src" / "perplexity_cli"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _gates import load_gates  # noqa: E402
-from import_graph import (  # noqa: E402
+from _gates import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+    load_gates,
+)
+from import_graph import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
     FileReadError,
     SyntaxErrorInSource,
     get_all_edges,
@@ -998,8 +1000,7 @@ def _emit_budget_advisory(
         print(msg)
 
 
-# owner: quality-infrastructure; reason: private helper, boolean from typed enum context.
-def _format_budget_message(  # nosemgrep: boolean-flag-argument
+def _format_budget_message(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: private helper, boolean from typed enum context.
     flagged_count: int, max_flagged: int, blocking: bool
 ) -> str:
     """Build the budget-exceeded message."""

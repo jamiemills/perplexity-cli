@@ -21,8 +21,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = PROJECT_ROOT / "tests" / "fixtures" / "python_quality"
 FAKE_SAFETY = FIXTURES / "fake_safety.py"
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-import agent_check  # noqa: E402
-import generate_sonar_reports  # noqa: E402
+import agent_check  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+import generate_sonar_reports  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
 
 # ---------------------------------------------------------------------------
 # Configuration validation (hermetic — no network)

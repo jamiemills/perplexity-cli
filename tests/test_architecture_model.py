@@ -5,7 +5,7 @@
 - overlapping assignments
 - invalid layer names and references
 """
-# noqa: D (tests are exempt from docstring requirements)
+# noqa: D (tests are exempt from docstring requirements)  # owner: quality-infrastructure; reason: test modules exempt from pydocstyle
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.architecture_model import (  # noqa: E402
+from scripts.architecture_model import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
     _check_adapter_modules_validity,
     _check_composition_root_validity,
     _check_duplicates_and_overlaps,

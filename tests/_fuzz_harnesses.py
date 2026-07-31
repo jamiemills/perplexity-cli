@@ -20,31 +20,40 @@ sys.path.insert(0, os.path.join(_repo_root, "src"))
 # Set isolated config dir to avoid touching real user config.
 os.environ.setdefault("PERPLEXITY_CONFIG_DIR", "/tmp/fuzz-config-dir")
 
-import atheris  # noqa: E402, I001
+import atheris  # noqa: E402, I001  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
 
 # ---------------------------------------------------------------------------
 # Import target modules (without instrument_imports — too slow).
 # ---------------------------------------------------------------------------
-from pydantic import ValidationError  # noqa: E402
+from pydantic import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+    ValidationError,
+)
 
-from perplexity_cli.api.client import SSEParser  # noqa: E402
-from perplexity_cli.api.contracts import (  # noqa: E402
+from perplexity_cli.api.client import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+    SSEParser,
+)
+from perplexity_cli.api.contracts import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
     parse_thread_list_payload,
     parse_upload_url_response,
     require_list,
     require_mapping,
 )
-from perplexity_cli.api.models import Block, SSEMessage  # noqa: E402
-from perplexity_cli.formatting.base import (  # noqa: E402
+from perplexity_cli.api.models import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+    Block,
+    SSEMessage,
+)
+from perplexity_cli.formatting.base import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
     Formatter,
     _is_structural_line,
 )
-from perplexity_cli.threads.scraper import (  # noqa: E402
+from perplexity_cli.threads.scraper import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
     _extract_total_threads,
     _get_str_field,
 )
-from perplexity_cli.utils.encryption import decrypt_token  # noqa: E402
-from perplexity_cli.utils.exceptions import (  # noqa: E402
+from perplexity_cli.utils.encryption import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+    decrypt_token,
+)
+from perplexity_cli.utils.exceptions import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
     AuthenticationError,
     UpstreamSchemaError,
 )

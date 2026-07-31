@@ -424,8 +424,7 @@ def _check_composition_root_validity(model: Model) -> list[str]:
     return errors
 
 
-# owner: quality-infrastructure; reason: backwards-compatible public architecture validation API
-def validate(  # nosemgrep: boolean-flag-argument
+def validate(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: backwards-compatible public architecture validation API
     toml_path: Path,
     src_root: Path,
     check_modules: bool = True,

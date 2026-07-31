@@ -31,7 +31,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC = PROJECT_ROOT / "src"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _gates import load_gates  # noqa: E402
+from _gates import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+    load_gates,
+)
 
 _gates = load_gates()
 DEFAULT_MAX_LINES = _gates.get_int("FILE_SIZE_CAP", 1000)

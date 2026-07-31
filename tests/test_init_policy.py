@@ -255,7 +255,7 @@ class TestFormatterRegistryDispatch:
         assert registry.names() == ["alpha", "beta"]
 
     def test_global_registry_resolves_builtin_formats(self) -> None:
-        import perplexity_cli.formatting  # noqa: F401 — triggers registration
+        import perplexity_cli.formatting  # noqa: F401  # owner: cli-team; reason: side-effect import registers built-in formatters
         from perplexity_cli.formatting.registry import get_formatter, list_formatters
 
         names = list_formatters()
