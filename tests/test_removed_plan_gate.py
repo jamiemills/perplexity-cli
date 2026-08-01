@@ -1,3 +1,15 @@
+"""Structural gate asserting the deleted plan-gate mechanisms stay gone.
+
+Structural-authority status (F023 mapping): these tests certify repository
+*state* — that the removed plan-compliance/plan-gate mechanisms are no longer
+referenced by any tracked file. They do not certify runtime behaviour through
+source-string inspection. The F023 anti-pattern is a test asserting what code
+*must contain* so that some behaviour holds; here the assertions only pin
+absence of deleted mechanism keywords and may trigger re-checks of the real
+configuration files. This is the legitimate structural authority recognised in
+ruling A010, so the tests are kept unchanged.
+"""
+
 from __future__ import annotations
 
 import json

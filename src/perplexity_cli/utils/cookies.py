@@ -1,7 +1,6 @@
 """Cookie helpers for curl_cffi request clients."""
 
 from collections.abc import Mapping
-from typing import Protocol
 
 from curl_cffi.requests import Cookies
 
@@ -22,9 +21,3 @@ def to_curl_cffi_cookies(cookies: Mapping[str, str] | None) -> Cookies | dict[st
         secure = name.startswith(("__Secure-", "__Host-"))
         jar.set(name, value, secure=secure)
     return jar
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...

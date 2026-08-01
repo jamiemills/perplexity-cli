@@ -20,7 +20,7 @@ from perplexity_cli.threads.models import (
     parse_iso8601_timestamp,
     validate_date_args,
 )
-from perplexity_cli.utils.atomic_write import atomic_write_text
+from perplexity_cli.utils.atomic_write import atomic_write_json
 from perplexity_cli.utils.config import get_config_paths
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
 from perplexity_cli.utils.exceptions import ConfigurationError
@@ -232,7 +232,7 @@ class ThreadCacheManager:
             encrypted_cache = encrypt_token(cache_json)
 
             # Write encrypted cache to file atomically with secure permissions
-            atomic_write_text(
+            atomic_write_json(
                 self.cache_path,
                 {
                     "version": self.CACHE_VERSION,

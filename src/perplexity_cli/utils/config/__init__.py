@@ -1,7 +1,5 @@
 """Configuration and path management utilities."""
 
-from typing import Protocol
-
 from perplexity_cli.utils.config.contracts import (
     FeatureConfig,
     RateLimitConfig,
@@ -59,10 +57,3 @@ __all__ = [
     "is_str_dict",
     "set_feature",
 ]
-
-
-# Coupling Protocol — increases abstractness (A=0→1.0).
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...

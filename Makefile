@@ -14,25 +14,14 @@ SEMGREP_VERSION := 1.171.0
 ACTIONLINT_PY_VERSION := 1.7.12.24
 SEMGREP := uvx --from semgrep==$(SEMGREP_VERSION) semgrep
 ACTIONLINT := uvx --from actionlint-py==$(ACTIONLINT_PY_VERSION) actionlint
-# Literal core-exclusion manifest (plan decision A003): the property and
-# mutation families are excluded verbatim from the safe ordinary and coverage
-# lanes. No broad globs -- each path is explicit.
+# Literal core-exclusion manifest (plan decision A003): the property lane and
+# the mutation/property policy suites are excluded verbatim from the safe
+# ordinary and coverage lanes. No broad globs -- each path is explicit.
 MUTATION_PROPERTY_FILES := \
 	tests/test_property.py \
 	tests/test_property_policy.py \
 	tests/test_mutate_diff_files.py \
-	tests/test_mutation_api_utils_mcp.py \
-	tests/test_mutation_final_api.py \
-	tests/test_mutation_final_rich_scraper.py \
-	tests/test_mutation_formatting.py \
-	tests/test_mutation_kill_api_threads.py \
-	tests/test_mutation_policy.py \
-	tests/test_mutation_r3_api_rich.py \
-	tests/test_mutation_r3_runners.py \
-	tests/test_mutation_r3_threads_auth.py \
-	tests/test_mutation_runners_auth.py \
-	tests/test_mutation_threads_query.py \
-	tests/test_mutation_utils.py
+	tests/test_mutation_policy.py
 SEMGREP_CONFIGS := \
 	--config .semgrep.yml \
 	--config .semgrep-community-python.yml \

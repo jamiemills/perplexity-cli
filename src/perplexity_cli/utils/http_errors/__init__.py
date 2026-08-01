@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Protocol
-
 from perplexity_cli.utils.http_errors.contracts import (
     HttpErrorClassifier as HttpErrorClassifier,
 )
@@ -43,9 +41,3 @@ __all__ = [
     "handle_unexpected_cli_error",
     "raise_http_status_error",
 ]
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...

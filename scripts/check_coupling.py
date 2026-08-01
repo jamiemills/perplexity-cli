@@ -13,7 +13,8 @@ Formulas
     Abstractness       A  = Na / (Na + Nc)    (0 if no classes)
     Distance           D  = |A + I - 1|
 
-    - Na = abstract classes (ABC / Protocol subclasses or @abstractmethod)
+    - Na = abstract classes (classes with @abstractmethod, or ABC/Protocol
+      subclasses that are imported or instantiated outside their own module)
     - Nc = concrete classes (all other class definitions)
 
 Usage
@@ -276,6 +277,30 @@ def _resolve_source_path(module_rel: str) -> Path | None:
     return None
 
 
+def _parse_source(filepath: Path) -> ast.Module:
+    """Parse *filepath* into an AST, raising coupling-specific errors.
+
+    Args:
+        filepath: Path to the source file.
+
+    Returns:
+        The parsed module AST.
+
+    Raises:
+        SyntaxErrorInSource: If the file has a syntax error.
+        FileReadError: If the file cannot be read.
+    """
+    try:
+        source = filepath.read_text(encoding="utf-8")
+        return ast.parse(source)
+    except SyntaxError as exc:
+        msg = f"Syntax error in {filepath}: {exc}"
+        raise SyntaxErrorInSource(msg) from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        msg = f"Could not read {filepath}: {exc}"
+        raise FileReadError(msg) from exc
+
+
 def _is_abstract_base(base: ast.expr) -> bool:
     """Return True if *base* is ABC or Protocol."""
     if isinstance(base, ast.Name):
@@ -301,19 +326,48 @@ def _is_abstract_decorated(func: ast.FunctionDef) -> bool:
     return False
 
 
-def _is_abstract_class(node: ast.ClassDef) -> bool:
-    """Heuristic: abstract if ABC/Protocol subclass or has @abstractmethod."""
-    for base in node.bases:
-        if _is_abstract_base(base):
-            return True
-    return _has_abstract_method(node)
+def _has_abstract_base(node: ast.ClassDef) -> bool:
+    """Return True if *node* subclasses ABC or Protocol."""
+    return any(_is_abstract_base(base) for base in node.bases)
 
 
-def _count_abstract_classes(tree: ast.AST) -> tuple[int, int]:
+def _is_abstract_class(
+    node: ast.ClassDef,
+    referenced_classes: set[str] | None = None,
+) -> bool:
+    """Heuristic: abstract if it has abstract methods or is referenced.
+
+    A class is abstract when it declares ``@abstractmethod``, or subclasses
+    ABC/Protocol and is referenced (imported or instantiated) outside its own
+    module.  Unreferenced Protocol-only declarative stubs are counted as
+    concrete so they do not inflate abstractness.
+
+    Args:
+        node: The class definition node.
+        referenced_classes: Set of class names in this module that are
+            referenced from other modules.  ``None`` restores the legacy
+            behaviour where every ABC/Protocol subclass is abstract.
+
+    Returns:
+        True when the class counts toward abstract classes (Na).
+    """
+    if _has_abstract_method(node):
+        return True
+    return _has_abstract_base(node) and (
+        referenced_classes is None or node.name in referenced_classes
+    )
+
+
+def _count_abstract_classes(
+    tree: ast.AST,
+    referenced_classes: set[str] | None = None,
+) -> tuple[int, int]:
     """Count abstract and concrete classes in an AST.
 
     Args:
         tree: The parsed module AST.
+        referenced_classes: Class names in this module referenced from
+            other modules.
 
     Returns:
         A tuple of (na, nc) counts.
@@ -322,18 +376,132 @@ def _count_abstract_classes(tree: ast.AST) -> tuple[int, int]:
     nc = 0
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
-            if _is_abstract_class(node):
+            if _is_abstract_class(node, referenced_classes):
                 na += 1
             else:
                 nc += 1
     return na, nc
 
 
-def _count_classes(filepath: Path) -> tuple[int, int]:
+def _class_names_in_tree(tree: ast.AST) -> set[str]:
+    """Return the names of every class defined in *tree*."""
+    return {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+
+
+def _imported_names_in_tree(tree: ast.AST) -> set[str]:
+    """Return names imported into *tree* via ``from ... import``."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            names.update(alias.name for alias in node.names if alias.name != "*")
+    return names
+
+
+def _identifier_names_in_tree(tree: ast.AST) -> set[str]:
+    """Return every plain identifier used in *tree*."""
+    return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+
+
+def _attribute_names_in_tree(tree: ast.AST) -> set[str]:
+    """Return every attribute access target in *tree*."""
+    return {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+
+
+def _referenced_names_in_tree(tree: ast.AST) -> set[str]:
+    """Return names in *tree* that could reference a class elsewhere.
+
+    Includes every imported name, plain identifier, and attribute access,
+    because any of these may instantiate, subclass, or type-annotate with a
+    class defined in another module.
+    """
+    names = _imported_names_in_tree(tree)
+    names.update(_identifier_names_in_tree(tree))
+    names.update(_attribute_names_in_tree(tree))
+    return names
+
+
+def _collect_module_class_info(
+    modules: set[str],
+) -> list[tuple[str, set[str], set[str]]]:
+    """Parse *modules* into (module, class names, referenced names) triples.
+
+    Args:
+        modules: Set of relative module names.
+
+    Returns:
+        A list of per-module triples for every resolvable module.
+
+    Raises:
+        SyntaxErrorInSource: If a source file contains a syntax error.
+        FileReadError: If a source file cannot be read.
+    """
+    parsed: list[tuple[str, set[str], set[str]]] = []
+    for module in sorted(modules):
+        filepath = _resolve_source_path(module)
+        if filepath is None:
+            continue
+        tree = _parse_source(filepath)
+        parsed.append((module, _class_names_in_tree(tree), _referenced_names_in_tree(tree)))
+    return parsed
+
+
+def _mark_definitions(
+    parsed: list[tuple[str, set[str], set[str]]],
+) -> dict[str, set[str]]:
+    """Map every class name to the set of modules that define it."""
+    definitions: dict[str, set[str]] = defaultdict(set)
+    for module, class_names, _ in parsed:
+        for name in class_names:
+            definitions[name].add(module)
+    return definitions
+
+
+def _build_reference_map(
+    parsed: list[tuple[str, set[str], set[str]]],
+    definitions: dict[str, set[str]],
+) -> dict[str, set[str]]:
+    """Map module -> set of its class names referenced from other modules."""
+    referenced: dict[str, set[str]] = defaultdict(set)
+    for module, _, used_names in parsed:
+        for used in used_names:
+            for defining_module in definitions.get(used, ()):
+                if defining_module != module:
+                    referenced[defining_module].add(used)
+    return dict(referenced)
+
+
+def _referenced_class_names(modules: set[str]) -> dict[str, set[str]]:
+    """Map each module to its class names referenced from other modules.
+
+    A class is treated as referenced when its name is imported or used
+    (instantiated, subclassed, or annotated) by any other module.  Uses
+    within the defining module itself never count.
+
+    Args:
+        modules: Set of relative module names.
+
+    Returns:
+        A dict mapping module -> set of its class names referenced elsewhere.
+
+    Raises:
+        SyntaxErrorInSource: If a source file contains a syntax error.
+        FileReadError: If a source file cannot be read.
+    """
+    parsed = _collect_module_class_info(modules)
+    definitions = _mark_definitions(parsed)
+    return _build_reference_map(parsed, definitions)
+
+
+def _count_classes(
+    filepath: Path,
+    referenced_classes: set[str] | None = None,
+) -> tuple[int, int]:
     """Return (abstract_classes, concrete_classes) for *filepath*.
 
     Args:
         filepath: Path to the source file.
+        referenced_classes: Class names in this module referenced from
+            other modules.
 
     Returns:
         A tuple of (na, nc) counts.
@@ -342,23 +510,18 @@ def _count_classes(filepath: Path) -> tuple[int, int]:
         SyntaxErrorInSource: If the file has a syntax error.
         FileReadError: If the file cannot be read.
     """
-    try:
-        source = filepath.read_text(encoding="utf-8")
-        tree = ast.parse(source)
-    except SyntaxError as exc:
-        msg = f"Syntax error in {filepath}: {exc}"
-        raise SyntaxErrorInSource(msg) from exc
-    except (OSError, UnicodeDecodeError) as exc:
-        msg = f"Could not read {filepath}: {exc}"
-        raise FileReadError(msg) from exc
-
-    return _count_abstract_classes(tree)
+    tree = _parse_source(filepath)
+    return _count_abstract_classes(tree, referenced_classes)
 
 
 def _compute_abstractness(
     modules: set[str],
 ) -> dict[str, tuple[int, int]]:
     """Compute (na, nc) abstractness data for each module.
+
+    A class counts as abstract only when it has ``@abstractmethod`` or is an
+    ABC/Protocol subclass referenced outside its own module; unreferenced
+    Protocol-only declarative stubs count as concrete.
 
     Args:
         modules: Set of relative module names.
@@ -370,13 +533,14 @@ def _compute_abstractness(
         SyntaxErrorInSource: If a source file has a syntax error.
         FileReadError: If a source file cannot be read.
     """
+    referenced = _referenced_class_names(modules)
     result: dict[str, tuple[int, int]] = {}
     for module in modules:
         filepath = _resolve_source_path(module)
         if filepath is None:
             result[module] = (0, 0)
             continue
-        result[module] = _count_classes(filepath)
+        result[module] = _count_classes(filepath, referenced.get(module, set()))
     return result
 
 

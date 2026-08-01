@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Protocol
-
 import click
 
 # _ensure_ctx_obj inlined — see below
@@ -199,9 +197,3 @@ def completion_fish() -> None:
 completion_group.add_command(completion_bash)
 completion_group.add_command(completion_zsh)
 completion_group.add_command(completion_fish)
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...

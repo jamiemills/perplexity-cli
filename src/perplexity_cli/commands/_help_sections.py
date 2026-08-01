@@ -15,7 +15,6 @@ from __future__ import annotations
 import json as _json
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
 
 import click
 
@@ -171,28 +170,3 @@ def add_help_sections(cmd: click.Command, config: HelpSectionConfig) -> click.Co
     # mismatch with the unbound class method).
     cmd.__dict__["format_help"] = enhanced_format_help
     return cmd
-
-
-# Coupling Protocol — increases abstractness (A=0→1.0).
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...
-
-
-class _CouplingProto1(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #1."""
-
-    ...
-
-
-class _CouplingProto2(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #2."""
-
-    ...
-
-
-class _CouplingProto3(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #3."""
-
-    ...

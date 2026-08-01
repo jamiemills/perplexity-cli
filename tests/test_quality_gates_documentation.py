@@ -641,16 +641,29 @@ class TestMakeComposites:
         manifest_start = makefile.index("MUTATION_PROPERTY_FILES :=")
         manifest_end = makefile.index("\n\n", manifest_start)
         manifest = makefile[manifest_start:manifest_end]
-        for path in (
+        kept = (
             "tests/test_property.py",
             "tests/test_property_policy.py",
             "tests/test_mutate_diff_files.py",
             "tests/test_mutation_policy.py",
+        )
+        deleted = (
+            "tests/test_mutation_api_utils_mcp.py",
+            "tests/test_mutation_final_api.py",
+            "tests/test_mutation_final_rich_scraper.py",
+            "tests/test_mutation_formatting.py",
+            "tests/test_mutation_kill_api_threads.py",
+            "tests/test_mutation_r3_api_rich.py",
+            "tests/test_mutation_r3_runners.py",
+            "tests/test_mutation_r3_threads_auth.py",
+            "tests/test_mutation_runners_auth.py",
+            "tests/test_mutation_threads_query.py",
             "tests/test_mutation_utils.py",
-        ):
+        )
+        for path in kept:
             assert f"\t{path}" in manifest, f"manifest missing {path}"
-        assert "tests/test_mutation_api_utils_mcp.py" in manifest
-        assert "tests/test_mutation_threads_query.py" in manifest
+        for path in deleted:
+            assert f"\t{path}" not in manifest, f"manifest must not reference deleted {path}"
         assert "#" not in manifest.splitlines()[0]  # header comment precedes variable
         for target in ("\ntest:", "\ntest-coverage-report:"):
             start = makefile.index(target) + 1

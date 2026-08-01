@@ -7,10 +7,12 @@ loopback-only and therefore marked ``hermetic_integration``.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from perplexity_cli.api.endpoints import PerplexityAPI
-from perplexity_cli.api.models import Answer, QueryInput
+from perplexity_cli.api.models import Answer, QueryInput, SSEMessage
 from tests.support.protocol_server import ProtocolServer, QueryResponse
 
 pytestmark = [pytest.mark.hermetic_integration]
@@ -29,11 +31,20 @@ class TestHermeticAPIIntegration:
         api = PerplexityAPI(token=None)
         messages = list(api.submit_query(QueryInput(query="What is 2+2?")))
 
-        assert len(messages) > 0
+        assert len(messages) == 2
         first_msg = messages[0]
-        assert hasattr(first_msg, "backend_uuid")
-        assert hasattr(first_msg, "status")
-        assert hasattr(first_msg, "blocks")
+        assert isinstance(first_msg, SSEMessage)
+        assert first_msg.backend_uuid == "be-1"
+        assert first_msg.status == "IN_PROGRESS"
+        assert first_msg.blocks == []
+        assert first_msg.final_sse_message is False
+
+        assert harness_server.request_count == 1
+        request_body = json.loads(harness_server.last_request_body)
+        assert request_body["query_str"] == "What is 2+2?"
+        assert request_body["params"]["model_preference"] == "pplx_pro"
+        assert request_body["params"]["search_implementation_mode"] == "standard"
+        assert request_body["params"]["attachments"] == []
 
     @pytest.mark.usefixtures("harness_config")
     def test_submit_query_completes(self, harness_server: ProtocolServer) -> None:
@@ -45,9 +56,8 @@ class TestHermeticAPIIntegration:
         api = PerplexityAPI(token=None)
         messages = list(api.submit_query(QueryInput(query="What is the capital of France?")))
 
-        assert len(messages) > 0
-        has_final = any(msg.final_sse_message for msg in messages)
-        assert has_final
+        assert len(messages) == 2
+        assert messages[-1].final_sse_message is True
 
     @pytest.mark.usefixtures("harness_config")
     def test_get_complete_answer_simple_query(self, harness_server: ProtocolServer) -> None:
@@ -83,13 +93,13 @@ class TestHermeticAPIIntegration:
         )
 
         api = PerplexityAPI(token=None)
-        has_blocks = False
-        for message in api.submit_query(QueryInput(query="What is machine learning?")):
-            if message.blocks and len(message.blocks) > 0:
-                has_blocks = True
-                break
+        messages = list(api.submit_query(QueryInput(query="What is machine learning?")))
+        blocks = [block for message in messages for block in message.blocks]
 
-        assert has_blocks
+        assert len(messages) == 2
+        assert len(blocks) == 1
+        assert [block.intended_usage for block in blocks] == ["ask_text"]
+        assert [block.extract_text() for block in blocks] == ["machine learning answer"]
 
     @pytest.mark.usefixtures("harness_config")
     def test_get_complete_answer_different_model_preference(
@@ -104,7 +114,7 @@ class TestHermeticAPIIntegration:
         answer = api.get_complete_answer("What is Python?")
 
         assert isinstance(answer, Answer)
-        assert len(answer.text) > 0
+        assert answer.text == "Python is a programming language"
 
     @pytest.mark.usefixtures("harness_config")
     def test_multiple_queries_same_client(self, harness_server: ProtocolServer) -> None:
@@ -117,7 +127,7 @@ class TestHermeticAPIIntegration:
         answer1 = api.get_complete_answer("What is 1+1?")
 
         assert isinstance(answer1, Answer)
-        assert len(answer1.text) > 0
+        assert answer1.text == "answer 1"
 
         harness_server.query_response = QueryResponse(
             sse_chunks=harness_server.make_query_sse_chunks("answer 2"),
@@ -125,7 +135,8 @@ class TestHermeticAPIIntegration:
         answer2 = api.get_complete_answer("What is 2+2?")
 
         assert isinstance(answer2, Answer)
-        assert len(answer2.text) > 0
+        assert answer2.text == "answer 2"
+        assert harness_server.request_count == 2
 
     @pytest.mark.usefixtures("harness_config")
     def test_empty_query_raises_valueerror(self, harness_server: ProtocolServer) -> None:

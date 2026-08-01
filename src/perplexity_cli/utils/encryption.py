@@ -14,7 +14,6 @@ import os
 import secrets
 import socket
 from functools import lru_cache
-from typing import Protocol
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -246,9 +245,3 @@ def decrypt_token(encrypted_token: str) -> str:
         except (ConfigurationError, ValueError, TypeError, InvalidToken) as e:
             msg = f"Failed to decrypt token. {_DECRYPT_FAILURE_HINT}"
             raise AuthenticationError(msg) from e
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]  # owner: quality-infrastructure; reason: coupling-metrics abstractness protocol, intentionally unreferenced
-    """Abstract coupling protocol."""
-
-    ...

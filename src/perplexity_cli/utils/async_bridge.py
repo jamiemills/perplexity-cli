@@ -28,7 +28,6 @@ Current consumers:
 import asyncio
 import concurrent.futures
 from collections.abc import Coroutine
-from typing import Protocol
 
 
 def run_async[T](coro: Coroutine[object, object, T]) -> T:
@@ -56,9 +55,3 @@ def run_async[T](coro: Coroutine[object, object, T]) -> T:
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(asyncio.run, coro)
         return future.result()  # ty: ignore[invalid-return-type]
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...

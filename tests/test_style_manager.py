@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import stat
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from perplexity_cli.utils.style_manager import StyleManager
+
+_POSIX = sys.platform != "win32"
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,9 +106,9 @@ class TestStyleManagerValidation:
     def test_validate_style_rejects_non_string(self):
         """Test validate_style rejects non-string types."""
         sm = StyleManager()
-        assert sm.validate_style(None) is False  # type: ignore
-        assert sm.validate_style(123) is False  # type: ignore
-        assert sm.validate_style([]) is False  # type: ignore
+        assert sm.validate_style(None) is False  # type: ignore  # owner: test-infrastructure; reason: deliberately passes non-string values to exercise validation
+        assert sm.validate_style(123) is False  # type: ignore  # owner: test-infrastructure; reason: deliberately passes non-string values to exercise validation
+        assert sm.validate_style([]) is False  # type: ignore  # owner: test-infrastructure; reason: deliberately passes non-string values to exercise validation
 
     def test_validate_style_rejects_too_long(self):
         """Test validate_style rejects excessively long strings."""
@@ -126,10 +131,10 @@ class TestStyleManagerValidation:
         sm = StyleManager()
 
         with pytest.raises(ValueError):
-            sm.save_style(None)  # type: ignore
+            sm.save_style(None)  # type: ignore  # owner: test-infrastructure; reason: deliberately passes non-string style to exercise validation
 
         with pytest.raises(ValueError):
-            sm.save_style(123)  # type: ignore
+            sm.save_style(123)  # type: ignore  # owner: test-infrastructure; reason: deliberately passes non-string style to exercise validation
 
 
 class TestStyleManagerFilePermissions:
@@ -143,6 +148,62 @@ class TestStyleManagerFilePermissions:
         # Check file permissions
         mode = mocked_style_path.stat().st_mode & 0o777
         assert mode == 0o600
+
+
+class TestStyleManagerAtomicWrites:
+    """Test atomic-write failure preservation for style saves."""
+
+    def test_save_style_preserves_old_file_on_write_failure(self, mocked_style_path: Path):
+        """An injected write failure leaves the old style file byte-for-byte."""
+        sm = StyleManager()
+        sm.save_style("old style")
+        original = mocked_style_path.read_bytes()
+        with patch(
+            "perplexity_cli.utils.atomic_write._write_content",
+            side_effect=OSError("injected write"),
+        ):
+            with pytest.raises(OSError):
+                sm.save_style("new style")
+        assert mocked_style_path.read_bytes() == original
+
+    def test_save_style_preserves_old_file_on_replace_failure(self, mocked_style_path: Path):
+        """An injected replace failure leaves the old style file byte-for-byte."""
+        sm = StyleManager()
+        sm.save_style("old style")
+        original = mocked_style_path.read_bytes()
+        with patch(
+            "perplexity_cli.utils.atomic_write._replace_temp",
+            side_effect=OSError("injected replace"),
+        ):
+            with pytest.raises(OSError):
+                sm.save_style("new style")
+        assert mocked_style_path.read_bytes() == original
+
+    def test_save_style_leaves_no_temp_residue_after_failure(self, mocked_style_path: Path):
+        """A failed style save leaves no temporary siblings behind."""
+        sm = StyleManager()
+        sm.save_style("old style")
+        with patch(
+            "perplexity_cli.utils.atomic_write._replace_temp",
+            side_effect=OSError("injected replace"),
+        ):
+            with pytest.raises(OSError):
+                sm.save_style("new style")
+        residue = [p for p in mocked_style_path.parent.iterdir() if p.name.endswith(".tmp")]
+        assert residue == []
+
+    @pytest.mark.skipif(not _POSIX, reason="POSIX mode bits are not asserted on Windows")
+    def test_save_style_failure_preserves_secure_permissions(self, mocked_style_path: Path):
+        """The preserved old style file keeps 0600 mode after a failed save."""
+        sm = StyleManager()
+        sm.save_style("old style")
+        with patch(
+            "perplexity_cli.utils.atomic_write._replace_temp",
+            side_effect=OSError("injected replace"),
+        ):
+            with pytest.raises(OSError):
+                sm.save_style("new style")
+        assert stat.S_IMODE(mocked_style_path.stat().st_mode) == 0o600
 
 
 class TestStyleManagerErrorHandling:

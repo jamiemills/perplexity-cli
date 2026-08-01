@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from typing import Final, cast
 
-from perplexity_cli.utils.atomic_write import atomic_write_text
+from perplexity_cli.utils.atomic_write import atomic_write_json
 from perplexity_cli.utils.config import get_config_paths, get_save_cookies_enabled
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
 from perplexity_cli.utils.exceptions import AuthenticationError
@@ -81,7 +81,7 @@ class TokenManager:
         try:
             encrypted_token = encrypt_token(token)
             token_record = self._prepare_token_data(encrypted_token, cookies)
-            atomic_write_text(self.token_path, token_record, mode=self.SECURE_PERMISSIONS)
+            atomic_write_json(self.token_path, token_record, mode=self.SECURE_PERMISSIONS)
 
             saved_cookies = "cookies" in token_record
             cookie_count = len(cookies) if cookies else 0

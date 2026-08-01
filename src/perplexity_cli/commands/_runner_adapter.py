@@ -20,7 +20,6 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from perplexity_cli._types import QueryOptions
 
@@ -63,9 +62,3 @@ def run_query_command(
     """Delegate to :func:`perplexity_cli.query_runner.run_query_command`."""
     query_runner = importlib.import_module("perplexity_cli.query_runner")
     query_runner.run_query_command(ctx_obj, query_text, options)
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #1."""
-
-    ...

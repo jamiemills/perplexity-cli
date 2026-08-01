@@ -392,6 +392,62 @@ class TestTrendCompare:
         assert report["trend"]["added"] == []
         assert report["trend"]["removed"] == []
 
+    def test_compare_trends_detects_identity_changes_without_total_delta(
+        self, tmp_path: Path
+    ) -> None:
+        """Identity changes are detected even when the totals match."""
+        from scripts.check_coupling import _compare_trends
+
+        previous = tmp_path / "previous.json"
+        previous.write_text(
+            json.dumps(
+                {
+                    "report_version": "1",
+                    "total_modules": 1,
+                    "flagged_count": 2,
+                    "flagged_identities": ["alpha.module", "beta.module"],
+                    "threshold": 0.3,
+                    "findings": [],
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
+        trend = _compare_trends({"beta.module", "gamma.module"}, previous)
+
+        assert trend["previous_flagged_count"] == 2
+        assert trend["delta"] == 0
+        assert trend["direction"] == "unchanged"
+        assert trend["added"] == ["gamma.module"]
+        assert trend["removed"] == ["alpha.module"]
+        assert trend["persistent"] == ["beta.module"]
+
+    def test_trend_compare_detects_identity_drift(self, tmp_path: Path) -> None:
+        """A synthetic previous snapshot with differing identities is caught."""
+        previous = tmp_path / "previous.json"
+        previous.write_text(
+            json.dumps(
+                {
+                    "report_version": "1",
+                    "total_modules": 1,
+                    "flagged_count": 0,
+                    "flagged_identities": ["no.such.module"],
+                    "threshold": 0.3,
+                    "findings": [],
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
+        result = _run_coupling_script(["--trend-compare", str(previous), "--json"])
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        report = json.loads(result.stdout)
+        trend = report["trend"]
+        assert trend is not None
+        assert "no.such.module" in trend["removed"]
+        assert "no.such.module" not in trend["added"]
+        assert trend["previous_flagged_count"] == 1
+
     def test_trend_compare_missing_file_fails(self, tmp_path: Path) -> None:
         result = _run_coupling_script(
             [
@@ -563,6 +619,158 @@ class TestPackageSplitAndRename:
 
         deps = get_direct_imports(client_fq)
         assert service_fq in deps
+
+
+# ============================================================================
+# Unit tests: Protocol-only class honesty in abstractness
+# ============================================================================
+
+
+def _write_module(src_dir: Path, dotted_name: str, content: str) -> Path:
+    """Write *content* to src_dir/<dotted_name>.py (creating parent dirs)."""
+    path = src_dir.joinpath(*dotted_name.split(".")).with_suffix(".py")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+class TestProtocolOnlyAbstractnessHonesty:
+    """Unreferenced Protocol-only classes must not inflate abstractness.
+
+    A class counts as abstract only when it declares ``@abstractmethod`` or is
+    an ABC/Protocol subclass referenced (imported or instantiated) outside its
+    own module.
+    """
+
+    def test_unreferenced_protocol_only_class_is_concrete(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A protocol-only class nobody imports is counted as concrete."""
+        import scripts.check_coupling as coupling_mod
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        _write_module(
+            src_dir,
+            "stub_mod",
+            "from typing import Protocol\n\nclass DeadProto(Protocol):\n    ...\n",
+        )
+        monkeypatch.setattr(coupling_mod, "SRC_ROOT", src_dir)
+
+        result = coupling_mod._compute_abstractness({"stub_mod"})
+        assert result["stub_mod"] == (0, 1)
+
+    def test_unreferenced_protocol_does_not_add_flagged_module(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """An unreferenced protocol must not push a module over the threshold."""
+        import scripts.check_coupling as coupling_mod
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        _write_module(
+            src_dir,
+            "pkg_a",
+            "from typing import Protocol\n"
+            "from pkg_b import Helper\n\n"
+            "class DeadProto(Protocol):\n    ...\n",
+        )
+        _write_module(src_dir, "pkg_b", "class Helper:\n    pass\n")
+        monkeypatch.setattr(coupling_mod, "SRC_ROOT", src_dir)
+
+        modules = {"pkg_a", "pkg_b"}
+        abstractness = coupling_mod._compute_abstractness(modules)
+        assert abstractness["pkg_a"] == (0, 1)
+
+        efferent = {"pkg_a": {"pkg_b"}}
+        afferent = {"pkg_b": {"pkg_a"}}
+        metrics = coupling_mod._compute_metrics(modules, efferent, afferent, abstractness)
+        flagged = coupling_mod._flagged_metrics(metrics, threshold=0.3)
+        assert [m.module for m in flagged] == []
+
+    def test_referenced_protocol_still_counts_as_abstract(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A protocol imported by another module still counts as abstract."""
+        import scripts.check_coupling as coupling_mod
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        _write_module(
+            src_dir,
+            "contracts",
+            "from typing import Protocol\n\nclass LiveProto(Protocol):\n    ...\n",
+        )
+        _write_module(
+            src_dir,
+            "consumer",
+            "from contracts import LiveProto\n\nvalue: LiveProto\n",
+        )
+        monkeypatch.setattr(coupling_mod, "SRC_ROOT", src_dir)
+
+        result = coupling_mod._compute_abstractness({"contracts", "consumer"})
+        assert result["contracts"] == (1, 0)
+
+    def test_abc_with_abstract_method_counts_unreferenced(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A class with @abstractmethod stays abstract even when unreferenced."""
+        import scripts.check_coupling as coupling_mod
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        _write_module(
+            src_dir,
+            "abc_mod",
+            "from abc import ABC, abstractmethod\n\n"
+            "class Base(ABC):\n"
+            "    @abstractmethod\n"
+            "    def run(self) -> None:\n"
+            "        ...\n",
+        )
+        monkeypatch.setattr(coupling_mod, "SRC_ROOT", src_dir)
+
+        result = coupling_mod._compute_abstractness({"abc_mod"})
+        assert result["abc_mod"] == (1, 0)
+
+    def test_referenced_abc_subclass_counts_as_abstract(self, tmp_path: Path, monkeypatch) -> None:
+        """A referenced ABC subclass keeps current abstract behaviour."""
+        import scripts.check_coupling as coupling_mod
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        _write_module(
+            src_dir,
+            "base_mod",
+            "from abc import ABC\n\nclass Marker(ABC):\n    pass\n",
+        )
+        _write_module(
+            src_dir,
+            "impl_mod",
+            "from base_mod import Marker\n\nclass Impl(Marker):\n    pass\n",
+        )
+        monkeypatch.setattr(coupling_mod, "SRC_ROOT", src_dir)
+
+        result = coupling_mod._compute_abstractness({"base_mod", "impl_mod"})
+        assert result["base_mod"] == (1, 0)
+
+    def test_unreferenced_abc_without_abstract_method_is_concrete(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """An unreferenced ABC subclass without abstract methods is concrete."""
+        import scripts.check_coupling as coupling_mod
+
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        _write_module(
+            src_dir,
+            "empty_abc",
+            "from abc import ABC\n\nclass Marker(ABC):\n    pass\n",
+        )
+        monkeypatch.setattr(coupling_mod, "SRC_ROOT", src_dir)
+
+        result = coupling_mod._compute_abstractness({"empty_abc"})
+        assert result["empty_abc"] == (0, 1)
 
 
 # ============================================================================

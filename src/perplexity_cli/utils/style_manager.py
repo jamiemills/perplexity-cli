@@ -1,9 +1,9 @@
 """Style configuration manager for standardising answer formats."""
 
 import json
-import os
 from datetime import datetime
 
+from perplexity_cli.utils.atomic_write import atomic_write_text
 from perplexity_cli.utils.config import get_config_paths
 
 MAX_STYLE_LENGTH = 10_000
@@ -78,9 +78,7 @@ class StyleManager:
         }
 
         try:
-            with open(self.style_path, "w", encoding="utf-8") as f:
-                json.dump(style_config, f, indent=2)
-            os.chmod(self.style_path, 0o600)
+            atomic_write_text(self.style_path, json.dumps(style_config, indent=2), mode=0o600)
         except OSError as e:
             msg = f"Failed to save style to {self.style_path}: {e}"
             raise OSError(msg) from e

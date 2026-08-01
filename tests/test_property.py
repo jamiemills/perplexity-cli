@@ -810,7 +810,7 @@ def test_backoff_delay_increases_with_attempts(
 )
 @settings()
 def test_is_retryable_error_only_for_5xx_and_429(status_code: int) -> None:
-    """is_retryable_error returns True only for server errors (>=500) and 429."""
+    """is_retryable_error retries 403, 429, and all server errors (>=500)."""
     response = SimpleResponse(
         status_code=status_code,
         text="test",
@@ -818,7 +818,7 @@ def test_is_retryable_error_only_for_5xx_and_429(status_code: int) -> None:
     exc = PerplexityHTTPStatusError("test", response=response)
     result = is_retryable_error(exc)
 
-    expected = status_code >= 500 or status_code == 429
+    expected = status_code >= 500 or status_code in (403, 429)
     assert result is expected, f"status {status_code}: expected {expected}, got {result}"
 
 
@@ -953,12 +953,16 @@ def test_get_retry_after_delay_none_for_non_http_error(message: str) -> None:
 def test_get_retry_after_delay_handles_both_header_casings(
     delay_seconds: float,
 ) -> None:
-    """get_retry_after_delay handles both Retry-After and retry-after casings."""
+    """get_retry_after_delay handles both Retry-After and retry-after casings.
+
+    Values are honoured up to the 60-second backoff cap; anything larger is
+    clamped to the cap.
+    """
     for header_name in ("Retry-After", "retry-after"):
         response = SimpleResponse(status_code=429, headers={header_name: str(delay_seconds)})
         exc = PerplexityHTTPStatusError("rate limited", response=response)
         result = get_retry_after_delay(exc)
-        assert result == delay_seconds, f"failed for header {header_name!r}"
+        assert result == min(delay_seconds, 60.0), f"failed for header {header_name!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -969,11 +973,11 @@ def test_get_retry_after_delay_handles_both_header_casings(
 @given(negative_delay=st.floats(min_value=-100.0, max_value=-0.001))
 @settings()
 def test_get_retry_after_delay_clamps_negative(negative_delay: float) -> None:
-    """Negative Retry-After values are clamped to 0.0."""
+    """Negative Retry-After values are rejected, so callers fall back to backoff."""
     response = SimpleResponse(status_code=429, headers={"Retry-After": str(negative_delay)})
     exc = PerplexityHTTPStatusError("rate limited", response=response)
     result = get_retry_after_delay(exc)
-    assert result == 0.0, f"expected 0.0, got {result} for delay={negative_delay}"
+    assert result is None, f"expected None, got {result} for delay={negative_delay}"
 
 
 # ---------------------------------------------------------------------------

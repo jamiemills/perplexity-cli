@@ -4,7 +4,6 @@ This module handles parsing and formatting of thread creation timestamps.
 """
 
 from datetime import UTC, datetime, tzinfo
-from typing import Protocol
 
 from dateutil import parser as dateutil_parser
 
@@ -181,9 +180,3 @@ def is_in_date_range(dt: datetime, from_date: str | None, to_date: str | None) -
             f"to_date='{to_date}': {e}"
         )
         raise ValueError(msg) from e
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...

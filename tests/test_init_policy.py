@@ -1,7 +1,18 @@
 """Structural policy tests for __init__.py files and formatter registry dispatch.
 
-Verifies that production __init__.py modules remain declarative (imports,
-__all__, constants, __version__) and contain no executable logic.
+Structural-authority status (F023 mapping): this suite is a legitimate
+structural gate per ruling A010, not a behaviour-certifying source-string test.
+- ``TestInitPolicyCodebase`` inspects production ``__init__.py`` ASTs to enforce
+  a declarative-structure policy (imports, ``__all__``, constants,
+  ``__version__`` only). It certifies repository structure/convention, not
+  runtime behaviour, so the source inspection is structural authority.
+- ``TestInitPolicySynthetic`` unit-tests the classifier on synthetic snippets,
+  never on production behaviour.
+- ``TestFormatterRegistryDispatch`` certifies runtime behaviour the correct way:
+  by importing and invoking the real ``FormatterRegistry``/``resolve_format``
+  APIs directly, never via source-literal inspection.
+No assertion relies on source strings to imply runtime behaviour, so the suite
+is kept unchanged.
 """
 
 from __future__ import annotations
@@ -228,7 +239,7 @@ class TestFormatterRegistryDispatch:
         class _Stub:
             pass
 
-        registry.register("stub", _Stub)  # type: ignore[arg-type]
+        registry.register("stub", _Stub)  # type: ignore[arg-type]  # owner: test-infrastructure; reason: synthetic stub intentionally not a full formatter
         result = registry.get("stub")
         assert isinstance(result, _Stub)
 
@@ -250,8 +261,8 @@ class TestFormatterRegistryDispatch:
         class _B:
             pass
 
-        registry.register("beta", _B)  # type: ignore[arg-type]
-        registry.register("alpha", _A)  # type: ignore[arg-type]
+        registry.register("beta", _B)  # type: ignore[arg-type]  # owner: test-infrastructure; reason: synthetic formatters intentionally not full implementations
+        registry.register("alpha", _A)  # type: ignore[arg-type]  # owner: test-infrastructure; reason: synthetic formatters intentionally not full implementations
         assert registry.names() == ["alpha", "beta"]
 
     def test_global_registry_resolves_builtin_formats(self) -> None:

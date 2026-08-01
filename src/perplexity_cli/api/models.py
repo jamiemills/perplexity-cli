@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
 
 from pydantic import (
     BaseModel,
@@ -369,64 +368,3 @@ class SSEMessage(BaseModel):
         if not self.blocks:
             return "none"
         return ",".join(block.intended_usage or "<missing>" for block in self.blocks)
-
-
-# Coupling Protocol — increases abstractness (A=0→1.0).
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...
-
-
-class _CouplingProto1(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #1."""
-
-    ...
-
-
-class _CouplingProto2(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #2."""
-
-    ...
-
-
-class _CouplingProto3(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #3."""
-
-    ...
-
-
-class _CouplingProto4(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #4."""
-
-    ...
-
-
-class _CouplingProto5(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #5."""
-
-    ...
-
-
-class _CouplingProto6(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #6."""
-
-    ...
-
-
-class _CouplingProto7(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #7."""
-
-    ...
-
-
-class _CouplingProto8(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #8."""
-
-    ...
-
-
-class _CouplingProto9(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #9."""
-
-    ...

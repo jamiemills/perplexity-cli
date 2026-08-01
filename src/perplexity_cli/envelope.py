@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import sys
 from enum import StrEnum
-from typing import Any, Literal, Protocol
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -146,70 +146,3 @@ def write_envelope(
     out = output if output is not None else sys.stdout
     envelope_dict = envelope_to_dict(env, include_schema=include_schema)
     out.write(json.dumps(envelope_dict, default=str) + "\n")
-
-
-# Coupling Protocol — increases abstractness (A=0→1.0).
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...
-
-
-class _CouplingProto1(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #1."""
-
-    ...
-
-
-class _CouplingProto2(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #2."""
-
-    ...
-
-
-class _CouplingProto3(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #3."""
-
-    ...
-
-
-class _CouplingProto4(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #4."""
-
-    ...
-
-
-class _CouplingProto5(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #5."""
-
-    ...
-
-
-class _CouplingProto6(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #6."""
-
-    ...
-
-
-class _CouplingProto7(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #7."""
-
-    ...
-
-
-class _CouplingProto8(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #8."""
-
-    ...
-
-
-class _CouplingProto9(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #9."""
-
-    ...
-
-
-class _CouplingProto10(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol #10."""
-
-    ...

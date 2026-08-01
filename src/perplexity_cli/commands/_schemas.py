@@ -7,7 +7,7 @@ when invoked with ``--json``.  The schema data is intentionally permissive
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
 __all__ = [
     "COMMAND_RESULT_SCHEMAS",
@@ -114,9 +114,3 @@ def build_command_schemas() -> dict[str, dict[str, Any]]:
             },
         }
     return result
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...

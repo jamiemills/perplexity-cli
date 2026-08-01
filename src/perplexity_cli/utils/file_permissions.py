@@ -3,7 +3,6 @@
 import logging
 import stat
 from pathlib import Path
-from typing import Protocol
 
 from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationError
 
@@ -44,9 +43,3 @@ def verify_secure_permissions(
         if file_type == "token":
             raise AuthenticationError(error_msg)
         raise ConfigurationError(error_msg)
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...

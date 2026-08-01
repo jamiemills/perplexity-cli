@@ -76,9 +76,3 @@ class HttpStatusClassifier(Protocol):
     def raise_http_status_error(self, response: object, *, method: str = "POST") -> None:
         """Convert a raw HTTP response into a typed status error."""
         ...
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
-    """Abstract coupling protocol."""
-
-    ...

@@ -15,6 +15,7 @@ import pytest
 from perplexity_cli.utils.atomic_write import (
     _create_temp_sibling,
     _fsync_directory,
+    atomic_write_json,
     atomic_write_text,
 )
 
@@ -33,22 +34,46 @@ class TestAtomicWriteRoundTrip:
         """JSON-serialisable content is persisted to the destination."""
         dest = tmp_path / "data.json"
         payload = {"token": "encrypted-value", "version": 2}
-        atomic_write_text(dest, payload)
+        atomic_write_json(dest, payload)
         with open(dest, encoding="utf-8") as f:
             assert json.load(f) == payload
 
     def test_no_temp_residue_after_success(self, tmp_path):
         """A successful write leaves no temporary siblings behind."""
         dest = tmp_path / "data.json"
-        atomic_write_text(dest, {"a": 1})
+        atomic_write_json(dest, {"a": 1})
         assert _temp_files(tmp_path) == []
         assert dest.read_text() == json.dumps({"a": 1})
+
+    def test_writes_raw_text_verbatim(self, tmp_path):
+        """Raw text is written byte-for-byte without JSON serialisation."""
+        dest = tmp_path / "style.json"
+        raw = '{"style": "concise", "note": "not-quoted"}'
+        atomic_write_text(dest, raw)
+        assert dest.read_text() == raw
+
+    def test_raw_text_bypasses_serialisation(self, tmp_path):
+        """The raw-text variant never calls the JSON serialisation stage."""
+        dest = tmp_path / "style.txt"
+        with patch(
+            "perplexity_cli.utils.atomic_write._serialise_content",
+            side_effect=AssertionError("serialisation must not run for raw text"),
+        ):
+            atomic_write_text(dest, '{"a": 1}')
+        assert dest.read_text() == '{"a": 1}'
+
+    def test_no_temp_residue_after_raw_text_success(self, tmp_path):
+        """A successful raw-text write leaves no temporary siblings behind."""
+        dest = tmp_path / "style.txt"
+        atomic_write_text(dest, "plain text")
+        assert _temp_files(tmp_path) == []
+        assert dest.read_text() == "plain text"
 
     @pytest.mark.skipif(not _POSIX, reason="POSIX mode bits are not asserted on Windows")
     def test_new_file_has_mode_0600(self, tmp_path):
         """A newly created destination gets the default 0600 mode."""
         dest = tmp_path / "data.json"
-        atomic_write_text(dest, {"a": 1})
+        atomic_write_json(dest, {"a": 1})
         assert stat.S_IMODE(dest.stat().st_mode) == 0o600
 
     @pytest.mark.skipif(not _POSIX, reason="POSIX mode bits are not asserted on Windows")
@@ -57,21 +82,28 @@ class TestAtomicWriteRoundTrip:
         dest = tmp_path / "data.json"
         dest.write_text("old")
         os.chmod(dest, 0o644)
-        atomic_write_text(dest, {"a": 1})
+        atomic_write_json(dest, {"a": 1})
         assert stat.S_IMODE(dest.stat().st_mode) == 0o600
 
     @pytest.mark.skipif(not _POSIX, reason="POSIX mode bits are not asserted on Windows")
     def test_custom_mode_is_applied(self, tmp_path):
         """A requested mode other than the default is honoured."""
         dest = tmp_path / "data.json"
-        atomic_write_text(dest, {"a": 1}, mode=0o700)
+        atomic_write_json(dest, {"a": 1}, mode=0o700)
         assert stat.S_IMODE(dest.stat().st_mode) == 0o700
+
+    @pytest.mark.skipif(not _POSIX, reason="POSIX mode bits are not asserted on Windows")
+    def test_raw_text_new_file_has_mode_0600(self, tmp_path):
+        """A raw-text destination gets the default 0600 mode."""
+        dest = tmp_path / "style.txt"
+        atomic_write_text(dest, "plain")
+        assert stat.S_IMODE(dest.stat().st_mode) == 0o600
 
     def test_parent_directory_required(self, tmp_path):
         """A missing parent directory raises OSError without side effects."""
         dest = tmp_path / "missing" / "data.json"
         with pytest.raises(OSError):
-            atomic_write_text(dest, {"a": 1})
+            atomic_write_json(dest, {"a": 1})
         assert not dest.exists()
 
 
@@ -108,7 +140,22 @@ class TestSymlinkDestination:
         except (OSError, NotImplementedError, PermissionError):
             pytest.skip("symlink creation is not supported on this platform")
         with pytest.raises(OSError, match="symlink"):
-            atomic_write_text(dest, {"new": 1})
+            atomic_write_json(dest, {"new": 1})
+        assert dest.is_symlink()
+        assert target.read_text() == "ORIGINAL"
+        assert _temp_files(tmp_path) == []
+
+    def test_symlink_destination_rejected_for_raw_text(self, tmp_path):
+        """A symlink destination is rejected for raw-text writes."""
+        target = tmp_path / "target.txt"
+        target.write_text("ORIGINAL")
+        dest = tmp_path / "style.txt"
+        try:
+            dest.symlink_to(target)
+        except (OSError, NotImplementedError, PermissionError):
+            pytest.skip("symlink creation is not supported on this platform")
+        with pytest.raises(OSError, match="symlink"):
+            atomic_write_text(dest, "new")
         assert dest.is_symlink()
         assert target.read_text() == "ORIGINAL"
         assert _temp_files(tmp_path) == []
@@ -135,7 +182,7 @@ class TestFaultInjection:
         dest.write_text("ORIGINAL")
         with patch(f"perplexity_cli.utils.atomic_write.{stage}", side_effect=OSError("injected")):
             with pytest.raises(OSError, match="injected"):
-                atomic_write_text(dest, {"new": 1})
+                atomic_write_json(dest, {"new": 1})
         assert dest.read_text() == "ORIGINAL"
         assert _temp_files(tmp_path) == []
 
@@ -145,7 +192,7 @@ class TestFaultInjection:
         dest.write_text("ORIGINAL")
         with patch("builtins.open", side_effect=OSError("injected open")):
             with pytest.raises(OSError, match="injected open"):
-                atomic_write_text(dest, {"new": 1})
+                atomic_write_json(dest, {"new": 1})
         assert dest.read_text() == "ORIGINAL"
         assert _temp_files(tmp_path) == []
 
@@ -156,7 +203,7 @@ class TestFaultInjection:
             "perplexity_cli.utils.atomic_write._replace_temp", side_effect=OSError("injected")
         ):
             with pytest.raises(OSError, match="injected"):
-                atomic_write_text(dest, {"new": 1})
+                atomic_write_json(dest, {"new": 1})
         assert not dest.exists()
         assert _temp_files(tmp_path) == []
 
@@ -176,7 +223,75 @@ class TestFaultInjection:
                 ) as mock_cleanup,
             ):
                 with pytest.raises(OSError, match="replace failed"):
-                    atomic_write_text(dest, {"new": 1})
+                    atomic_write_json(dest, {"new": 1})
+        assert dest.read_text() == "ORIGINAL"
+        mock_cleanup.assert_called_once()
+        assert len(_temp_files(tmp_path)) == 1
+        assert "Could not remove temporary file" in caplog.text
+
+
+class TestRawTextFaultInjection:
+    """Fault injection for the raw-text variant."""
+
+    @pytest.mark.parametrize(
+        "stage",
+        [
+            "_create_temp_sibling",
+            "_set_permissions",
+            "_write_content",
+            "_flush_file",
+            "_fsync_file",
+            "_replace_temp",
+        ],
+    )
+    def test_stage_failure_preserves_existing_destination(self, tmp_path, stage):
+        """A failure at each raw-text stage leaves the destination untouched."""
+        dest = tmp_path / "style.txt"
+        dest.write_text("ORIGINAL")
+        with patch(f"perplexity_cli.utils.atomic_write.{stage}", side_effect=OSError("injected")):
+            with pytest.raises(OSError, match="injected"):
+                atomic_write_text(dest, "new content")
+        assert dest.read_text() == "ORIGINAL"
+        assert _temp_files(tmp_path) == []
+
+    def test_open_failure_preserves_existing_destination(self, tmp_path):
+        """A failure while opening the raw-text temp file preserves the destination."""
+        dest = tmp_path / "style.txt"
+        dest.write_text("ORIGINAL")
+        with patch("builtins.open", side_effect=OSError("injected open")):
+            with pytest.raises(OSError, match="injected open"):
+                atomic_write_text(dest, "new content")
+        assert dest.read_text() == "ORIGINAL"
+        assert _temp_files(tmp_path) == []
+
+    def test_replace_failure_creates_no_partial_destination(self, tmp_path):
+        """A raw-text replace failure leaves no destination file behind."""
+        dest = tmp_path / "style.txt"
+        with patch(
+            "perplexity_cli.utils.atomic_write._replace_temp", side_effect=OSError("injected")
+        ):
+            with pytest.raises(OSError, match="injected"):
+                atomic_write_text(dest, "new content")
+        assert not dest.exists()
+        assert _temp_files(tmp_path) == []
+
+    def test_cleanup_failure_does_not_mask_primary_error(self, tmp_path, caplog):
+        """A failing cleanup neither masks the primary error nor corrupts the file."""
+        dest = tmp_path / "style.txt"
+        dest.write_text("ORIGINAL")
+        with caplog.at_level(logging.WARNING):
+            with (
+                patch(
+                    "perplexity_cli.utils.atomic_write._replace_temp",
+                    side_effect=OSError("replace failed"),
+                ),
+                patch(
+                    "perplexity_cli.utils.atomic_write._cleanup_temp",
+                    side_effect=OSError("cleanup failed"),
+                ) as mock_cleanup,
+            ):
+                with pytest.raises(OSError, match="replace failed"):
+                    atomic_write_text(dest, "new content")
         assert dest.read_text() == "ORIGINAL"
         mock_cleanup.assert_called_once()
         assert len(_temp_files(tmp_path)) == 1
@@ -190,7 +305,14 @@ class TestDirectoryFsync:
         """The parent directory is fsynced after a successful replacement."""
         dest = tmp_path / "data.json"
         with patch("perplexity_cli.utils.atomic_write._fsync_directory") as mock_fsync:
-            atomic_write_text(dest, {"a": 1})
+            atomic_write_json(dest, {"a": 1})
+            mock_fsync.assert_called_once_with(tmp_path)
+
+    def test_directory_fsync_called_after_raw_text_replace(self, tmp_path):
+        """The parent directory is fsynced after a raw-text replacement."""
+        dest = tmp_path / "style.txt"
+        with patch("perplexity_cli.utils.atomic_write._fsync_directory") as mock_fsync:
+            atomic_write_text(dest, "plain")
             mock_fsync.assert_called_once_with(tmp_path)
 
     def test_directory_fsync_swallows_oserror(self, tmp_path):

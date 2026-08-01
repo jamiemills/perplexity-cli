@@ -13,7 +13,6 @@ import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
 
 from pydantic import BaseModel
 
@@ -74,7 +73,7 @@ def _reject_symlink_destination(path: Path) -> None:
 
 def _replace_temp(temp_path: Path, path: Path) -> None:
     """Atomically replace the destination with the temporary file."""
-    os.replace(temp_path, path)  # noqa: PTH105  # os.replace is the atomic rename primitive
+    os.replace(temp_path, path)  # noqa: PTH105  # owner: quality-infrastructure; reason: os.replace is the atomic rename primitive, intentional PTH deviation
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -193,10 +192,3 @@ def write_threads_csv(
         raise OSError(msg) from exc
 
     return output_path
-
-
-# Coupling Protocol — increases abstractness (A=0→1.0).
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]  # owner: quality-infrastructure; reason: coupling-metrics abstractness protocol, intentionally unreferenced
-    """Abstract coupling protocol."""
-
-    ...

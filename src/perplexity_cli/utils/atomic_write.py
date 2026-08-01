@@ -1,11 +1,13 @@
 """Atomic file writer with secure permissions and crash-safe replacement.
 
-Provides ``atomic_write_text`` which serialises content before touching the
-filesystem, writes it to a uniquely-named exclusive temporary file in the same
-directory, applies restrictive permissions before any content bytes are
-written (POSIX), flushes and fsyncs the temporary file, and replaces the
-destination via ``os.replace``. On any failure before replacement the existing
-destination is preserved byte-for-byte and the temporary file is removed.
+Provides ``atomic_write_json`` which serialises JSON-serialisable content
+before touching the filesystem, and ``atomic_write_text`` which writes raw
+text byte-for-byte without any serialisation. Both write to a uniquely-named
+exclusive temporary file in the same directory, apply restrictive permissions
+before any content bytes are written (POSIX), flush and fsync the temporary
+file, and replace the destination via ``os.replace``. On any failure before
+replacement the existing destination is preserved byte-for-byte and the
+temporary file is removed.
 """
 
 from __future__ import annotations
@@ -14,23 +16,43 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Protocol, TextIO
+from typing import TextIO
 
 from perplexity_cli.utils.logging import get_logger, redact_path
 
 logger = get_logger()
 
 
-def atomic_write_text(path: Path, content: object, mode: int = 0o600) -> None:
-    """Atomically write JSON-serialisable content to a file.
+def atomic_write_text(path: Path, content: str, mode: int = 0o600) -> None:
+    """Atomically write raw text to a file.
 
-    Serialises the content before touching the destination, writes it to a
+    Writes the raw string byte-for-byte without any serialisation, to a
     uniquely-named exclusive temporary file in the same directory, applies the
     requested permissions before writing any bytes (POSIX), flushes and fsyncs
     the temporary file, and replaces the destination with ``os.replace``. On
     any pre-replace failure the existing destination is preserved byte-for-byte
     and the temporary file is removed. Destination symlinks are rejected
     immediately before replacement.
+
+    Args:
+        path: Destination file to write.
+        content: Raw text to persist, written without serialisation.
+        mode: Permission bits applied before writing (POSIX only; ignored on
+            Windows).
+
+    Raises:
+        OSError: If the destination is a symlink or any filesystem operation
+            fails before the replacement is complete.
+    """
+    _write_via_temp_sibling(path, content, mode)
+
+
+def atomic_write_json(path: Path, content: object, mode: int = 0o600) -> None:
+    """Atomically write JSON-serialisable content to a file.
+
+    Serialises the content before touching the destination, then writes the
+    serialised string through the same atomic contract as
+    ``atomic_write_text``.
 
     Args:
         path: Destination file to write.
@@ -42,7 +64,11 @@ def atomic_write_text(path: Path, content: object, mode: int = 0o600) -> None:
         OSError: If the destination is a symlink or any filesystem operation
             fails before the replacement is complete.
     """
-    text = _serialise_content(content)
+    _write_via_temp_sibling(path, _serialise_content(content), mode)
+
+
+def _write_via_temp_sibling(path: Path, text: str, mode: int) -> None:
+    """Write text to the destination through an exclusive same-directory temp file."""
     temp_path = _create_temp_sibling(path)
     try:
         _set_permissions(temp_path, mode)
@@ -103,7 +129,7 @@ def _reject_symlink_destination(path: Path) -> None:
 
 def _replace_temp(temp_path: Path, path: Path) -> None:
     """Atomically replace the destination with the temporary file."""
-    os.replace(temp_path, path)  # noqa: PTH105  # os.replace is the atomic rename primitive
+    os.replace(temp_path, path)  # noqa: PTH105  # owner: quality-infrastructure; reason: os.replace is the atomic rename primitive, intentional PTH deviation
 
 
 def _cleanup_temp(temp_path: Path) -> None:
@@ -134,9 +160,3 @@ def _fsync_directory(directory: Path) -> None:
             os.close(dir_fd)
     except OSError:
         return
-
-
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]  # owner: quality-infrastructure; reason: coupling-metrics abstractness protocol, intentionally unreferenced
-    """Abstract coupling protocol."""
-
-    ...
