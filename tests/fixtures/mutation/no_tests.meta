@@ -1,9 +1,0 @@
-{
-    "exit_code_by_key": {
-        "perplexity_cli.query_runner.x__run_query__mutmut_1": 5,
-        "perplexity_cli.query_runner.x__run_query__mutmut_2": 5
-    },
-    "durations_by_key": {},
-    "type_check_error_by_key": {},
-    "estimated_durations_by_key": {}
-}

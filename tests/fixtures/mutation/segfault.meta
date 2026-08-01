@@ -1,8 +1,0 @@
-{
-    "exit_code_by_key": {
-        "perplexity_cli.auth.token_manager.x__TokenManager__validate__mutmut_1": -11
-    },
-    "durations_by_key": {},
-    "type_check_error_by_key": {},
-    "estimated_durations_by_key": {}
-}

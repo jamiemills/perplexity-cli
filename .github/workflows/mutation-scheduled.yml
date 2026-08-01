@@ -38,7 +38,7 @@ jobs:
       - name: Job summary
         if: always()
         run: |
-          REPORT="quality/evidence/mutation-report.json"
+          REPORT="build/reports/mutation-report.json"
           {
             echo "## Scheduled Mutation Testing"
             echo ""
@@ -48,7 +48,7 @@ jobs:
           from pathlib import Path
 
           try:
-              report = json.loads(Path("quality/evidence/mutation-report.json").read_text())
+              report = json.loads(Path("build/reports/mutation-report.json").read_text())
           except Exception as exc:
               print(f"_Failed to read mutation report: {exc}_")
           else:
@@ -75,7 +75,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mutation-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: quality/evidence/mutation-report.json
+          path: build/reports/mutation-report.json
           if-no-files-found: warn
           retention-days: 30
 

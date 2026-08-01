@@ -1,9 +1,0 @@
-{
-    "exit_code_by_key": {
-        "perplexity_cli.other.nonwaived.x__some_func__mutmut_1": null,
-        "perplexity_cli.other.nonwaived.x__some_func__mutmut_2": null
-    },
-    "durations_by_key": {},
-    "type_check_error_by_key": {},
-    "estimated_durations_by_key": {}
-}

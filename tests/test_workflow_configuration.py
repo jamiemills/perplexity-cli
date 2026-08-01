@@ -208,8 +208,37 @@ def test_no_continue_on_error_on_scheduled() -> None:
         assert offenders == [], f"{name} sets continue-on-error: true on: {offenders}"
 
 
+def test_mutation_workflow_runs_full_policy() -> None:
+    """Scheduled mutation must retain the full policy wrapper command."""
+    mutation = _workflow_texts()["mutation-scheduled.yml"]
+    assert "run: make mutate-full-policy" in mutation
+
+
+def test_mutation_workflow_uses_generated_report_path() -> None:
+    """Every scheduled report reader and upload must use generated evidence."""
+    mutation = _workflow_texts()["mutation-scheduled.yml"]
+    assert mutation.count("build/reports/mutation-report.json") == 3
+    assert "quality/evidence/mutation-report.json" not in mutation
+
+
+def test_mutation_summary_and_report_upload_always_run() -> None:
+    """Mutation findings and tool errors must still publish available evidence."""
+    mutation = _load_workflow("mutation-scheduled.yml")
+    steps = mutation["jobs"]["mutation"]["steps"]
+    named_steps = {step["name"]: step for step in steps}
+    assert named_steps["Job summary"]["if"] == "always()"
+    assert named_steps["Upload mutation report"]["if"] == "always()"
+    assert (
+        named_steps["Upload mutation report"]["with"]["path"]
+        == "build/reports/mutation-report.json"
+    )
+
+
 def test_mutation_workflow_uploads_mutmut3_metadata() -> None:
     """Scheduled mutation evidence must use mutmut 3's actual metadata path."""
-    mutation = _workflow_texts()["mutation-scheduled.yml"]
-    assert "path: mutants/" in mutation
-    assert "path: .mutmut-cache" not in mutation
+    mutation = _load_workflow("mutation-scheduled.yml")
+    steps = mutation["jobs"]["mutation"]["steps"]
+    metadata = next(step for step in steps if step.get("name") == "Upload mutmut metadata")
+    assert metadata["if"] == "always()"
+    assert metadata["with"]["path"] == "mutants/"
+    assert ".mutmut-cache" not in _workflow_texts()["mutation-scheduled.yml"]
