@@ -1,0 +1,4 @@
+event: answer
+data: {"intended_usage": "ask_text", "content": {"text": "hello from fuzz"}}
+
+data: {"backend_uuid": "b1", "blocks": [{"intended_usage": "plan", "content": {"plan_block": {"goals": ["g1"]}}}]}

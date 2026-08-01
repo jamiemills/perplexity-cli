@@ -4,6 +4,13 @@ Validates ``quality/analyser-contracts.toml`` and then runs each
 non-pending analyser through its canonical Make target, verifying that
 the observed exit code matches a declared state.
 
+Contract states (``clean``, ``findings``, …) describe *expected process
+behaviour* only: the exit-code ranges a tool may legitimately return. They
+say nothing about whether the quality gate is green. A gate is only
+considered guarded when an active analyser also carries executable test
+evidence (``test_node_ids``); validation fails closed if any active
+analyser lacks that evidence.
+
 Usage::
 
     uv run python scripts/check_analyser_contracts.py            # validate + run
@@ -111,7 +118,6 @@ class RunReport:
     results: list[ContractResult] = field(default_factory=list[ContractResult])
     schema_errors: list[str] = field(default_factory=list[str])
     skipped_pending: list[str] = field(default_factory=list[str])
-    warnings: list[str] = field(default_factory=list[str])
 
     @property
     def all_contracts_honoured(self) -> bool:
@@ -156,14 +162,21 @@ def _check_analysers_array(contracts_document: dict[str, object]) -> list[str]:
 
 
 def _load_document(path: Path) -> tuple[dict[str, object] | None, list[str]]:
-    """Load a TOML document and report input or parsing errors."""
+    """Load a TOML document and report input or parsing errors.
+
+    The tool fails closed: an unreadable or malformed contracts file is
+    always reported as an error and never silently treated as an empty
+    registry.
+    """
     try:
         with path.open("rb") as fh:
             loaded_document: object = tomllib.load(fh)
     except FileNotFoundError:
         return None, [f"Contracts file not found: {path}"]
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        return None, [f"Failed to parse TOML: {exc}"]
+    except OSError as exc:
+        return None, [f"Cannot read contracts file {path}: {exc}"]
+    except tomllib.TOMLDecodeError as exc:
+        return None, [f"Malformed contracts TOML in {path}: {exc}"]
 
     if not _is_object_dict(loaded_document):
         return None, ["TOML document must be a table"]
@@ -656,6 +669,25 @@ def _check_test_references(contracts: list[AnalyserContract], repository_root: P
     return errors
 
 
+def _check_active_test_evidence(contracts: list[AnalyserContract]) -> list[str]:
+    """Return errors for active analysers that lack executable test evidence.
+
+    Contract states describe expected process behaviour (the exit-code
+    ranges a tool may legitimately return); they do not by themselves guard
+    a quality gate. Every active analyser must therefore reference at least
+    one executable test so the contract has real, runnable evidence.
+    """
+    errors: list[str] = []
+    for contract in contracts:
+        if contract.status == "active" and not contract.test_node_ids:
+            errors.append(
+                f"analyser '{contract.id}': declared process states are not backed "
+                "by executable test evidence; an active analyser must declare "
+                "at least one test_node_ids reference"
+            )
+    return errors
+
+
 def validate_contracts(
     contracts: list[AnalyserContract], repository_root: Path = _PROJECT_ROOT
 ) -> list[str]:
@@ -674,27 +706,8 @@ def validate_contracts(
         errors.extend(_check_overlapping_states(contract))
     errors.extend(_check_make_targets(contracts, repository_root))
     errors.extend(_check_test_references(contracts, repository_root))
+    errors.extend(_check_active_test_evidence(contracts))
     return errors
-
-
-def collect_coverage_gap_warnings(contracts: list[AnalyserContract]) -> list[str]:
-    """Return informational warnings for active analysers without test coverage.
-
-    A warning (not an error) is emitted for every active analyser that
-    declares no ``test_node_ids`` so coverage gaps remain visible without
-    failing the gate.
-
-    Args:
-        contracts: Parsed analyser contracts to inspect.
-
-    Returns:
-        A list of human-readable warning strings.
-    """
-    warnings: list[str] = []
-    for c in contracts:
-        if c.status == "active" and not c.test_node_ids:
-            warnings.append(f"active analyser '{c.id}' declares no test_node_ids (coverage gap)")
-    return warnings
 
 
 # ---------------------------------------------------------------------------
@@ -870,16 +883,6 @@ def _format_schema_errors(errors: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _format_warnings(warnings: list[str]) -> list[str]:
-    """Format informational warnings as text lines."""
-    if not warnings:
-        return []
-    lines = [f"  WARNINGS ({len(warnings)}):"]
-    for w in warnings:
-        lines.append(f"    - {w}")
-    return lines
-
-
 def _format_summary(result_count: int, passed: int, failed: int, skipped: list[str]) -> list[str]:
     """Format the summary section."""
     lines = [
@@ -948,7 +951,6 @@ def _format_report(report: RunReport, contracts_path: Path) -> str:
     if not report.results:
         if not report.skipped_pending:
             lines.append("  No analysers to run.")
-        lines.extend(_format_warnings(report.warnings))
         return "\n".join(lines)
 
     lines.append("")
@@ -959,7 +961,6 @@ def _format_report(report: RunReport, contracts_path: Path) -> str:
 
     lines.append("-" * 72)
     lines.append(f"  Final: {passed} passed, {failed} failed")
-    lines.extend(_format_warnings(report.warnings))
     return "\n".join(lines)
 
 
@@ -971,7 +972,6 @@ def _format_json(report: RunReport, contracts_path: Path) -> str:
         "contracts_path": str(contracts_path),
         "schema_valid": not report.schema_errors,
         "schema_errors": report.schema_errors,
-        "warnings": report.warnings,
         "analyser_count": len(report.results),
         "passed": passed,
         "failed": failed,
@@ -1110,14 +1110,11 @@ def main(argv: list[str] | None = None) -> None:
         _output_and_exit(RunReport(schema_errors=schema_errors), args)
         sys.exit(_EXIT_SCHEMA_FAIL)
 
-    warnings = collect_coverage_gap_warnings(contracts)
-
     if not _should_run(args):
-        _output_and_exit(RunReport(warnings=warnings), args)
+        _output_and_exit(RunReport(), args)
         sys.exit(_EXIT_ALL_PASS)
 
     report = _build_report(contracts, args)
-    report.warnings.extend(warnings)
     _output_and_exit(report, args)
     _exit_on_result(report)
 

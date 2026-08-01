@@ -1050,8 +1050,10 @@ uv run lefthook install
 
 The documented safe ordinary test command is `make test`; it runs pytest in
 parallel with fail-fast and applies the live-marker exclusions (property,
-hermetic integration, real API, manual, real-user-config, and fuzz) from its
-recipe. Plain `uv run pytest` does NOT apply those exclusions.
+hermetic integration, integration, real API, manual, real-user-config, and
+fuzz) plus the explicit `--ignore` core-exclusion manifest (the property and
+mutation families) from its recipe. Plain `uv run pytest` does NOT apply those
+exclusions.
 
 ```bash
 make test                       # safe ordinary test suite

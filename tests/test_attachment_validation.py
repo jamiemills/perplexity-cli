@@ -1,170 +1,103 @@
-"""Quick validation test for FileAttachment model concept."""
+"""Validation tests for the production FileAttachment model.
+
+The local duplicate model definitions were deleted; these tests exercise the
+production ``perplexity_cli.utils.attachment_models.FileAttachment`` so the
+test suite never diverges from the shipped model.
+"""
 
 import base64
 import json
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+import pytest
+from pydantic import ValidationError
+
+from perplexity_cli.utils.attachment_models import FileAttachment
 
 
-class FileAttachment(BaseModel):
-    """File attachment for API requests."""
-
-    filename: str
-    content_type: str
-    data: str  # Base64-encoded content
-
-    @field_validator("filename")
-    @classmethod
-    def validate_filename(cls, v: str) -> str:
-        """Validate filename."""
-        if not v or len(v) > 255:
-            raise ValueError("Filename must be non-empty and ≤ 255 characters")
-        return v
-
-    @field_validator("content_type")
-    @classmethod
-    def validate_content_type(cls, v: str) -> str:
-        """Validate content type."""
-        if not v:
-            raise ValueError("Content type cannot be empty")
-        return v
-
-    @field_validator("data")
-    @classmethod
-    def validate_data(cls, v: str) -> str:
-        """Validate base64 data."""
-        try:
-            base64.b64decode(v, validate=True)
-        except Exception as e:
-            raise ValueError(f"Invalid base64 data: {e}") from e
-        return v
-
-    @classmethod
-    def from_file(cls, path: Path) -> "FileAttachment":
-        """Create attachment from file path."""
-        if not path.exists():
-            raise FileNotFoundError(f"File not found: {path}")
-        if not path.is_file():
-            raise ValueError(f"Not a file: {path}")
-
-        # Read file and base64 encode
-        with open(path, "rb") as f:
-            content = f.read()
-        encoded = base64.b64encode(content).decode("ascii")
-
-        # Detect content type from extension
-        extension_to_type = {
-            ".txt": "text/plain",
-            ".md": "text/markdown",
-            ".json": "application/json",
-            ".py": "text/plain",
-            ".js": "text/plain",
-            ".yaml": "text/plain",
-            ".yml": "text/plain",
-        }
-        content_type = extension_to_type.get(path.suffix.lower(), "application/octet-stream")
-
-        return cls(
-            filename=path.name,
-            content_type=content_type,
-            data=encoded,
-        )
+def _encoded(body: bytes) -> str:
+    """Base64-encode *body* as ASCII text."""
+    return base64.b64encode(body).decode("ascii")
 
 
-class QueryParams(BaseModel):
-    """Query parameters with attachments."""
+class TestFileAttachmentValidation:
+    """FileAttachment creation, serialization, and field validation."""
 
-    query: str
-    attachments: list[FileAttachment] = Field(default_factory=list)
-
-
-def test_file_attachment_model():
-    """Test FileAttachment model creation and validation."""
-    # Test 1: Create attachment from dict
-    attachment = FileAttachment(
-        filename="test.txt",
-        content_type="text/plain",
-        data=base64.b64encode(b"Hello, World!").decode("ascii"),
-    )
-    assert attachment.filename == "test.txt"
-    assert attachment.content_type == "text/plain"
-    print("✓ Test 1: Valid attachment creation passed")
-
-    # Test 2: Serialization to JSON
-    attachment_dict = attachment.model_dump()
-    json_str = json.dumps(attachment_dict)
-    assert "test.txt" in json_str
-    print("✓ Test 2: Serialization passed")
-
-    # Test 3: Invalid filename (empty)
-    try:
-        FileAttachment(
-            filename="",
-            content_type="text/plain",
-            data=base64.b64encode(b"test").decode("ascii"),
-        )
-        raise AssertionError("Should have raised ValueError")
-    except ValueError as e:
-        assert "non-empty" in str(e)
-        print("✓ Test 3: Empty filename validation passed")
-
-    # Test 4: Invalid base64 data
-    try:
-        FileAttachment(
+    def test_valid_attachment_creation(self) -> None:
+        """A valid attachment round-trips its core fields."""
+        encoded = _encoded(b"Hello, World!")
+        attachment = FileAttachment(
             filename="test.txt",
             content_type="text/plain",
-            data="not-valid-base64!!!",
+            data=encoded,
         )
-        raise AssertionError("Should have raised ValueError")
-    except ValueError as e:
-        assert "base64" in str(e).lower()
-        print("✓ Test 4: Invalid base64 validation passed")
-
-
-def test_file_attachment_from_file():
-    """Test creating attachment from actual file."""
-    import tempfile
-
-    # Create a temp file
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
-        f.write("Test content for attachment")
-        test_file = Path(f.name)
-
-    try:
-        # Test 5: Load from file
-        attachment = FileAttachment.from_file(test_file)
-        assert attachment.filename == test_file.name  # Use actual filename
+        assert attachment.filename == "test.txt"
         assert attachment.content_type == "text/plain"
+        assert attachment.data == encoded
 
-        # Verify we can decode it
+    def test_serialization_to_json(self) -> None:
+        """The dumped attachment model serializes to JSON."""
+        attachment = FileAttachment(
+            filename="test.txt",
+            content_type="text/plain",
+            data=_encoded(b"Hello, World!"),
+        )
+        json_str = json.dumps(attachment.model_dump())
+        assert "test.txt" in json_str
+
+    def test_empty_filename_rejected(self) -> None:
+        """An empty filename raises a validation error."""
+        with pytest.raises(ValidationError, match="non-empty"):
+            FileAttachment(
+                filename="",
+                content_type="text/plain",
+                data=_encoded(b"test"),
+            )
+
+    def test_oversized_filename_rejected(self) -> None:
+        """A filename longer than 255 characters is rejected."""
+        with pytest.raises(ValidationError, match="255"):
+            FileAttachment(
+                filename="a" * 256 + ".txt",
+                content_type="text/plain",
+                data=_encoded(b"test"),
+            )
+
+    def test_empty_content_type_rejected(self) -> None:
+        """An empty content type raises a validation error."""
+        with pytest.raises(ValidationError, match="non-empty"):
+            FileAttachment(
+                filename="test.txt",
+                content_type="",
+                data=_encoded(b"test"),
+            )
+
+    def test_invalid_base64_rejected(self) -> None:
+        """Invalid base64 payloads are rejected with a validation error."""
+        with pytest.raises(ValidationError, match="base64"):
+            FileAttachment(
+                filename="test.txt",
+                content_type="text/plain",
+                data="not-valid-base64!!!",
+            )
+
+
+class TestFileAttachmentFromFile:
+    """FileAttachment.from_file behaviour."""
+
+    def test_load_from_file(self, tmp_path: Path) -> None:
+        """A text file loads with its filename, type, and content."""
+        test_file = tmp_path / "notes.txt"
+        test_file.write_text("Test content for attachment", encoding="utf-8")
+
+        attachment = FileAttachment.from_file(test_file)
+
+        assert attachment.filename == test_file.name
+        assert attachment.content_type == "text/plain"
         decoded = base64.b64decode(attachment.data).decode("utf-8")
         assert decoded == "Test content for attachment"
-        print("✓ Test 5: Load from file passed")
 
-        # Test 6: Query with attachments
-        query = QueryParams(
-            query="Explain this file",
-            attachments=[attachment],
-        )
-        query_dict = query.model_dump()
-        assert len(query_dict["attachments"]) == 1
-        assert query_dict["attachments"][0]["filename"] == test_file.name
-        print("✓ Test 6: QueryParams with attachments passed")
-
-        # Test 7: Serialize to JSON (simulating API request)
-        json_str = json.dumps(query_dict)
-        parsed = json.loads(json_str)
-        assert parsed["attachments"][0]["filename"] == test_file.name
-        print("✓ Test 7: JSON serialization for API passed")
-
-    finally:
-        test_file.unlink()
-
-
-if __name__ == "__main__":
-    print("Running FileAttachment validation tests...\n")
-    test_file_attachment_model()
-    print()
-    test_file_attachment_from_file()
-    print("\n✅ All validation tests passed!")
+    def test_missing_file_raises_file_not_found(self, tmp_path: Path) -> None:
+        """from_file raises FileNotFoundError for a missing path."""
+        with pytest.raises(FileNotFoundError):
+            FileAttachment.from_file(tmp_path / "does-not-exist.txt")

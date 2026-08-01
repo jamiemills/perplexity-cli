@@ -1,30 +1,4 @@
 {
   "version": 1,
-  "accepted": [
-    {
-      "rule": "import-direction",
-      "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/api/models.py:20",
-      "message": "api.models (layer: ports) imports utils.version (layer: adapter) [module-level], but ports may only import from: domain, ports, shared_pure"
-    },
-    {
-      "rule": "framework-isolation",
-      "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/query_runner.py:19",
-      "message": "query_runner (layer: application) imports 'click' [module-level], but application must not depend on framework libraries"
-    },
-    {
-      "rule": "import-direction",
-      "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/query_runner.py:21",
-      "message": "query_runner (layer: application) imports . (layer: composition_root) [module-level], but application may only import from: adapter, application, domain, ports, presentation, shared_pure"
-    },
-    {
-      "rule": "framework-isolation",
-      "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/query_streaming.py:14",
-      "message": "query_streaming (layer: application) imports 'click' [module-level], but application must not depend on framework libraries"
-    },
-    {
-      "rule": "framework-isolation",
-      "file": "/home/jamiemills/code/projects/perplexity-cli/src/perplexity_cli/query_streaming.py:15",
-      "message": "query_streaming (layer: application) imports 'click' [module-level], but application must not depend on framework libraries"
-    }
-  ]
+  "accepted": []
 }

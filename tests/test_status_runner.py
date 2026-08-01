@@ -1,9 +1,14 @@
 """Tests for the status command runner."""
 
 import json
-from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
+import logging
+from contextlib import contextmanager
+from datetime import timedelta
+from unittest.mock import patch
 
+import pytest
+
+from perplexity_cli.config.models import FeatureConfig
 from perplexity_cli.runners.status import (
     _build_status_envelope,
     _get_json_mode_from_ctx,
@@ -17,6 +22,34 @@ from perplexity_cli.runners.status import (
     run_doctor_security_command,
     run_status_command,
 )
+from perplexity_cli.utils.exceptions import AuthenticationError, PerplexityRequestError
+from tests.helpers.fake_services import (
+    FakeAPIGateway,
+    FakeCacheManager,
+    FakeClickContext,
+    FakePath,
+    FakeTokenManager,
+    FixedClock,
+)
+
+_LOGGER = logging.getLogger("test-status-runner")
+
+
+@contextmanager
+def _patch_doctor_dependencies(tm, cache_manager, feature_config):
+    """Patch the doctor command's dependency construction points with fakes."""
+    with (
+        patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm),
+        patch("perplexity_cli.runners.status.ThreadCacheManager", new=lambda: cache_manager),
+        patch("perplexity_cli.runners.status.get_feature_config", new=lambda: feature_config),
+    ):
+        yield
+
+
+def _status_token_manager() -> FakeTokenManager:
+    """Build a token-manager fake with a fixed token-file mtime."""
+    return FakeTokenManager(token_path=FakePath(value="/tmp/token.json", st_mtime=1700000000.0))
+
 
 # ---------------------------------------------------------------------------
 # _get_json_mode_from_ctx
@@ -26,25 +59,20 @@ from perplexity_cli.runners.status import (
 class TestGetJsonModeFromCtx:
     """Tests for _get_json_mode_from_ctx()."""
 
-    def test_returns_false_when_no_context(self) -> None:
-        with patch("perplexity_cli.runners.status.click.get_current_context", return_value=None):
-            assert _get_json_mode_from_ctx() == "human"
-
-    def test_returns_true_from_ctx_obj(self) -> None:
-        mock_ctx = Mock()
-        mock_ctx.obj = {"json": True}
+    @pytest.mark.parametrize(
+        ("ctx_obj", "expected"),
+        [
+            pytest.param(None, "human", id="no-context"),
+            pytest.param({"json": True}, "json", id="json-true"),
+            pytest.param({}, "human", id="json-missing"),
+        ],
+    )
+    def test_json_mode_from_ctx(self, ctx_obj: object, expected: str) -> None:
         with patch(
-            "perplexity_cli.runners.status.click.get_current_context", return_value=mock_ctx
+            "perplexity_cli.runners.status.click.get_current_context",
+            new=lambda *args, **kwargs: None if ctx_obj is None else FakeClickContext(obj=ctx_obj),
         ):
-            assert _get_json_mode_from_ctx() == "json"
-
-    def test_returns_false_when_key_missing(self) -> None:
-        mock_ctx = Mock()
-        mock_ctx.obj = {}
-        with patch(
-            "perplexity_cli.runners.status.click.get_current_context", return_value=mock_ctx
-        ):
-            assert _get_json_mode_from_ctx() == "human"
+            assert _get_json_mode_from_ctx() == expected
 
 
 # ---------------------------------------------------------------------------
@@ -55,16 +83,27 @@ class TestGetJsonModeFromCtx:
 class TestGetTokenAgeDays:
     """Tests for _get_token_age_days()."""
 
-    def test_returns_none_when_path_missing(self) -> None:
-        path = Mock()
-        path.stat.side_effect = OSError
+    def test_returns_none_when_path_missing(self, tmp_path) -> None:
+        missing = tmp_path / "missing-token.json"
+        assert _get_token_age_days(missing) is None
+
+    @pytest.mark.parametrize(
+        "stat_error",
+        [
+            pytest.param(OSError, id="os-error"),
+            pytest.param(AttributeError, id="attribute-error"),
+            pytest.param(TypeError, id="type-error"),
+        ],
+    )
+    def test_returns_none_on_stat_error(self, stat_error: type[BaseException]) -> None:
+        path = FakePath(stat_error=stat_error)
         assert _get_token_age_days(path) is None
 
     def test_returns_days_since_modified(self) -> None:
-        path = Mock()
-        days_ago = datetime.now() - timedelta(days=5)
-        path.stat.return_value = Mock(st_mtime=days_ago.timestamp())
-        assert _get_token_age_days(path) == 5
+        mtime = (FixedClock.NOW - timedelta(days=5)).timestamp()
+        path = FakePath(st_mtime=mtime)
+        with patch("perplexity_cli.runners.status.datetime", new=FixedClock):
+            assert _get_token_age_days(path) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -75,32 +114,24 @@ class TestGetTokenAgeDays:
 class TestVerifyToken:
     """Tests for _verify_token()."""
 
-    def test_returns_true_on_successful_verification(self) -> None:
-        with patch("perplexity_cli.runners.status.PerplexityAPI") as mock_api_class:
-            mock_api = Mock()
-            mock_api.get_complete_answer.return_value = Mock(text="OK")
-            mock_api_class.return_value.__enter__.return_value = mock_api
-
-            result = _verify_token("token", {}, Mock())
-            assert result is True
-
-    def test_returns_false_on_empty_response(self) -> None:
-        with patch("perplexity_cli.runners.status.PerplexityAPI") as mock_api_class:
-            mock_api = Mock()
-            mock_api.get_complete_answer.return_value = Mock(text="")
-            mock_api_class.return_value.__enter__.return_value = mock_api
-
-            result = _verify_token("token", {}, Mock())
-            assert result is False
-
-    def test_returns_false_on_api_error(self) -> None:
-        from perplexity_cli.utils.exceptions import PerplexityRequestError
-
-        with patch("perplexity_cli.runners.status.PerplexityAPI") as mock_api_class:
-            mock_api_class.return_value.__enter__.side_effect = PerplexityRequestError("down")
-
-            result = _verify_token("token", {}, Mock())
-            assert result is False
+    @pytest.mark.parametrize(
+        ("gateway", "expected"),
+        [
+            pytest.param(FakeAPIGateway(answer_text="OK"), True, id="success"),
+            pytest.param(FakeAPIGateway(answer_text=""), False, id="empty-response"),
+            pytest.param(
+                FakeAPIGateway(enter_error=PerplexityRequestError("down")),
+                False,
+                id="api-error",
+            ),
+        ],
+    )
+    def test_verify_token(self, gateway: FakeAPIGateway, expected: bool) -> None:
+        with patch(
+            "perplexity_cli.runners.status.PerplexityAPI", new=lambda *args, **kwargs: gateway
+        ):
+            result = _verify_token("token", {}, _LOGGER)
+            assert result is expected
 
 
 # ---------------------------------------------------------------------------
@@ -111,17 +142,21 @@ class TestVerifyToken:
 class TestOutputVerificationResult:
     """Tests for _output_verification_result()."""
 
-    def test_prints_ok_when_verified_true(self, capsys) -> None:
-        _output_verification_result(True, Mock())
-        assert "Token is valid and working" in capsys.readouterr().out
-
-    def test_prints_error_when_verified_false(self, capsys) -> None:
-        _output_verification_result(False, Mock())
-        assert "Token verification failed" in capsys.readouterr().out
-
-    def test_prints_info_when_verified_none(self, capsys) -> None:
-        _output_verification_result(None, Mock())
-        assert "empty response" in capsys.readouterr().out
+    @pytest.mark.parametrize(
+        ("verified", "expected_line"),
+        [
+            pytest.param(True, "\n[OK] Token is valid and working", id="verified"),
+            pytest.param(False, "\n[ERROR] Token verification failed", id="failed"),
+            pytest.param(
+                None,
+                "\n[INFO] Token verification returned empty response",
+                id="empty",
+            ),
+        ],
+    )
+    def test_prints_exact_result(self, verified: object, expected_line: str, capsys) -> None:
+        _output_verification_result(verified, _LOGGER)
+        assert capsys.readouterr().out == expected_line + "\n"
 
 
 # ---------------------------------------------------------------------------
@@ -133,19 +168,15 @@ class TestOutputTokenModifiedTime:
     """Tests for _output_token_modified_time()."""
 
     def test_prints_nothing_when_age_is_none(self, capsys) -> None:
-        _output_token_modified_time(Mock(), None)
+        _output_token_modified_time(FakePath(), None)
         assert capsys.readouterr().out == ""
 
     def test_prints_timestamp_when_age_available(self, capsys) -> None:
-        path = Mock()
-        path.stat.return_value = Mock(st_mtime=1700000000.0)
-        _output_token_modified_time(path, 5)
+        _output_token_modified_time(FakePath(st_mtime=1700000000.0), 5)
         assert "2023-11-14" in capsys.readouterr().out
 
     def test_handles_stat_error(self, capsys) -> None:
-        path = Mock()
-        path.stat.side_effect = OSError
-        _output_token_modified_time(path, 5)
+        _output_token_modified_time(FakePath(stat_error=OSError), 5)
         assert "unavailable" in capsys.readouterr().out
 
 
@@ -158,25 +189,19 @@ class TestOutputStatusText:
     """Tests for _output_status_text()."""
 
     def test_shows_token_length_and_cookies(self, capsys) -> None:
-        tm = Mock()
-        tm.token_path = Mock()
-        tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
+        tm = _status_token_manager()
         _output_status_text("tok", {"c": "v"}, (5, None, False), tm=tm)
         captured = capsys.readouterr()
         assert "3 characters" in captured.out
         assert "1 stored" in captured.out
 
     def test_shows_live_verification_not_run(self, capsys) -> None:
-        tm = Mock()
-        tm.token_path = Mock()
-        tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
+        tm = _status_token_manager()
         _output_status_text("tok", {}, (5, None, False), tm=tm)
         assert "Live verification not run" in capsys.readouterr().out
 
     def test_shows_verification_result_when_verify_true(self, capsys) -> None:
-        tm = Mock()
-        tm.token_path = Mock()
-        tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
+        tm = _status_token_manager()
         _output_status_text("tok", {}, (5, True, True), tm=tm)
         assert "Token is valid and working" in capsys.readouterr().out
 
@@ -190,24 +215,21 @@ class TestHandleNoToken:
     """Tests for _handle_no_token()."""
 
     def test_human_mode_with_hint(self, capsys) -> None:
-        tm = Mock()
-        tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json"))
         _handle_no_token(output_format="human", tm=tm, show_auth_hint="show")
         captured = capsys.readouterr()
         assert "Not authenticated" in captured.out
         assert "pxcli auth login" in captured.out
 
     def test_human_mode_without_hint(self, capsys) -> None:
-        tm = Mock()
-        tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json"))
         _handle_no_token(output_format="human", tm=tm, show_auth_hint="hide")
         captured = capsys.readouterr()
         assert "Not authenticated" in captured.out
         assert "pxcli auth login" not in captured.out
 
     def test_json_mode_writes_envelope(self, capsys) -> None:
-        tm = Mock()
-        tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json"))
         _handle_no_token(output_format="json", tm=tm)
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True
@@ -223,8 +245,7 @@ class TestBuildStatusEnvelope:
     """Tests for _build_status_envelope()."""
 
     def test_builds_authenticated_envelope(self) -> None:
-        tm = Mock()
-        tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json"))
         env = _build_status_envelope(True, tm, (5, 2, True))
         assert env.ok is True
         result = env.result
@@ -234,8 +255,7 @@ class TestBuildStatusEnvelope:
         assert result["verified"] is True
 
     def test_builds_unauthenticated_envelope(self) -> None:
-        tm = Mock()
-        tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json"))
         env = _build_status_envelope(False, tm)
         assert env.ok is True
         assert env.result["authenticated"] is False
@@ -250,30 +270,15 @@ class TestHandleAuthenticatedStatus:
     """Tests for _handle_authenticated_status()."""
 
     def test_json_mode_writes_envelope(self, capsys) -> None:
-        tm = Mock()
-        tm.token_path = Mock()
-        tm.token_path.__str__ = Mock(return_value="/tmp/token.json")
-        tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
-
-        _handle_authenticated_status(
-            ("tok", {"c": "v"}, "skip", "json"),
-            tm=tm,
-            logger=Mock(),
-        )
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json", st_mtime=1700000000.0))
+        _handle_authenticated_status(("tok", {"c": "v"}, "skip", "json"), tm=tm, logger=_LOGGER)
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True
         assert envelope["result"]["authenticated"] is True
 
     def test_human_mode_prints_output(self, capsys) -> None:
-        tm = Mock()
-        tm.token_path = Mock()
-        tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
-
-        _handle_authenticated_status(
-            ("tok", {}, "skip", "human"),
-            tm=tm,
-            logger=Mock(),
-        )
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json", st_mtime=1700000000.0))
+        _handle_authenticated_status(("tok", {}, "skip", "human"), tm=tm, logger=_LOGGER)
         assert "Authenticated" in capsys.readouterr().out
 
 
@@ -285,70 +290,34 @@ class TestHandleAuthenticatedStatus:
 class TestRunDoctorSecurity:
     """Tests for run_doctor_security_command()."""
 
-    @patch("perplexity_cli.runners.status.get_feature_config")
-    @patch("perplexity_cli.runners.status.ThreadCacheManager")
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_json_mode_writes_envelope(
-        self,
-        mock_tm_class,
-        mock_cm_class,
-        mock_feature_config,
-        capsys,
-    ) -> None:
-        mock_tm = Mock()
-        mock_tm.token_path = Mock()
-        mock_tm.token_path.__str__ = Mock(return_value="/tmp/token.json")
-        mock_tm.token_path.exists.return_value = True
-        mock_tm.token_path.stat.return_value = Mock(st_mode=0o100600)
-        mock_tm.SECURE_PERMISSIONS = 0o100600
-        mock_tm_class.return_value = mock_tm
+    @staticmethod
+    def _prepare_secure_files(tmp_path):
+        token_file = tmp_path / "token.json"
+        token_file.write_text("{}")
+        token_file.chmod(0o600)
+        cache_file = tmp_path / "cache.json"
+        cache_file.write_text("{}")
+        cache_file.chmod(0o600)
+        return token_file, cache_file
 
-        mock_cm = Mock()
-        mock_cm.cache_path = Mock()
-        mock_cm.cache_path.__str__ = Mock(return_value="/tmp/cache.json")
-        mock_cm.cache_path.exists.return_value = True
-        mock_cm.cache_path.stat.return_value = Mock(st_mode=0o100600)
-        mock_cm.SECURE_PERMISSIONS = 0o100600
-        mock_cm_class.return_value = mock_cm
-
-        mock_feature_config.return_value = Mock(save_cookies=False)
-
-        run_doctor_security_command(output_format="json")
+    def test_json_mode_writes_envelope(self, tmp_path, capsys) -> None:
+        token_file, cache_file = self._prepare_secure_files(tmp_path)
+        tm = FakeTokenManager(token_path=token_file)
+        cache_manager = FakeCacheManager(cache_path=cache_file)
+        with _patch_doctor_dependencies(tm, cache_manager, FeatureConfig(save_cookies=False)):
+            run_doctor_security_command(output_format="json")
 
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True
         assert "token_path" in envelope["result"]
         assert "cookies_enabled" in envelope["result"]
 
-    @patch("perplexity_cli.runners.status.get_feature_config")
-    @patch("perplexity_cli.runners.status.ThreadCacheManager")
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_human_mode_prints_output(
-        self,
-        mock_tm_class,
-        mock_cm_class,
-        mock_feature_config,
-        capsys,
-    ) -> None:
-        mock_tm = Mock()
-        mock_tm.token_path = Mock()
-        mock_tm.token_path.__str__ = Mock(return_value="/tmp/token.json")
-        mock_tm.token_path.exists.return_value = True
-        mock_tm.token_path.stat.return_value = Mock(st_mode=0o100600)
-        mock_tm.SECURE_PERMISSIONS = 0o100600
-        mock_tm_class.return_value = mock_tm
-
-        mock_cm = Mock()
-        mock_cm.cache_path = Mock()
-        mock_cm.cache_path.__str__ = Mock(return_value="/tmp/cache.json")
-        mock_cm.cache_path.exists.return_value = True
-        mock_cm.cache_path.stat.return_value = Mock(st_mode=0o100600)
-        mock_cm.SECURE_PERMISSIONS = 0o100600
-        mock_cm_class.return_value = mock_cm
-
-        mock_feature_config.return_value = Mock(save_cookies=True)
-
-        run_doctor_security_command(output_format="human")
+    def test_human_mode_prints_output(self, tmp_path, capsys) -> None:
+        token_file, cache_file = self._prepare_secure_files(tmp_path)
+        tm = FakeTokenManager(token_path=token_file)
+        cache_manager = FakeCacheManager(cache_path=cache_file)
+        with _patch_doctor_dependencies(tm, cache_manager, FeatureConfig(save_cookies=True)):
+            run_doctor_security_command(output_format="human")
 
         captured = capsys.readouterr()
         assert "Perplexity CLI Security" in captured.out
@@ -363,62 +332,49 @@ class TestRunDoctorSecurity:
 class TestRunStatusCommand:
     """Tests for run_status_command()."""
 
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_not_authenticated_human(self, mock_tm_class, capsys):
+    def test_not_authenticated_human(self, capsys):
         """Human output shows not authenticated."""
-        mock_tm = Mock()
-        mock_tm.token_exists.return_value = False
-        mock_tm_class.return_value = mock_tm
-
-        run_status_command(verify="skip")
+        tm = FakeTokenManager(token_exists_value=False)
+        with patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm):
+            run_status_command(verify="skip")
 
         captured = capsys.readouterr()
         assert "Not authenticated" in captured.out
 
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_authenticated_human(self, mock_tm_class, capsys):
+    def test_authenticated_human(self, capsys):
         """Human output shows authenticated status."""
-        mock_tm = Mock()
-        mock_tm.token_exists.return_value = True
-        mock_tm.load_token.return_value = ("token-abc", {"cf": "val"})
-        mock_token_path = Mock()
-        mock_token_path.__str__ = Mock(return_value="/tmp/token.json")
-        mock_token_path.stat.return_value = Mock(st_mtime=1700000000.0)
-        mock_tm.token_path = mock_token_path
-        mock_tm_class.return_value = mock_tm
-
-        run_status_command(verify="skip")
+        tm = FakeTokenManager(
+            token_exists_value=True,
+            load_token_result=("token-abc", {"cf": "val"}),
+            token_path=FakePath(value="/tmp/token.json", st_mtime=1700000000.0),
+        )
+        with patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm):
+            run_status_command(verify="skip")
 
         captured = capsys.readouterr()
         assert "Authenticated" in captured.out
 
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_not_authenticated_json(self, mock_tm_class, capsys):
+    def test_not_authenticated_json(self, capsys):
         """JSON output shows authenticated=False."""
-        mock_tm = Mock()
-        mock_tm.token_exists.return_value = False
-        mock_tm.token_path = Mock(__str__=Mock(return_value="/tmp/token.json"))
-        mock_tm_class.return_value = mock_tm
-
-        run_status_command(verify="skip", output_format="json")
+        tm = FakeTokenManager(
+            token_exists_value=False, token_path=FakePath(value="/tmp/token.json")
+        )
+        with patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm):
+            run_status_command(verify="skip", output_format="json")
 
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True
         assert envelope["result"]["authenticated"] is False
 
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_authenticated_json(self, mock_tm_class, capsys):
+    def test_authenticated_json(self, capsys):
         """JSON output shows authenticated=True with details."""
-        mock_tm = Mock()
-        mock_tm.token_exists.return_value = True
-        mock_tm.load_token.return_value = ("token-abc", {"cf": "val"})
-        mock_token_path = Mock()
-        mock_token_path.__str__ = Mock(return_value="/tmp/token.json")
-        mock_token_path.stat.return_value = Mock(st_mtime=1700000000.0)
-        mock_tm.token_path = mock_token_path
-        mock_tm_class.return_value = mock_tm
-
-        run_status_command(verify="skip", output_format="json")
+        tm = FakeTokenManager(
+            token_exists_value=True,
+            load_token_result=("token-abc", {"cf": "val"}),
+            token_path=FakePath(value="/tmp/token.json", st_mtime=1700000000.0),
+        )
+        with patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm):
+            run_status_command(verify="skip", output_format="json")
 
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True
@@ -465,185 +421,112 @@ class TestStatusRunnerMutationKillers:
         assert "0o644" in result
         assert "expected 0o600" in result
 
-    def test_output_verification_result_true_exact(self, capsys):
-        _output_verification_result(True, Mock())
-        assert capsys.readouterr().out == "\n[OK] Token is valid and working\n"
-
-    def test_output_verification_result_false_exact(self, capsys):
-        _output_verification_result(False, Mock())
-        assert capsys.readouterr().out == "\n[ERROR] Token verification failed\n"
-
-    def test_output_verification_result_none_exact(self, capsys):
-        _output_verification_result(None, Mock())
-        assert capsys.readouterr().out == "\n[INFO] Token verification returned empty response\n"
-
     def test_output_status_text_no_cookies_no_line(self, capsys):
-        tm = Mock()
-        tm.token_path = Mock()
-        tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
+        tm = _status_token_manager()
         _output_status_text("tok", None, (5, None, False), tm=tm)
         captured = capsys.readouterr()
         assert "Cookies:" not in captured.out
 
     def test_output_status_text_with_cookies_count(self, capsys):
-        tm = Mock()
-        tm.token_path = Mock()
-        tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
+        tm = _status_token_manager()
         _output_status_text("tok", {"a": "1", "b": "2", "c": "3"}, (5, None, False), tm=tm)
         captured = capsys.readouterr()
         assert "Cookies: 3 stored" in captured.out
 
     def test_output_status_text_verify_true_verified_false(self, capsys):
-        tm = Mock()
-        tm.token_path = Mock()
-        tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
+        tm = _status_token_manager()
         _output_status_text("tok", {}, (5, False, True), tm=tm)
         captured = capsys.readouterr()
         assert "[ERROR] Token verification failed" in captured.out
 
     def test_output_status_text_token_length_exact(self, capsys):
-        tm = Mock()
-        tm.token_path = Mock()
-        tm.token_path.stat.return_value = Mock(st_mtime=1700000000.0)
+        tm = _status_token_manager()
         _output_status_text("abcdef", {}, (0, None, False), tm=tm)
         captured = capsys.readouterr()
         assert "Token length: 6 characters" in captured.out
 
     def test_get_token_age_days_zero_days(self):
-        path = Mock()
-        path.stat.return_value = Mock(st_mtime=datetime.now().timestamp())
-        assert _get_token_age_days(path) == 0
-
-    def test_get_token_age_days_attribute_error(self):
-        path = Mock()
-        path.stat.side_effect = AttributeError
-        assert _get_token_age_days(path) is None
-
-    def test_get_token_age_days_type_error(self):
-        path = Mock()
-        path.stat.side_effect = TypeError
-        assert _get_token_age_days(path) is None
+        path = FakePath(st_mtime=FixedClock.NOW.timestamp())
+        with patch("perplexity_cli.runners.status.datetime", new=FixedClock):
+            assert _get_token_age_days(path) == 0
 
     def test_build_status_envelope_default_token_info(self):
-        tm = Mock()
-        tm.token_path = Mock(__str__=Mock(return_value="/tmp/t.json"))
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/t.json"))
         env = _build_status_envelope(True, tm)
         assert env.result["token_age_days"] is None
         assert env.result["cookies_stored"] == 0
         assert env.result["verified"] is None
 
     def test_handle_no_token_json_includes_schema_flag(self, capsys):
-        tm = Mock()
-        tm.token_path = Mock(__str__=Mock(return_value="/tmp/t.json"))
-        with patch("perplexity_cli.runners.status._get_include_schema", return_value="no_schema"):
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/t.json"))
+        with patch(
+            "perplexity_cli.runners.status.click.get_current_context",
+            new=lambda *args, **kwargs: FakeClickContext(obj={}),
+        ):
             _handle_no_token(output_format="json", tm=tm)
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["result"]["authenticated"] is False
 
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_run_status_auth_error_insecure_permissions(self, mock_tm_class, capsys):
-        from perplexity_cli.utils.exceptions import AuthenticationError
-
-        mock_tm = Mock()
-        mock_tm.token_exists.return_value = True
-        mock_tm.load_token.side_effect = AuthenticationError("insecure permissions")
-        mock_tm.token_path = Mock(__str__=Mock(return_value="/tmp/t.json"))
-        mock_tm_class.return_value = mock_tm
-
-        run_status_command(verify="skip")
+    def test_run_status_auth_error_insecure_permissions(self, capsys):
+        tm = FakeTokenManager(
+            token_exists_value=True,
+            load_token_error=AuthenticationError("insecure permissions"),
+            token_path=FakePath(value="/tmp/t.json"),
+        )
+        with patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm):
+            run_status_command(verify="skip")
 
         captured = capsys.readouterr()
         assert "Token file has insecure permissions" in captured.out
         assert "chmod 0600" in captured.out
 
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_run_status_empty_token_shows_no_hint(self, mock_tm_class, capsys):
-        mock_tm = Mock()
-        mock_tm.token_exists.return_value = True
-        mock_tm.load_token.return_value = ("", None)
-        mock_tm.token_path = Mock(__str__=Mock(return_value="/tmp/t.json"))
-        mock_tm_class.return_value = mock_tm
-
-        run_status_command(verify="skip")
+    def test_run_status_empty_token_shows_no_hint(self, capsys):
+        tm = FakeTokenManager(
+            token_exists_value=True,
+            load_token_result=("", None),
+            token_path=FakePath(value="/tmp/t.json"),
+        )
+        with patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm):
+            run_status_command(verify="skip")
 
         captured = capsys.readouterr()
         assert "Not authenticated" in captured.out
         assert "pxcli auth login" not in captured.out
 
-    @patch("perplexity_cli.runners.status.PerplexityAPI")
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_run_status_verify_json_verified_true(self, mock_tm_class, mock_api_class, capsys):
-        mock_tm = Mock()
-        mock_tm.token_exists.return_value = True
-        mock_tm.load_token.return_value = ("tok", {"c": "v"})
-        mock_token_path = Mock()
-        mock_token_path.__str__ = Mock(return_value="/tmp/t.json")
-        mock_token_path.stat.return_value = Mock(st_mtime=1700000000.0)
-        mock_tm.token_path = mock_token_path
-        mock_tm_class.return_value = mock_tm
-
-        mock_api = Mock()
-        mock_api.get_complete_answer.return_value = Mock(text="answer")
-        mock_api_class.return_value.__enter__ = Mock(return_value=mock_api)
-        mock_api_class.return_value.__exit__ = Mock(return_value=False)
-
-        run_status_command(verify="verify", output_format="json")
+    def test_run_status_verify_json_verified_true(self, capsys):
+        tm = FakeTokenManager(
+            token_exists_value=True,
+            load_token_result=("tok", {"c": "v"}),
+            token_path=FakePath(value="/tmp/t.json", st_mtime=1700000000.0),
+        )
+        with (
+            patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm),
+            patch(
+                "perplexity_cli.runners.status.PerplexityAPI",
+                new=lambda *args, **kwargs: FakeAPIGateway(answer_text="answer"),
+            ),
+        ):
+            run_status_command(verify="verify", output_format="json")
 
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["result"]["verified"] is True
         assert envelope["result"]["cookies_stored"] == 1
 
-    @patch("perplexity_cli.runners.status.get_feature_config")
-    @patch("perplexity_cli.runners.status.ThreadCacheManager")
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_doctor_security_human_no_cookie_warning(
-        self, mock_tm_class, mock_cm_class, mock_feature_config, capsys
-    ):
-        mock_tm = Mock()
-        mock_tm.token_path = Mock()
-        mock_tm.token_path.__str__ = Mock(return_value="/tmp/t.json")
-        mock_tm.token_path.exists.return_value = False
-        mock_tm.SECURE_PERMISSIONS = 0o600
-        mock_tm_class.return_value = mock_tm
-
-        mock_cm = Mock()
-        mock_cm.cache_path = Mock()
-        mock_cm.cache_path.__str__ = Mock(return_value="/tmp/c.json")
-        mock_cm.cache_path.exists.return_value = False
-        mock_cm.SECURE_PERMISSIONS = 0o600
-        mock_cm_class.return_value = mock_cm
-
-        mock_feature_config.return_value = Mock(save_cookies=False)
-
-        run_doctor_security_command(output_format="human")
+    def test_doctor_security_human_no_cookie_warning(self, tmp_path, capsys):
+        tm = FakeTokenManager(token_path=tmp_path / "token.json")
+        cache_manager = FakeCacheManager(cache_path=tmp_path / "cache.json")
+        with _patch_doctor_dependencies(tm, cache_manager, FeatureConfig(save_cookies=False)):
+            run_doctor_security_command(output_format="human")
 
         captured = capsys.readouterr()
         assert "Cookie storage enabled: False" in captured.out
         assert "Cookie storage warning" not in captured.out
 
-    @patch("perplexity_cli.runners.status.get_feature_config")
-    @patch("perplexity_cli.runners.status.ThreadCacheManager")
-    @patch("perplexity_cli.runners.status.TokenManager")
-    def test_doctor_security_json_cookies_enabled(
-        self, mock_tm_class, mock_cm_class, mock_feature_config, capsys
-    ):
-        mock_tm = Mock()
-        mock_tm.token_path = Mock()
-        mock_tm.token_path.__str__ = Mock(return_value="/tmp/t.json")
-        mock_tm.token_path.exists.return_value = False
-        mock_tm.SECURE_PERMISSIONS = 0o600
-        mock_tm_class.return_value = mock_tm
-
-        mock_cm = Mock()
-        mock_cm.cache_path = Mock()
-        mock_cm.cache_path.__str__ = Mock(return_value="/tmp/c.json")
-        mock_cm.cache_path.exists.return_value = False
-        mock_cm.SECURE_PERMISSIONS = 0o600
-        mock_cm_class.return_value = mock_cm
-
-        mock_feature_config.return_value = Mock(save_cookies=True)
-
-        run_doctor_security_command(output_format="json")
+    def test_doctor_security_json_cookies_enabled(self, tmp_path, capsys):
+        tm = FakeTokenManager(token_path=tmp_path / "token.json")
+        cache_manager = FakeCacheManager(cache_path=tmp_path / "cache.json")
+        with _patch_doctor_dependencies(tm, cache_manager, FeatureConfig(save_cookies=True)):
+            run_doctor_security_command(output_format="json")
 
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["result"]["cookies_enabled"] is True

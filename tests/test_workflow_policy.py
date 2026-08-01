@@ -12,21 +12,14 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
 from pathlib import Path
 
 import pytest
 
+from scripts import validate_workflow_policy as wfp
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = PROJECT_ROOT / "tests" / "fixtures" / "workflow_policy"
-
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from scripts import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
-    validate_workflow_policy as wfp,
-)
 
 
 def _copy_fixture_to(tmp_path: Path, fixture_name: str) -> Path:

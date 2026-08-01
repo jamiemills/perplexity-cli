@@ -549,8 +549,12 @@ def set_feature(key: str, value: object) -> None:
         key: Feature key ("save_cookies" or "debug_mode").
         value: Boolean value to set.
 
+    The written configuration is derived from the raw file/default values,
+    without applying environment overrides, so setting one key cannot persist
+    an unrelated environment override to disk.
+
     Raises:
-        RuntimeError: If key is invalid or file cannot be written.
+        ConfigurationError: If key is invalid or file cannot be written.
     """
     valid_keys = ["save_cookies", "debug_mode"]
     if key not in valid_keys:
@@ -561,12 +565,7 @@ def set_feature(key: str, value: object) -> None:
         msg = f"Feature value must be boolean, got {type(value).__name__}"
         raise ConfigurationError(msg)
 
-    feature_config = get_feature_config()
-
-    feature_dict = {
-        "save_cookies": feature_config.save_cookies,
-        "debug_mode": feature_config.debug_mode,
-    }
+    feature_dict = _load_feature_config_from_file()
     feature_dict[key] = value
 
     config_content = {"version": 1, "features": feature_dict}

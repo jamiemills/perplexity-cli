@@ -12,20 +12,46 @@ Proves:
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_PATH = PROJECT_ROOT / "quality" / "baselines" / "coupling-report.json"
 
-sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from scripts.check_coupling import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+def _load_script(name: str, aliases: list[str] | None = None) -> ModuleType:
+    """Load a scripts/<name>.py module by file path without sys.path mutation.
+
+    Extra *aliases* register the same module object under additional import
+    names so sibling scripts that import each other by bare name share state.
+    """
+    module_name = f"scripts.{name}"
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        return existing
+    spec = importlib.util.spec_from_file_location(
+        module_name, PROJECT_ROOT / "scripts" / f"{name}.py"
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load scripts/{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    for alias in [module_name] + (aliases or []):
+        sys.modules[alias] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_load_script("_gates", aliases=["_gates"])
+_load_script("import_graph", aliases=["import_graph"])
+_load_script("check_coupling")
+
+from scripts.check_coupling import (  # noqa: E402  # owner: quality-infrastructure; reason: module registered in sys.modules by _load_script
     DEFAULT_DISTANCE_THRESHOLD,
     ModuleMetrics,
     SyntaxErrorInSource,

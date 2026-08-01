@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import stat
+import sys
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,6 +17,13 @@ import pytest
 from perplexity_cli.auth.token_manager import TOKEN_AGE_WARNING_DAYS, TokenManager
 from perplexity_cli.utils.encryption import encrypt_token
 from perplexity_cli.utils.exceptions import AuthenticationError
+
+_POSIX = sys.platform != "win32"
+
+
+def _temp_files(directory: Path) -> list[Path]:
+    """Return any temporary siblings left behind in a directory."""
+    return [p for p in directory.iterdir() if p.name.endswith(".tmp")]
 
 
 @pytest.fixture
@@ -49,6 +59,70 @@ class TestSaveTokenOSError:
         with patch("builtins.open", side_effect=OSError("disk full")):
             with pytest.raises(OSError, match="Failed to save or set permissions"):
                 token_manager.save_token("tok")
+
+
+class TestSaveTokenAtomicPreservation:
+    """A failure in any atomic-write stage preserves the previous valid token."""
+
+    @pytest.mark.parametrize(
+        "stage",
+        ["_write_content", "_flush_file", "_fsync_file", "_set_permissions", "_replace_temp"],
+    )
+    def test_stage_failure_preserves_previous_token(
+        self, token_manager, temp_token_file, monkeypatch, stage
+    ):
+        """A failure during the given stage keeps the old token loadable."""
+
+        def _fail(*args, **kwargs):
+            raise OSError("injected failure")
+
+        token_manager.save_token("original-token")
+        original_bytes = temp_token_file.read_bytes()
+        monkeypatch.setattr(f"perplexity_cli.utils.atomic_write.{stage}", _fail)
+        with pytest.raises(OSError, match="Failed to save or set permissions"):
+            token_manager.save_token("replacement-token")
+        assert temp_token_file.read_bytes() == original_bytes
+        token, _ = token_manager.load_token()
+        assert token == "original-token"
+        assert _temp_files(temp_token_file.parent) == []
+        if _POSIX:
+            assert stat.S_IMODE(temp_token_file.stat().st_mode) == 0o600
+
+    @pytest.mark.skipif(not _POSIX, reason="POSIX mode bits are not asserted on Windows")
+    def test_saved_token_file_mode_0600(self, token_manager, temp_token_file):
+        """A successful save writes a 0600 token file."""
+        token_manager.save_token("tok")
+        assert stat.S_IMODE(temp_token_file.stat().st_mode) == 0o600
+
+    def test_successful_save_leaves_no_temp_residue(self, token_manager, temp_token_file):
+        """A successful save leaves no temporary siblings behind."""
+        token_manager.save_token("tok")
+        assert temp_token_file.exists()
+        assert _temp_files(temp_token_file.parent) == []
+
+    def test_failed_save_does_not_log_plaintext_token(self, token_manager, monkeypatch, caplog):
+        """A failed save never logs the plaintext token value."""
+        token_manager.save_token("original-token")
+        secret = "super-secret-plaintext-token"
+
+        def _fail(*args, **kwargs):
+            raise OSError("injected failure")
+
+        monkeypatch.setattr("perplexity_cli.utils.atomic_write._write_content", _fail)
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            with pytest.raises(OSError, match="Failed to save or set permissions"):
+                token_manager.save_token(secret)
+        combined = "\n".join(record.getMessage() for record in caplog.records)
+        assert secret not in combined
+        assert "original-token" not in combined
+
+    def test_successful_save_does_not_log_plaintext_token(self, token_manager, caplog):
+        """A successful save never logs the plaintext token value."""
+        secret = "super-secret-plaintext-token"
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            token_manager.save_token(secret)
+        combined = "\n".join(record.getMessage() for record in caplog.records)
+        assert secret not in combined
 
 
 class TestPrepareTokenData:
@@ -109,7 +183,7 @@ class TestCheckTokenAge:
 
     def test_non_string_type_handled(self, token_manager):
         """Non-string types (triggering TypeError) are silently handled."""
-        token_manager._check_token_age(12345)  # type: ignore[arg-type]
+        token_manager._check_token_age(12345)  # type: ignore[arg-type]  # owner: test-infrastructure; reason: deliberately passes a non-string to exercise the TypeError path
 
 
 class TestDecryptCookies:

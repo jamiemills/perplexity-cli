@@ -1,6 +1,24 @@
 """Pydantic models for configuration management."""
 
+import ipaddress
+from urllib.parse import ParseResult, urlparse
+
 from pydantic import BaseModel, Field, field_validator
+
+_ASCII_CONTROL_UPPER_BOUND = 0x1F
+_DELETE_CHARACTER = 0x7F
+
+
+def _is_forbidden_character(char: str) -> bool:
+    """Return True for whitespace, control, or delete characters."""
+    return (
+        char.isspace() or ord(char) <= _ASCII_CONTROL_UPPER_BOUND or ord(char) == _DELETE_CHARACTER
+    )
+
+
+def _contains_forbidden_characters(value: str) -> bool:
+    """Return True if the string contains any forbidden character."""
+    return any(_is_forbidden_character(char) for char in value)
 
 
 class URLConfig(BaseModel):
@@ -43,14 +61,88 @@ class URLConfig(BaseModel):
     )
     @classmethod
     def validate_urls(cls, v: str) -> str:
-        """Validate that URLs are non-empty strings."""
-        if not v:
+        """Validate that URLs are absolute http/https URLs with a hostname.
+
+        Rejects relative URLs, unsupported schemes, userinfo, fragments,
+        control characters, whitespace, and backslashes.  HTTP is only
+        permitted for loopback hosts (localhost, 127.0.0.0/8, ::1); HTTPS is
+        required otherwise.  Surrounding whitespace is normalised; no DNS
+        resolution is performed.
+        """
+        value = cls._normalise_url_string(v)
+        parsed = cls._parse_url(value)
+        cls._validate_url_structure(parsed)
+        return value
+
+    @classmethod
+    def _normalise_url_string(cls, v: str) -> str:
+        """Strip surrounding whitespace and reject forbidden characters."""
+        value = v.strip()
+        if not value:
             msg = "URLs must be non-empty strings"
             raise ValueError(msg)
-        if not v.strip():
-            msg = "URLs cannot be empty or whitespace-only"
+        cls._reject_forbidden_characters(value)
+        return value
+
+    @classmethod
+    def _reject_forbidden_characters(cls, value: str) -> None:
+        """Reject whitespace, control characters, and backslashes."""
+        if _contains_forbidden_characters(value):
+            msg = "URLs cannot contain whitespace or control characters"
             raise ValueError(msg)
-        return v
+        if "\\" in value:
+            msg = "URLs cannot contain backslashes"
+            raise ValueError(msg)
+
+    @classmethod
+    def _parse_url(cls, value: str) -> ParseResult:
+        """Parse a URL, converting parser failures into ValueError."""
+        try:
+            return urlparse(value)
+        except ValueError as e:
+            msg = f"Invalid URL: {value}"
+            raise ValueError(msg) from e
+
+    @classmethod
+    def _validate_url_structure(cls, parsed: ParseResult) -> None:
+        """Enforce scheme, hostname, userinfo, fragment, and loopback rules."""
+        cls._validate_scheme_and_hostname(parsed)
+        cls._validate_no_forbidden_parts(parsed)
+        hostname = parsed.hostname or ""
+        if parsed.scheme == "http" and not cls._is_loopback_host(hostname):
+            msg = "HTTP URLs are only allowed for loopback hosts"
+            raise ValueError(msg)
+
+    @classmethod
+    def _validate_scheme_and_hostname(cls, parsed: ParseResult) -> None:
+        """Reject unsupported schemes and URLs without a hostname."""
+        if parsed.scheme not in {"http", "https"}:
+            msg = "URLs must use an http or https scheme"
+            raise ValueError(msg)
+        if not parsed.hostname:
+            msg = "URLs must include a hostname"
+            raise ValueError(msg)
+
+    @classmethod
+    def _validate_no_forbidden_parts(cls, parsed: ParseResult) -> None:
+        """Reject userinfo and fragments in URLs."""
+        if parsed.username is not None or parsed.password is not None:
+            msg = "URLs cannot contain userinfo (username or password)"
+            raise ValueError(msg)
+        if parsed.fragment:
+            msg = "URLs cannot contain a fragment"
+            raise ValueError(msg)
+
+    @classmethod
+    def _is_loopback_host(cls, hostname: str) -> bool:
+        """Return True if the hostname resolves to a loopback address."""
+        if hostname == "localhost":
+            return True
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            return False
+        return address.is_loopback
 
 
 class RateLimitConfig(BaseModel):

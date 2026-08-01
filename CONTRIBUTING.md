@@ -20,10 +20,19 @@ make test
 
   - `make test` is the documented safe ordinary test command. Its recipe runs
     pytest in parallel with fail-fast and applies the marker exclusions
-    (`property`, `hermetic_integration`, `real_api`, `manual`,
-    `real_user_config`, and `fuzz`) from the Makefile — **not** from
-    `pyproject.toml` `addopts`, which only registers markers and strictness.
-    The hermetic integration marker is `hermetic_integration`.
+    (`property`, `hermetic_integration`, `integration`, `real_api`, `manual`,
+    `real_user_config`, and `fuzz`) plus the explicit `--ignore`
+    core-exclusion manifest (the property and mutation families) from the
+    Makefile — **not** from `pyproject.toml` `addopts`, which only registers
+    markers and strictness. The hermetic integration marker is
+    `hermetic_integration`.
+
+- Hermetic loopback integration tests (no real network; run under the
+  fail-closed network guard, default-on):
+
+```bash
+make test-integration
+```
 
 - Security-focused tests:
 

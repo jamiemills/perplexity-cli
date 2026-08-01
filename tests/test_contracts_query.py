@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+
+import pytest
+
 from perplexity_cli.contracts.query import QueryInput, TraceContext
-from tests.test_models import TestAnswer, TestWebResult
 
 
 class TestQueryInput:
@@ -51,15 +54,11 @@ class TestTraceContext:
 
     def test_frozen(self) -> None:
         tc = TraceContext(trace_id="x")
-        try:
+        with pytest.raises(FrozenInstanceError):
             tc.trace_id = "y"
-        except Exception:
-            assert tc.trace_id == "x"
 
 
 __all__ = [
-    "TestAnswer",
     "TestQueryInput",
     "TestTraceContext",
-    "TestWebResult",
 ]

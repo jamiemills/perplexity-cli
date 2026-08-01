@@ -1,7 +1,6 @@
-# negative: time.sleep inside retry module
-# (path exclude for utils/retry.py makes this exempt)
-import time
+# negative: canonical backoff via event wait, not raw time.sleep
+import threading
 
 
 def backoff():
-    time.sleep(1)
+    threading.Event().wait(1)

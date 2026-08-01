@@ -90,6 +90,44 @@ class TestThreadCacheManager:
         assert metadata["newest_thread_date"] == "2025-12-23T13:51:50Z"
         assert metadata["total_threads"] == 3
 
+    def test_cache_metadata_derives_coverage_from_actual_min_max(self, cache_manager):
+        """Coverage must be derived from actual min/max timestamps, not caller order."""
+        unsorted_threads = [
+            ThreadRecord(
+                title="Middle",
+                url="https://example.com/middle",
+                created_at="2025-12-22T10:00:00Z",
+            ),
+            ThreadRecord(
+                title="Newest",
+                url="https://example.com/newest",
+                created_at="2025-12-23T13:51:50Z",
+            ),
+            ThreadRecord(
+                title="Oldest",
+                url="https://example.com/oldest",
+                created_at="2025-12-21T08:15:00Z",
+            ),
+        ]
+        cache_manager.save_cache(unsorted_threads)
+        loaded = cache_manager.load_cache()
+
+        metadata = loaded["metadata"]
+        assert metadata["oldest_thread_date"] == "2025-12-21T08:15:00Z"
+        assert metadata["newest_thread_date"] == "2025-12-23T13:51:50Z"
+        assert metadata["total_threads"] == 3
+
+    def test_save_cache_is_atomic_and_leaves_no_temp_files(self, cache_manager, sample_threads):
+        """save_cache writes atomically and leaves no temporary siblings."""
+        cache_manager.save_cache(sample_threads)
+        cache_manager.save_cache(sample_threads[:1])
+
+        siblings = list(cache_manager.cache_path.parent.glob(f".{cache_manager.cache_path.name}.*"))
+        assert siblings == []
+
+        loaded = cache_manager.load_cache()
+        assert len(loaded["threads"]) == 1
+
     def test_get_cache_coverage(self, cache_manager, sample_threads):
         """Test get_cache_coverage returns correct date range."""
         cache_manager.save_cache(sample_threads)
@@ -149,6 +187,36 @@ class TestThreadCacheManager:
                     "version": 1,
                     "encrypted": True,
                     "cache": encrypt_token(json.dumps(invalid_inner_cache)),
+                    "created_at": "2025-12-23T13:51:50Z",
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.chmod(cache_manager.cache_path, cache_manager.SECURE_PERMISSIONS)
+
+        with pytest.raises(ConfigurationError, match="Cache content has invalid format"):
+            cache_manager.load_cache()
+
+    def test_load_cache_rejects_malformed_coverage_dates(self, cache_manager):
+        """Malformed cache coverage dates are treated as corrupt config."""
+        from perplexity_cli.utils.encryption import encrypt_token
+
+        malformed_coverage_cache = {
+            "version": 1,
+            "metadata": {
+                "last_sync_time": "2025-12-23T13:51:50Z",
+                "oldest_thread_date": "not-a-date",
+                "newest_thread_date": "2025-12-23T13:51:50Z",
+                "total_threads": 1,
+            },
+            "threads": [],
+        }
+        cache_manager.cache_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "encrypted": True,
+                    "cache": encrypt_token(json.dumps(malformed_coverage_cache)),
                     "created_at": "2025-12-23T13:51:50Z",
                 }
             ),
@@ -239,6 +307,16 @@ class TestCacheInvalidation:
         # Today is definitely after cache_newest_date
         assert needs_fresh is True
         assert from_d == "2025-12-23"
+
+    def test_requires_fresh_data_rejects_non_strict_date(self, cache_manager):
+        """Non YYYY-MM-DD dates are rejected before any cache access."""
+        with pytest.raises(ValueError, match="Invalid from_date"):
+            cache_manager.requires_fresh_data("2026-1-1", None)
+
+    def test_requires_fresh_data_rejects_from_after_to(self, cache_manager):
+        """from_date after to_date is rejected before any cache access."""
+        with pytest.raises(ValueError, match="Invalid date range"):
+            cache_manager.requires_fresh_data("2026-02-01", "2026-01-01")
 
 
 class TestThreadMerging:
@@ -427,3 +505,105 @@ class TestThreadCacheConversion:
             convert_cache_dicts_to_thread_records(
                 [{"title": "Thread 1", "created_at": "2025-12-23T13:51:50Z"}]
             )
+
+
+class TestThreadCacheCoverageBranches:
+    """Focused tests for cache-manager error and edge branches."""
+
+    def test_parse_coverage_date_malformed_raises_configuration_error(self) -> None:
+        from perplexity_cli.threads.cache_manager import _parse_coverage_timestamp
+
+        with pytest.raises(ConfigurationError, match="Malformed cache coverage date"):
+            _parse_coverage_timestamp("not-a-date")
+
+    def test_parse_thread_timestamp_malformed_raises_configuration_error(self) -> None:
+        from perplexity_cli.threads.cache_manager import _parse_thread_timestamp
+
+        with pytest.raises(ConfigurationError, match="Malformed cached thread timestamp"):
+            _parse_thread_timestamp("garbage")
+
+    def test_default_cache_path_from_config(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+
+        from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+        expected = tmp_path / "threads-cache.json"
+        monkeypatch.setattr(
+            "perplexity_cli.threads.cache_manager.get_config_paths",
+            lambda: type("Paths", (), {"cache_path": expected})(),
+        )
+        manager = ThreadCacheManager()
+        assert manager.cache_path == expected
+
+    def test_load_cache_corrupt_json_raises_oserror(self, tmp_path) -> None:
+        from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+        cache_file = tmp_path / "cache.json"
+        cache_file.write_text("{invalid json", encoding="utf-8")
+        os.chmod(cache_file, 0o600)
+        manager = ThreadCacheManager(cache_path=cache_file)
+        with pytest.raises(OSError, match="Failed to load cache"):
+            manager.load_cache()
+
+    def test_validate_outer_format_invalid_version(self, tmp_path) -> None:
+        from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+        manager = ThreadCacheManager(cache_path=tmp_path / "cache.json")
+        with pytest.raises(ConfigurationError, match="invalid format"):
+            manager._validate_outer_format({"version": 999})
+
+    def test_validate_outer_format_unencrypted(self, tmp_path) -> None:
+        from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+        manager = ThreadCacheManager(cache_path=tmp_path / "cache.json")
+        with pytest.raises(ConfigurationError, match="not encrypted"):
+            manager._validate_outer_format({"version": 1, "encrypted": False, "cache": "x"})
+
+    def test_save_cache_write_failure_raises_oserror(self, tmp_path) -> None:
+        from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+        cache_dir = tmp_path / "cache-dir"
+        cache_dir.mkdir()
+        manager = ThreadCacheManager(cache_path=cache_dir)  # a directory, not a file
+        with pytest.raises(OSError, match="Failed to save"):
+            manager.save_cache([])
+
+    def test_get_cache_coverage_load_failure_returns_none(self, tmp_path) -> None:
+        from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+        cache_file = tmp_path / "cache.json"
+        cache_file.write_text("{broken", encoding="utf-8")
+        manager = ThreadCacheManager(cache_path=cache_file)
+        assert manager.get_cache_coverage() == (None, None)
+
+    def test_parse_cache_coverage_missing_metadata_returns_none(self, tmp_path) -> None:
+        from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+        manager = ThreadCacheManager(cache_path=tmp_path / "cache.json")
+        assert manager._parse_cache_coverage() is None
+
+    def test_clear_cache_failure_raises_oserror(self, tmp_path) -> None:
+        from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+        locked_dir = tmp_path / "locked"
+        locked_dir.mkdir()
+        cache_file = locked_dir / "cache.json"
+        cache_file.write_text("{}", encoding="utf-8")
+        os.chmod(cache_file, 0o600)
+        os.chmod(locked_dir, 0o500)
+        manager = ThreadCacheManager(cache_path=cache_file)
+        try:
+            with pytest.raises(OSError, match="Failed to delete cache file"):
+                manager.clear_cache()
+        finally:
+            os.chmod(locked_dir, 0o700)
+
+    def test_build_metadata_empty_threads(self) -> None:
+        from perplexity_cli.threads.cache_manager import ThreadCacheManager
+
+        manager = ThreadCacheManager(cache_path=None)
+        metadata = manager._build_cache_metadata([])
+        assert metadata["oldest_thread_date"] is None
+        assert metadata["newest_thread_date"] is None
+        assert metadata["total_threads"] == 0

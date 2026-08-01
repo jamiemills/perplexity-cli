@@ -140,6 +140,105 @@ def free_user_settings() -> UserSettings:
     )
 
 
+@pytest.fixture
+def late_default_config() -> ModelConfigResponse:
+    """Return a config whose default entry appears late in the upstream order."""
+    return ModelConfigResponse(
+        config_schema="v1",
+        config=[
+            ModelConfigEntry(
+                label="Alpha",
+                description="First entry",
+                subscription_tier="pro",
+                non_reasoning_model="alpha",
+            ),
+            ModelConfigEntry(
+                label="Beta",
+                description="Second entry",
+                subscription_tier="pro",
+                non_reasoning_model="beta",
+            ),
+            ModelConfigEntry(
+                label="Gamma",
+                description="Default entry",
+                subscription_tier="pro",
+                non_reasoning_model="gamma",
+                is_default=True,
+            ),
+            ModelConfigEntry(
+                label="Delta",
+                description="Max only",
+                subscription_tier="max",
+                non_reasoning_model="delta",
+            ),
+        ],
+    )
+
+
+@pytest.fixture
+def multiple_defaults_config() -> ModelConfigResponse:
+    """Return a config with two default entries at different positions."""
+    return ModelConfigResponse(
+        config_schema="v1",
+        config=[
+            ModelConfigEntry(
+                label="Alpha",
+                description="First default",
+                subscription_tier="pro",
+                non_reasoning_model="alpha",
+                is_default=True,
+            ),
+            ModelConfigEntry(
+                label="Beta",
+                description="Non-default",
+                subscription_tier="pro",
+                non_reasoning_model="beta",
+            ),
+            ModelConfigEntry(
+                label="Gamma",
+                description="Second default",
+                subscription_tier="pro",
+                non_reasoning_model="gamma",
+                is_default=True,
+            ),
+            ModelConfigEntry(
+                label="Delta",
+                description="Max only",
+                subscription_tier="max",
+                non_reasoning_model="delta",
+            ),
+        ],
+    )
+
+
+@pytest.fixture
+def no_default_config() -> ModelConfigResponse:
+    """Return a config with no default entry."""
+    return ModelConfigResponse(
+        config_schema="v1",
+        config=[
+            ModelConfigEntry(
+                label="Alpha",
+                description="First entry",
+                subscription_tier="pro",
+                non_reasoning_model="alpha",
+            ),
+            ModelConfigEntry(
+                label="Beta",
+                description="Second entry",
+                subscription_tier="pro",
+                non_reasoning_model="beta",
+            ),
+            ModelConfigEntry(
+                label="Delta",
+                description="Max only",
+                subscription_tier="max",
+                non_reasoning_model="delta",
+            ),
+        ],
+    )
+
+
 def _make_service(
     model_config: ModelConfigResponse,
     user_settings: UserSettings,
@@ -280,3 +379,72 @@ class TestModelServiceListModels:
             SubscriptionLevel.PRO,
         )
         assert service.validate_model_id("gpt55") is False
+
+
+class TestModelServiceOrdering:
+    """Tests for default-first stable ordering of accessible models."""
+
+    def test_late_default_is_moved_first(
+        self,
+        late_default_config: ModelConfigResponse,
+        pro_user_settings: UserSettings,
+    ) -> None:
+        service = _make_service(
+            late_default_config,
+            pro_user_settings,
+            SubscriptionLevel.PRO,
+        )
+        model_ids = [m.model_id for m in service.list_available_models()]
+        assert model_ids == ["gamma", "alpha", "beta"]
+
+    def test_no_default_preserves_upstream_order(
+        self,
+        no_default_config: ModelConfigResponse,
+        pro_user_settings: UserSettings,
+    ) -> None:
+        service = _make_service(
+            no_default_config,
+            pro_user_settings,
+            SubscriptionLevel.PRO,
+        )
+        model_ids = [m.model_id for m in service.list_available_models()]
+        assert model_ids == ["alpha", "beta"]
+
+    def test_multiple_defaults_grouped_first_in_relative_order(
+        self,
+        multiple_defaults_config: ModelConfigResponse,
+        pro_user_settings: UserSettings,
+    ) -> None:
+        service = _make_service(
+            multiple_defaults_config,
+            pro_user_settings,
+            SubscriptionLevel.PRO,
+        )
+        model_ids = [m.model_id for m in service.list_available_models()]
+        assert model_ids == ["alpha", "gamma", "beta"]
+
+    def test_default_first_order_shared_by_human_and_json_outputs(
+        self,
+        late_default_config: ModelConfigResponse,
+        pro_user_settings: UserSettings,
+    ) -> None:
+        from perplexity_cli.runners.models import (
+            build_models_json_result,
+            format_model_table,
+        )
+
+        service = _make_service(
+            late_default_config,
+            pro_user_settings,
+            SubscriptionLevel.PRO,
+        )
+        entries = service.list_available_models()
+        model_ids = [m.model_id for m in entries]
+
+        result = build_models_json_result(entries)
+        json_ids = [m["model_id"] for m in result["models"]]
+        assert json_ids == model_ids
+
+        table = format_model_table(entries)
+        positions = [table.index(model_id) for model_id in model_ids]
+        assert positions == sorted(positions)

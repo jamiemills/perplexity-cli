@@ -8,7 +8,7 @@ for efficient repeated exports.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import (
     TYPE_CHECKING,
@@ -21,11 +21,10 @@ from typing import (
     runtime_checkable,
 )
 
-from dateutil import parser as dateutil_parser
-
 from perplexity_cli.envelope import ErrorCode
 from perplexity_cli.threads.date_parser import is_in_date_range, to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
+from perplexity_cli.threads.models import validate_date_args
 from perplexity_cli.utils import session_factory
 from perplexity_cli.utils.config import get_perplexity_base_url, get_thread_list_url
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
@@ -241,6 +240,15 @@ class BatchProcessingContext:
     progress_callback: ProgressCallback | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PaginationState:
+    """Pagination cursor state for the private thread-list protocol."""
+
+    offset: int = 0
+    limit: int = _THREAD_PAGE_SIZE
+    previous_signature: str | None = None
+
+
 def _is_progress_callback(value: object) -> TypeGuard[ProgressCallback]:
     """Return True when a runtime object can be used as a progress callback."""
     return callable(value)
@@ -356,22 +364,17 @@ def _to_iso8601(dt: datetime) -> str:
 
 
 def _validate_date_params(from_date: str | None, to_date: str | None) -> None:
-    """Validate that from_date and to_date are parseable date strings.
+    """Validate that from_date and to_date are strict YYYY-MM-DD strings.
 
     Args:
         from_date: Start date string to validate (or None).
         to_date: End date string to validate (or None).
 
     Raises:
-        ValueError: If either date string cannot be parsed.
+        ValueError: If either date string is not YYYY-MM-DD, or from_date
+            is after to_date.
     """
-    for label, value in [("from_date", from_date), ("to_date", to_date)]:
-        if value is not None:
-            try:
-                dateutil_parser.parse(value)
-            except (ValueError, OverflowError) as exc:
-                msg = f"Invalid {label} '{value}': expected YYYY-MM-DD format"
-                raise ValueError(msg) from exc
+    validate_date_args(from_date, to_date)
 
 
 def _extract_total_threads(thread_dict: ThreadPayload, total_threads: int | None) -> int:
@@ -468,15 +471,59 @@ def _handle_http_error(e: PerplexityHTTPStatusError) -> None:
 def _has_more_pages(thread_data: list[ThreadPayload]) -> bool:
     """Check whether the API response indicates more pages are available.
 
+    The first record is authoritative; flags on later records are ignored.
+    Non-boolean flag values are treated as a malformed upstream schema.
+
     Args:
         thread_data: Thread dictionaries from the current page.
 
     Returns:
         True if a next page exists.
+
+    Raises:
+        UpstreamSchemaError: If the first record's has_next_page is not a boolean.
     """
     if not thread_data:
         return False
-    return bool(thread_data[0].get("has_next_page", False))
+    has_next = thread_data[0].get("has_next_page", False)
+    if not isinstance(has_next, bool):
+        msg = "Malformed has_next_page value in upstream API response"
+        raise UpstreamSchemaError(msg)
+    return has_next
+
+
+def _page_signature(thread_data: list[ThreadPayload]) -> str:
+    """Build a signature for a paginated page based on its first record.
+
+    Args:
+        thread_data: Thread dictionaries from the current page.
+
+    Returns:
+        A signature string identifying the page's first record.
+    """
+    first = thread_data[0]
+    return f"{first.get('last_query_datetime')}|{first.get('slug')}"
+
+
+def _next_pagination_offset(offset: int, limit: int) -> int:
+    """Compute the next pagination offset, guarding against non-advancement.
+
+    Args:
+        offset: Current pagination offset.
+        limit: Current page size.
+
+    Returns:
+        The next pagination offset.
+
+    Raises:
+        UpstreamSchemaError: If the next offset would not advance beyond the
+            current offset.
+    """
+    next_offset = offset + limit
+    if next_offset <= offset:
+        msg = "Non-advancing pagination offset in upstream API response"
+        raise UpstreamSchemaError(msg)
+    return next_offset
 
 
 def _report_progress(
@@ -540,8 +587,8 @@ class ThreadScraper:
         2. If cache covers range: use cache only (fast path)
         3. If cache doesn't cover range: fetch gap from API only
         4. Merge cached + fetched threads (dedup by URL)
-        5. Filter by requested date range
-        6. Update cache with filtered threads only
+        5. Persist the complete merged known set to cache
+        6. Filter the returned result by the requested date range
 
         Args:
             from_date: Start date for filtering (YYYY-MM-DD format), inclusive
@@ -635,7 +682,11 @@ class ThreadScraper:
         cached_threads: list[ThreadRecord],
         fetched_threads: list[ThreadRecord],
     ) -> list[ThreadRecord]:
-        """Merge fetched threads with cache, filter by date, and persist.
+        """Merge fetched threads with cache, persist the full set, and filter.
+
+        The complete merged known set is persisted so that narrow exports never
+        delete broader cached history. The date range is applied only to the
+        returned view.
 
         Args:
             from_date: Requested start date or None.
@@ -644,15 +695,14 @@ class ThreadScraper:
             fetched_threads: Newly fetched threads from API.
 
         Returns:
-            Final filtered list of ThreadRecord objects.
+            Final date-filtered list of ThreadRecord objects.
         """
-        threads = self._merge_with_cache(cached_threads, fetched_threads)
-        threads = self._filter_by_date_range(threads, from_date, to_date)
+        merged = self._merge_with_cache(cached_threads, fetched_threads)
 
         if self.cache_manager:
-            self.cache_manager.save_cache(threads)
+            self.cache_manager.save_cache(merged)
 
-        return threads
+        return self._filter_by_date_range(merged, from_date, to_date)
 
     def _merge_with_cache(
         self,
@@ -717,14 +767,7 @@ class ThreadScraper:
             PerplexityRequestError: On network errors.
             UpstreamSchemaError: If response cannot be parsed.
         """
-        try:
-            return await self._execute_api_post(client, headers, cookies, request_body)
-        except PerplexityHTTPStatusError as e:
-            _handle_http_error(e)
-            return []  # unreachable, satisfies type checker
-        except _curl_request_exception_type as e:
-            msg = f"Network error while fetching threads: {e}"
-            raise PerplexityRequestError(msg) from e
+        return await self._execute_api_post(client, headers, cookies, request_body)
 
     async def _execute_api_post(
         self,
@@ -745,15 +788,57 @@ class ThreadScraper:
             Parsed list of thread dictionaries.
 
         Raises:
-            PerplexityHTTPStatusError: If response is not OK.
+            AuthenticationError: If API returns 401.
+            RateLimitError: If API returns 429.
+            PerplexityHTTPStatusError: If API returns any other error status.
+            PerplexityRequestError: On network errors.
             UpstreamSchemaError: If response cannot be parsed.
         """
-        if self.rate_limiter:
-            wait_time = await self.rate_limiter.acquire()
-            if wait_time > 0:
-                self.logger.debug("Rate limited: waited %ss", round(wait_time, 2))
+        await self._acquire_rate_limit()
+        try:
+            response = await self._post_thread_list_request(client, headers, cookies, request_body)
+        except _curl_request_exception_type as e:
+            msg = f"Network error while fetching threads: {e}"
+            raise PerplexityRequestError(msg) from e
+        return self._handle_thread_list_response(response)
 
-        response = _require_response(
+    async def _acquire_rate_limit(self) -> None:
+        """Wait on the rate limiter if one is configured.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        """
+        if not self.rate_limiter:
+            return
+        wait_time = await self.rate_limiter.acquire()
+        if wait_time > 0:
+            self.logger.debug("Rate limited: waited %ss", round(wait_time, 2))
+
+    async def _post_thread_list_request(
+        self,
+        client: AsyncSession[Response],
+        headers: dict[str, str],
+        cookies: dict[str, str],
+        request_body: ThreadPayload,
+    ) -> ResponseProtocol:
+        """POST the thread-list request and validate the response object.
+
+        Args:
+            client: The async HTTP session.
+            headers: Request headers.
+            cookies: Request cookies.
+            request_body: JSON body with pagination parameters.
+
+        Returns:
+            The validated response object.
+
+        Raises:
+            UpstreamSchemaError: If the response object is malformed.
+        """
+        return _require_response(
             await client.post(
                 f"{self.api_url}?version={self.api_version}&source=default",
                 headers=headers,
@@ -762,8 +847,26 @@ class ThreadScraper:
             )
         )
 
+    def _handle_thread_list_response(self, response: ResponseProtocol) -> list[ThreadPayload]:
+        """Convert a non-OK status or parse the thread-list payload.
+
+        Args:
+            response: The validated HTTP response object.
+
+        Returns:
+            Parsed list of thread dictionaries.
+
+        Raises:
+            AuthenticationError: If API returns 401.
+            RateLimitError: If API returns 429.
+            PerplexityHTTPStatusError: If API returns any other error status.
+            UpstreamSchemaError: If response payload cannot be parsed.
+        """
         if not response.ok:
-            raise_http_status_error(response)
+            try:
+                raise_http_status_error(response)
+            except PerplexityHTTPStatusError as e:
+                _handle_http_error(e)
 
         try:
             return parse_thread_list_payload(response.json())
@@ -807,42 +910,85 @@ class ThreadScraper:
             List of ThreadRecord objects
 
         Raises:
-            RuntimeError: If API request fails
-            PerplexityHTTPStatusError: If API returns error status
+            AuthenticationError: If API returns 401.
+            RateLimitError: If API returns 429.
+            PerplexityRequestError: On network errors.
+            PerplexityHTTPStatusError: If API returns any other error status.
+            UpstreamSchemaError: If a payload is malformed, the pagination
+                offset does not advance, or a repeated page signature is seen.
         """
         threads: list[ThreadRecord] = []
-        offset = 0
-        limit = _THREAD_PAGE_SIZE
+        state = PaginationState()
         headers, cookies = self._build_auth_context(session_token)
+        batch_context = BatchProcessingContext(
+            from_date=from_date,
+            total_threads=None,
+            progress_callback=progress_callback,
+        )
 
         async with _create_async_session(timeout=_DEFAULT_TIMEOUT_SECONDS) as client:
             while True:
                 request_body: ThreadPayload = {
-                    "limit": limit,
+                    "limit": state.limit,
                     "ascending": False,
-                    "offset": offset,
+                    "offset": state.offset,
                     "search_term": "",
                 }
-                self.logger.debug("Fetching threads: offset=%s, limit=%s", offset, limit)
+                self.logger.debug(
+                    "Fetching threads: offset=%s, limit=%s", state.offset, state.limit
+                )
 
                 thread_data = await self._make_api_request(client, headers, cookies, request_body)
                 if not thread_data:
                     break
 
-                batch_context = BatchProcessingContext(
-                    from_date=from_date,
-                    total_threads=None,
-                    progress_callback=progress_callback,
+                state, continue_pagination = self._process_page(
+                    thread_data,
+                    threads,
+                    state,
+                    batch_context,
                 )
-                if self._process_thread_batch(thread_data, threads, batch_context):
+                if not continue_pagination:
                     break
-
-                if not _has_more_pages(thread_data):
-                    break
-
-                offset += limit
 
         return threads
+
+    def _process_page(
+        self,
+        thread_data: list[ThreadPayload],
+        threads: list[ThreadRecord],
+        state: PaginationState,
+        context: BatchProcessingContext,
+    ) -> tuple[PaginationState, bool]:
+        """Validate and process one page, computing the next pagination state.
+
+        Guards against repeated page signatures and non-advancing offsets,
+        which would otherwise cause an infinite pagination loop.
+
+        Args:
+            thread_data: Raw thread dictionaries from the current page.
+            threads: Accumulator list to append parsed records to.
+            state: Current pagination cursor state.
+            context: Batch processing context.
+
+        Returns:
+            Tuple of (next_state, continue_pagination).
+
+        Raises:
+            UpstreamSchemaError: If the page signature repeats or the offset
+                would not advance.
+        """
+        signature = _page_signature(thread_data)
+        if state.previous_signature is not None and signature == state.previous_signature:
+            msg = "Repeated page signature in upstream pagination response"
+            raise UpstreamSchemaError(msg)
+
+        should_stop = self._process_thread_batch(thread_data, threads, context)
+        if should_stop or not _has_more_pages(thread_data):
+            return replace(state, previous_signature=signature), False
+
+        next_offset = _next_pagination_offset(state.offset, state.limit)
+        return replace(state, offset=next_offset, previous_signature=signature), True
 
     def _process_thread_batch(
         self,
@@ -868,7 +1014,7 @@ class ThreadScraper:
                 return True
 
         total_threads = context.total_threads
-        if total_threads is not None and thread_data:
+        if thread_data:
             total_threads = _extract_total_threads(thread_data[0], total_threads)
         _report_progress(context.progress_callback, len(threads), total_threads)
         return False

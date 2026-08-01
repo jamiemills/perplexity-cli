@@ -74,21 +74,38 @@ class TestReadPyprojectVersion:
 class TestExtractVersionFromData:
     """Test _extract_version_from_data edge cases."""
 
-    def test_returns_none_when_project_not_dict(self):
-        """Return None when 'project' key is not a dict."""
-        assert _extract_version_from_data({"project": "not-a-dict"}) is None
-
-    def test_returns_none_when_version_not_string(self):
-        """Return None when version value is not a string."""
-        assert _extract_version_from_data({"project": {"version": 123}}) is None
-
-    def test_returns_none_when_version_empty_string(self):
-        """Return None when version is an empty string."""
-        assert _extract_version_from_data({"project": {"version": ""}}) is None
-
-    def test_returns_version_string(self):
-        """Return the version when it is a valid string."""
-        assert _extract_version_from_data({"project": {"version": "1.2.3"}}) == "1.2.3"
+    @pytest.mark.parametrize(
+        ("data", "expected"),
+        [
+            pytest.param(
+                {"project": "not-a-dict"},
+                None,
+                id="project_not_a_dict_returns_none",
+            ),
+            pytest.param(
+                {"project": {"version": 123}},
+                None,
+                id="version_not_a_string_returns_none",
+            ),
+            pytest.param(
+                {"project": {"version": ""}},
+                None,
+                id="version_empty_string_returns_none",
+            ),
+            pytest.param(
+                {"project": {"version": "1.2.3"}},
+                "1.2.3",
+                id="valid_version_string_returns_value",
+            ),
+        ],
+    )
+    def test_extract_version_from_data(
+        self,
+        data: dict[str, object],
+        expected: str | None,
+    ):
+        """Return the exact expected version result for each input."""
+        assert _extract_version_from_data(data) == expected
 
 
 class TestGetVersionEdgeCases:

@@ -64,3 +64,9 @@ sonar-project.properties
 .omo/
 # Mutation testing output
 mutants/
+
+# libFuzzer/atheris crash artifacts
+crash-*
+
+# Vitest coverage output
+.opencode/coverage/

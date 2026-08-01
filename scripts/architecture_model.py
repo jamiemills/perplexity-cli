@@ -124,6 +124,9 @@ def _validate_schema_section(model: Model) -> list[str]:
         return errors
     if "version" not in schema_table:
         errors.append("[schema] missing required field: version")
+        return errors
+    if schema_table.get("version") != 1:
+        errors.append(f"Unsupported [schema] version: {schema_table.get('version')!r}")
     return errors
 
 

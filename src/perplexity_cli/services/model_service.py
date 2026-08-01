@@ -7,15 +7,44 @@ user's subscription level, using the ``/rest/models/config`` and
 
 from __future__ import annotations
 
+import logging
+
+from perplexity_cli.config.models import URLConfig
 from perplexity_cli.models.model_config import (
     ModelConfigEntry,
     ModelConfigResponse,
     SubscriptionLevel,
     UserSettings,
 )
-from perplexity_cli.services.ports import QueryClient
-from perplexity_cli.utils.config import get_model_config_endpoint, get_user_settings_endpoint
-from perplexity_cli.utils.logging import get_logger
+from perplexity_cli.services.ports import EndpointProvider, QueryClient
+
+_DEFAULT_URLS = URLConfig()
+
+
+class _DefaultEndpointProvider:
+    """Fallback endpoint provider using the domain-layer default URLs.
+
+    Satisfies the ``EndpointProvider`` port when no concrete provider is
+    injected by the composition layer.  Adapter implementations that wrap
+    ``utils.config`` lookup helpers may be injected instead to honour
+    user or environment URL overrides.
+    """
+
+    def model_config_endpoint(self) -> str:
+        """Return the default model configuration endpoint URL.
+
+        Returns:
+            The full URL of the ``/rest/models/config`` endpoint.
+        """
+        return _DEFAULT_URLS.model_config_endpoint
+
+    def user_settings_endpoint(self) -> str:
+        """Return the default user settings endpoint URL.
+
+        Returns:
+            The full URL of the ``/rest/user/settings`` endpoint.
+        """
+        return _DEFAULT_URLS.user_settings_endpoint
 
 
 class ModelService:
@@ -30,16 +59,20 @@ class ModelService:
         self,
         rest_client: QueryClient,
         subscription_level: SubscriptionLevel,
+        endpoints: EndpointProvider | None = None,
     ) -> None:
         """Initialise the model service.
 
         Args:
             rest_client: HTTP query client satisfying the QueryClient port.
             subscription_level: The user's subscription level (FREE, PRO, MAX).
+            endpoints: Optional endpoint provider satisfying the
+                EndpointProvider port; defaults to the domain-layer URLs.
         """
         self._client = rest_client
         self._level = subscription_level
-        self._logger = get_logger()
+        self._endpoints = endpoints if endpoints is not None else _DefaultEndpointProvider()
+        self._logger = logging.getLogger(__name__)
 
     def fetch_model_config(self) -> ModelConfigResponse:
         """Fetch the model configuration from the API.
@@ -51,7 +84,7 @@ class ModelService:
             PerplexityHTTPStatusError: For HTTP errors.
             PerplexityRequestError: For network errors.
         """
-        url = get_model_config_endpoint()
+        url = self._endpoints.model_config_endpoint()
         self._logger.debug("Fetching model config from %s", url)
         config_payload = self._client.get_json(url)
         return ModelConfigResponse.model_validate(config_payload)
@@ -66,7 +99,7 @@ class ModelService:
             PerplexityHTTPStatusError: For HTTP errors.
             PerplexityRequestError: For network errors.
         """
-        url = get_user_settings_endpoint()
+        url = self._endpoints.user_settings_endpoint()
         self._logger.debug("Fetching user settings from %s", url)
         settings_payload = self._client.get_json(url)
         return UserSettings.model_validate(settings_payload)
@@ -90,13 +123,35 @@ class ModelService:
     ) -> list[ModelConfigEntry]:
         """Filter config entries by subscription level and audience.
 
+        Accessible entries are stable-partitioned so that default entries
+        come first, preserving the upstream relative order within each
+        partition.
+
         Args:
             entries: All model config entries from the API.
 
         Returns:
-            Entries accessible to the current user.
+            Entries accessible to the current user, defaults first.
         """
-        return [entry for entry in entries if entry.is_accessible(self._level)]
+        accessible = [entry for entry in entries if entry.is_accessible(self._level)]
+        return self._defaults_first(accessible)
+
+    @staticmethod
+    def _defaults_first(
+        entries: list[ModelConfigEntry],
+    ) -> list[ModelConfigEntry]:
+        """Stable-partition entries so defaults precede non-defaults.
+
+        Args:
+            entries: Accessible entries in upstream order.
+
+        Returns:
+            Entries with ``is_default`` entries first, preserving the
+            relative order within each partition.
+        """
+        defaults = [entry for entry in entries if entry.is_default]
+        others = [entry for entry in entries if not entry.is_default]
+        return defaults + others
 
     def validate_model_id(self, model_id: str) -> bool:
         """Check whether a model ID is valid and accessible.

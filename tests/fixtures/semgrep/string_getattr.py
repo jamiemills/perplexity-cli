@@ -1,2 +1,2 @@
-# positive: getattr with string literal
-result = obj.method_name
+# positive: getattr with a string literal
+result = getattr(obj, "method_name")

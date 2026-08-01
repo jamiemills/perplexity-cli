@@ -2,16 +2,28 @@
 
 Provides controlled responses for the Perplexity API's three protocol
 surfaces: SSE query streaming, upload URL acquisition, and S3 file upload.
+
+The server is threaded (one handler thread per request), its captured
+state is lock-protected, and worker failures are recorded and propagated
+so a handler error fails the owning test rather than vanishing.
 """
 
 from __future__ import annotations
 
+import errno
 import json
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+
+# Timeout budgets (seconds) shared by the harness and its lifecycle tests.
+STARTUP_TIMEOUT: float = 2.0
+REQUEST_TIMEOUT: float = 5.0
+SHUTDOWN_TIMEOUT: float = 5.0
+TEST_TIMEOUT: float = 30.0
 
 
 @dataclass
@@ -76,6 +88,28 @@ _DEFAULT_QUERY: QueryResponse = QueryResponse(
     ],
 )
 
+_BENIGN_HANDLER_ERRORS: tuple[type[BaseException], ...] = (
+    BrokenPipeError,
+    ConnectionResetError,
+    ConnectionAbortedError,
+)
+
+
+def _is_benign_handler_error(error: BaseException) -> bool:
+    """Return True when *error* is a client-abort transport failure.
+
+    A client that stops reading (for example an early ``break`` in an SSE
+    consumer) can legitimately produce EPIPE/ECONNRESET on the server side.
+    These are not harness failures and must not fail the owning test.
+    """
+    if isinstance(error, _BENIGN_HANDLER_ERRORS):
+        return True
+    return isinstance(error, OSError) and error.errno in (
+        errno.EPIPE,
+        errno.ECONNRESET,
+        errno.ECONNABORTED,
+    )
+
 
 class _Handler(BaseHTTPRequestHandler):
     """Request handler that delegates to the parent ProtocolServer."""
@@ -97,12 +131,15 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
-class ProtocolServer(HTTPServer):
-    """A hermetic HTTP/SSE server bound to localhost.
+class ProtocolServer(ThreadingHTTPServer):
+    """A hermetic threaded HTTP/SSE server bound to localhost.
 
     Tests configure canned responses via properties before issuing
     requests.  Query POSTs return controlled SSE streams; upload URL
-    endpoints return JSON; upload PUTs collect file bytes.
+    endpoints return JSON; upload PUTs collect file bytes.  Requests are
+    served concurrently on a daemon thread per request, captured state is
+    lock-protected, and handler failures are recorded so they can fail the
+    test instead of vanishing.
 
     Example:
         server = ProtocolServer()
@@ -114,14 +151,27 @@ class ProtocolServer(HTTPServer):
         server.stop()
     """
 
+    allow_reuse_address = True
+    daemon_threads = True
+    block_on_close = True
+
     def __init__(self, host: str = "127.0.0.1", port: int = 0) -> None:
         self._host = host
         self.parent: ProtocolServer = self
         super().__init__((host, port), _Handler)
         self._thread: threading.Thread | None = None
         self._started: bool = False
-        self._fake_now: float | None = None
+        self._stopped: bool = False
+        self._state_lock = threading.Lock()
+        self._lifecycle_lock = threading.Lock()
         self._clock_lock = threading.Lock()
+        self._fake_now: float | None = None
+        self._handler_errors: list[BaseException] = []
+
+        # Test hooks: an artificial per-request delay and an optional
+        # exception the handler raises before serving each request.
+        self.handler_sleep: float = 0.0
+        self.handler_exception: BaseException | None = None
 
         self.query_response: QueryResponse = QueryResponse(
             sse_chunks=[dict(c) for c in _DEFAULT_QUERY.sse_chunks],
@@ -153,32 +203,113 @@ class ProtocolServer(HTTPServer):
             if self._fake_now is not None:
                 self._fake_now += seconds
 
+    def __enter__(self) -> ProtocolServer:
+        self.start()
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        self.stop()
+
     def start(self) -> None:
-        self._started = True
-        self._thread = threading.Thread(target=self.serve_forever, daemon=True)
-        self._thread.start()
+        with self._lifecycle_lock:
+            if self._started:
+                return
+            self._started = True
+            self._stopped = False
+            self._thread = threading.Thread(
+                target=self.serve_forever,
+                daemon=True,
+                name="pxcli-protocol-server",
+            )
+            self._thread.start()
+        self._assert_started_within(STARTUP_TIMEOUT)
 
     def stop(self) -> None:
-        self._started = False
-        self.shutdown()
-        if self._thread is not None:
-            self._thread.join(timeout=5)
+        """Shut down the server, join worker threads and close sockets.
+
+        Idempotent: repeated calls are no-ops.  Bounded joins assert the
+        serve thread actually exits, then recorded non-benign handler
+        failures are re-raised so a worker failure fails the test.
+        """
+        with self._lifecycle_lock:
+            if self._stopped:
+                return
+            self._stopped = True
+            was_started = self._started
+            self._started = False
+            thread = self._thread
+
+        if was_started and thread is not None:
+            self.shutdown()
+            thread.join(timeout=SHUTDOWN_TIMEOUT)
+            if thread.is_alive():
+                raise RuntimeError(
+                    f"protocol server thread failed to join within {SHUTDOWN_TIMEOUT}s"
+                )
+
+        self.server_close()
+        for error in self.handler_errors():
+            if not _is_benign_handler_error(error):
+                raise error
+
+    def _assert_started_within(self, timeout: float) -> None:
+        deadline = time.monotonic() + timeout
+        thread = self._thread
+        while time.monotonic() < deadline:
+            if thread is not None and thread.is_alive():
+                return
+            time.sleep(0.005)
+        raise RuntimeError(f"protocol server failed to start within {timeout}s")
 
     def reset(self) -> None:
-        self.query_response = QueryResponse(
-            sse_chunks=[dict(c) for c in _DEFAULT_QUERY.sse_chunks],
-        )
-        self.upload_url_response = UploadUrlResponse()
-        self.upload_put_response = UploadPutResponse()
-        self.last_request_body = b""
-        self.last_request_path = ""
-        self.last_upload_bytes = b""
-        self.request_count = 0
+        with self._state_lock:
+            self.query_response = QueryResponse(
+                sse_chunks=[dict(c) for c in _DEFAULT_QUERY.sse_chunks],
+            )
+            self.upload_url_response = UploadUrlResponse()
+            self.upload_put_response = UploadPutResponse()
+            self.last_request_body = b""
+            self.last_request_path = ""
+            self.last_upload_bytes = b""
+            self.request_count = 0
+
+    def handler_errors(self) -> list[BaseException]:
+        """Return a snapshot of exceptions raised by request handlers."""
+        with self._state_lock:
+            return list(self._handler_errors)
+
+    def wait_for_handler_errors(self, timeout: float = SHUTDOWN_TIMEOUT) -> list[BaseException]:
+        """Wait up to *timeout* seconds for a handler error to be recorded."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            errors = self.handler_errors()
+            if errors:
+                return errors
+            time.sleep(0.01)
+        return self.handler_errors()
+
+    def assert_no_handler_errors(self) -> None:
+        """Raise the first non-benign handler error, if any."""
+        for error in self.handler_errors():
+            if not _is_benign_handler_error(error):
+                raise error
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        exc = sys.exc_info()[1]
+        if exc is not None:
+            self._record_handler_error(exc)
+
+    def _record_handler_error(self, error: BaseException) -> None:
+        with self._state_lock:
+            self._handler_errors.append(error)
 
     def _handle_post(self, handler: _Handler, body: bytes) -> None:
-        self.request_count += 1
-        self.last_request_body = body
-        self.last_request_path = handler.path
+        self._raise_if_configured_failure()
+        self._delay_response()
+        with self._state_lock:
+            self.request_count += 1
+            self.last_request_body = body
+            self.last_request_path = handler.path
 
         if handler.path.startswith("/api/upload-url"):
             self._serve_upload_url(handler, body)
@@ -186,19 +317,35 @@ class ProtocolServer(HTTPServer):
             self._serve_query(handler, body)
 
     def _handle_put(self, handler: _Handler, body: bytes) -> None:
-        self.request_count += 1
-        self.last_request_body = body
-        self.last_upload_bytes = body
-        self.last_request_path = handler.path
+        self._raise_if_configured_failure()
+        self._delay_response()
+        with self._state_lock:
+            self.request_count += 1
+            self.last_request_body = body
+            self.last_upload_bytes = body
+            self.last_request_path = handler.path
 
         self._serve_upload_put(handler, body)
 
     def _handle_get(self, handler: _Handler) -> None:
-        self.request_count += 1
-        self.last_request_path = handler.path
+        self._raise_if_configured_failure()
+        self._delay_response()
+        with self._state_lock:
+            self.request_count += 1
+            self.last_request_path = handler.path
 
         if handler.path.startswith("/api/upload-url"):
             self._serve_upload_url_get(handler)
+
+    def _raise_if_configured_failure(self) -> None:
+        failure = self.handler_exception
+        if failure is not None:
+            raise failure
+
+    def _delay_response(self) -> None:
+        delay = self.handler_sleep
+        if delay > 0:
+            time.sleep(delay)
 
     def _serve_query(self, handler: _Handler, body: bytes) -> None:
         resp = self.query_response

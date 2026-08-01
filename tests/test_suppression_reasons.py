@@ -9,14 +9,29 @@ Proves:
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import check_suppression_reasons as csr
+_SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+
+
+def _load_script(name: str) -> ModuleType:
+    """Load a ``scripts/`` module by path without mutating ``sys.path``."""
+    spec = importlib.util.spec_from_file_location(name, _SCRIPTS / f"{name}.py")
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load script: {name}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+csr = _load_script("check_suppression_reasons")
 
 
 def _write_py_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -49,8 +64,9 @@ class TestUnformattedFlagged:
         _write_py_file(tmp_path, "mod.py", "x = 1  # noqa\n")
         _patch_roots(monkeypatch, tmp_path)
 
-        result = csr.main(["--update-baseline"])
-        result2 = csr.main([])
+        with pytest.raises(SystemExit) as exc_info:
+            csr.main([])
+        assert exc_info.value.code == 1
 
     def test_noqa_with_code_fails(self, tmp_path: Path, monkeypatch) -> None:
         _write_py_file(tmp_path, "mod.py", "x = 1  # noqa: E402\n")
@@ -218,7 +234,7 @@ class TestEdgeCases:
 
         csr.main([])
 
-    def test_corrupt_baseline_handled(self, tmp_path: Path, monkeypatch) -> None:
+    def test_corrupt_baseline_fails_closed(self, tmp_path: Path, monkeypatch) -> None:
         _write_py_file(
             tmp_path,
             "mod.py",
@@ -229,6 +245,43 @@ class TestEdgeCases:
         bb.parent.mkdir(parents=True, exist_ok=True)
         bb.write_text("not json", encoding="utf-8")
 
+        with pytest.raises(SystemExit) as exc_info:
+            csr.main([])
+        assert exc_info.value.code == 2
+
+    def test_unreadable_source_fails_closed(self, tmp_path: Path, monkeypatch) -> None:
+        _write_py_file(tmp_path, "mod.py", "x = 1  # noqa\n")
+        _patch_roots(monkeypatch, tmp_path)
+
+        def _boom(self, *_args, **_kwargs):
+            raise OSError("simulated unreadable file")
+
+        monkeypatch.setattr(Path, "read_text", _boom)
+        with pytest.raises(SystemExit) as exc_info:
+            csr.main([])
+        assert exc_info.value.code == 2
+
+    def test_partial_owner_only_fails(self, tmp_path: Path, monkeypatch) -> None:
+        _write_py_file(tmp_path, "mod.py", "x = 1  # noqa: X; owner: me\n")
+        _patch_roots(monkeypatch, tmp_path)
+
+        with pytest.raises(SystemExit) as exc_info:
+            csr.main([])
+        assert exc_info.value.code == 1
+
+    def test_misattached_owner_reason_other_line_fails(self, tmp_path: Path, monkeypatch) -> None:
+        content = "# owner: me; reason: ok\nx = 1  # noqa\n"
+        _write_py_file(tmp_path, "mod.py", content)
+        _patch_roots(monkeypatch, tmp_path)
+
+        with pytest.raises(SystemExit) as exc_info:
+            csr.main([])
+        assert exc_info.value.code == 1
+
+    def test_suppression_text_in_string_ignored(self, tmp_path: Path, monkeypatch) -> None:
+        _write_py_file(tmp_path, "mod.py", 'x = "# noqa"\n')
+        _patch_roots(monkeypatch, tmp_path)
+
         csr.main([])
 
     def test_owner_reason_in_any_order(self, tmp_path: Path, monkeypatch) -> None:
@@ -237,6 +290,49 @@ class TestEdgeCases:
             "mod.py",
             "x = 1  # noqa: X; reason: it is safe; owner: jamie\n",
         )
+        _patch_roots(monkeypatch, tmp_path)
+
+        csr.main([])
+
+
+class TestNewSuppressionKinds:
+    """type: ignore, pyright: ignore, and coverage pragmas are now enforced."""
+
+    def test_type_ignore_unformatted_fails(self, tmp_path: Path, monkeypatch) -> None:
+        _write_py_file(tmp_path, "mod.py", "x = y  # type: ignore\n")
+        _patch_roots(monkeypatch, tmp_path)
+
+        with pytest.raises(SystemExit) as exc_info:
+            csr.main([])
+        assert exc_info.value.code == 1
+
+    def test_pyright_ignore_unformatted_fails(self, tmp_path: Path, monkeypatch) -> None:
+        _write_py_file(tmp_path, "mod.py", "x = y  # pyright: ignore[reportAny]\n")
+        _patch_roots(monkeypatch, tmp_path)
+
+        with pytest.raises(SystemExit) as exc_info:
+            csr.main([])
+        assert exc_info.value.code == 1
+
+    def test_pragma_no_cover_unformatted_fails(self, tmp_path: Path, monkeypatch) -> None:
+        _write_py_file(tmp_path, "mod.py", "if x:  # pragma: no cover\n")
+        _patch_roots(monkeypatch, tmp_path)
+
+        with pytest.raises(SystemExit) as exc_info:
+            csr.main([])
+        assert exc_info.value.code == 1
+
+    def test_new_kinds_grandfathered_via_baseline(self, tmp_path: Path, monkeypatch) -> None:
+        content = "x = y  # type: ignore\ny = z  # pyright: ignore[reportAny]\n"
+        _write_py_file(tmp_path, "mod.py", content)
+        _patch_roots(monkeypatch, tmp_path)
+
+        csr.main(["--update-baseline"])
+        csr.main([])
+
+    def test_new_kind_formatted_passes(self, tmp_path: Path, monkeypatch) -> None:
+        content = "x = y  # pyright: ignore[reportAny]; owner: me; reason: known gap\n"
+        _write_py_file(tmp_path, "mod.py", content)
         _patch_roots(monkeypatch, tmp_path)
 
         csr.main([])

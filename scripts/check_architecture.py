@@ -27,12 +27,14 @@ Usage
 from __future__ import annotations
 
 import ast as python_ast
+import importlib.util
 import json
 import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import Any, cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src" / "perplexity_cli"
@@ -71,6 +73,10 @@ RESTRICTED_FRAMEWORK_LAYERS = frozenset(
 class Severity(Enum):
     ERROR = "error"
     WARNING = "warning"
+
+
+class BaselineError(Exception):
+    """Raised when the architecture baseline is missing or malformed."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,47 +174,21 @@ def _collect_production_modules() -> set[str]:
 def _layer_for_module(
     module_rel: str, layer_map: dict[str, tuple[str, frozenset[str]]]
 ) -> str | None:
-    """Return the layer name for *module_rel*, exact match first then prefix-fallback."""
-    if module_rel in layer_map:
-        return layer_map[module_rel][0]
-    if not module_rel:
-        return None
-    return _prefix_match_layer(module_rel, layer_map)
+    """Return the layer name for *module_rel*, or None when unclassified.
 
-
-def _prefix_match_layer(
-    module_rel: str,
-    layer_map: dict[str, tuple[str, frozenset[str]]],
-) -> str | None:
-    """Fallback: match the most-specific prefix present in the layer map."""
-    parts = module_rel.split(".")
-    for i in range(len(parts) - 1, 0, -1):
-        prefix = ".".join(parts[:i])
-        if prefix and prefix in layer_map:
-            return layer_map[prefix][0]
-    return None
+    Only exact matches are honoured; there is no prefix-inheritance fallback
+    so an unclassified module can never silently inherit a parent layer.
+    """
+    entry = layer_map.get(module_rel)
+    return entry[0] if entry is not None else None
 
 
 def _allowed_deps_for_module(
     module_rel: str, layer_map: dict[str, tuple[str, frozenset[str]]]
 ) -> frozenset[str]:
     """Return the allowed deps for *module_rel*'s layer, or empty frozenset."""
-    if module_rel in layer_map:
-        return layer_map[module_rel][1]
-    fallback = _prefix_match_layer(module_rel, layer_map)
-    if fallback is not None:
-        return _find_prefix_allowed(module_rel, layer_map)
-    return frozenset()
-
-
-def _find_prefix_allowed(
-    module_rel: str, layer_map: dict[str, tuple[str, frozenset[str]]]
-) -> frozenset[str]:
-    """Find allowed_deps by longest-matching prefix."""
-    for prefix in sorted(layer_map.keys(), key=lambda x: -len(x)):
-        if prefix and module_rel.startswith(prefix + "."):
-            return layer_map[prefix][1]
-    return frozenset()
+    entry = layer_map.get(module_rel)
+    return entry[1] if entry is not None else frozenset()
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +203,27 @@ def _module_rel_from_path(filepath: Path) -> str:
         pkg = str(rel.parent)
         return "" if pkg == "." else pkg.replace("/", ".")
     return str(rel.with_suffix("")).replace("/", ".")
+
+
+def _repo_relative_path(path_str: str) -> str:
+    """Return the repository-relative form of an absolute file path.
+
+    Paths already outside the repository are returned unchanged so that
+    synthetic/unit test identities survive normalisation.
+    """
+    try:
+        return str(Path(path_str).resolve().relative_to(PROJECT_ROOT.resolve()))
+    except ValueError:
+        return path_str
+
+
+def _normalise_file_identity(identity: str) -> str:
+    """Normalise a ``path:lineno`` file identity to repository-relative form."""
+    if ":" in identity:
+        path, sep, lineno = identity.rpartition(":")
+        if sep and lineno.isdigit():
+            return f"{_repo_relative_path(path)}:{lineno}"
+    return _repo_relative_path(identity)
 
 
 def _find_type_checking_lines(tree: python_ast.AST) -> set[int]:
@@ -575,6 +576,39 @@ def _run_checks(files: list[Path], config: _RunConfig) -> AnalysisResult:
     return result
 
 
+def _load_sibling_script(script_name: str) -> ModuleType:
+    """Import a sibling script from scripts/ by file path via importlib."""
+    existing = sys.modules.get(script_name)
+    if existing is not None:
+        return existing
+    script_path = Path(__file__).resolve().parent / f"{script_name}.py"
+    spec = importlib.util.spec_from_file_location(script_name, script_path)
+    if spec is None or spec.loader is None:
+        msg = f"Cannot create import spec for {script_path}"
+        raise ImportError(msg)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[script_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _validate_architecture_manifest(toml_path: Path, src_root: Path) -> list[str]:
+    """Validate the architecture manifest, returning schema/coverage errors."""
+    validator = _load_sibling_script("architecture_model")
+    return validator.validate(toml_path, src_root)
+
+
+def _fail_on_invalid_manifest(toml_path: Path, src_root: Path) -> None:
+    """Exit when the architecture manifest fails validation."""
+    validation_errors = _validate_architecture_manifest(toml_path, src_root)
+    if not validation_errors:
+        return
+    for error in validation_errors:
+        print(f"ERROR: {error}", file=sys.stderr)
+    print(f"{len(validation_errors)} architecture manifest error(s) found.", file=sys.stderr)
+    sys.exit(1)
+
+
 def _check_single_file(filepath: Path, config: _RunConfig, result: AnalysisResult) -> None:
     """Parse and check a single source file."""
     module_rel, ml, fl, tc, parse_err = _parse_file_imports(filepath)
@@ -584,7 +618,7 @@ def _check_single_file(filepath: Path, config: _RunConfig, result: AnalysisResul
                 severity=Severity.ERROR,
                 rule="parse-error",
                 message=f"{module_rel or '.'}: {parse_err}",
-                file=str(filepath),
+                file=_normalise_file_identity(str(filepath)),
             )
         )
         return
@@ -619,7 +653,7 @@ def _check_import_entries(
         ctx = _ImportCheckCtx(
             source_module_rel=batch_ctx.module_rel,
             lineno=lineno,
-            filepath=str(batch_ctx.filepath),
+            filepath=_normalise_file_identity(str(batch_ctx.filepath)),
             location=location,
             layer_map=batch_ctx.config.layer_map,
             adapter_groups=batch_ctx.config.adapter_groups,
@@ -649,20 +683,85 @@ def _check_single_import_entry(
 
 
 def _load_baseline() -> set[tuple[str, str, str]]:
-    """Load accepted violations from .architecture-baseline.json."""
+    """Load accepted violations from .architecture-baseline.json.
+
+    Raises:
+        BaselineError: When the baseline file is absent or malformed so that
+            a broken baseline can never silently degrade to an empty one.
+    """
+    payload = _read_baseline_payload()
+    return {_baseline_entry_key(entry) for entry in _baseline_accepted_entries(payload)}
+
+
+def _read_baseline_payload() -> object:
+    """Return the parsed baseline JSON, failing closed when unreadable."""
     if not BASELINE_PATH.is_file():
-        return set()
+        msg = f"Baseline file not found: {BASELINE_PATH}"
+        raise BaselineError(msg)
     try:
-        baseline_payload = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
-        accepted = baseline_payload.get("accepted", [])
-        return {(entry["rule"], entry["file"], entry["message"]) for entry in accepted}
-    except (json.JSONDecodeError, KeyError):
-        return set()
+        return json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        msg = f"Malformed baseline file {BASELINE_PATH}: {exc}"
+        raise BaselineError(msg) from exc
+
+
+def _baseline_accepted_entries(payload: object) -> list[object]:
+    """Return the accepted entries from a parsed baseline payload."""
+    if not isinstance(payload, dict):
+        msg = f"Baseline file {BASELINE_PATH} must contain a JSON object"
+        raise BaselineError(msg)
+    payload_table = cast(dict[str, object], payload)
+    if payload_table.get("version") != 1:
+        msg = f"Unsupported baseline schema version: {payload_table.get('version')!r}"
+        raise BaselineError(msg)
+    accepted = payload_table.get("accepted")
+    if not isinstance(accepted, list):
+        msg = f"Baseline file {BASELINE_PATH} 'accepted' must be a list"
+        raise BaselineError(msg)
+    return cast(list[object], accepted)
+
+
+def _baseline_entry_key(entry: object) -> tuple[str, str, str]:
+    """Normalise a single baseline entry into a fingerprint key.
+
+    Historical absolute paths in the baseline are mapped to repository-relative
+    identities so they match the repository-relative violation fingerprints.
+    """
+    fields = _coerce_baseline_entry(entry)
+    return (
+        fields["rule"],
+        _normalise_file_identity(fields["file"]),
+        fields["message"],
+    )
+
+
+def _coerce_baseline_entry(entry: object) -> dict[str, str]:
+    """Narrow a baseline entry to string fields, raising when malformed."""
+    if not isinstance(entry, dict):
+        msg = f"Invalid baseline entry: {entry!r}"
+        raise BaselineError(msg)
+    table = cast(dict[str, object], entry)
+    rule = table.get("rule")
+    if not isinstance(rule, str):
+        msg = f"Invalid baseline entry: {entry!r}"
+        raise BaselineError(msg)
+    file_id = table.get("file")
+    if not isinstance(file_id, str):
+        msg = f"Invalid baseline entry: {entry!r}"
+        raise BaselineError(msg)
+    message = table.get("message")
+    if not isinstance(message, str):
+        msg = f"Invalid baseline entry: {entry!r}"
+        raise BaselineError(msg)
+    return {"rule": rule, "file": file_id, "message": message}
 
 
 def _save_baseline(violations: list[Violation]) -> None:
     """Save the current set of violations as the accepted baseline."""
-    accepted = [{"rule": v.rule, "file": v.file, "message": v.message} for v in violations]
+    accepted = [
+        {"rule": v.rule, "file": _normalise_file_identity(v.file), "message": v.message}
+        for v in violations
+    ]
     baseline_payload = {"version": 1, "accepted": accepted}
     BASELINE_PATH.write_text(json.dumps(baseline_payload, indent=2) + "\n", encoding="utf-8")
 
@@ -861,6 +960,7 @@ def main(argv: list[str] | None = None) -> None:
     if cli_args["explain"]:
         _print_layer_model(layer_map)
         sys.exit(0)
+    _fail_on_invalid_manifest(toml_path, SRC_ROOT)
     files = _collect_files(cli_args["files"])
     config = _RunConfig(layer_map=layer_map, adapter_groups=adapter_groups)
     result = _run_checks(files, config)
@@ -872,7 +972,16 @@ def main(argv: list[str] | None = None) -> None:
             f"violation(s) recorded."
         )
         sys.exit(0)
-    filtered, accepted_count = _filter_with_baseline(result, cli_args)
+    _filter_and_report(result, cli_args)
+
+
+def _filter_and_report(result: AnalysisResult, cli_args: dict[str, Any]) -> None:
+    """Apply baseline filtering, print the report, and exit with the verdict."""
+    try:
+        filtered, accepted_count = _filter_with_baseline(result, cli_args)
+    except BaselineError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
     if cli_args["json"]:
         print(_format_json(filtered, accepted_count))
     else:

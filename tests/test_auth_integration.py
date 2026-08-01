@@ -1,4 +1,9 @@
-"""Integration tests for authentication flow."""
+"""Deterministic tests for the authentication flow.
+
+These tests never contact a real browser or a real host: the CDP
+connection is mocked so the browser-error cases do not depend on
+localhost state.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +11,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from perplexity_cli.auth.oauth_handler import (
@@ -14,8 +20,6 @@ from perplexity_cli.auth.oauth_handler import (
 )
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.utils.exceptions import AuthenticationError
-
-pytestmark = [pytest.mark.integration]
 
 
 class TestAuthenticationFlow:
@@ -64,9 +68,13 @@ class TestAuthenticationFlow:
 
     @pytest.mark.asyncio
     async def test_authenticate_with_browser_error_handling(self):
-        """Test error handling when Chrome is unavailable."""
-        with pytest.raises(AuthenticationError, match="Failed to connect to Chrome"):
-            await authenticate_with_browser(port=9999)
+        """Test error handling when Chrome is unavailable (CDP fetch mocked)."""
+        with patch(
+            "perplexity_cli.auth.oauth_handler.httpx.get",
+            side_effect=httpx.ConnectError("connection refused"),
+        ):
+            with pytest.raises(AuthenticationError, match="Failed to connect to Chrome"):
+                await authenticate_with_browser(port=9999)
 
     @pytest.mark.asyncio
     async def test_authenticate_with_browser_invalid_targets_payload(self):

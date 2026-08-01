@@ -33,3 +33,28 @@ class QueryClient(Protocol):
             PerplexityRequestError: For network/connection errors.
         """
         ...
+
+
+class EndpointProvider(Protocol):
+    """Application port for resolving API endpoint URLs.
+
+    Satisfied structurally by adapter code that wraps ``utils.config``
+    lookup helpers, allowing the application layer to depend on the
+    interface rather than on a concrete adapter.
+    """
+
+    def model_config_endpoint(self) -> str:
+        """Return the model configuration endpoint URL.
+
+        Returns:
+            The full URL of the ``/rest/models/config`` endpoint.
+        """
+        ...
+
+    def user_settings_endpoint(self) -> str:
+        """Return the user settings endpoint URL.
+
+        Returns:
+            The full URL of the ``/rest/user/settings`` endpoint.
+        """
+        ...

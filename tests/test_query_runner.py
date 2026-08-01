@@ -5,7 +5,6 @@ from unittest.mock import Mock, patch
 import pytest
 
 from perplexity_cli.api.models import Answer, QueryInput, TraceContext
-from perplexity_cli.formatting.context import RenderContext
 from perplexity_cli.query_runner import (
     QueryOptions,
     build_final_query,
@@ -60,12 +59,27 @@ def test_get_query_formatter_defaults_to_rich():
 
 def test_get_query_formatter_invalid_format_exits(capsys):
     """Invalid formatter names produce a clean user-facing failure."""
-    with pytest.raises(SystemExit) as exc_info:
-        get_query_formatter("invalid-format")
+    with (
+        patch("perplexity_cli.query_runner.TokenManager", return_value=Mock(), autospec=True),
+        patch(
+            "perplexity_cli.query_runner.load_token_optional",
+            return_value=("token-123", None),
+            autospec=True,
+        ),
+        patch(
+            "perplexity_cli.query_runner.resolve_attachment_urls", return_value=[], autospec=True
+        ),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            run_query_command(
+                ctx_obj={"debug": False},
+                query_text="What is Python?",
+                options=_default_options(output_format="invalid-format"),
+            )
 
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
-    assert "Available formats:" in captured.err
+    assert "Available:" in captured.err
 
 
 def test_run_query_command_non_streaming_renders_answer(capsys):
@@ -142,9 +156,8 @@ def test_run_query_command_streaming_delegates_to_stream_handler():
     assert isinstance(query_input_arg, QueryInput)
     assert query_input_arg.query == "final query"
     assert query_input_arg.attachment_urls == ["https://s3/file"]
-    # Third arg is RenderContext, fourth is TraceContext
+    # Third arg is the structural render context, fourth is TraceContext
     render_arg = mock_stream.call_args.args[2]
-    assert isinstance(render_arg, RenderContext)
     assert render_arg.options.output_format == "plain"
     assert render_arg.options.strip_references is True
     trace_arg = mock_stream.call_args.args[3]
@@ -181,8 +194,8 @@ def test_run_query_command_reports_upstream_schema_error(capsys):
             )
 
     captured = capsys.readouterr()
-    assert exc_info.value.code == 1
-    assert "Upstream response format changed: bad payload" in captured.err
+    assert exc_info.value.code == 7
+    assert "Error: bad payload" in captured.err
 
 
 def test_parse_request_param_overrides_parses_multiple_values():

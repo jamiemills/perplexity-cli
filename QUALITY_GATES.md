@@ -94,19 +94,19 @@ repository root.
 
 ```bash
 make format-fix        # ruff format + ruff check --fix on src/, tests/, scripts/
-make check             # all enabled CHECK_* gates + module coverage (requires coverage.json)
+make check             # all enabled CHECK_* gates (static only; no coverage)
 ```
 
 - What runs: `make check` expands `quality/gates.conf` toggles. With the
   current configuration every toggle is `true`, so it runs format-check, lint,
   typecheck-all (ty + pyright + pyright-scripts), bandit, vulture, complexity,
   semgrep, architecture, coupling, ratchets (six members), import-linter,
-  dynamic imports, suppression-reasons, deptry, **and** the unconditional
-  per-module coverage gate.
+  dynamic imports, suppression-reasons, deptry. `make check` is **static
+  only** — it no longer consumes coverage reports; per-module coverage
+  enforcement lives in `make test-coverage`.
 - Credentials/network/write side effects: none for `format-fix` (writes your
   working tree — it rewrites `src/`, `tests/`, `scripts/`). `make check`
-  writes nothing but **requires an existing `coverage.json`** produced by
-  `make test-coverage-report`; without it `module-coverage` fails.
+  writes nothing and requires no prior coverage run.
 - Duration class: minutes (semgrep is the bottleneck).
 - Results appear: in your terminal; ratchet regressions point at the baseline
   refresh command in `quality/baselines/`.
@@ -121,15 +121,22 @@ make test-property     # Hypothesis dev profile (10 examples) after manifest par
 ```
 
 - What runs: `make test` runs pytest with `-n auto` and `-x`, excluding the
-  `property`, `hermetic_integration`, `real_api`, `manual`, `real_user_config`
-  and `fuzz` markers. The exclusions live in the Make recipes, **not** in
-  `pyproject.toml` `addopts`.
+  `property`, `hermetic_integration`, `integration`, `real_api`, `manual`,
+  `real_user_config` and `fuzz` markers, and the **literal core-exclusion
+  manifest** (`MUTATION_PROPERTY_FILES`): the property/mutation test families
+  are `--ignore`d by explicit path (plan decision A003), never by glob. The
+  exclusions live in the Make recipes, **not** in `pyproject.toml` `addopts`.
 - Credentials/network: none. Side effects: writes `.pytest_cache`,
   `.hypothesis/`, and (for `test-coverage`) `coverage.json`, `coverage.xml`,
   `.coverage`.
 - Duration class: seconds to a couple of minutes.
-- Results appear: terminal output; `test-coverage` produces `coverage.json` /
-  `coverage.xml` consumed by later gates.
+- Results appear: terminal output. `test-coverage` produces `coverage.json`
+  (consumed by `module-coverage` inside the same target) and `coverage.xml`
+  (consumed by `make diff-coverage`, the sole changed-line authority).
+- The fail-closed **network guard** is default-on: it is installed in
+  `pytest_configure` before collection, so every non-live lane (ordinary,
+  coverage, hermetic) is loopback-only unless a test is explicitly marked
+  `real_api` with `RUN_REAL_API_TESTS=1`.
 
 ### Changed dependencies
 
@@ -154,14 +161,17 @@ make safety            # authenticated scan; skips locally without credentials
 
 ```bash
 make actionlint        # validate all GitHub Actions workflows (pinned actionlint)
+make workflow-policy   # strict semantic validation of workflow policy
+make make-policy       # validate Make target ownership and dependency policy
 make analyser-contract-tests   # validates production contracts then runs contract tests
 ```
 
 - What runs: `actionlint` via `uvx --from actionlint-py==1.7.12.24`;
-  `analyser-contract-tests` first runs production
-  `scripts/check_analyser_contracts.py --validate`, then the unit tests.
-  Editing a workflow also triggers the `workflow-policy` pre-commit job
-  (`tests/test_workflow_configuration.py`).
+  `workflow-policy` via `scripts/validate_workflow_policy.py --strict`;
+  `make-policy` via `scripts/validate_make_policy.py`; `analyser-contract-tests`
+  first runs production `scripts/check_analyser_contracts.py --validate`, then
+  the unit tests. Editing a workflow also triggers the `workflow-policy`
+  pre-commit job (`tests/test_workflow_configuration.py`).
 - Credentials/network/write: none (tool fetch is cached by `uvx`).
 - Duration class: seconds to a minute.
 - Results appear: terminal output.
@@ -298,9 +308,10 @@ side effects before running anything.
 - **Skipped is never a pass.** An informational credential skip is a known gap,
   not a green check. A card that says "skip semantics" MUST be treated as such
   by the caller.
-- **Coverage consumers need coverage producers.** `make check` consumes
-  `coverage.json`; run `make test-coverage-report` first. `make diff-coverage`
-  consumes `coverage.xml`.
+- **Coverage consumers need coverage producers.** `module-coverage` consumes
+  `coverage.json` produced by `make test-coverage-report` and is invoked by
+  `make test-coverage` (never by `make check`). `make diff-coverage` consumes
+  `coverage.xml` and is the sole changed-line authority.
 - **Restart OpenCode after plugin/config changes.** Session plugins load at
   session start.
 - **Do not refresh baselines to silence a regression.** Baselines record
@@ -335,10 +346,11 @@ OpenCode session (advisory/interception only, not lifecycle gates)
   |    4 mutate-diff                         [hook.pre-push.mutate-diff]
   |    5 safety + fuzz                       [hook.pre-push.safety-and-fuzz]
   |
-  +-> CI (14 jobs, one concurrency group)
-  |    universal: secret-scan, static, test-coverage, test-compat (3.13/3.14),
-  |                property (3.13), fuzz-status, package, wheel-smoke-linux,
-  |                wheel-smoke-macos, pip-audit, test-macos
+  +-> CI (16 jobs, one concurrency group)
+  |    universal: secret-scan, static, test-coverage, hermetic-integration,
+  |                test-compat (3.13/3.14), property (3.13), fuzz-status,
+  |                package, wheel-smoke-linux, wheel-smoke-macos,
+  |                windows_packaging_smoke, pip-audit, test-macos
   |    push-only:  safety (make safety-gate)
   |    PR-only:    diff-coverage, mutation-diff
   |
@@ -364,7 +376,7 @@ Node-to-card references:
 | Pre-push stage 3 | `hook.pre-push.property-and-advisory` |
 | Pre-push stage 4 | `hook.pre-push.mutate-diff` |
 | Pre-push stage 5 | `hook.pre-push.safety-and-fuzz` |
-| Universal CI | `ci.ci.secret-scan`, `ci.ci.static`, `ci.ci.test-coverage`, `ci.ci.test-compat`, `ci.ci.property`, `ci.ci.fuzz-status`, `ci.ci.package`, `ci.ci.wheel-smoke-linux`, `ci.ci.wheel-smoke-macos`, `ci.ci.pip-audit`, `ci.ci.test-macos` |
+| Universal CI | `ci.ci.secret-scan`, `ci.ci.static`, `ci.ci.test-coverage`, `ci.ci.hermetic-integration`, `ci.ci.test-compat`, `ci.ci.property`, `ci.ci.fuzz-status`, `ci.ci.package`, `ci.ci.wheel-smoke-linux`, `ci.ci.wheel-smoke-macos`, `ci.ci.windows_packaging_smoke`, `ci.ci.pip-audit`, `ci.ci.test-macos` |
 | Push-only CI | `ci.ci.safety` |
 | PR-only CI | `ci.ci.diff-coverage`, `ci.ci.mutation-diff` |
 | Scheduled | `automation.mutation-scheduled.mutation`, `automation.scorecard.scorecard`, `automation.scorecard.scorecard-validate`, `automation.semgrep-advisory.semgrep-advisory` |
@@ -400,8 +412,8 @@ directly; Python analysers read numeric thresholds through
 ### Check toggles (control which analysers run in `make check`)
 
 All toggles in `quality/gates.conf` are currently `true`, so `make check` runs
-every one of the analysers below **plus** the unconditional `module-coverage`
-gate:
+every one of the analysers below. `make check` is static only: it never
+consumes coverage reports.
 
 | Key | Value | Gate added to `make check` |
 |---|---|---|
@@ -443,13 +455,17 @@ Python analysers, but Make CLI overrides remain possible for a human and are
 NOT a persisted policy change. Prefer editing `quality/gates.conf` through the
 human protocol in [Change Protocol](#12-change-protocol).
 
-### Unconditional module-coverage prerequisite of `make check`
+### Per-module coverage ownership (not a `make check` member)
 
-`make check` always appends `module-coverage` to its prerequisite list,
-regardless of toggles. `module-coverage` consumes `coverage.json`, so:
+`module-coverage` is owned by the coverage lane, **not** by `make check`:
 
-- `make check` **depends on a prior coverage run** — normally
-  `make test-coverage-report` (or `make test-coverage`).
+- `make test-coverage` = `test-coverage-report` then `module-coverage`; the
+  report is produced first, so the module floor is always enforced against
+  fresh evidence.
+- `make check` no longer appends `module-coverage` — it must never consume a
+  potentially stale `coverage.json`. Run `make test-coverage` (or
+  `make test-coverage-report` first, then `module-coverage`) to enforce the
+  per-module floor.
 - If `coverage.json` is absent or stale, `module-coverage` fails (exit 2 for a
   missing report). Run the producer first; never "skip" the consumer.
 
@@ -531,22 +547,32 @@ set `use_stdin`.
 directly (not the Make target) so it can consume the git-provided stdin and
 remote arguments. `make gitleaks` is the standalone/on-demand form.
 
-### 6.4 `make check`, `make ci`, and workflow CI
+### 6.4 `make check`, `make ci`, `make ci-quality`, `make ci-conventional`, and workflow CI
 
-These three surfaces are related but NOT equivalent:
+These surfaces are related but NOT equivalent:
 
-- **`make check`** — static analysis only, driven by the `CHECK_*` toggles plus
-  unconditional `module-coverage`. No tests, no build, no smoke.
+- **`make check`** — static analysis only, driven by the `CHECK_*` toggles. No
+  tests, no build, no smoke, no coverage consumption.
 - **`make ci`** — the credential-free local aggregate:
   `ci-static`, `ci-test-coverage`, `ci-fuzz-status`, `pip-audit`,
   `sonar-reports`, `ci-property`, `ci-package`, `smoke-test`. Local `make ci`
   runs `sonar-reports` and `smoke-test` **directly**.
-- **Workflow CI** — splits the same authority into 14 jobs for isolation and
+- **`make ci-quality`** — the deterministic offline quality-gate inventory:
+  `format-check lint typecheck-all bandit vulture complexity semgrep arch-check
+  arch-check-dynamic import-linter coupling-check ratchets analyser-contract-tests
+  deptry make-policy workflow-policy actionlint`. No tests, no build.
+- **`make ci-conventional`** — the serial final gate list, run offline
+  (`UV_OFFLINE=1`, `npm_config_offline=true`) in one exact order: format-check,
+  lint, typecheck-all, network-guard/test-isolation tests, test-coverage,
+  test-integration, ci-quality, MCP tests, test-fuzz, OpenCode
+  test:coverage + check, package-contract, gitleaks-ci, architecture model +
+  check.
+- **Workflow CI** — splits the same authority into 16 jobs for isolation and
   adds event/platform-specific work: gitleaks full-history, OpenCode
   plugin/config checks, analyser-contract validation/tests, blocking semgrep,
-  the 3.13/3.14 compatibility matrix, macOS, push-only Safety, credential-free
-  pip-audit, PR-only diff-coverage and mutation-diff. Workflow CI **omits
-  `sonar-reports`**.
+  the 3.13/3.14 compatibility matrix, macOS, Windows packaging smoke, push-only
+  Safety, credential-free pip-audit, PR-only diff-coverage and mutation-diff.
+  Workflow CI **omits `sonar-reports`**.
 - **`make ci-trusted`** — `make ci` plus the fail-closed authenticated Safety
   gate; used on push CI and the tag release path.
 
@@ -635,7 +661,7 @@ remote publishing/mutation step.
 | `hook.pre-push.safety-and-fuzz` | Safety + fuzz | composite | pre-push 6 | `make safety`, `make test-fuzz` | Blocks the push on authenticated safety failure or fuzz failure |
 | `inline.*` | Inline guards/fixers | atomic | pre-commit 2/3 | `lefthook.yml` jobs | Fails the commit (see each card) |
 | `make.*` | Make targets | atomic/composite | any | `Makefile` | Depends on caller (hook, workflow, on-demand) |
-| `ci.ci.*` | CI jobs (14) | atomic | CI | `.github/workflows/ci.yml` | Fails the job; see each card |
+| `ci.ci.*` | CI jobs (16) | atomic | CI | `.github/workflows/ci.yml` | Fails the job; see each card |
 | `automation.*` | Scheduled/release-drafter jobs | atomic/composite | scheduled | `.github/workflows/*.yml` | See each card |
 | `release.publish-to-pypi.publish` | Publish Distribution | release-action | release | `.github/workflows/publish-to-pypi.yml` | Fails the release on version mismatch / CI / publish error |
 | `test.*` | Test lanes and meta-gates | atomic | on-demand / CI | `Makefile`, `tests/` | See each card |
@@ -2272,24 +2298,28 @@ documents how to reproduce it and what it means.
 - **Purpose:** the documented safe default test command.
 - **Authoritative source:** `Makefile` `test`.
 - **Canonical invocation:** `uv run pytest tests/ -q --tb=line -x -n auto -m
-  "not property and not hermetic_integration and not real_api and not manual and
-  not real_user_config and not fuzz"`.
+  "not property and not hermetic_integration and not integration and not real_api
+  and not manual and not real_user_config and not fuzz"` plus
+  `$(addprefix --ignore=,$(MUTATION_PROPERTY_FILES))`, where
+  `MUTATION_PROPERTY_FILES` is the literal core-exclusion manifest (the
+  property/mutation families listed by explicit path, never by glob).
 - **Trigger and scope:** pre-commit stage 5; `make ci-test-compat`; on-demand.
 - **Execution context:** Local developer workstation; repository checkout; untrusted-local
   (developer) trust boundary.
 - **Contextual enforcement:** fails on any failing test (`-x` fail-fast,
   `-n auto` parallel).
-- **Skip semantics:** marker exclusions above. The exclusions live in the Make
-  recipe, NOT in `pyproject.toml` `addopts`. `security`/`slow` markers are NOT
-  excluded.
+- **Skip semantics:** marker exclusions above plus the explicit `--ignore`
+  manifest. The exclusions live in the Make recipe, NOT in `pyproject.toml`
+  `addopts`. `security`/`slow` markers are NOT excluded. The `integration`
+  marker is excluded even though no ordinary-lane test currently uses it.
 - **Inputs and configuration:** marker set from `pyproject.toml`
-  (`--strict-markers -v`).
+  (`--strict-markers -v`); `MUTATION_PROPERTY_FILES`.
 - **Ordering and concurrency:** pytest-xdist `-n auto`.
 - **Outputs and evidence:** terminal output; `.pytest_cache`.
 - **Requirements:** uv environment with dev deps.
 - **Side effects:** `.pytest_cache`, `__pycache__`.
 - **Replication checks:** clean tree passes; failing test fails; live-marked
-  tests are excluded.
+  tests are excluded; every manifest path is `--ignore`d by exact path.
 
 #### `make.test-coverage-report`: Tests with coverage reports
 
@@ -2297,14 +2327,17 @@ documents how to reproduce it and what it means.
   reports.
 - **Authoritative source:** `Makefile` `test-coverage-report`.
 - **Canonical invocation:** `uv run pytest tests/ -q --tb=line -x -n auto
-  --dist loadfile -m "..." --cov=perplexity_cli --cov-report=term-missing
-  --cov-report=json --cov-report=xml:coverage.xml`.
+  --dist loadfile -m "not property and not hermetic_integration and not
+  integration and not real_api and not manual and not real_user_config and not
+  fuzz"` plus `$(addprefix --ignore=,$(MUTATION_PROPERTY_FILES))`,
+  `--cov=perplexity_cli --cov-report=term-missing --cov-report=json
+  --cov-report=xml:coverage.xml`.
 - **Trigger and scope:** producer for `module-coverage` and `diff-coverage`;
   CI `diff-coverage` job.
 - **Execution context:** Local developer workstation; repository checkout; untrusted-local
   (developer) trust boundary.
 - **Contextual enforcement:** fails on failing tests or coverage errors.
-- **Skip semantics:** same marker exclusions as `make test`.
+- **Skip semantics:** same marker and manifest exclusions as `make test`.
 - **Inputs and configuration:** `[tool.coverage.run]` (`branch = true`),
   `[tool.coverage.report]` (`fail_under = 85`).
 - **Ordering and concurrency:** pytest-xdist with `--dist loadfile`.
@@ -2320,8 +2353,8 @@ documents how to reproduce it and what it means.
   `scripts/check_module_coverage.py`.
 - **Canonical invocation:** `uv run python scripts/check_module_coverage.py
   --min-coverage $(MIN_COVERAGE)`.
-- **Trigger and scope:** unconditional member of `make check`; member of
-  `make test-coverage`; on-demand.
+- **Trigger and scope:** member of `make test-coverage`; CI `test-coverage` job
+  via `make ci-test-coverage`; on-demand. **Not** a member of `make check`.
 - **Execution context:** Local developer workstation; repository checkout; untrusted-local
   (developer) trust boundary.
 - **Contextual enforcement:** fails when any executable module is below 85%,
@@ -2389,14 +2422,19 @@ documents how to reproduce it and what it means.
 - **Authoritative source:** `Makefile` `test-integration`; marker
   `hermetic_integration` in `pyproject.toml`.
 - **Canonical invocation:** `uv run pytest tests/ -q --tb=short -m
-  hermetic_integration`.
-- **Trigger and scope:** on-demand.
+  hermetic_integration` plus `$(addprefix --ignore=,$(MUTATION_PROPERTY_FILES))`
+  (the manifest files are excluded from collection so broken dormant families
+  cannot interrupt the lane).
+- **Trigger and scope:** CI `hermetic-integration` job; on-demand.
 - **Execution context:** Local developer workstation; repository checkout; loopback-only (no
-  real network); untrusted-local (developer) trust boundary.
+  real network); untrusted-local (developer) trust boundary. The fail-closed
+  network guard is default-on (installed in `pytest_configure`), so the lane
+  runs under loopback-only semantics with no bypass in CI.
 - **Contextual enforcement:** fails on failing hermetic tests.
 - **Skip semantics:** none. The `hermetic_integration` marker selects loopback
   tests; the registered `integration` marker covers protocol/auth or real-service
-  integration paths (may use network) and is not selected here.
+  integration paths (may use network) and is excluded by both the ordinary and
+  coverage selectors and never selected here.
 - **Inputs and configuration:** `tests/support/protocol_server.py` harness.
 - **Ordering and concurrency:** none.
 - **Outputs and evidence:** terminal output.
@@ -2669,6 +2707,31 @@ documents how to reproduce it and what it means.
 - **Replication checks:** `--version`, `config show`, query-endpoint resolution,
   `urls.json` creation.
 
+#### `make.package-contract`: Build and verify the distribution contract
+
+- **Purpose:** build, verify, test and smoke the distribution contract
+  end-to-end against the current source.
+- **Authoritative source:** `Makefile` `package-contract`;
+  `scripts/verify_wheel.py`; `scripts/smoke_test.py`;
+  `tests/test_distribution_contract.py`.
+- **Canonical invocation:** `make package-contract` (`uv build`, then
+  `scripts/verify_wheel.py`, then `uv run pytest
+  tests/test_packaging.py tests/test_distribution_contract.py -q`, then
+  `scripts/smoke_test.py`).
+- **Trigger and scope:** member of `make ci-conventional`; on-demand.
+- **Execution context:** Local developer workstation; repository checkout; offline-capable
+  build; untrusted-local (developer) trust boundary.
+- **Contextual enforcement:** fails on build, verification, packaging-test, or
+  smoke-test failure.
+- **Skip semantics:** none.
+- **Inputs and configuration:** `pyproject.toml`; `dist/` rebuilt by `uv build`.
+- **Ordering and concurrency:** strict order: build → verify → packaging tests
+  → installed-wheel smoke.
+- **Outputs and evidence:** `dist/*.whl`, `dist/*.tar.gz`; terminal verification.
+- **Requirements:** uv environment; network on first build-backend fetch.
+- **Side effects:** rewrites `dist/`; creates a temp venv/config (cleaned up).
+- **Replication checks:** artefacts build, verify, test and smoke cleanly.
+
 #### `make.release`: Local release (bump, lock, CI, commit, tag, push)
 
 - **Purpose:** perform a versioned release.
@@ -2708,10 +2771,9 @@ documents how to reproduce it and what it means.
 - **Side effects:** deletes ignored build/cache artefacts.
 - **Replication checks:** artefacts removed.
 
-#### `make.check`: Configured checks plus module coverage
+#### `make.check`: Configured static checks
 
-- **Purpose:** run every analyser whose `CHECK_*` toggle is `true`, plus
-  unconditional `module-coverage`.
+- **Purpose:** run every analyser whose `CHECK_*` toggle is `true`.
 - **Authoritative source:** `Makefile` `check`; `quality/gates.conf`.
 - **Canonical invocation:** `make check`.
 - **Trigger and scope:** on-demand; documented as the local static gate.
@@ -2720,18 +2782,18 @@ documents how to reproduce it and what it means.
 - **Contextual enforcement:** fails on the first failing prerequisite (Make
   prerequisite chain).
 - **Skip semantics:** toggles off would drop members; currently ALL toggles are
-  `true`. `module-coverage` is ALWAYS appended and requires `coverage.json`.
-- **Inputs and configuration:** every `CHECK_*` from `quality/gates.conf`;
-  `coverage.json` state dependency.
+  `true`. `module-coverage` is NOT a member — per-module coverage lives in
+  `make test-coverage`.
+- **Inputs and configuration:** every `CHECK_*` from `quality/gates.conf`.
 - **Ordering and concurrency:** Make prerequisite order (see
   [Composite And Topology Reference](#9-composite-and-topology-reference)).
 - **Outputs and evidence:** terminal output.
-- **Requirements:** uv environment; prior `make test-coverage-report`.
+- **Requirements:** uv environment.
 - **Side effects:** none (read-only analysers).
 - **Replication checks:** with current toggles, prerequisite set equals
   format-check lint typecheck-all security complexity semgrep arch-check
   coupling-check ratchets import-linter arch-check-dynamic suppression-reasons
-  deptry module-coverage.
+  deptry.
 
 #### `make.ci-static`: CI static lane
 
@@ -2879,6 +2941,59 @@ documents how to reproduce it and what it means.
 - **Requirements:** credentials in trusted contexts.
 - **Side effects:** as `make.ci`.
 - **Replication checks:** members behave as documented.
+
+#### `make.ci-quality`: Deterministic offline quality-gate inventory
+
+- **Purpose:** run every deterministic offline quality gate in one composite.
+- **Authoritative source:** `Makefile` `ci-quality`.
+- **Canonical invocation:** `make ci-quality` (`format-check lint typecheck-all
+  bandit vulture complexity semgrep arch-check arch-check-dynamic
+  import-linter coupling-check ratchets analyser-contract-tests deptry
+  make-policy workflow-policy actionlint`).
+- **Trigger and scope:** member of `make ci-conventional`; on-demand.
+- **Execution context:** Local developer workstation; repository checkout; untrusted-local
+  (developer) trust boundary.
+- **Contextual enforcement:** fails on any member.
+- **Skip semantics:** none.
+- **Inputs and configuration:** as members; no tests, no build, no coverage.
+- **Ordering and concurrency:** sequential prerequisites in the inventory
+  order above.
+- **Outputs and evidence:** terminal output.
+- **Requirements:** uv environment; pinned semgrep/actionlint resolvable via
+  `uvx` (offline-cached after first use).
+- **Side effects:** none (read-only analysers; semgrep fetches the pinned
+  binary via uvx on first use).
+- **Replication checks:** every member gate runs and passes; members behave as
+  documented.
+
+#### `make.ci-conventional`: Serial final gate list
+
+- **Purpose:** the deterministic, offline, single-target final gate sequence.
+- **Authoritative source:** `Makefile` `ci-conventional`.
+- **Canonical invocation:** `make ci-conventional` (one serial recipe; each
+  command runs in order with `UV_OFFLINE=1` and `npm_config_offline=true`).
+- **Trigger and scope:** on-demand; authoritative local end-to-end signal.
+- **Execution context:** Local developer workstation; repository checkout; offline (no
+  network reads); untrusted-local (developer) trust boundary.
+- **Contextual enforcement:** fails at the first failing command (`set -e`).
+- **Skip semantics:** none.
+- **Inputs and configuration:** the exact gate order: `make format-check`;
+  `make lint`; `make typecheck-all`; `uv run pytest
+  tests/test_network_guard.py tests/test_test_isolation.py -q`;
+  `make test-coverage`; `make test-integration`; `make ci-quality`;
+  `uv run pytest tests/test_mcp_server.py tests/test_mcp_protocol.py -q`;
+  `make test-fuzz`; `npm --prefix .opencode run test:coverage`;
+  `npm --prefix .opencode run check`; `make package-contract`;
+  `make gitleaks-ci`; `uv run python scripts/architecture_model.py` and
+  `uv run python scripts/check_architecture.py`.
+- **Ordering and concurrency:** strictly serial.
+- **Outputs and evidence:** terminal output; coverage/build artefacts.
+- **Requirements:** uv environment; npm deps installed; gitleaks 8.30.1 on
+  `PATH`.
+- **Side effects:** writes coverage artefacts, `dist/`, `.pytest_cache`,
+  `.hypothesis/`.
+- **Replication checks:** each gate in the documented order; a failing gate
+  aborts the chain.
 
 #### `make.analyser-contract-validate`: Validate the production analyser contract registry
 
@@ -3188,7 +3303,7 @@ documents how to reproduce it and what it means.
   `ACTIONLINT_PY_VERSION := 1.7.12.24`.
 - **Canonical invocation:** `$(ACTIONLINT)`
   (`uvx --from actionlint-py==1.7.12.24 actionlint`).
-- **Trigger and scope:** member of `make ci-static`; on-demand.
+- **Trigger and scope:** member of `make ci-static`, `make ci-quality`; on-demand.
 - **Execution context:** Local developer workstation; repository checkout; untrusted-local
   (developer) trust boundary.
 - **Contextual enforcement:** fails on workflow syntax/policy errors.
@@ -3200,13 +3315,58 @@ documents how to reproduce it and what it means.
 - **Side effects:** none.
 - **Replication checks:** valid workflows pass; malformed fails.
 
+#### `make.make-policy`: Make target ownership and dependency policy
+
+- **Purpose:** statically validate Make target ownership and dependency shape
+  against the canonical repository Makefile.
+- **Authoritative source:** `Makefile` `make-policy`;
+  `scripts/validate_make_policy.py`.
+- **Canonical invocation:** `uv run python scripts/validate_make_policy.py`.
+- **Trigger and scope:** member of `make ci-quality`; on-demand.
+- **Execution context:** Local developer workstation; repository checkout; untrusted-local
+  (developer) trust boundary.
+- **Contextual enforcement:** exits 1 on missing targets / missing
+  prerequisites; exits 2 on usage errors.
+- **Skip semantics:** none.
+- **Inputs and configuration:** the repository Makefile via `make -p`.
+- **Ordering and concurrency:** none.
+- **Outputs and evidence:** terminal policy report.
+- **Requirements:** uv environment; `make`.
+- **Side effects:** none.
+- **Replication checks:** clean => 0; missing target/dependency => 1.
+
+#### `make.workflow-policy`: GitHub Actions workflow policy (strict)
+
+- **Purpose:** validate every workflow against the YAML 1.2 semantic policy in
+  strict mode.
+- **Authoritative source:** `Makefile` `workflow-policy`;
+  `scripts/validate_workflow_policy.py`.
+- **Canonical invocation:** `uv run python scripts/validate_workflow_policy.py
+  --strict` against `.github/workflows/`.
+- **Trigger and scope:** member of `make ci-quality`; on-demand.
+- **Execution context:** Local developer workstation; repository checkout; untrusted-local
+  (developer) trust boundary.
+- **Contextual enforcement:** exits 1 on any hard error OR any warning (strict
+  mode promotes warnings to errors); exits 2 on usage errors.
+- **Skip semantics:** none.
+- **Inputs and configuration:** `.github/workflows/*.yml` via ruamel.yaml
+  (duplicate keys rejected).
+- **Ordering and concurrency:** none.
+- **Outputs and evidence:** terminal policy report.
+- **Requirements:** uv environment.
+- **Side effects:** none.
+- **Replication checks:** clean => 0; unpinned action / missing timeout under
+  strict => 1.
+
 
 ### CI workflow cards
 
-`ci.yml` has exactly fourteen jobs. Workflow-level concurrency: group
+`ci.yml` has exactly sixteen jobs. Workflow-level concurrency: group
 `ci-<workflow>-<pr-number | dispatch-run-id | ref>`, `cancel-in-progress:
 true` except for `workflow_dispatch`. Each job runs in a clean checkout with
 `uv sync --all-extras --locked --group dev` and delegates to Make targets.
+The `test-coverage` job installs gitleaks 8.30.1 before running the suite
+because the authoritative gitleaks tests fail when the binary is absent.
 
 #### `ci.ci.secret-scan`: Secret Scan (gitleaks)
 
@@ -3262,9 +3422,35 @@ true` except for `workflow_dispatch`. Each job runs in a clean checkout with
 - **Inputs and configuration:** as `make.test-coverage`.
 - **Ordering and concurrency:** independent job.
 - **Outputs and evidence:** terminal output.
-- **Requirements:** uv environment.
+- **Requirements:** uv environment; gitleaks 8.30.1 (installed by the job
+  before the suite runs, because the authoritative gitleaks tests fail when
+  the binary is absent).
 - **Side effects:** coverage artefacts in the job workspace.
 - **Replication checks:** as `make.test-coverage`.
+
+#### `ci.ci.hermetic-integration`: Hermetic Integration (Python 3.12)
+
+- **Purpose:** run the loopback-only hermetic integration lane under the
+  fail-closed network guard (default-on; no bypass).
+- **Authoritative source:** `.github/workflows/ci.yml` job
+  `hermetic-integration`; `make test-integration`.
+- **Canonical invocation:** `make test-integration`
+  (`uv run pytest tests/ -q --tb=short -m hermetic_integration`, plus the
+  `MUTATION_PROPERTY_FILES` `--ignore` manifest).
+- **Trigger and scope:** all CI events; Ubuntu; timeout 10 min; Python 3.12.
+- **Execution context:** GitHub Actions `ubuntu-latest`; all CI events; permissions
+  `contents: read`; Python 3.12; the network guard is default-on, so only
+  loopback destinations are reachable.
+- **Contextual enforcement:** fails the job on failing hermetic tests.
+- **Skip semantics:** none. The registered `integration` marker is excluded
+  from both the ordinary and coverage selectors and is not selected here.
+- **Inputs and configuration:** `tests/support/protocol_server.py` harness.
+- **Ordering and concurrency:** independent job.
+- **Outputs and evidence:** terminal output.
+- **Requirements:** uv environment.
+- **Side effects:** none (loopback only).
+- **Replication checks:** hermetic tests pass offline under the default-on
+  guard.
 
 #### `ci.ci.test-compat`: Compatibility matrix (3.13, 3.14)
 
@@ -3380,6 +3566,35 @@ true` except for `workflow_dispatch`. Each job runs in a clean checkout with
 - **Requirements:** uv.
 - **Side effects:** temp venv/config.
 - **Replication checks:** as `make.smoke-test`.
+
+#### `ci.ci.windows_packaging_smoke`: Windows Packaging Smoke (Python 3.12)
+
+- **Purpose:** prove the wheel installs and all three console entry points run
+  on Windows with network-free, bounded commands.
+- **Authoritative source:** `.github/workflows/ci.yml` job
+  `windows_packaging_smoke`; `tests/test_distribution_contract.py` topology
+  spec.
+- **Canonical invocation:** downloads `wheel-dist-<run_id>-<run_attempt>` to
+  `dist/`, installs the wheel into an isolated venv, then runs the bounded
+  smoke commands `pxcli --version`, `pxcli config show`, `pxcli skill show`,
+  `perplexity-cli --version`, `pxcli-mcp --help`.
+- **Trigger and scope:** all CI events; `needs: [package]`; windows-latest;
+  timeout 15 min; Python 3.12.
+- **Execution context:** GitHub Actions `windows-latest`; all CI events; permissions
+  `contents: read`; Python 3.12; depends on the `package` job artefact.
+- **Contextual enforcement:** fails the job when the wheel cannot install or
+  any bounded smoke command fails.
+- **Skip semantics:** none.
+- **Inputs and configuration:** package-job wheel; the smoke command set from
+  `tests/test_distribution_contract.py` (`_WINDOWS_CI_SMOKE_COMMANDS`), which
+  forbids network-triggering subcommands and forces `pxcli-mcp --help` (never
+  daemonises).
+- **Ordering and concurrency:** depends on `ci.ci.package`.
+- **Outputs and evidence:** terminal output.
+- **Requirements:** uv; network to fetch wheel dependencies on first install.
+- **Side effects:** isolated venv in the job workspace.
+- **Replication checks:** the five bounded commands pass against the installed
+  wheel.
 
 #### `ci.ci.safety`: Safety (trusted)
 
@@ -3975,12 +4190,14 @@ the ordinary suite unless infrastructure-excluded from Mutmut.
 
 | Surface | Contains | Notes |
 |---|---|---|
-| `make check` | `format-check lint typecheck-all security complexity semgrep arch-check coupling-check ratchets import-linter arch-check-dynamic suppression-reasons deptry module-coverage` (all toggles true) | Static only; `module-coverage` unconditional and needs `coverage.json` |
+| `make check` | `format-check lint typecheck-all security complexity semgrep arch-check coupling-check ratchets import-linter arch-check-dynamic suppression-reasons deptry` (all toggles true) | Static only; no coverage consumption |
 | Pre-commit stage 2/4 | subset of the same Make targets (globs) + inline guards/fixers | 22 + 8 jobs |
 | Pre-push stages | gitleaks, agent-check-no-tests, arch-check, coupling-check, ratchets, test-coverage, test-property-push, sonar-reports, mutate-diff, safety, test-fuzz | Staged, bounded parallelism |
 | `make ci` | `ci-static ci-test-coverage ci-fuzz-status pip-audit sonar-reports ci-property ci-package smoke-test` | Local credential-free aggregate; runs sonar-reports and smoke-test DIRECTLY |
+| `make ci-quality` | `format-check lint typecheck-all bandit vulture complexity semgrep arch-check arch-check-dynamic import-linter coupling-check ratchets analyser-contract-tests deptry make-policy workflow-policy actionlint` | Deterministic offline quality gates; no tests/build |
+| `make ci-conventional` | serial: format-check, lint, typecheck-all, network-guard/isolation tests, test-coverage, test-integration, ci-quality, MCP tests, test-fuzz, OpenCode test:coverage + check, package-contract, gitleaks-ci, architecture model + check | Offline (`UV_OFFLINE=1`); fails at first error |
 | `make ci-trusted` | `make ci` + `safety-gate` | Fail-closed authenticated Safety |
-| Workflow CI | 14 jobs (see section 6.4 / cards) | Omit sonar-reports; adds gitleaks, opencode, analyser-contracts, semgrep, compat matrix, macOS, push-only safety, pip-audit, PR diff-coverage and mutation-diff |
+| Workflow CI | 16 jobs (see section 6.4 / cards) | Omit sonar-reports; adds gitleaks, opencode, analyser-contracts, semgrep, compat matrix, macOS, Windows packaging smoke, push-only safety, pip-audit, PR diff-coverage and mutation-diff |
 | `make agent-check-no-tests` | pyright, ty, bandit, vulture, radon-cc, radon-mi, semgrep, format-check, lint | Pre-push static group member |
 | `make agent-check-push` | test-coverage, safety, fuzz, arch-check, coupling-check, test-property-push | NOT wired into lefthook or make ci |
 
@@ -3990,15 +4207,17 @@ Key topology facts:
   workflow CI omits Sonar and splits the pipeline into isolated jobs.
 - **Workflow CI adds** gitleaks full-history, OpenCode plugin/config checks,
   analyser-contract validation/tests, blocking semgrep, 3.13/3.14 compatibility,
-  macOS, push-only Safety, pip-audit, PR diff-coverage, PR mutation-diff.
+  macOS, Windows packaging smoke, push-only Safety, pip-audit, PR diff-coverage,
+  PR mutation-diff.
 - **Architecture, coupling, ratchets, deptry, import-linter, and
   dynamic-imports run pre-push/on-demand only — NOT as separate CI jobs.**
 - **`make test` is the documented safe ordinary test command.** Marker
   exclusions live in the Make recipes (`not property and not
-  hermetic_integration and not real_api and not manual and not real_user_config
-  and not fuzz`), not in `pyproject.toml` `addopts`.
-- `make ci` and workflow CI are related but NOT equivalent; never claim
-  otherwise.
+  hermetic_integration and not integration and not real_api and not manual and
+  not real_user_config and not fuzz`) plus the literal `MUTATION_PROPERTY_FILES`
+  `--ignore` manifest, not in `pyproject.toml` `addopts`.
+- `make ci`, `make ci-quality`, `make ci-conventional`, and workflow CI are
+  related but NOT equivalent; never claim otherwise.
 
 ---
 
@@ -4006,13 +4225,17 @@ Key topology facts:
 
 ### Ordinary and coverage lanes
 
-- **`make test`** — the safe default: `-x -n auto`, marker exclusions above,
-  no coverage.
+- **`make test`** — the safe default: `-x -n auto`, marker exclusions plus the
+  literal `MUTATION_PROPERTY_FILES` manifest, no coverage.
 - **`make test-coverage`** — ordinary suite plus global `fail_under` (85) and
-  per-module enforcement; branch coverage on.
+  per-module enforcement (`module-coverage`); branch coverage on.
 - **`make test-coverage-report`** — produces `coverage.json`/`coverage.xml`
   without per-module enforcement (used by the PR diff-coverage job).
-- **`make diff-coverage`** — 90% floor on changed lines (PR only in CI).
+- **`make diff-coverage`** — 90% floor on changed lines (PR only in CI);
+  **diff-cover is the sole changed-line authority**.
+- **`make test-integration`** — the hermetic lane (`-m hermetic_integration`),
+  also run by the `hermetic-integration` CI job under the default-on network
+  guard.
 
 ### Marker taxonomy
 
@@ -4022,7 +4245,7 @@ Registered in `pyproject.toml` `[tool.pytest.ini_options] markers` with
 | Marker | Meaning | Excluded from `make test` |
 |---|---|---|
 | `hermetic_integration` | Loopback-only integration (no real network) | yes |
-| `integration` | Protocol/auth or real-service integration paths (may use network) | no |
+| `integration` | Protocol/auth or real-service integration paths (may use network) | yes |
 | `security` | Security tests | no |
 | `slow` | Slow-running | no |
 | `real_api` | Calls the real Perplexity API | yes |
@@ -4033,7 +4256,10 @@ Registered in `pyproject.toml` `[tool.pytest.ini_options] markers` with
 
 The registered `integration` marker covers protocol/auth or real-service
 integration paths (may use network); loopback-only hermetic tests use
-`hermetic_integration`.
+`hermetic_integration`. Both the ordinary (`make test`) and coverage
+(`make test-coverage-report`) selectors exclude `integration`. The property
+and mutation families are additionally excluded by exact path via
+`MUTATION_PROPERTY_FILES` (`--ignore`), per plan decision A003.
 
 ### Hypothesis profiles (`tests/conftest.py`)
 
@@ -4080,8 +4306,11 @@ Per-test `@settings` may override.
 - **Per-module floor:** 85 via `scripts/check_module_coverage.py`
   (`MIN_COVERAGE`), including full report integrity validation (all executable
   modules present, branch data present, no duplicate/outside-root entries).
+  Owned by `make test-coverage`; never consumed by `make check`.
 - **Branch coverage:** enabled (`[tool.coverage.run] branch = true`).
 - **Diff coverage:** 90 on changed lines (`DIFF_COVERAGE_THRESHOLD`), PR only.
+  **diff-cover is the sole changed-line authority** — exactly one
+  diff-coverage consumer exists.
 
 ---
 
@@ -4091,8 +4320,8 @@ Per-test `@settings` may override.
 
 | Evidence | Producer | Consumer(s) | Retention / tracked |
 |---|---|---|---|
-| `coverage.json` | `make test-coverage-report` | `module-coverage` (`make check`, `make test-coverage`) | ignored |
-| `coverage.xml` | `make test-coverage-report` | `make diff-coverage` (PR job) | ignored |
+| `coverage.json` | `make test-coverage-report` | `module-coverage` (`make test-coverage` only — not `make check`) | ignored |
+| `coverage.xml` | `make test-coverage-report` | `make diff-coverage` (PR job; sole changed-line authority) | ignored |
 | `build/reports/bandit-report.json` | `make sonar-reports` | SonarQube import (external) | ignored |
 | `build/reports/semgrep-advisory.{json,sarif}` | `make semgrep-advisory-report` | scheduled workflow artefact + code scanning | ignored; 30-day workflow artefact |
 | `build/reports/mutation-report.json` | `make mutate-full-policy` (`scripts/mutation_policy.py`) | scheduled workflow summary/upload; live schema `quality/schemas/mutation-report.json` | ignored; 30-day workflow artefact |
@@ -4146,7 +4375,6 @@ Additional repository-root baselines: `.architecture-baseline.json`
 |---|---|
 | `quality/schemas/mutation-report.json` | THE live mutation report schema (produced by `scripts/mutation_policy.py`) |
 | `quality/schemas/coupling-report-v1.json` | Coupling report shape (advisory evidence) |
-| `quality/schemas/diff-coverage-v1.json` | Diff-coverage report shape |
 | `quality/schemas/differential-context-v1.json` | Differential context shape (`scripts/differential_context.py`) |
 
 Command-result schemas derive from Pydantic models via `model_json_schema()`;
@@ -4242,8 +4470,11 @@ Edit `.github/workflows/*.yml`, then:
 | `make configure-opencode` | npm ci + plugin/config validation |
 | `make test` | Safe ordinary tests |
 | `make test-coverage` | Tests + global/per-module coverage |
-| `make check` | All enabled `CHECK_*` gates + `module-coverage` |
+| `make test-integration` | Hermetic loopback integration lane |
+| `make check` | All enabled `CHECK_*` gates (static only) |
 | `make ci` | Local credential-free CI aggregate |
+| `make ci-quality` | Deterministic offline quality-gate inventory |
+| `make ci-conventional` | Serial offline final gate list |
 | `make ci-trusted` | `make ci` + fail-closed Safety |
 | `make ratchets` | Six ratchet/hard-gate members |
 | `make semgrep` | Blocking immutable Semgrep |
@@ -4251,9 +4482,12 @@ Edit `.github/workflows/*.yml`, then:
 | `make safety-gate` | Fail-closed authenticated Safety (push CI/release) |
 | `make pip-audit` | Credential-free vulnerability audit |
 | `make mutate-full-policy` | Full mutation + canonical policy |
+| `make package-contract` | Build + verify + test + smoke the distribution contract |
 | `make release V=x.y.z` | Versioned release (mutates git, pushes) |
 | `make actionlint` | Validate workflows |
 | `make analyser-contract-tests` | Validate + test analyser contracts |
+| `make make-policy` | Validate Make target ownership/dependencies |
+| `make workflow-policy` | Validate workflow policy (strict) |
 
 ### 13.3 Glossary
 

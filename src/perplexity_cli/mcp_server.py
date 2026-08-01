@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 from typing import TYPE_CHECKING, Annotated, Literal, cast
 
@@ -275,7 +276,7 @@ async def _perplexity_quick_info(
     if ctx is not None:
         await ctx.info("Running quick Perplexity lookup")
         await ctx.report_progress(progress=0.2, total=1.0, message="Starting quick lookup")
-    result = run_mcp_query(query, "quick", output_format)
+    result = await asyncio.to_thread(run_mcp_query, query, "quick", output_format)
     if ctx is not None:
         await ctx.report_progress(progress=1.0, total=1.0, message="Quick lookup complete")
     return result
@@ -290,7 +291,7 @@ async def _perplexity_deep_info(
     if ctx is not None:
         await ctx.info("Running deep Perplexity research")
         await ctx.report_progress(progress=0.1, total=1.0, message="Starting deep research")
-    result = run_mcp_query(query, "deep", output_format)
+    result = await asyncio.to_thread(run_mcp_query, query, "deep", output_format)
     if ctx is not None:
         await ctx.report_progress(progress=1.0, total=1.0, message="Deep research complete")
     return result

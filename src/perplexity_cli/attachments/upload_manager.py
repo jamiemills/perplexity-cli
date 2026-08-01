@@ -6,7 +6,7 @@ import asyncio
 import base64
 import logging
 import uuid
-from collections.abc import Coroutine, Mapping
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Final, Protocol, TypedDict, TypeGuard
 
 import httpx
@@ -65,6 +65,7 @@ if TYPE_CHECKING:
 
 logger: logging.Logger = get_logger()
 _S3_UPLOAD_SUCCESS_STATUS: Final = 204
+MAX_CONCURRENT_UPLOADS: Final = 4
 
 
 class UploadMetadataEntry(TypedDict):
@@ -182,42 +183,144 @@ def _extract_error_response_text(response: httpx.Response) -> str:
         return ""
 
 
-def _normalise_upload_fields(upload_data: Mapping[str, object]) -> dict[str, object]:
-    """Extract and normalise the fields dictionary from upload data.
+def _require_upload_fields(upload_data: Mapping[str, object]) -> dict[str, object]:
+    """Require a non-empty mapping of presigned signing fields.
 
     Args:
         upload_data: Presigned URL data from the API.
 
     Returns:
-        A dictionary of upload fields, or an empty dict if invalid.
+        The validated fields mapping.
+
+    Raises:
+        UpstreamSchemaError: If ``fields`` is absent, empty, null, or not a mapping.
     """
     raw_fields = upload_data.get("fields")
-    if not raw_fields:
-        return {}
-
-    if not _is_object_mapping(raw_fields):
-        logger.warning(
-            "Unexpected fields type from API: %s. Full upload_data: %s",
-            type(raw_fields).__name__,
-            redact_response_text(str(upload_data)),
-        )
-        return {}
+    if not _is_object_mapping(raw_fields) or not raw_fields:
+        msg = "Malformed upload fields payload: missing, empty, or invalid 'fields'"
+        raise UpstreamSchemaError(msg)
     return require_mapping(raw_fields, "Malformed upload fields payload")
 
 
 def _validate_s3_object_url(upload_data: Mapping[str, object]) -> None:
-    """Validate the s3_object_url field in upload data.
+    """Require a non-empty string ``s3_object_url`` on upload data.
 
     Args:
         upload_data: Presigned URL data from the API.
 
     Raises:
-        UpstreamSchemaError: If the S3 object URL is present but not a string.
+        UpstreamSchemaError: If the S3 object URL is absent, empty, or not a string.
     """
-    s3_object_url = upload_data.get("s3_object_url", "")
-    if s3_object_url and not isinstance(s3_object_url, str):
+    s3_object_url = upload_data.get("s3_object_url")
+    if not isinstance(s3_object_url, str) or not s3_object_url.strip():
         msg = "Malformed S3 object URL in upload response"
         raise UpstreamSchemaError(msg)
+
+
+def _has_usable_fields(upload_data: Mapping[str, object]) -> bool:
+    """Return True when the entry carries a non-empty signing fields mapping.
+
+    Args:
+        upload_data: The upload data entry from the API response.
+
+    Returns:
+        True if ``fields`` is a non-empty mapping.
+    """
+    fields = upload_data.get("fields")
+    return _is_object_mapping(fields) and bool(fields)
+
+
+def _has_usable_object_url(upload_data: Mapping[str, object]) -> bool:
+    """Return True when the entry carries a non-empty string object URL.
+
+    Args:
+        upload_data: The upload data entry from the API response.
+
+    Returns:
+        True if ``s3_object_url`` is a non-empty string.
+    """
+    s3_object_url = upload_data.get("s3_object_url")
+    return isinstance(s3_object_url, str) and bool(s3_object_url.strip())
+
+
+def _is_valid_presigned_entry(upload_data: Mapping[str, object]) -> bool:
+    """Return True when an upload entry carries usable presigned data.
+
+    Args:
+        upload_data: The upload data entry from the API response.
+
+    Returns:
+        True when the entry is neither rate limited nor errored and carries a
+        non-empty ``fields`` mapping plus a non-empty string ``s3_object_url``.
+    """
+    if upload_data.get("rate_limited"):
+        return False
+    if upload_data.get("error"):
+        return False
+    return _has_usable_fields(upload_data) and _has_usable_object_url(upload_data)
+
+
+def _reject_upload_entry(upload_data: Mapping[str, object]) -> None:
+    """Raise the typed upload error for an invalid presigned entry.
+
+    Args:
+        upload_data: The invalid upload data entry from the API.
+
+    Raises:
+        AttachmentUploadError: Always, with a diagnostic message.
+    """
+    error_msg = _diagnose_upload_entry_error(upload_data)
+    logger.error(error_msg)
+    raise AttachmentUploadError(error_msg)
+
+
+def _format_bijection_details(missing: list[str], extra: list[str]) -> str:
+    """Render missing/extra UUID lists for a bijection failure message.
+
+    Args:
+        missing: Requested UUIDs absent from the results.
+        extra: Result UUIDs that were not requested.
+
+    Returns:
+        A human-readable detail string.
+    """
+    parts: list[str] = []
+    if missing:
+        parts.append(f"missing={missing}")
+    if extra:
+        parts.append(f"extra={extra}")
+    return ", ".join(parts)
+
+
+def _validate_upload_uuid_bijection(requested_uuids: set[str], returned_uuids: set[str]) -> None:
+    """Require the returned upload results to exactly match the requested set.
+
+    Args:
+        requested_uuids: UUIDs the uploader asked the API to sign.
+        returned_uuids: UUIDs present in the API's results payload.
+
+    Raises:
+        UpstreamSchemaError: If the result set is not an exact bijection.
+    """
+    missing = sorted(requested_uuids - returned_uuids)
+    extra = sorted(returned_uuids - requested_uuids)
+    if not missing and not extra:
+        return
+    details = _format_bijection_details(missing, extra)
+    msg = f"Upload result set does not match requested files: {details}"
+    raise UpstreamSchemaError(msg)
+
+
+async def _cancel_and_drain(tasks: list[asyncio.Task[Any]]) -> None:
+    """Cancel unfinished tasks and drain them to completion.
+
+    Args:
+        tasks: The sibling upload tasks to cancel and await.
+    """
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 class AttachmentUploader:
@@ -266,7 +369,7 @@ class AttachmentUploader:
 
         This method orchestrates the complete upload process:
         1. Requests presigned URLs from the API
-        2. Uploads each file to S3 in parallel
+        2. Uploads each file to S3 with bounded concurrency
         3. Returns the final S3 URLs ready for query submission
 
         Args:
@@ -276,16 +379,14 @@ class AttachmentUploader:
             List of S3 URLs in the same order as input attachments.
 
         Raises:
-            PerplexityHTTPStatusError: If presigned URL request fails.
-            RuntimeError: If S3 upload fails.
+            PerplexityHTTPStatusError: If the presigned URL request fails.
+            AttachmentUploadError: If an upload fails.
+            UpstreamSchemaError: If the presigned response is malformed.
         """
         if not attachments:
             return []
 
         logger.info("Requesting presigned URLs for %s file(s)", len(attachments))
-
-        # Step 1: Request presigned upload URLs from API
-        # Use a single session for both the presigned URL request and S3 uploads
         upload_timeout: int = DEFAULT_UPLOAD_TIMEOUT
 
         session_manager: AsyncSession[CurlResponse] = self._create_async_session(
@@ -296,24 +397,57 @@ class AttachmentUploader:
                 attachments, session
             )
 
-            # Step 2: Upload files to S3 in parallel
             results = _extract_upload_results(upload_urls_response)
-            tasks: list[Coroutine[object, object, str]] = []
-            for file_uuid, attachment in uuid_to_attachment.items():
-                upload_data = results.get(file_uuid)
-                validated_upload_data = _require_upload_mapping(
-                    upload_data,
-                    "Malformed upload result entry from upstream API",
-                    detail=f"file_uuid={file_uuid}",
-                )
-                task = self._upload_to_s3(attachment, validated_upload_data)
-                tasks.append(task)
+            _validate_upload_uuid_bijection(set(uuid_to_attachment), set(results))
+            ordered_entries = [
+                (attachment, results[file_uuid])
+                for file_uuid, attachment in uuid_to_attachment.items()
+            ]
 
-            # Execute all uploads in parallel
-            s3_urls = list(await asyncio.gather(*tasks))
+            s3_urls = await self._upload_batch(ordered_entries)
 
         logger.info("Successfully uploaded %s file(s)", len(s3_urls))
         return s3_urls
+
+    async def _upload_batch(
+        self,
+        ordered_entries: list[tuple[FileAttachment, dict[str, object]]],
+    ) -> list[str]:
+        """Upload all entries with bounded concurrency and a shared client.
+
+        A single HTTP client serves the whole batch and at most
+        ``MAX_CONCURRENT_UPLOADS`` uploads run at once.  Results are returned
+        in input order.  On the first failure (or caller cancellation) the
+        unfinished sibling uploads are cancelled and drained, so no partial
+        success list is ever returned.
+
+        Args:
+            ordered_entries: Input-order list of ``(attachment, upload_data)``
+                entries to upload.
+
+        Returns:
+            S3 URLs in the same order as ``ordered_entries``.
+
+        Raises:
+            AttachmentUploadError: If any upload fails.
+        """
+        client_factory = _get_httpx_async_client_factory()
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_UPLOADS)
+
+        async def upload_entry(
+            entry: tuple[FileAttachment, dict[str, object]],
+        ) -> str:
+            attachment, upload_data = entry
+            async with semaphore:
+                return await self._upload_to_s3(attachment, upload_data, client)
+
+        async with client_factory(timeout=DEFAULT_UPLOAD_TIMEOUT) as client:
+            tasks = [asyncio.create_task(upload_entry(entry)) for entry in ordered_entries]
+            try:
+                return list(await asyncio.gather(*tasks))
+            except BaseException:
+                await _cancel_and_drain(tasks)
+                raise
 
     async def _request_upload_urls(
         self, attachments: list[FileAttachment], session: AsyncSession[CurlResponse]
@@ -329,6 +463,8 @@ class AttachmentUploader:
 
         Raises:
             PerplexityHTTPStatusError: If API request fails.
+            AttachmentUploadError: If an upload entry is not usable.
+            UpstreamSchemaError: If the response payload is malformed.
         """
         files_metadata, uuid_to_attachment = self._build_upload_metadata(attachments)
         request_body: dict[str, UploadMetadata] = {"files": files_metadata}
@@ -410,41 +546,42 @@ class AttachmentUploader:
     def _validate_upload_response(response_json: Mapping[str, object]) -> None:
         """Validate that the upload URL response contains usable presigned URLs.
 
+        Fails closed on every entry: rate-limited or errored entries and
+        entries without a non-empty ``fields`` mapping or a non-empty string
+        ``s3_object_url`` raise ``AttachmentUploadError`` before any upload
+        starts.
+
         Args:
             response_json: Parsed API response.
 
         Raises:
-            AttachmentUploadError: If any upload entry is missing fields or rate limited.
+            AttachmentUploadError: If any upload entry is not usable.
             UpstreamSchemaError: If the results payload is malformed.
         """
         results = _extract_upload_results(response_json)
-        if not results:
-            return
         for upload_data in results.values():
-            if upload_data.get("fields") and upload_data.get("s3_object_url"):
-                continue
-            error_msg = _diagnose_upload_entry_error(upload_data)
-            logger.error(error_msg)
-            raise AttachmentUploadError(error_msg)
+            if not _is_valid_presigned_entry(upload_data):
+                _reject_upload_entry(upload_data)
 
     async def _upload_to_s3(
         self,
         attachment: FileAttachment,
         upload_data: dict[str, object],
-        _session: AsyncSession[CurlResponse] | None = None,
+        client: httpx.AsyncClient,
     ) -> str:
         """Upload file to S3 using presigned URL.
 
         Args:
             attachment: The FileAttachment to upload.
             upload_data: Presigned URL data from API (includes form fields).
-            _session: Unused compatibility parameter kept for older tests and callers.
+            client: The shared HTTP client for this upload batch.
 
         Returns:
             The final S3 URL for the uploaded file.
 
         Raises:
-            RuntimeError: If S3 upload fails.
+            UpstreamSchemaError: If the presigned data is malformed.
+            AttachmentUploadError: If S3 upload fails.
         """
         logger.info("Uploading file: %s", redact_path(attachment.filename))
 
@@ -455,7 +592,7 @@ class AttachmentUploader:
             logger.debug("S3 upload form fields: %s", list(form_data.keys()))
             logger.debug("File size: %s bytes", len(file_content))
 
-        response = await self._execute_s3_upload(form_data, attachment, file_content)
+        response = await self._execute_s3_upload(client, form_data, attachment, file_content)
         return self._handle_s3_response(response, upload_data, attachment)
 
     @staticmethod
@@ -469,14 +606,15 @@ class AttachmentUploader:
             Dictionary of form fields for the multipart upload.
 
         Raises:
-            UpstreamSchemaError: If the S3 object URL is malformed.
+            UpstreamSchemaError: If the presigned fields or object URL are malformed.
         """
-        fields = _normalise_upload_fields(upload_data)
+        fields = _require_upload_fields(upload_data)
         _validate_s3_object_url(upload_data)
         return {key: str(value) for key, value in fields.items() if key != "file"}
 
     @staticmethod
     async def _execute_s3_upload(
+        client: httpx.AsyncClient,
         form_data: dict[str, str],
         attachment: FileAttachment,
         file_content: bytes,
@@ -484,6 +622,7 @@ class AttachmentUploader:
         """Execute the multipart upload to S3.
 
         Args:
+            client: The shared HTTP client for this upload batch.
             form_data: Form fields for the presigned upload.
             attachment: The FileAttachment being uploaded.
             file_content: Decoded file content bytes.
@@ -500,11 +639,8 @@ class AttachmentUploader:
         files_dict["file"] = (attachment.filename, file_content, attachment.content_type)
 
         try:
-            upload_timeout: int = DEFAULT_UPLOAD_TIMEOUT
             s3_bucket_url: str = get_s3_bucket_url()
-            async_client_factory = _get_httpx_async_client_factory()
-            async with async_client_factory(timeout=upload_timeout) as client:
-                return await client.post(s3_bucket_url, files=files_dict)
+            return await client.post(s3_bucket_url, files=files_dict)
         except Exception as e:
             logger.exception("S3 upload error: %s", e)
             msg = f"Failed to upload {attachment.filename} to S3: {e}"

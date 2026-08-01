@@ -2,17 +2,21 @@
 
 This module contains the logic for streaming query responses from the
 Perplexity API in real-time, extracted from cli.py for independent testability.
+
+The module lives in the application layer and therefore imports only from
+domain, ports, and shared_pure modules. Presentation output is routed through
+injected formatter objects (see ``_StreamRenderContext``) plus the stdlib
+streams, and error translation is kept local until the wave-2 wiring
+(``query_runner``) provides the adapter implementation.
 """
 
 from __future__ import annotations
 
+import logging
 import sys
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
-
-import click
-from click import ClickException
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from perplexity_cli.api.models import (
     Answer,
@@ -22,7 +26,6 @@ from perplexity_cli.api.models import (
     WebResult,
 )
 from perplexity_cli.envelope import Meta
-from perplexity_cli.formatting.context import RenderContext
 from perplexity_cli.ndjson import NDJSONWriter
 from perplexity_cli.ports import QueryGateway
 from perplexity_cli.utils.exceptions import (
@@ -30,19 +33,71 @@ from perplexity_cli.utils.exceptions import (
     PerplexityRequestError,
     UpstreamSchemaError,
 )
-from perplexity_cli.utils.http_errors import (
-    handle_http_error,
-    handle_network_error,
-    handle_unexpected_cli_error,
-)
-from perplexity_cli.utils.logging import get_logger
 from perplexity_cli.utils.version import get_version
 
 if TYPE_CHECKING:
-    import logging
-
     #: Type for error handler callbacks in the dispatch table.
     _ErrorHandler = Callable[[Any, logging.Logger], Any]
+
+
+class _StreamOutputOptions(Protocol):
+    """Structural subset of ``formatting.context.OutputOptions`` used here."""
+
+    json_mode: bool
+    strip_references: bool
+    output_format: str
+
+
+class _StreamFormatter(Protocol):
+    """Structural subset of the formatter interface used for streaming."""
+
+    def render_complete(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: structural protocol mirrors the formatter interface signature
+        self, answer: Answer, strip_references: bool = False
+    ) -> None:
+        """Render a complete answer directly (rich path)."""
+        ...
+
+    def format_references(self, references: list[WebResult]) -> str:
+        """Format the references list into a string."""
+        ...
+
+
+class _StreamRenderContext(Protocol):
+    """Structural subset of ``formatting.context.RenderContext`` used here."""
+
+    @property
+    def formatter(self) -> _StreamFormatter: ...
+
+    @property
+    def options(self) -> _StreamOutputOptions: ...
+
+
+_HTTP_ERROR_MESSAGES: Final[dict[int, str]] = {
+    401: "[ERROR] Authentication failed. Token may be expired.",
+    403: "[ERROR] Access forbidden. Check your permissions.",
+    429: "[ERROR] Rate limit exceeded. Please wait and try again.",
+}
+
+_HTTP_ERROR_EXTRAS: Final[dict[int, str]] = {
+    401: "\nRe-authenticate with: perplexity-cli auth",
+}
+
+
+def _get_stream_logger() -> logging.Logger:
+    """Return the stdlib logger used by the streaming module."""
+    return logging.getLogger("perplexity_cli.query_streaming")
+
+
+def _write_stdout(text: str) -> None:
+    """Write *text* to stdout and flush, mirroring ``click.echo(nl=False)``."""
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
+
+def _write_stderr(text: str) -> None:
+    """Write *text* to stderr and flush, mirroring ``click.echo(err=True)``."""
+    sys.stderr.write(text)
+    sys.stderr.flush()
 
 
 def _process_stream_message(
@@ -52,6 +107,13 @@ def _process_stream_message(
 ) -> str:
     """Handle a single SSE message, emitting output and returning updated text.
 
+    Snapshot contract:
+    - an empty snapshot emits nothing;
+    - a snapshot identical to the accumulated text emits nothing;
+    - a strict prefix extension emits exactly the new suffix;
+    - a shortened or divergent (non-prefix) snapshot raises
+      ``UpstreamSchemaError`` before any output is emitted.
+
     Args:
         message: The SSE message to process.
         accumulated_text: Text accumulated so far.
@@ -59,19 +121,27 @@ def _process_stream_message(
 
     Returns:
         The updated accumulated text.
+
+    Raises:
+        UpstreamSchemaError: If the snapshot is not a strict prefix extension.
     """
     text = message.extract_answer_text()
     if not text or text == accumulated_text:
         return accumulated_text
 
-    new_text = text[len(accumulated_text) :]
-    if not new_text:
-        return accumulated_text
+    if not text.startswith(accumulated_text):
+        msg = (
+            "Streaming snapshot is not a strict prefix extension of the "
+            f"accumulated text (accumulated {len(accumulated_text)} characters, "
+            f"received {len(text)})"
+        )
+        raise UpstreamSchemaError(msg)
 
+    new_text = text[len(accumulated_text) :]
     if ndjson_writer:
         ndjson_writer.chunk(new_text)
     else:
-        click.echo(new_text, nl=False)
+        _write_stdout(new_text)
     return text
 
 
@@ -108,7 +178,7 @@ def _write_ndjson_result(
 
 
 def _render_stream_references(
-    render: RenderContext,
+    render: _StreamRenderContext,
     accumulated_text: str,
     references: list[WebResult],
 ) -> None:
@@ -119,11 +189,11 @@ def _render_stream_references(
         accumulated_text: The complete answer text.
         references: List of web references.
     """
-    click.echo()
+    _write_stdout("\n")
     if not references or render.options.strip_references:
         return
 
-    click.echo()
+    _write_stdout("\n")
     if render.options.output_format == "rich":
         render.formatter.render_complete(
             Answer(text=accumulated_text, references=references),
@@ -132,7 +202,7 @@ def _render_stream_references(
     else:
         formatted_refs = render.formatter.format_references(references)
         if formatted_refs:
-            click.echo(formatted_refs)
+            _write_stdout(formatted_refs + "\n")
 
 
 def _run_stream_loop(
@@ -150,7 +220,7 @@ def _run_stream_loop(
     Returns:
         Tuple of (accumulated_text, references).
     """
-    logger = get_logger()
+    logger = _get_stream_logger()
     accumulated_text = ""
     references: list[WebResult] = []
 
@@ -169,55 +239,70 @@ def _run_stream_loop(
     return accumulated_text, references
 
 
+def _handle_stream_http_status_error(
+    error: PerplexityHTTPStatusError, logger: logging.Logger
+) -> None:
+    """Handle an HTTP status error during streaming, exiting with code 1."""
+    status = error.response.status_code
+    logger.error("HTTP error %s during streaming: %s", status, error)
+    _write_stdout("\n")
+    message = _HTTP_ERROR_MESSAGES.get(status, f"[ERROR] HTTP error {status}.")
+    _write_stderr(message + "\n")
+    if status in _HTTP_ERROR_EXTRAS:
+        _write_stderr(_HTTP_ERROR_EXTRAS[status] + "\n")
+    raise SystemExit(1)
+
+
+def _handle_stream_network_error(error: PerplexityRequestError, logger: logging.Logger) -> None:
+    """Handle a network error during streaming, exiting with code 1."""
+    logger.error("Network error during streaming: %s", error)
+    _write_stdout("\n")
+    _write_stderr("[ERROR] Network error. Please check your internet connection.\n")
+    raise SystemExit(1)
+
+
 def _handle_stream_upstream_schema_error(error: Any, logger: logging.Logger) -> None:
+    """Handle a malformed upstream snapshot, exiting with code 1."""
     logger.error("Malformed upstream response during streaming: %s", error)
-    click.echo()
-    click.echo(f"[ERROR] Upstream response format changed: {error}", err=True)
+    _write_stdout("\n")
+    _write_stderr(f"[ERROR] Upstream response format changed: {error}\n")
     raise SystemExit(1)
 
 
 def _handle_stream_keyboard_interrupt(logger: logging.Logger) -> None:
+    """Handle a user interrupt during streaming, exiting with code 130."""
     logger.info("Streaming interrupted by user")
-    click.echo("\n[ERROR] Streaming interrupted.", err=True)
+    _write_stderr("\n[ERROR] Streaming interrupted.\n")
     raise SystemExit(130)
 
 
 def _handle_stream_output_error(error: Any, logger: logging.Logger) -> None:
+    """Handle a local output failure during streaming, exiting with code 1."""
     logger.error("Streaming output failed: %s", error)
-    click.echo()
-    click.echo(f"[ERROR] Failed to render streaming output: {error}", err=True)
+    _write_stdout("\n")
+    _write_stderr(f"[ERROR] Failed to render streaming output: {error}\n")
+    raise SystemExit(1)
+
+
+def _handle_stream_unexpected_error(error: Exception, logger: logging.Logger) -> None:
+    """Handle an unexpected streaming error, exiting with code 1."""
+    logger.error("Unexpected error during streaming: %s", error)
+    _write_stderr("[ERROR] An unexpected error occurred.\n")
+    _write_stderr("Run with --debug for more information.\n")
     raise SystemExit(1)
 
 
 def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorHandler]]:
     """Build the error handler dispatch table (lazily initialised)."""
     return [
-        (
-            PerplexityHTTPStatusError,
-            lambda e, log: (
-                click.echo(),
-                handle_http_error(e, log, debug_mode="normal", context="during streaming"),
-            ),
-        ),
-        (
-            PerplexityRequestError,
-            lambda e, log: (
-                click.echo(),
-                handle_network_error(e, log, debug_mode="normal", context="during streaming"),
-            ),
-        ),
-        (
-            UpstreamSchemaError,
-            _handle_stream_upstream_schema_error,
-        ),
+        (PerplexityHTTPStatusError, _handle_stream_http_status_error),
+        (PerplexityRequestError, _handle_stream_network_error),
+        (UpstreamSchemaError, _handle_stream_upstream_schema_error),
         (
             KeyboardInterrupt,
-            lambda _e, log: _handle_stream_keyboard_interrupt(log),
+            lambda _error, log: _handle_stream_keyboard_interrupt(log),
         ),
-        (
-            (ClickException, OSError),
-            _handle_stream_output_error,
-        ),
+        (OSError, _handle_stream_output_error),
     ]
 
 
@@ -240,27 +325,19 @@ def _handle_stream_error(error: Exception) -> None:
     Args:
         error: The exception that was raised.
     """
-    logger = get_logger()
+    logger = _get_stream_logger()
     for exc_types, handler in _StreamErrorHandlers.get():
         if isinstance(error, exc_types):
             handler(error, logger)
             return
 
-    handle_unexpected_cli_error(
-        error,
-        logger,
-        message_tuple=(
-            "[ERROR] An unexpected error occurred.",
-            "Unexpected error during streaming",
-            True,
-        ),
-    )
+    _handle_stream_unexpected_error(error, logger)
 
 
 def stream_query_response(
     api: QueryGateway,
     query_input: QueryInput,
-    render: RenderContext,
+    render: _StreamRenderContext,
     trace: TraceContext,
 ) -> None:
     """Stream query response in real-time.

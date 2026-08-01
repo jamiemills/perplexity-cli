@@ -21,6 +21,23 @@ ZERO = "0" * 40
 SENTINEL_URL = "https://user:url-secret@example.invalid/repo.git"
 
 
+def _require_gitleaks() -> None:
+    """Require the gitleaks binary; fail in CI contexts, skip locally.
+
+    These tests exercise the real scanner, so in a CI context an absent
+    binary is a hard failure rather than a silent skip (authoritative run).
+    Locally, skipping is a non-authoritative convenience.
+    """
+    if shutil.which("gitleaks") is not None:
+        return
+    if os.environ.get("CI"):
+        pytest.fail(
+            "gitleaks binary is required for the authoritative gitleaks "
+            "run in CI (install gitleaks 8.30.1)"
+        )
+    pytest.skip("gitleaks binary not installed")
+
+
 def _git(repo: Path, *args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=repo, text=True).strip()
 
@@ -578,8 +595,8 @@ def test_scanner_exit_classification(tmp_path: Path, scanner_exit: str, expected
     assert result.returncode == expected
 
 
-@pytest.mark.skipif(shutil.which("gitleaks") is None, reason="gitleaks not installed")
 def test_real_binary_clean_and_finding_fixtures(tmp_path: Path) -> None:
+    _require_gitleaks()
     clean = _setup_repo(tmp_path / "clean")
     finding = _setup_repo(tmp_path / "finding", "secret-repo-setup.sh")
     clean_result = _run(clean, ["ci-full"])
@@ -588,8 +605,8 @@ def test_real_binary_clean_and_finding_fixtures(tmp_path: Path) -> None:
     assert finding_result.returncode == 10
 
 
-@pytest.mark.skipif(shutil.which("gitleaks") is None, reason="gitleaks not installed")
 def test_real_binary_honours_exact_gitleaksignore_fingerprint(tmp_path: Path) -> None:
+    _require_gitleaks()
     repo = _setup_repo(tmp_path, "secret-repo-setup.sh")
     remote_oid = _git(repo, "rev-parse", "HEAD~1")
     local_oid = _git(repo, "rev-parse", "HEAD")
@@ -602,8 +619,8 @@ def test_real_binary_honours_exact_gitleaksignore_fingerprint(tmp_path: Path) ->
     assert ignored.returncode == 0
 
 
-@pytest.mark.skipif(shutil.which("gitleaks") is None, reason="gitleaks not installed")
 def test_real_binary_scans_merge_resolution_against_first_parent(tmp_path: Path) -> None:
+    _require_gitleaks()
     repo = _setup_repo(tmp_path)
     _git_run(repo, "checkout", "-b", "side")
     (repo / "resolution.txt").write_text("side value\n")
@@ -622,7 +639,8 @@ def test_real_binary_scans_merge_resolution_against_first_parent(tmp_path: Path)
         text=True,
     )
     assert merge.returncode != 0
-    (repo / "resolution.txt").write_text('API_SECRET = "c4a82c662a22c001b83142d1265c7fb8360b3aa"\n')
+    api_secret = "c4a82c66" + "2a22c001b83142d1265c7fb8360b3aa"
+    (repo / "resolution.txt").write_text(f'API_SECRET = "{api_secret}"\n')
     _git_run(repo, "add", "resolution.txt")
     _git_run(repo, "commit", "--no-edit")
     merge_oid = _git(repo, "rev-parse", "HEAD")

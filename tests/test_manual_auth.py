@@ -1,10 +1,12 @@
 """Manual and semi-automated tests for authentication flow.
 
-The interactive test (test_2_4_1) requires Chrome with remote debugging.
-Run interactive tests with: pytest -m manual -s
+Only the interactive login test (test_2_4_1) requires Chrome with remote
+debugging and is marked ``manual``/``slow``.  Run it with:
+pytest -m manual -s
 
 The remaining tests (2.4.2-2.4.4) exercise token persistence, logout, and
-error scenarios using the test suite's isolated config directory.
+error scenarios using the test suite's isolated config directory and run
+in the ordinary lane.
 
 Prerequisites for test_2_4_1:
 1. Chrome must be running with remote debugging enabled:
@@ -22,8 +24,6 @@ from perplexity_cli.auth.oauth_handler import authenticate_sync
 from perplexity_cli.auth.token_manager import TokenManager
 from perplexity_cli.utils.config import get_perplexity_base_url
 
-pytestmark = [pytest.mark.manual, pytest.mark.slow]
-
 
 def print_section(title: str) -> None:
     """Print a formatted section header."""
@@ -32,6 +32,8 @@ def print_section(title: str) -> None:
     print(f"{'=' * 60}\n")
 
 
+@pytest.mark.manual
+@pytest.mark.slow
 @pytest.mark.skipif(os.environ.get("CI") is not None, reason="Skipped in CI: requires real API")
 def test_2_4_1_actual_perplexity_login() -> None:
     """Test 2.4.1: Manual test with actual Perplexity login.

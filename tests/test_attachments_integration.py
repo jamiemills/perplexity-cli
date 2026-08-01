@@ -1,65 +1,124 @@
 """Integration tests for file attachment feature with CLI.
 
-Uses a shared mock fixture to avoid deeply nested ``patch()`` blocks.
-Tests exercise the ``query`` command through ``CliRunner`` with stubbed
-transport and authentication layers.
+The ``query`` command is exercised through ``CliRunner`` with typed
+outer-boundary fakes (``FakeAttachmentUploader``, ``FakePerplexityAPI``,
+``FakeTokenManager``, ``FakeStyleManager``) substituted at the command's
+dependency boundaries.  Tests assert the exact attachment order and body
+threaded into the query, plus stdout/stderr channel separation.
 """
 
 from __future__ import annotations
 
-from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
 
 from perplexity_cli.api.models import Answer
 from perplexity_cli.cli import query
+from tests.helpers.fake_uploader import FakeAttachmentUploader
 
-# ---------------------------------------------------------------------------
-# Shared fixture that sets up the common mock stack once per test
-# ---------------------------------------------------------------------------
+
+class FakeTokenManager:
+    """Typed fake for ``TokenManager`` at the CLI boundary."""
+
+    def __init__(self, token: tuple[str | None, dict[str, str] | None] = ("test-token", None)):
+        """Initialise with the ``load_token`` result to return."""
+        self.load_token_result = token
+        self.load_calls = 0
+
+    def load_token(self) -> tuple[str | None, dict[str, str] | None]:
+        """Return the configured token pair and record the call."""
+        self.load_calls += 1
+        return self.load_token_result
+
+
+class FakeStyleManager:
+    """Typed fake for ``StyleManager`` at the CLI boundary."""
+
+    def __init__(self, style: str | None = None) -> None:
+        """Initialise with the style prompt ``load_style`` should return."""
+        self.style = style
+        self.load_calls = 0
+
+    def load_style(self) -> str | None:
+        """Return the configured style and record the call."""
+        self.load_calls += 1
+        return self.style
+
+
+class FakePerplexityAPI:
+    """Typed fake for ``PerplexityAPI`` at the CLI boundary.
+
+    Records every ``get_complete_answer`` call so tests can assert the exact
+    attachment URL order that was threaded into the query request.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialise with a canned answer and no recorded calls."""
+        self.answer = Answer(text="Test answer", references=[])
+        self.uploaded_attachments: list[list[str] | None] = []
+
+    def __enter__(self) -> FakePerplexityAPI:
+        """Support the ``with`` usage in the query runner."""
+        return self
+
+    def __exit__(self, *exc_info: object) -> bool:
+        """Exit the context manager without suppressing exceptions."""
+        return False
+
+    def close(self) -> None:
+        """No-op close to satisfy the real client interface."""
+
+    def get_complete_answer(
+        self,
+        query: str,
+        search_implementation_mode: str = "standard",
+        *,
+        extra_params: tuple[list[str] | None, str | None, dict[str, object] | None] = (
+            None,
+            None,
+            None,
+        ),
+    ) -> Answer:
+        """Record the extra_params and return the canned answer."""
+        attachments, _model_preference, _request_params = extra_params
+        self.uploaded_attachments.append(attachments)
+        return self.answer
 
 
 @pytest.fixture
-def mock_query_app() -> Generator[tuple[Mock, Mock, Mock, Mock], None, None]:
-    """Provide stubs for StyleManager, TokenManager, AttachmentUploader, and
-    PerplexityAPI so every test starts with a clean, controlled environment.
+def query_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[FakePerplexityAPI, FakeAttachmentUploader, FakeTokenManager, FakeStyleManager]:
+    """Provide typed boundary fakes for every query dependency.
 
-    Returns ``(mock_api, mock_uploader, mock_tm, mock_sm)`` so callers can
-    configure call-args assertions without their own nested ``with patch``
-    blocks.
+    Returns ``(fake_api, fake_uploader, fake_tm, fake_sm)`` so callers can
+    configure results and assert call args without nested ``patch`` blocks.
     """
-    mock_api = _make_api_mock()
-    mock_uploader = Mock()
-    mock_uploader.upload_files = AsyncMock()
-    mock_tm = Mock()
-    mock_tm.load_token.return_value = ("test-token", None)
-    mock_sm = Mock()
-    mock_sm.load_style.return_value = None
+    fake_api = FakePerplexityAPI()
+    fake_uploader = FakeAttachmentUploader()
+    fake_tm = FakeTokenManager()
+    fake_sm = FakeStyleManager()
 
-    with (
-        patch("perplexity_cli.query_runner.StyleManager", return_value=mock_sm),
-        patch("perplexity_cli.query_runner.TokenManager", return_value=mock_tm),
-        patch("perplexity_cli.attachments.AttachmentUploader", return_value=mock_uploader),
-        patch("perplexity_cli.query_runner.PerplexityAPI", return_value=mock_api),
-    ):
-        yield mock_api, mock_uploader, mock_tm, mock_sm
-
-
-def _make_api_mock() -> Mock:
-    """Create a Mock for PerplexityAPI that supports context manager protocol."""
-    mock_api = Mock()
-    mock_api.__enter__ = Mock(return_value=mock_api)
-    mock_api.__exit__ = Mock(return_value=False)
-    mock_api.get_complete_answer.return_value = Answer(text="Test answer", references=[])
-    return mock_api
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+    monkeypatch.setattr(
+        "perplexity_cli.query_runner.StyleManager",
+        lambda *args, **kwargs: fake_sm,
+    )
+    monkeypatch.setattr(
+        "perplexity_cli.query_runner.TokenManager",
+        lambda *args, **kwargs: fake_tm,
+    )
+    monkeypatch.setattr(
+        "perplexity_cli.attachments.AttachmentUploader",
+        lambda *args, **kwargs: fake_uploader,
+    )
+    monkeypatch.setattr(
+        "perplexity_cli.query_runner.PerplexityAPI",
+        lambda *args, **kwargs: fake_api,
+    )
+    return fake_api, fake_uploader, fake_tm, fake_sm
 
 
 class TestAttachmentsIntegration:
@@ -67,20 +126,32 @@ class TestAttachmentsIntegration:
 
     @pytest.fixture
     def runner(self) -> CliRunner:
+        """Provide an isolated CLI runner."""
         return CliRunner()
+
+    @staticmethod
+    def _uploaded_filenames(uploader: FakeAttachmentUploader) -> list[str]:
+        """Return the attachment filenames recorded by the fake uploader."""
+        return [attachment.filename for attachment in uploader.received[0]]
 
     # -- Single attachment --------------------------------------------------
 
     def test_query_with_single_attachment(
-        self, runner: CliRunner, mock_query_app: tuple[Mock, Mock, Mock, Mock], tmp_path: Path
+        self,
+        runner: CliRunner,
+        query_app: tuple[
+            FakePerplexityAPI, FakeAttachmentUploader, FakeTokenManager, FakeStyleManager
+        ],
+        tmp_path: Path,
     ) -> None:
-        mock_api, mock_uploader, _mock_tm, _mock_sm = mock_query_app
+        """A single file attachment uploads and its URL reaches the query."""
+        fake_api, fake_uploader, _fake_tm, _fake_sm = query_app
 
         test_file = tmp_path / "test.txt"
         test_file.write_text("Test content", encoding="utf-8")
 
         s3_url = "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/test.txt"
-        mock_uploader.upload_files = AsyncMock(return_value=[s3_url])
+        fake_uploader.set_results([s3_url])
 
         result = runner.invoke(
             query,
@@ -91,19 +162,22 @@ class TestAttachmentsIntegration:
         assert result.exception is None
         assert "Test answer" in result.stdout
         assert "[ERROR]" not in result.stdout
-        call_args = mock_api.get_complete_answer.call_args
-        assert call_args is not None
-        assert call_args[0][0] == "What is this file?"
-        attachments = call_args[1]["extra_params"][0]
-        assert attachments == [s3_url]
-        mock_uploader.upload_files.assert_awaited_once()
+        assert fake_api.uploaded_attachments == [[s3_url]]
+        assert fake_uploader.upload_calls == 1
+        assert self._uploaded_filenames(fake_uploader) == ["test.txt"]
 
     # -- Multiple attachments -----------------------------------------------
 
     def test_query_with_multiple_attachments(
-        self, runner: CliRunner, mock_query_app: tuple[Mock, Mock, Mock, Mock], tmp_path: Path
+        self,
+        runner: CliRunner,
+        query_app: tuple[
+            FakePerplexityAPI, FakeAttachmentUploader, FakeTokenManager, FakeStyleManager
+        ],
+        tmp_path: Path,
     ) -> None:
-        mock_api, mock_uploader, _mock_tm, _mock_sm = mock_query_app
+        """Multiple files upload in order and their URLs reach the query."""
+        fake_api, fake_uploader, _fake_tm, _fake_sm = query_app
 
         file1 = tmp_path / "file1.txt"
         file2 = tmp_path / "file2.md"
@@ -114,7 +188,7 @@ class TestAttachmentsIntegration:
             "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file1.txt",
             "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file2.md",
         ]
-        mock_uploader.upload_files = AsyncMock(return_value=s3_urls)
+        fake_uploader.set_results(s3_urls)
 
         result = runner.invoke(
             query,
@@ -125,17 +199,22 @@ class TestAttachmentsIntegration:
         assert result.exception is None
         assert "Test answer" in result.stdout
         assert "[ERROR]" not in result.stdout
-        call_args = mock_api.get_complete_answer.call_args
-        attachments = call_args[1]["extra_params"][0]
-        assert attachments == s3_urls
-        mock_uploader.upload_files.assert_awaited_once()
+        assert fake_api.uploaded_attachments == [s3_urls]
+        assert fake_uploader.upload_calls == 1
+        assert self._uploaded_filenames(fake_uploader) == ["file1.txt", "file2.md"]
 
     # -- Repeated attach flags ----------------------------------------------
 
     def test_query_with_repeated_attach_flags(
-        self, runner: CliRunner, mock_query_app: tuple[Mock, Mock, Mock, Mock], tmp_path: Path
+        self,
+        runner: CliRunner,
+        query_app: tuple[
+            FakePerplexityAPI, FakeAttachmentUploader, FakeTokenManager, FakeStyleManager
+        ],
+        tmp_path: Path,
     ) -> None:
-        mock_api, mock_uploader, _mock_tm, _mock_sm = mock_query_app
+        """Repeated ``--attach`` flags accumulate files in order."""
+        fake_api, fake_uploader, _fake_tm, _fake_sm = query_app
 
         file1 = tmp_path / "file1.txt"
         file2 = tmp_path / "file2.txt"
@@ -146,7 +225,7 @@ class TestAttachmentsIntegration:
             "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file1.txt",
             "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file2.txt",
         ]
-        mock_uploader.upload_files = AsyncMock(return_value=s3_urls)
+        fake_uploader.set_results(s3_urls)
 
         result = runner.invoke(
             query,
@@ -164,28 +243,33 @@ class TestAttachmentsIntegration:
         assert result.exception is None
         assert "Test answer" in result.stdout
         assert "[ERROR]" not in result.stdout
-        attachments = mock_api.get_complete_answer.call_args[1]["extra_params"][0]
-        assert attachments == s3_urls
-        mock_uploader.upload_files.assert_awaited_once()
+        assert fake_api.uploaded_attachments == [s3_urls]
+        assert fake_uploader.upload_calls == 1
+        assert self._uploaded_filenames(fake_uploader) == ["file1.txt", "file2.txt"]
 
     # -- Nonexistent file ---------------------------------------------------
 
     def test_query_attachment_nonexistent_file_error(
-        self, runner: CliRunner, mock_query_app: tuple[Mock, Mock, Mock, Mock]
+        self,
+        runner: CliRunner,
+        query_app: tuple[
+            FakePerplexityAPI, FakeAttachmentUploader, FakeTokenManager, FakeStyleManager
+        ],
     ) -> None:
-        _mock_api, _mock_uploader, _mock_tm, _mock_sm = mock_query_app
+        """A nonexistent attachment fails cleanly to stderr, never stdout."""
+        _fake_api, _fake_uploader, _fake_tm, _fake_sm = query_app
 
         result = runner.invoke(
             query,
             ["--no-stream", "--attach", "/nonexistent/file.txt", "Test"],
         )
 
-        assert result.exit_code == 1
+        assert result.exit_code == 7
         assert isinstance(result.exception, SystemExit)
-        assert result.exception.code == 1
+        assert result.exception.code == 7
         # Exact attachment-failure contract goes to stderr, never stdout.
         assert (
-            "[ERROR] Failed to load attachments: "
+            "Error: Failed to load attachments: "
             "File or directory not found: /nonexistent/file.txt" in result.stderr
         )
         assert "[ERROR]" not in result.stdout
@@ -194,9 +278,15 @@ class TestAttachmentsIntegration:
     # -- Directory attachment -----------------------------------------------
 
     def test_query_with_directory_attachment(
-        self, runner: CliRunner, mock_query_app: tuple[Mock, Mock, Mock, Mock], tmp_path: Path
+        self,
+        runner: CliRunner,
+        query_app: tuple[
+            FakePerplexityAPI, FakeAttachmentUploader, FakeTokenManager, FakeStyleManager
+        ],
+        tmp_path: Path,
     ) -> None:
-        mock_api, mock_uploader, _mock_tm, _mock_sm = mock_query_app
+        """A directory attachment uploads every eligible file in order."""
+        fake_api, fake_uploader, _fake_tm, _fake_sm = query_app
 
         (tmp_path / "file1.txt").write_text("Content 1", encoding="utf-8")
         (tmp_path / "file2.txt").write_text("Content 2", encoding="utf-8")
@@ -207,7 +297,7 @@ class TestAttachmentsIntegration:
             f"https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/{name}"
             for name in ("file1.txt", "file2.txt", "file3.txt")
         ]
-        mock_uploader.upload_files = AsyncMock(return_value=s3_urls)
+        fake_uploader.set_results(s3_urls)
 
         result = runner.invoke(
             query,
@@ -218,16 +308,26 @@ class TestAttachmentsIntegration:
         assert result.exception is None
         assert "Test answer" in result.stdout
         assert "[ERROR]" not in result.stdout
-        attachments = mock_api.get_complete_answer.call_args[1]["extra_params"][0]
-        assert attachments == s3_urls
-        mock_uploader.upload_files.assert_awaited_once()
+        assert fake_api.uploaded_attachments == [s3_urls]
+        assert fake_uploader.upload_calls == 1
+        assert self._uploaded_filenames(fake_uploader) == [
+            "file1.txt",
+            "file2.txt",
+            "file3.txt",
+        ]
 
     # -- Directory skips hidden / sensitive ---------------------------------
 
     def test_query_with_directory_attachment_skips_hidden_and_sensitive_files(
-        self, runner: CliRunner, mock_query_app: tuple[Mock, Mock, Mock, Mock], tmp_path: Path
+        self,
+        runner: CliRunner,
+        query_app: tuple[
+            FakePerplexityAPI, FakeAttachmentUploader, FakeTokenManager, FakeStyleManager
+        ],
+        tmp_path: Path,
     ) -> None:
-        mock_api, mock_uploader, _mock_tm, _mock_sm = mock_query_app
+        """Hidden and sensitive files in a directory are never uploaded."""
+        fake_api, fake_uploader, _fake_tm, _fake_sm = query_app
 
         (tmp_path / "file1.txt").write_text("Content 1", encoding="utf-8")
         (tmp_path / ".env").write_text("SECRET=1", encoding="utf-8")
@@ -237,7 +337,7 @@ class TestAttachmentsIntegration:
         s3_urls = [
             "https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/file1.txt"
         ]
-        mock_uploader.upload_files = AsyncMock(return_value=s3_urls)
+        fake_uploader.set_results(s3_urls)
 
         result = runner.invoke(
             query,
@@ -248,19 +348,25 @@ class TestAttachmentsIntegration:
         assert result.exception is None
         assert "Test answer" in result.stdout
         assert "[ERROR]" not in result.stdout
-        attachments = mock_api.get_complete_answer.call_args[1]["extra_params"][0]
-        assert attachments == s3_urls
+        assert fake_api.uploaded_attachments == [s3_urls]
+        assert self._uploaded_filenames(fake_uploader) == ["file1.txt"]
         # Sensitive / hidden files must never be uploaded.
-        assert all(".env" not in url and ".hidden" not in url for url in attachments)
-        assert all("private.key" not in url for url in attachments)
-        mock_uploader.upload_files.assert_awaited_once()
+        assert all(".env" not in url and ".hidden" not in url for url in s3_urls)
+        assert all("private.key" not in url for url in s3_urls)
+        assert fake_uploader.upload_calls == 1
 
     # -- Too many directory files -------------------------------------------
 
     def test_query_with_too_many_directory_files_fails(
-        self, runner: CliRunner, mock_query_app: tuple[Mock, Mock, Mock, Mock], tmp_path: Path
+        self,
+        runner: CliRunner,
+        query_app: tuple[
+            FakePerplexityAPI, FakeAttachmentUploader, FakeTokenManager, FakeStyleManager
+        ],
+        tmp_path: Path,
     ) -> None:
-        _mock_api, _mock_uploader, _mock_tm, _mock_sm = mock_query_app
+        """A directory exceeding the attachment count limit fails cleanly."""
+        _fake_api, _fake_uploader, _fake_tm, _fake_sm = query_app
 
         from perplexity_cli.utils.file_handler import MAX_ATTACHMENT_COUNT
 
@@ -272,5 +378,5 @@ class TestAttachmentsIntegration:
             ["--no-stream", "--attach", str(tmp_path), "Analyse all files"],
         )
 
-        assert result.exit_code == 1
+        assert result.exit_code == 7
         assert "Too many attachments" in result.output

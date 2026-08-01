@@ -4,23 +4,47 @@
 - missing modules
 - overlapping assignments
 - invalid layer names and references
+- unsupported schema versions
+- unknown allowed_deps layers and adapter groups
 """
 # noqa: D (tests are exempt from docstring requirements)  # owner: quality-infrastructure; reason: test modules exempt from pydocstyle
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
+from types import ModuleType
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.architecture_model import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+
+def _load_script(name: str, register_as: str | None = None) -> ModuleType:
+    """Load a scripts/<name>.py module by file path without sys.path mutation."""
+    module_name = register_as or f"scripts.{name}"
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        return existing
+    spec = importlib.util.spec_from_file_location(
+        module_name, PROJECT_ROOT / "scripts" / f"{name}.py"
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load scripts/{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_load_script("architecture_model")
+from scripts.architecture_model import (  # noqa: E402  # owner: quality-infrastructure; reason: module registered in sys.modules by _load_script
     _check_adapter_modules_validity,
     _check_composition_root_validity,
     _check_duplicates_and_overlaps,
     _check_layer_name_validity,
     _check_module_coverage,
+    _validate_adapter_refs,
+    _validate_layer_deps,
     _validate_schema,
 )
 
@@ -195,15 +219,30 @@ def test_missing_required_layers_reported():
     assert any("Missing required layer(s)" in e for e in errors)
 
 
-def test_unknown_layer_in_allowed_deps():
-    data = _make_layers_data(
-        ("domain", ["mod_a"]),
-        ("ports", ["mod_b"]),
-    )
-    errors = _check_layer_name_validity(data)
-    # domain's allowed_deps default is fine, but missing required layers is
-    # a separate check. This test verifies referenced but unknown deps.
-    assert errors  # should at least have missing layers
+def test_unknown_layer_in_allowed_deps_rejected_exactly():
+    """A layer referencing an unknown allowed_deps layer is rejected with an exact message."""
+    layer = {
+        "name": "adapter",
+        "description": "d",
+        "allowed_deps": ["bogus_layer", "domain"],
+        "modules": ["mod_a"],
+    }
+    errors = _validate_layer_deps(layer)
+    assert len(errors) == 1
+    assert "Layer 'adapter' references unknown layer 'bogus_layer'" in errors[0]
+    assert "Valid layers:" in errors[0]
+
+
+def test_non_string_allowed_deps_rejected():
+    """Non-string allowed_deps entries are rejected."""
+    layer = {
+        "name": "adapter",
+        "description": "d",
+        "allowed_deps": [123],
+        "modules": ["mod_a"],
+    }
+    errors = _validate_layer_deps(layer)
+    assert any("non-string allowed_deps entry" in e for e in errors)
 
 
 def test_unknown_adapter_group_in_may_import_from():
@@ -227,6 +266,68 @@ def test_unknown_adapter_group_in_may_import_from():
     }
     errors = _check_layer_name_validity(data)
     assert any("unknown adapter group" in e for e in errors)
+
+
+def test_unknown_adapter_group_rejected_exactly():
+    """Unknown may_import_from references are rejected with an exact message."""
+    data = {
+        "schema": {"version": 1},
+        "layers": [
+            {
+                "name": "adapter",
+                "description": "d",
+                "allowed_deps": ["domain"],
+                "modules": ["mod_a"],
+            },
+        ],
+        "adapter_independence": [
+            {
+                "name": "grp_a",
+                "modules": ["mod_a"],
+                "may_import_from": ["ghost_group"],
+            },
+            {
+                "name": "grp_b",
+                "modules": ["mod_b"],
+                "may_import_from": [],
+            },
+        ],
+    }
+    errors = _validate_adapter_refs(data)
+    assert len(errors) == 1
+    assert (
+        "Adapter independence group 'grp_a' references unknown adapter group 'ghost_group'"
+        in errors[0]
+    )
+
+
+# ------------------------------------------------------------------
+# Schema version validation
+# ------------------------------------------------------------------
+
+
+def test_unsupported_schema_version_rejected():
+    """A [schema] version other than 1 is rejected."""
+    data = {"schema": {"version": 2}, "layers": []}
+    errors = _validate_schema(data)
+    assert any("Unsupported [schema] version: 2" in e for e in errors)
+
+
+def test_supported_schema_version_accepted():
+    """Schema version 1 passes version validation."""
+    data = {
+        "schema": {"version": 1},
+        "layers": [
+            {
+                "name": "domain",
+                "description": "d",
+                "allowed_deps": [],
+                "modules": [],
+            },
+        ],
+    }
+    errors = _validate_schema(data)
+    assert not any("Unsupported [schema] version" in e for e in errors)
 
 
 # ------------------------------------------------------------------

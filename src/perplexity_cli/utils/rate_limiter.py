@@ -2,6 +2,12 @@
 
 Implements a token bucket algorithm to enforce request rate limits.
 This prevents overwhelming the API with too many concurrent requests.
+
+Acquisition is concurrency-safe: a single ``asyncio.Lock`` serialises the
+refill/wait/consume/statistics steps, so concurrent callers cannot double-spend
+tokens or burst above the configured capacity. Callers cancelled before
+success consume neither a token nor a statistic, and later callers recompute
+from monotonic time.
 """
 
 import asyncio
@@ -57,8 +63,17 @@ class RateLimiter:
         self.total_requests = 0
         self.total_wait_time = 0.0
 
+        # Serialises refill/wait/consume/statistics into one transaction
+        self._lock = asyncio.Lock()
+
     async def acquire(self) -> float:
         """Acquire a token, waiting if necessary.
+
+        The refill/wait/consume/statistics steps form a single transaction
+        guarded by an ``asyncio.Lock``, so concurrent callers are serialised
+        and cannot burst above capacity. If the caller is cancelled while
+        waiting, no token is consumed and no statistic is recorded; the lock is
+        released so later callers recompute from monotonic time.
 
         This method implements the token bucket algorithm:
         1. Refill tokens based on time elapsed since last request
@@ -69,44 +84,45 @@ class RateLimiter:
         Returns:
             float: The time waited in seconds (0 if no wait was necessary).
         """
-        current_time = time.monotonic()
-        time_elapsed = current_time - self._state.last_refill_time
+        async with self._lock:
+            current_time = time.monotonic()
+            # Clamp to zero so a backwards-moving clock never removes tokens
+            time_elapsed = max(0.0, current_time - self._state.last_refill_time)
 
-        # Refill tokens based on elapsed time
-        # Rate of refill: requests_per_period / period_seconds tokens per second
-        refill_rate = self.requests_per_period / self.period_seconds
-        tokens_earned = time_elapsed * refill_rate
+            # Rate of refill: requests_per_period / period_seconds tokens per second
+            refill_rate = self.requests_per_period / self.period_seconds
+            tokens_earned = time_elapsed * refill_rate
 
-        # Cap tokens at the maximum (don't accumulate beyond capacity)
-        self._state.tokens = min(self.requests_per_period, self._state.tokens + tokens_earned)
-        self._state.last_refill_time = current_time
+            # Cap tokens at the maximum (don't accumulate beyond capacity)
+            self._state.tokens = min(self.requests_per_period, self._state.tokens + tokens_earned)
+            self._state.last_refill_time = current_time
 
-        wait_time = 0.0
+            wait_time = 0.0
 
-        # Check if we have tokens available
-        if self._state.tokens >= 1.0:
-            # Consume one token and proceed immediately
-            self._state.tokens -= 1.0
-        else:
-            # No tokens available, calculate wait time
-            # We need 1 token, and we have self._state.tokens
-            # Time to earn remaining tokens: (1 - tokens) / refill_rate
-            tokens_needed = 1.0 - self._state.tokens
-            wait_time = tokens_needed / refill_rate
+            # Check if we have tokens available
+            if self._state.tokens >= 1.0:
+                # Consume one token and proceed immediately
+                self._state.tokens -= 1.0
+            else:
+                # No tokens available, calculate wait time
+                # We need 1 token, and we have self._state.tokens
+                # Time to earn remaining tokens: (1 - tokens) / refill_rate
+                tokens_needed = 1.0 - self._state.tokens
+                wait_time = tokens_needed / refill_rate
 
-            # Sleep asynchronously
-            if wait_time > 0.0:
-                await asyncio.sleep(wait_time)
+                # Sleep asynchronously while still holding the lock
+                if wait_time > 0.0:
+                    await asyncio.sleep(wait_time)
 
-            # After sleep, reset state and consume one token
-            self._state.tokens = 0.0
-            self._state.last_refill_time = time.monotonic()
+                # After sleep, reset state and consume one token
+                self._state.tokens = 0.0
+                self._state.last_refill_time = time.monotonic()
 
-        # Update statistics
-        self.total_requests += 1
-        self.total_wait_time += wait_time
+            # Update statistics
+            self.total_requests += 1
+            self.total_wait_time += wait_time
 
-        return wait_time
+            return wait_time
 
     def get_stats(self) -> dict[str, int | float]:
         """Get rate limiter statistics.

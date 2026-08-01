@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, NoReturn, TypeGuard, cast
 
 import httpx
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from perplexity_cli.config.defaults import (
     DEFAULT_AUTH_POLL_INTERVAL,
@@ -28,6 +29,9 @@ from ..utils.config import get_perplexity_base_url
 
 if TYPE_CHECKING:
     import logging
+
+#: Maximum time to wait for a matching CDP response before timing out.
+_CDP_RESPONSE_TIMEOUT = 30.0
 
 
 def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -47,6 +51,8 @@ class ChromeDevToolsClient:
         self.port = port
         self.ws: Any | None = None
         self.message_id: int = 0
+        self._command_lock = asyncio.Lock()
+        self._closed = False
 
     async def connect(self) -> None:
         """Connect to Chrome's remote debugging endpoint.
@@ -116,6 +122,12 @@ class ChromeDevToolsClient:
     ) -> dict[str, Any]:
         """Send a command to Chrome and wait for the response.
 
+        Commands are serialised: one in-flight send+receive transaction holds
+        the command lock, so concurrent callers cannot cross-consume each
+        other's responses.  The allocated command ID is passed explicitly to
+        the waiter; the mutable ``message_id`` is never consulted while
+        matching.
+
         Args:
             method: The Chrome DevTools Protocol method name.
             params: Optional parameters for the method.
@@ -124,16 +136,22 @@ class ChromeDevToolsClient:
             The result from Chrome.
 
         Raises:
-            RuntimeError: If not connected or Chrome returns an error.
+            AuthenticationError: If not connected or Chrome returns an error.
+            TimeoutError: If no matching response arrives in time.
         """
-        if not self.ws:
+        if self.ws is None:
             msg = "Not connected to Chrome"
             raise AuthenticationError(msg)
 
-        self.message_id += 1
-        command = self._build_command(method, params)
-        await self.ws.send(json.dumps(command))
-        return await self._await_response()
+        async with self._command_lock:
+            if self.ws is None:
+                msg = "Not connected to Chrome"
+                raise AuthenticationError(msg)
+            self.message_id += 1
+            command_id = self.message_id
+            command = self._build_command(method, params)
+            await self.ws.send(json.dumps(command))
+            return await self._await_response(command_id, method)
 
     def _build_command(self, method: str, params: dict[str, Any] | None) -> dict[str, Any]:
         """Build a Chrome DevTools Protocol command message.
@@ -150,31 +168,125 @@ class ChromeDevToolsClient:
             command["params"] = params
         return command
 
-    async def _await_response(self) -> dict[str, Any]:
-        """Wait for a response matching the current message ID.
+    async def _await_response(self, command_id: int, method: str) -> dict[str, Any]:
+        """Wait for the response matching the given command ID.
+
+        Unsolicited events (no ``id``) and responses for other command IDs are
+        ignored while waiting.
+
+        Args:
+            command_id: The command ID to match against.
+            method: The method name, used only in error messages.
 
         Returns:
             The result from the matched response.
 
         Raises:
-            AuthenticationError: If Chrome returns an error or not connected.
+            AuthenticationError: If Chrome returns an error or the connection drops.
+            TimeoutError: If no matching response arrives within the timeout.
         """
         if self.ws is None:
             msg = "Not connected to Chrome"
             raise AuthenticationError(msg)
+        try:
+            async with asyncio.timeout(_CDP_RESPONSE_TIMEOUT):
+                return await self._wait_for_matching(command_id, method)
+        except TimeoutError:
+            msg = f"Timed out waiting for CDP response to {method}"
+            raise TimeoutError(msg) from None
+
+    async def _wait_for_matching(self, command_id: int, method: str) -> dict[str, Any]:
+        """Receive CDP messages until the command's matching response arrives."""
         while True:
-            response = await self.ws.recv()
-            cdp_message = json.loads(response)
-            if cdp_message.get("id") == self.message_id:
-                if "error" in cdp_message:
-                    msg = f"Chrome error: {cdp_message['error']}"
-                    raise AuthenticationError(msg)
-                return cdp_message.get("result", {})
+            raw = await self._recv_from_ws()
+            cdp_message = self._parse_cdp_message(raw)
+            if not isinstance(cdp_message, dict):
+                msg = "Chrome returned a malformed CDP message"
+                raise AuthenticationError(msg)
+            message = cast(dict[str, object], cdp_message)
+            if message.get("id") != command_id:
+                continue
+            return self._extract_result(message, method)
+
+    async def _recv_from_ws(self) -> str | bytes:
+        """Receive the next raw CDP message, raising on a closed connection.
+
+        Raises:
+            AuthenticationError: If the socket has been closed or already torn down.
+        """
+        if self.ws is None:
+            msg = "CDP connection to Chrome is closed"
+            raise AuthenticationError(msg)
+        try:
+            return await self.ws.recv()
+        except (ConnectionClosed, OSError) as e:
+            msg = "CDP connection to Chrome closed unexpectedly"
+            raise AuthenticationError(msg) from e
+
+    def _parse_cdp_message(self, raw: str | bytes) -> object:
+        """Parse a raw CDP message, raising on malformed JSON.
+
+        Raises:
+            AuthenticationError: If the message is not valid JSON.
+        """
+        try:
+            return json.loads(raw)
+        except (ValueError, TypeError) as e:
+            msg = "Chrome returned malformed CDP JSON"
+            raise AuthenticationError(msg) from e
+
+    def _extract_result(self, cdp_message: dict[str, object], method: str) -> dict[str, Any]:
+        """Extract the result from a matching response, validating its shape.
+
+        Raises:
+            AuthenticationError: If the response has no result, has a malformed
+                result, or carries a malformed error object.
+        """
+        if "error" in cdp_message:
+            self._raise_for_error(cdp_message["error"], method)
+        result = cdp_message.get("result")
+        if result is None or not isinstance(result, dict):
+            msg = f"Chrome returned a malformed result for {method}"
+            raise AuthenticationError(msg)
+        return cast(dict[str, Any], result)
+
+    def _raise_for_error(self, error: object, method: str) -> NoReturn:
+        """Raise AuthenticationError for a CDP error object.
+
+        Raises:
+            AuthenticationError: Always; the error message is used only when
+                the error object is well-formed, otherwise a generic message.
+        """
+        if not isinstance(error, dict):
+            msg = f"Chrome returned a malformed error for {method}"
+            raise AuthenticationError(msg)
+        error_dict = cast(dict[str, object], error)
+        error_message = error_dict.get("message")
+        if not isinstance(error_message, str):
+            msg = f"Chrome returned a malformed error for {method}"
+            raise AuthenticationError(msg)
+        msg = f"Chrome error: {error_message}"
+        raise AuthenticationError(msg)
 
     async def close(self) -> None:
-        """Close the WebSocket connection."""
-        if self.ws:
-            await self.ws.close()
+        """Close the WebSocket connection at most once.
+
+        Repeated calls are no-ops.  Errors raised while closing are logged and
+        swallowed so a close failure never masks the primary error that
+        triggered the close.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        ws = self.ws
+        self.ws = None
+        if ws is None:
+            return
+        try:
+            await ws.close()
+        except (ConnectionClosed, OSError, RuntimeError):
+            logger = get_logger()
+            logger.debug("Error while closing CDP WebSocket")
 
 
 def _resolve_auth_defaults(
@@ -231,6 +343,9 @@ async def _fetch_local_storage(client: ChromeDevToolsClient) -> dict[str, Any]:
 
     Returns:
         Dictionary of localStorage key-value pairs.
+
+    Raises:
+        AuthenticationError: If Chrome returns a malformed evaluation payload.
     """
     local_storage_result = await client.send_command(
         "Runtime.evaluate",
@@ -248,9 +363,20 @@ async def _fetch_local_storage(client: ChromeDevToolsClient) -> dict[str, Any]:
         },
     )
 
-    if "result" in local_storage_result and "value" in local_storage_result["result"]:
-        return local_storage_result["result"]["value"]
-    return {}
+    inner_result = local_storage_result.get("result")
+    if inner_result is None:
+        return {}
+    if not isinstance(inner_result, dict):
+        msg = "Chrome returned a malformed localStorage payload"
+        raise AuthenticationError(msg)
+    inner_map = cast("dict[str, Any]", inner_result)
+    value = inner_map.get("value")
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        msg = "Chrome returned a malformed localStorage payload"
+        raise AuthenticationError(msg)
+    return cast(dict[str, Any], value)
 
 
 async def _poll_for_auth_data(
@@ -412,6 +538,9 @@ def _extract_token(
 ) -> tuple[str | None, dict[str, str]]:
     """Extract authentication token and cookies from browser.
 
+    Cookie entries are validated before extraction; a malformed entry is
+    rejected rather than indexed blindly.
+
     Args:
         cookies: List of cookie dictionaries from Chrome.
         local_storage: Dictionary of localStorage key-value pairs.
@@ -420,12 +549,42 @@ def _extract_token(
         Tuple of (token, cookies_dict) where:
             - token: The authentication token string, or None if not found
             - cookies_dict: Dictionary of all cookies {name: value}
+
+    Raises:
+        AuthenticationError: If a cookie entry is malformed.
     """
-    cookie_dict = {c["name"]: c["value"] for c in cookies}
+    cookie_dict = _build_cookie_dict(cast("list[object]", cookies))
     token = _extract_token_from_local_storage(local_storage)
     if not token:
         token = _extract_token_from_cookies(cookie_dict)
     return (token, cookie_dict)
+
+
+def _build_cookie_dict(cookies: list[object]) -> dict[str, str]:
+    """Build a validated {name: value} cookie map.
+
+    Args:
+        cookies: List of cookie dictionaries from Chrome.
+
+    Returns:
+        Dictionary of all cookies {name: value}.
+
+    Raises:
+        AuthenticationError: If a cookie entry is malformed.
+    """
+    cookie_dict: dict[str, str] = {}
+    for entry in cookies:
+        if not isinstance(entry, dict):
+            msg = "Chrome returned a malformed cookie entry"
+            raise AuthenticationError(msg)
+        entry_map = cast("dict[str, Any]", entry)
+        name = entry_map.get("name")
+        value = entry_map.get("value")
+        if not isinstance(name, str) or not isinstance(value, str):
+            msg = "Chrome returned a malformed cookie entry"
+            raise AuthenticationError(msg)
+        cookie_dict[name] = value
+    return cookie_dict
 
 
 def _extract_token_from_local_storage(local_storage: dict[str, Any]) -> str | None:

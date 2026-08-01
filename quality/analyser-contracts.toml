@@ -5,7 +5,10 @@
 # inventory of repository quality wiring. Each analyser declares its canonical
 # Make target and expected process-exit behaviour for known outcome states.
 # `phase` is documentation grouping, `status` controls contract-runner
-# selection only, and `test_node_ids` are ownership/evidence references.
+# selection only, and `test_node_ids` are executable evidence references.
+# States model expected process behaviour (exit ranges); they do not alone
+# constitute a quality pass. Every ACTIVE analyser MUST therefore declare at
+# least one test_node_ids entry, and validation fails closed when it does not.
 #
 # Contracts are used by scripts/check_analyser_contracts.py to verify that
 # analysers behave as expected (exit codes, signals) when invoked through
@@ -29,7 +32,9 @@ target = "format-check"
 phase = 1
 status = "active"
 description = "Code formatting verification via ruff format --check"
-test_node_ids = []
+test_node_ids = [
+    "tests/test_analyser_contracts.py::test_active_analyser_tool_clean_and_findings_exit_ranges[format-check]",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -45,7 +50,9 @@ target = "lint"
 phase = 1
 status = "active"
 description = "Lint violations via ruff check"
-test_node_ids = []
+test_node_ids = [
+    "tests/test_analyser_contracts.py::test_active_analyser_tool_clean_and_findings_exit_ranges[lint]",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -61,7 +68,9 @@ target = "typecheck-pyright"
 phase = 1
 status = "active"
 description = "Type checking via pyright"
-test_node_ids = []
+test_node_ids = [
+    "tests/test_analyser_contracts.py::test_active_analyser_tool_clean_and_findings_exit_ranges[typecheck-pyright]",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -95,7 +104,9 @@ target = "typecheck"
 phase = 1
 status = "active"
 description = "Type checking via ty"
-test_node_ids = []
+test_node_ids = [
+    "tests/test_analyser_contracts.py::test_active_analyser_tool_clean_and_findings_exit_ranges[typecheck-ty]",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -111,7 +122,9 @@ target = "bandit"
 phase = 1
 status = "active"
 description = "Security linting via bandit"
-test_node_ids = []
+test_node_ids = [
+    "tests/test_analyser_contracts.py::test_active_analyser_tool_clean_and_findings_exit_ranges[bandit]",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -275,7 +288,9 @@ target = "import-linter"
 phase = 2
 status = "active"
 description = "Import-contract enforcement via lint-imports"
-test_node_ids = []
+test_node_ids = [
+    "tests/test_analyser_contracts.py::test_active_analyser_tool_clean_and_findings_exit_ranges[import-linter]",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -291,7 +306,9 @@ target = "deptry"
 phase = 2
 status = "active"
 description = "Dependency hygiene via deptry"
-test_node_ids = []
+test_node_ids = [
+    "tests/test_analyser_contracts.py::test_active_analyser_tool_clean_and_findings_exit_ranges[deptry]",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -452,7 +469,9 @@ target = "typecheck-strict-ratchet"
 phase = 5
 status = "active"
 description = "Strict Pyright source type-check hard gate"
-test_node_ids = []
+test_node_ids = [
+    "tests/test_analyser_contracts.py::test_active_analyser_tool_clean_and_findings_exit_ranges[typecheck-strict-ratchet]",
+]
 
 [analysers.states.clean]
 exit_min = 0

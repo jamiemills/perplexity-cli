@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -14,6 +15,7 @@ from perplexity_cli.utils.config import (
     get_feature_config,
     get_rate_limiting_config,
     get_urls,
+    set_feature,
 )
 
 
@@ -114,13 +116,13 @@ class TestEnvironmentVariableOverridesUrl:
 
         clear_urls_cache()
 
-    def test_perplexity_query_endpoint_override(self, monkeypatch):
-        """Test that PERPLEXITY_QUERY_ENDPOINT overrides config file value."""
+    def test_perplexity_query_endpoint_override_relative_rejected(self, monkeypatch):
+        """Test that a relative PERPLEXITY_QUERY_ENDPOINT is rejected."""
         clear_urls_cache()
         monkeypatch.setenv("PERPLEXITY_QUERY_ENDPOINT", "/api/custom/endpoint")
 
-        url_config = get_urls()
-        assert url_config.query_endpoint == "/api/custom/endpoint"
+        with pytest.raises(RuntimeError, match="Invalid URLs configuration"):
+            get_urls()
 
         clear_urls_cache()
 
@@ -430,5 +432,160 @@ class TestFeatureConfigValidation:
 
         with pytest.raises(RuntimeError, match="'features' section must be a dictionary"):
             get_feature_config()
+
+        clear_feature_config_cache()
+
+
+class TestUrlEnvOverrideValidation:
+    """Test that URL environment overrides go through the same validation."""
+
+    URL_ENV_VARS: ClassVar[list[tuple[str, str]]] = [
+        ("PERPLEXITY_BASE_URL", "base_url"),
+        ("PERPLEXITY_QUERY_ENDPOINT", "query_endpoint"),
+        ("PERPLEXITY_THREAD_LIST_ENDPOINT", "thread_list_endpoint"),
+        ("PERPLEXITY_UPLOAD_URL_ENDPOINT", "upload_url_endpoint"),
+        ("PERPLEXITY_S3_BUCKET_URL", "s3_bucket_url"),
+        ("PERPLEXITY_MODEL_CONFIG_ENDPOINT", "model_config_endpoint"),
+        ("PERPLEXITY_USER_SETTINGS_ENDPOINT", "user_settings_endpoint"),
+    ]
+
+    @pytest.mark.parametrize(("env_var", "field_name"), URL_ENV_VARS)
+    def test_non_loopback_http_override_rejected(self, tmp_path, monkeypatch, env_var, field_name):
+        """Test that an http env override to a non-loopback host is rejected."""
+        clear_urls_cache()
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(tmp_path)
+        )
+        monkeypatch.setenv(env_var, "http://example.com")
+
+        with pytest.raises(RuntimeError, match="Invalid URLs configuration"):
+            get_urls()
+
+        clear_urls_cache()
+
+    @pytest.mark.parametrize(("env_var", "field_name"), URL_ENV_VARS)
+    def test_relative_override_rejected(self, tmp_path, monkeypatch, env_var, field_name):
+        """Test that a relative URL env override is rejected."""
+        clear_urls_cache()
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(tmp_path)
+        )
+        monkeypatch.setenv(env_var, "/relative/path")
+
+        with pytest.raises(RuntimeError, match="Invalid URLs configuration"):
+            get_urls()
+
+        clear_urls_cache()
+
+    @pytest.mark.parametrize(("env_var", "field_name"), URL_ENV_VARS)
+    def test_loopback_http_override_accepted(self, tmp_path, monkeypatch, env_var, field_name):
+        """Test that an http env override to a loopback host is accepted."""
+        clear_urls_cache()
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(tmp_path)
+        )
+        monkeypatch.setenv(env_var, "http://127.0.0.1:8080")
+
+        url_config = get_urls()
+        assert getattr(url_config, field_name) == "http://127.0.0.1:8080"
+
+        clear_urls_cache()
+
+
+class TestSetFeaturePersistence:
+    """Test that set_feature does not persist environment overrides to disk."""
+
+    @staticmethod
+    def _write_feature_config(config_dir, features):
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "config.json"
+        config_path.write_text(json.dumps({"version": 1, "features": features}), encoding="utf-8")
+
+    def test_set_save_cookies_does_not_persist_env_debug_mode(self, tmp_path, monkeypatch):
+        """Test that setting save_cookies does not write the env debug_mode value."""
+        clear_feature_config_cache()
+        config_dir = tmp_path / ".config" / "perplexity-cli"
+        self._write_feature_config(config_dir, {"save_cookies": False, "debug_mode": False})
+
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(config_dir)
+        )
+        monkeypatch.setenv("PERPLEXITY_DEBUG_MODE", "true")
+
+        set_feature("save_cookies", True)
+
+        written = json.loads((config_dir / "config.json").read_text(encoding="utf-8"))
+        assert written["features"]["save_cookies"] is True
+        assert written["features"]["debug_mode"] is False
+
+        effective = get_feature_config()
+        assert effective.save_cookies is True
+        assert effective.debug_mode is True
+
+        clear_feature_config_cache()
+
+    def test_set_debug_mode_does_not_persist_env_save_cookies(self, tmp_path, monkeypatch):
+        """Test that setting debug_mode does not write the env save_cookies value."""
+        clear_feature_config_cache()
+        config_dir = tmp_path / ".config" / "perplexity-cli"
+        self._write_feature_config(config_dir, {"save_cookies": False, "debug_mode": False})
+
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(config_dir)
+        )
+        monkeypatch.setenv("PERPLEXITY_SAVE_COOKIES", "true")
+
+        set_feature("debug_mode", True)
+
+        written = json.loads((config_dir / "config.json").read_text(encoding="utf-8"))
+        assert written["features"]["save_cookies"] is False
+        assert written["features"]["debug_mode"] is True
+
+        effective = get_feature_config()
+        assert effective.save_cookies is True
+        assert effective.debug_mode is True
+
+        clear_feature_config_cache()
+
+    def test_existing_file_value_preserved(self, tmp_path, monkeypatch):
+        """Test that a value already in the file is preserved when writing."""
+        clear_feature_config_cache()
+        config_dir = tmp_path / ".config" / "perplexity-cli"
+        self._write_feature_config(config_dir, {"save_cookies": False, "debug_mode": True})
+
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(config_dir)
+        )
+        monkeypatch.setenv("PERPLEXITY_DEBUG_MODE", "true")
+
+        set_feature("save_cookies", True)
+
+        written = json.loads((config_dir / "config.json").read_text(encoding="utf-8"))
+        assert written["features"]["save_cookies"] is True
+        assert written["features"]["debug_mode"] is True
+
+        clear_feature_config_cache()
+
+    def test_env_override_still_applies_after_write(self, tmp_path, monkeypatch):
+        """Test that env precedence applies to effective reads after a write."""
+        clear_feature_config_cache()
+        config_dir = tmp_path / ".config" / "perplexity-cli"
+        self._write_feature_config(config_dir, {"save_cookies": False, "debug_mode": False})
+
+        monkeypatch.setattr(
+            "perplexity_cli.utils.config.impl.get_config_paths", lambda: ConfigPaths(config_dir)
+        )
+        monkeypatch.setenv("PERPLEXITY_DEBUG_MODE", "true")
+
+        set_feature("save_cookies", True)
+        effective = get_feature_config()
+        assert effective.save_cookies is True
+        assert effective.debug_mode is True
+
+        monkeypatch.delenv("PERPLEXITY_DEBUG_MODE")
+        clear_feature_config_cache()
+        effective = get_feature_config()
+        assert effective.save_cookies is True
+        assert effective.debug_mode is False
 
         clear_feature_config_cache()

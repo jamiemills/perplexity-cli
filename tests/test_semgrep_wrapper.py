@@ -1,16 +1,22 @@
 """Tests for the canonical Semgrep wrapper (scripts/semgrep_policy.py).
 
 Proves each exit classification:
-  - clean (no findings)
-  - findings (blocking findings detected)
-  - malformed JSON
-  - timeout
-  - missing config
-  - errors array handling (internal error)
+  - clean (no findings)           -> exit 0
+  - findings (blocking detected)  -> exit 1
+  - malformed JSON                -> exit 2
+  - timeout                       -> exit 3
+  - missing config                -> exit 4
+  - internal error / tool failure -> exit 5
+
+The wrapper must never accept a non-zero scanner exit merely because stdout
+is non-empty; the scanner's own contract is validated in
+``_check_returncode`` (only 0 and 1 are acceptable, everything else is a tool
+error) and the pinned Semgrep version must match the Makefile invocation.
 """
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +26,16 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = PROJECT_ROOT / "scripts" / "semgrep_policy.py"
+MAKEFILE = PROJECT_ROOT / "Makefile"
+
+_VERSION_LINE = re.compile(r"^SEMGREP_VERSION\s*:?=\s*([0-9.]+)\s*$", re.MULTILINE)
+
+
+def _makefile_semgrep_version() -> str:
+    """Return the pinned Semgrep version declared in the Makefile."""
+    match = _VERSION_LINE.search(MAKEFILE.read_text(encoding="utf-8"))
+    assert match, "Makefile does not declare a pinned SEMGREP_VERSION"
+    return match.group(1)
 
 
 def _run_wrapper(*args: str) -> subprocess.CompletedProcess[str]:
@@ -45,6 +61,14 @@ class TestSemgrepWrapper:
         """Wrapper with --advisory --help exits clean (argparse handles it)."""
         result = _run_wrapper("--advisory", "--help")
         assert result.returncode == 0
+
+    def test_wrapper_pins_makefile_semgrep_version(self) -> None:
+        """The wrapper invokes the same pinned Semgrep version as the Makefile."""
+        from scripts.semgrep_policy import SEMGREP_VERSION
+
+        assert _makefile_semgrep_version() == SEMGREP_VERSION, (
+            "Wrapper Semgrep pin must match the Makefile SEMGREP_VERSION"
+        )
 
 
 class TestParseOutput:
@@ -85,6 +109,48 @@ class TestCheckErrors:
 
         with pytest.raises(SystemExit) as exc_info:
             _check_errors({"errors": [{"code": 3, "message": "parse error"}]})
+        assert exc_info.value.code == 5
+
+
+class TestCheckReturncode:
+    """Unit tests for scanner exit-code validation."""
+
+    def test_accepts_clean_exit(self) -> None:
+        """Exit code 0 (clean) is accepted."""
+        from scripts.semgrep_policy import _check_returncode
+
+        result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        _check_returncode(result)
+
+    def test_accepts_findings_exit(self) -> None:
+        """Exit code 1 (findings) is accepted."""
+        from scripts.semgrep_policy import _check_returncode
+
+        result = subprocess.CompletedProcess(args=[], returncode=1, stdout="{}", stderr="")
+        _check_returncode(result)
+
+    def test_rejects_tool_error_even_with_stdout(self) -> None:
+        """A tool-error exit is rejected even when stdout is non-empty.
+
+        Regression guard: a non-zero scanner exit must never be accepted
+        merely because stdout contains output, as that masks tool failures.
+        """
+        from scripts.semgrep_policy import _check_returncode
+
+        result = subprocess.CompletedProcess(
+            args=[], returncode=7, stdout="non-empty output", stderr="config error"
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            _check_returncode(result)
+        assert exc_info.value.code == 5
+
+    def test_rejects_tool_error_with_empty_stdout(self) -> None:
+        """A tool-error exit is rejected when stdout is empty too."""
+        from scripts.semgrep_policy import _check_returncode
+
+        result = subprocess.CompletedProcess(args=[], returncode=2, stdout="", stderr="boom")
+        with pytest.raises(SystemExit) as exc_info:
+            _check_returncode(result)
         assert exc_info.value.code == 5
 
 

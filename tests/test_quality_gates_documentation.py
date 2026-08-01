@@ -55,7 +55,16 @@ _CARD_FIELD = re.compile(r"^\s*- \*\*(.+?):\*\*(.*)$")
 _ALLOWED_NAMESPACES = frozenset(
     {"session", "hook", "make", "ci", "automation", "release", "inline", "test"}
 )
-_UNDERSCORE_ID_EXCEPTION = "automation.release-drafter.update_release_draft"
+# Underscore IDs fail the strict dotted pattern but are pinned by other
+# authorities (the workflow job key must be a valid identifier per
+# tests/test_distribution_contract.py). New non-conforming IDs must be
+# added here only with a matching authority.
+_UNDERSCORE_ID_EXCEPTIONS = frozenset(
+    {
+        "automation.release-drafter.update_release_draft",
+        "ci.ci.windows_packaging_smoke",
+    }
+)
 
 _FIELD_ALIASES = {
     "Purpose": {"Purpose", "Purpose/authoritative source"},
@@ -154,6 +163,7 @@ _STALE_PHRASES = (
     "quality/evidence/mutation-report.json",
     "mutation-report-v1.json",
     "mutation-waivers.toml",
+    "quality/schemas/diff-coverage-v1.json",
 )
 
 
@@ -260,7 +270,7 @@ def _card_completeness_violations(cards: list[dict[str, Any]]) -> list[str]:
         namespace = card_id.split(".", 1)[0]
         if namespace not in _ALLOWED_NAMESPACES:
             violations.append(f"{card_id}: namespace {namespace!r} not allowed")
-        if not _CARD_ID_PATTERN.match(card_id) and card_id != _UNDERSCORE_ID_EXCEPTION:
+        if not _CARD_ID_PATTERN.match(card_id) and card_id not in _UNDERSCORE_ID_EXCEPTIONS:
             violations.append(f"{card_id}: ID does not match dotted pattern")
         counts = _card_field_counts(card)
         values = _card_field_values(card)
@@ -428,13 +438,13 @@ class TestCardCompleteness:
         assert violations == []
 
     def test_only_documented_underscore_id_exists(self) -> None:
-        """The sole non-conforming ID is the documented release-drafter card."""
+        """The only non-conforming IDs are the two documented exceptions."""
         non_conforming = {
             card["id"]
             for card in _parse_cards(GUIDE_TEXT)
             if not _CARD_ID_PATTERN.match(card["id"])
         }
-        assert non_conforming == {_UNDERSCORE_ID_EXCEPTION}
+        assert non_conforming == _UNDERSCORE_ID_EXCEPTIONS
 
     def test_guide_declares_full_card_field_schema(self) -> None:
         """Section 8 still names all thirteen canonical card fields."""
@@ -482,10 +492,11 @@ class TestThresholdsAndToggles:
         """The guide must document the suppression-reasons toggle."""
         assert "CHECK_SUPPRESSION_REASONS" in GUIDE_TEXT
 
-    def test_guide_documents_unconditional_module_coverage(self) -> None:
-        """The guide must state module-coverage is an unconditional check member."""
-        assert "Unconditional module-coverage prerequisite" in GUIDE_TEXT
-        assert "ALWAYS appended" in GUIDE_TEXT or "always appends" in _normalise(GUIDE_TEXT)
+    def test_guide_documents_module_coverage_not_in_check(self) -> None:
+        """The guide must state module-coverage is owned by test-coverage, not check."""
+        assert "Per-module coverage ownership" in GUIDE_TEXT
+        assert "not a `make check` member" in GUIDE_TEXT
+        assert "must never consume a potentially stale `coverage.json`" in _normalise(GUIDE_TEXT)
 
     def test_undocumented_config_key_detected(self) -> None:
         """A config key absent from the guide table must be flagged."""
@@ -598,6 +609,58 @@ class TestMakeComposites:
         block = _guide_card_block("make.ci-static")
         assert all(member in block for member in expected)
 
+    def test_ci_quality_membership(self) -> None:
+        """ci-quality carries the deterministic offline quality-gate inventory."""
+        expected = _makefile_prereqs("ci-quality")
+        assert expected == [
+            "format-check",
+            "lint",
+            "typecheck-all",
+            "bandit",
+            "vulture",
+            "complexity",
+            "semgrep",
+            "arch-check",
+            "arch-check-dynamic",
+            "import-linter",
+            "coupling-check",
+            "ratchets",
+            "analyser-contract-tests",
+            "deptry",
+            "make-policy",
+            "workflow-policy",
+            "actionlint",
+        ]
+        block = _guide_card_block("make.ci-quality")
+        assert all(member in block for member in expected)
+
+    def test_core_exclusion_manifest_is_literal_and_used(self) -> None:
+        """The ordinary and coverage selectors exclude the manifest by exact path."""
+        makefile = MAKEFILE.read_text(encoding="utf-8")
+        assert "MUTATION_PROPERTY_FILES :=" in makefile
+        manifest_start = makefile.index("MUTATION_PROPERTY_FILES :=")
+        manifest_end = makefile.index("\n\n", manifest_start)
+        manifest = makefile[manifest_start:manifest_end]
+        for path in (
+            "tests/test_property.py",
+            "tests/test_property_policy.py",
+            "tests/test_mutate_diff_files.py",
+            "tests/test_mutation_policy.py",
+            "tests/test_mutation_utils.py",
+        ):
+            assert f"\t{path}" in manifest, f"manifest missing {path}"
+        assert "tests/test_mutation_api_utils_mcp.py" in manifest
+        assert "tests/test_mutation_threads_query.py" in manifest
+        assert "#" not in manifest.splitlines()[0]  # header comment precedes variable
+        for target in ("\ntest:", "\ntest-coverage-report:"):
+            start = makefile.index(target) + 1
+            end = makefile.find("\n\n", start)
+            recipe = makefile[start:end]
+            assert "not integration" in recipe
+            assert "$(addprefix --ignore=,$(MUTATION_PROPERTY_FILES))" in recipe
+        assert "MUTATION_PROPERTY_FILES" in GUIDE_TEXT
+        assert "never by glob" in GUIDE_TEXT
+
     def test_ci_trusted_membership(self) -> None:
         """ci-trusted is make ci plus fail-closed safety-gate."""
         expected = _makefile_prereqs("ci-trusted")
@@ -624,10 +687,14 @@ class TestMakeComposites:
             encoding="utf-8"
         )
 
-    def test_guide_states_check_includes_module_coverage(self) -> None:
-        """The guide must state make check includes module-coverage unconditionally."""
-        assert "always appends `module-coverage`" in _normalise(GUIDE_TEXT)
-        assert "module-coverage" in _guide_card_block("make.check")
+    def test_guide_states_check_is_static_only(self) -> None:
+        """The guide must state make check is static-only without module-coverage."""
+        block = _guide_card_block("make.check")
+        assert "static" in _normalise(block)
+        assert "module-coverage" not in _makefile_prereqs("check")
+        assert "NOT a member" in block
+        assert "not a `make check` member" in GUIDE_TEXT
+        assert "must never consume a potentially stale `coverage.json`" in _normalise(GUIDE_TEXT)
 
 
 # ---------------------------------------------------------------------------
@@ -674,6 +741,27 @@ class TestWorkflowInventory:
         assert "no `continue-on-error`" in _normalise(GUIDE_TEXT)
         ci = _load_yaml(WORKFLOWS / "ci.yml")
         assert "continue-on-error" not in ci["jobs"]["fuzz-status"]
+
+    def test_guide_documents_hermetic_job(self) -> None:
+        """The hermetic-integration CI job must be documented under the guard."""
+        block = _guide_card_block("ci.ci.hermetic-integration")
+        assert "make test-integration" in block
+        assert "fail-closed network guard" in block
+        assert "default-on" in _normalise(block)
+
+    def test_guide_documents_windows_packaging_job(self) -> None:
+        """The windows_packaging_smoke job must document the bounded commands."""
+        block = _guide_card_block("ci.ci.windows_packaging_smoke")
+        assert "windows-latest" in block
+        assert "pxcli --version" in block
+        assert "pxcli-mcp --help" in block
+        assert "needs: [package]" in block or "needs" in block
+
+    def test_guide_documents_network_guard_default_on(self) -> None:
+        """The fail-closed network guard must be documented as default-on."""
+        assert "network guard" in GUIDE_TEXT
+        assert "default-on" in _normalise(GUIDE_TEXT)
+        assert "pytest_configure" in GUIDE_TEXT
 
     def test_missing_workflow_job_detected(self) -> None:
         """A workflow job absent from the guide must be flagged."""
@@ -779,6 +867,12 @@ class TestStalePhraseAbsence:
         """Each known stale phrase must not appear in the guide."""
         present = [phrase for phrase in _STALE_PHRASES if phrase in GUIDE_TEXT]
         assert present == []
+
+    def test_removed_schema_and_policy_engine_absent(self) -> None:
+        """The deleted diff-coverage schema and coverage_policy engine are gone."""
+        assert "quality/schemas/diff-coverage-v1.json" not in GUIDE_TEXT
+        assert "coverage_policy.py" not in GUIDE_TEXT
+        assert "scripts/coverage_policy" not in GUIDE_TEXT
 
     def test_continue_on_error_only_negated(self) -> None:
         """Every continue-on-error mention must be inside a negation."""

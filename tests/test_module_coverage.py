@@ -81,23 +81,48 @@ class TestValidateReport:
         errors = validate_report(report, min_coverage=80.0, src_root=FIXTURE_SRC)
         assert any("Non-numeric percent_covered" in e for e in errors)
 
-    def test_duplicate_path_rejected(self) -> None:
-        """Entries seen more than once are reported as duplicates."""
-        report = _load_fixture("valid.json")
-        src1 = FIXTURE_SRC / "__init__.py"
-        src1.write_text("x = 1\n")
-        errors = validate_report(report, min_coverage=80.0, src_root=FIXTURE_SRC)
-        assert errors == []  # valid fixture has unique paths
-
-    def test_duplicate_path_directly(self) -> None:
-        """The _check_duplicate helper flags second occurrences."""
+    def test_check_duplicate_directly(self) -> None:
+        """The _check_duplicate helper flags entries mapping to a seen module."""
         from scripts.check_module_coverage import _check_duplicate
 
         seen: set[str] = set()
         errors: list[str] = []
-        assert not _check_duplicate("some/file.py", seen, errors)
-        assert _check_duplicate("some/file.py", seen, errors)
+        assert not _check_duplicate("a.py", seen, errors)
+        assert not _check_duplicate("src/perplexity_cli/b.py", seen, errors)
+        assert _check_duplicate("src/perplexity_cli/a.py", seen, errors)
         assert any("Duplicate" in e for e in errors)
+
+    def test_duplicate_normalised_path_rejected(self, tmp_path: Path) -> None:
+        """Two report keys mapping to the same source module are rejected."""
+        (tmp_path / "same.py").write_text("x = 1\n")
+        entry = {
+            "summary": {
+                "percent_covered": 100.0,
+                "num_statements": 1,
+                "missing_lines": 0,
+            }
+        }
+        report = {
+            "meta": {"branch_coverage": False, "format": 3},
+            "files": {
+                "src/perplexity_cli/same.py": entry,
+                "same.py": entry,
+            },
+            "totals": {"percent_covered": 100.0},
+        }
+        errors = validate_report(report, min_coverage=80.0, src_root=tmp_path)
+        assert any("Duplicate entry for source module" in e for e in errors)
+
+    def test_non_dict_entry_fails_closed(self, tmp_path: Path) -> None:
+        """A report entry that is not an object is rejected, not crashed on."""
+        (tmp_path / "bad.py").write_text("x = 1\n")
+        report = {
+            "meta": {"branch_coverage": False, "format": 3},
+            "files": {"bad.py": "not-a-summary"},
+            "totals": {"percent_covered": 100.0},
+        }
+        errors = validate_report(report, min_coverage=80.0, src_root=tmp_path)
+        assert any("Non-numeric percent_covered" in e for e in errors)
 
     def test_outside_root_rejected(self) -> None:
         """Entry with path not under the source root is rejected."""
@@ -182,8 +207,9 @@ class TestClassifySource:
     def test_docstring_only(self) -> None:
         assert _classify_source('"""A docstring module."""') == "docstring"
 
-    def test_re_export_only(self) -> None:
-        assert _classify_source("from .foo import bar\n") == "re-export"
+    def test_import_only_is_executable(self) -> None:
+        """Imports execute and can raise, so an import-only module is required."""
+        assert _classify_source("from .foo import bar\n") == "executable"
 
     def test_executable_source(self) -> None:
         assert _classify_source("x = 1\n") == "executable"
@@ -193,6 +219,19 @@ class TestClassifySource:
 
     def test_mixed_import_and_value(self) -> None:
         assert _classify_source("import os\nx = 2\n") == "executable"
+
+    def test_declarative_protocol_is_inert(self) -> None:
+        source = "class P(Protocol):\n    x: int\n    ...\n"
+        assert _classify_source(source) == "re-export"
+
+    def test_protocol_with_concrete_method_is_executable(self) -> None:
+        source = "class P(Protocol):\n    def method(self) -> int:\n        return 1\n"
+        assert _classify_source(source) == "executable"
+
+    def test_init_reexport_is_executable(self) -> None:
+        """An ``__init__.py`` that re-exports names still executes imports."""
+        source = 'from .foo import bar\n__all__ = ["bar"]\n'
+        assert _classify_source(source) == "executable"
 
 
 class TestClassifyModule:
@@ -206,9 +245,14 @@ class TestClassifyModule:
         f.write_text('"""Module docs."""\n')
         assert _classify_module(f) == "docstring"
 
-    def test_re_export_file(self, tmp_path: Path) -> None:
-        f = tmp_path / "reexport.py"
+    def test_import_only_file_is_executable(self, tmp_path: Path) -> None:
+        f = tmp_path / "imports.py"
         f.write_text("from .foo import bar\nfrom .baz import qux\n")
+        assert _classify_module(f) == "executable"
+
+    def test_declarative_protocol_file_is_inert(self, tmp_path: Path) -> None:
+        f = tmp_path / "interface.py"
+        f.write_text("class P(Protocol):\n    x: int\n    ...\n")
         assert _classify_module(f) == "re-export"
 
     def test_executable_file(self, tmp_path: Path) -> None:
@@ -232,4 +276,4 @@ class TestEnumerateSourceModules:
         assert modules["a.py"] == "executable"
         assert modules["b.py"] == "docstring"
         assert modules["c.py"] == "empty"
-        assert modules["d.py"] == "re-export"
+        assert modules["d.py"] == "executable"

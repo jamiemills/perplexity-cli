@@ -1,19 +1,79 @@
 """Tests for the REST client (non-streaming JSON GET/POST).
 
-Uses mock-based testing to avoid real HTTP requests.
+Uses mock-based testing to avoid real HTTP requests. New exception-contract
+cases use typed fakes at the session boundary rather than unrestricted mocks.
 """
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from curl_cffi.requests.exceptions import ConnectionError as CurlConnectionError
+from curl_cffi.requests.exceptions import Timeout
 
 from perplexity_cli.api.rest_client import RestClient
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
+    PerplexityRequestError,
+    UpstreamSchemaError,
 )
+
+
+class FakeResponse:
+    """Typed stand-in for the slice of a curl_cffi response used here."""
+
+    def __init__(
+        self,
+        *,
+        ok: bool = True,
+        status_code: int = 200,
+        url: str = "https://example.com/api/test",
+        text: str = "",
+        content: bytes = b"",
+        headers: dict[str, str] | None = None,
+        json_value: object = None,
+        json_error: Exception | None = None,
+    ) -> None:
+        self.ok = ok
+        self.status_code = status_code
+        self.url = url
+        self.text = text
+        self.content = content
+        self.headers = headers if headers is not None else {}
+        self._json_value = json_value
+        self._json_error = json_error
+
+    def json(self) -> object:
+        """Return the configured payload or raise the configured error."""
+        if self._json_error is not None:
+            raise self._json_error
+        return self._json_value
+
+
+class FakeSession:
+    """Typed stand-in for the session boundary used by ``get_json``."""
+
+    def __init__(
+        self,
+        *,
+        response: FakeResponse | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.response = response
+        self.error = error
+        self.get_calls: list[tuple[str, dict[str, object]]] = []
+
+    def get(self, url: str, **kwargs: object) -> FakeResponse:
+        """Record the call and return the response or raise the error."""
+        self.get_calls.append((url, kwargs))
+        if self.error is not None:
+            raise self.error
+        if self.response is None:
+            raise AssertionError("FakeSession requires a response or an error")
+        return self.response
 
 
 @pytest.fixture
@@ -164,3 +224,83 @@ class TestRestClientClose:
 
             mock_session.close.assert_called_once()
             assert client._client is None
+
+
+class TestRestClientExceptionContract:
+    """Exact exception types raised by ``get_json`` across the contract."""
+
+    URL = "https://example.com/api/test"
+
+    def test_success_returns_decoded_json(self, client: RestClient) -> None:
+        payload: dict[str, object] = {"key": "value"}
+        session = FakeSession(response=FakeResponse(json_value=payload))
+
+        with patch.object(client, "_get_client", return_value=session):
+            result = client.get_json(self.URL)
+
+        assert result == payload
+
+    def test_404_raises_http_status_error_with_get_context(self, client: RestClient) -> None:
+        session = FakeSession(
+            response=FakeResponse(ok=False, status_code=404, text="Not Found"),
+        )
+
+        with patch.object(client, "_get_client", return_value=session):
+            with pytest.raises(PerplexityHTTPStatusError) as exc_info:
+                client.get_json(self.URL)
+
+        assert exc_info.value.request.method == "GET"
+        assert exc_info.value.request.url == self.URL
+        assert exc_info.value.response.status_code == 404
+
+    def test_500_raises_http_status_error_with_get_context(self, client: RestClient) -> None:
+        session = FakeSession(
+            response=FakeResponse(ok=False, status_code=500, text="Boom"),
+        )
+
+        with patch.object(client, "_get_client", return_value=session):
+            with pytest.raises(PerplexityHTTPStatusError) as exc_info:
+                client.get_json(self.URL)
+
+        assert exc_info.value.request.method == "GET"
+        assert exc_info.value.request.url == self.URL
+        assert exc_info.value.response.status_code == 500
+
+    def test_connection_error_raises_request_error(self, client: RestClient) -> None:
+        transport_error = CurlConnectionError("Connection refused")
+        session = FakeSession(error=transport_error)
+
+        with patch.object(client, "_get_client", return_value=session):
+            with pytest.raises(PerplexityRequestError) as exc_info:
+                client.get_json(self.URL)
+
+        assert exc_info.value.__cause__ is transport_error
+
+    def test_timeout_raises_request_error(self, client: RestClient) -> None:
+        transport_error = Timeout("Request timed out")
+        session = FakeSession(error=transport_error)
+
+        with patch.object(client, "_get_client", return_value=session):
+            with pytest.raises(PerplexityRequestError) as exc_info:
+                client.get_json(self.URL)
+
+        assert exc_info.value.__cause__ is transport_error
+
+    def test_malformed_json_raises_upstream_schema_error(self, client: RestClient) -> None:
+        decode_error = json.JSONDecodeError("Expecting value", "{not json", 0)
+        session = FakeSession(response=FakeResponse(json_error=decode_error))
+
+        with patch.object(client, "_get_client", return_value=session):
+            with pytest.raises(UpstreamSchemaError) as exc_info:
+                client.get_json(self.URL)
+
+        assert exc_info.value.__cause__ is decode_error
+
+    def test_no_raw_transport_exception_crosses_boundary(self, client: RestClient) -> None:
+        session = FakeSession(error=CurlConnectionError("Connection refused"))
+
+        with patch.object(client, "_get_client", return_value=session):
+            with pytest.raises(Exception) as exc_info:
+                client.get_json(self.URL)
+
+        assert type(exc_info.value) is PerplexityRequestError

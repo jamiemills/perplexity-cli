@@ -1,4 +1,11 @@
-"""Tests for defensive programming in AttachmentUploader._upload_to_s3()."""
+"""Defensive programming tests for AttachmentUploader.
+
+The upload path fails closed: absent, empty, or non-mapping signing fields
+and missing or empty ``s3_object_url`` values are rejected with typed
+exceptions at both the orchestration boundary and the S3 helper level.
+Tests assert exact production exception classes, never broad ``Exception``
+catches.
+"""
 
 import base64
 import logging
@@ -8,12 +15,23 @@ import pytest
 
 from perplexity_cli.attachments.upload_manager import AttachmentUploader
 from perplexity_cli.utils.attachment_models import FileAttachment
-from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, UpstreamSchemaError
+from perplexity_cli.utils.exceptions import (
+    AttachmentUploadError,
+    PerplexityHTTPStatusError,
+    UpstreamSchemaError,
+)
 from tests.helpers.fake_transport import FakeHttpResponse, FakeHttpTransport
-from tests.helpers.fake_uploader import FakeS3UploadClientFactory
+from tests.helpers.fake_uploader import FakeS3UploadClient, FakeS3UploadClientFactory
 
 _S3_OBJECT_URL = "https://ppl-ai-file-upload.s3.amazonaws.com/test.txt"
 _UPLOAD_FACTORY = "perplexity_cli.attachments.upload_manager._get_httpx_async_client_factory"
+
+_VALID_FIELDS = {
+    "policy": "base64-encoded-policy",
+    "x-amz-signature": "signature-value",
+    "x-amz-credential": "credential-value",
+    "key": "uploads/test.txt",
+}
 
 
 def _make_attachment(
@@ -27,10 +45,28 @@ def _make_attachment(
     )
 
 
+def _make_s3_client(response: FakeHttpResponse | None = None) -> FakeS3UploadClient:
+    """Create a fake S3 client for direct ``_upload_to_s3`` calls."""
+    factory = FakeS3UploadClientFactory(response or FakeHttpResponse(status_code=204))
+    return factory()
+
+
 def _patch_s3_upload(response: FakeHttpResponse):
     """Inject *response* as the S3 upload boundary via the factory seam."""
     factory = FakeS3UploadClientFactory(response)
     return patch(_UPLOAD_FACTORY, return_value=factory, autospec=True)
+
+
+class _RaisingS3Client(FakeS3UploadClient):
+    """Fake S3 client whose ``post`` always raises a transport error."""
+
+    def __init__(self) -> None:
+        """Initialise with a benign response that is never reached."""
+        super().__init__(FakeHttpResponse(status_code=204))
+
+    async def post(self, url: str, **kwargs: object) -> FakeHttpResponse:
+        """Simulate a transport-level S3 failure."""
+        raise ConnectionError("connection reset by peer")
 
 
 class TestUploadManagerDefensive:
@@ -46,67 +82,106 @@ class TestUploadManagerDefensive:
         """Create a test FileAttachment."""
         return _make_attachment()
 
-    @pytest.mark.asyncio
-    async def test_upload_to_s3_with_null_fields(self, uploader, test_attachment):
-        """Test that _upload_to_s3 handles null 'fields' value gracefully.
+    # -- Fail-closed signing field validation at the helper level -----------
 
-        Previously would crash with AttributeError: 'NoneType' object has no
-        attribute 'items'.
-        """
+    @pytest.mark.asyncio
+    async def test_upload_to_s3_with_null_fields_rejected(self, uploader, test_attachment):
+        """Null 'fields' are rejected with UpstreamSchemaError."""
         upload_data = {"fields": None, "s3_object_url": _S3_OBJECT_URL}
 
-        with _patch_s3_upload(FakeHttpResponse(status_code=204)):
-            result = await uploader._upload_to_s3(test_attachment, upload_data)
-
-        assert result == _S3_OBJECT_URL
+        with pytest.raises(UpstreamSchemaError, match="fields"):
+            await uploader._upload_to_s3(test_attachment, upload_data, _make_s3_client())
 
     @pytest.mark.asyncio
-    async def test_upload_to_s3_with_empty_fields_dict(self, uploader, test_attachment):
-        """Test that _upload_to_s3 works with empty 'fields' dict."""
+    async def test_upload_to_s3_with_empty_fields_dict_rejected(self, uploader, test_attachment):
+        """An empty 'fields' dict is rejected with UpstreamSchemaError."""
         upload_data = {"fields": {}, "s3_object_url": _S3_OBJECT_URL}
 
-        factory = FakeS3UploadClientFactory(FakeHttpResponse(status_code=204))
-        with patch(_UPLOAD_FACTORY, return_value=factory, autospec=True):
-            result = await uploader._upload_to_s3(test_attachment, upload_data)
+        with pytest.raises(UpstreamSchemaError, match="fields"):
+            await uploader._upload_to_s3(test_attachment, upload_data, _make_s3_client())
 
-        assert result == _S3_OBJECT_URL
-        assert "files" in factory.last_client.last_post.kwargs
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "falsy_value",
+        [None, False, 0, "", []],
+    )
+    async def test_upload_to_s3_with_falsy_fields_rejected(
+        self, uploader, test_attachment, falsy_value
+    ):
+        """Any falsy 'fields' value is rejected with UpstreamSchemaError."""
+        upload_data = {"fields": falsy_value, "s3_object_url": _S3_OBJECT_URL}
+
+        with pytest.raises(UpstreamSchemaError, match="fields"):
+            await uploader._upload_to_s3(test_attachment, upload_data, _make_s3_client())
+
+    @pytest.mark.asyncio
+    async def test_upload_to_s3_with_non_mapping_fields_rejected(self, uploader, test_attachment):
+        """A non-mapping 'fields' value is rejected, not silently ignored."""
+        upload_data = {"fields": ["unexpected", "list"], "s3_object_url": _S3_OBJECT_URL}
+
+        with pytest.raises(UpstreamSchemaError, match="fields"):
+            await uploader._upload_to_s3(test_attachment, upload_data, _make_s3_client())
+
+    # -- Fail-closed object URL validation at the helper level --------------
+
+    @pytest.mark.asyncio
+    async def test_upload_to_s3_with_missing_object_url_rejected(self, uploader, test_attachment):
+        """A missing 's3_object_url' is rejected with UpstreamSchemaError."""
+        upload_data = {"fields": dict(_VALID_FIELDS)}
+
+        with pytest.raises(UpstreamSchemaError, match="S3 object URL"):
+            await uploader._upload_to_s3(test_attachment, upload_data, _make_s3_client())
+
+    @pytest.mark.asyncio
+    async def test_upload_to_s3_with_null_object_url_rejected(self, uploader, test_attachment):
+        """A null 's3_object_url' is rejected with UpstreamSchemaError."""
+        upload_data = {"fields": dict(_VALID_FIELDS), "s3_object_url": None}
+
+        with pytest.raises(UpstreamSchemaError, match="S3 object URL"):
+            await uploader._upload_to_s3(test_attachment, upload_data, _make_s3_client())
+
+    @pytest.mark.asyncio
+    async def test_upload_to_s3_with_empty_object_url_rejected(self, uploader, test_attachment):
+        """An empty 's3_object_url' is rejected with UpstreamSchemaError."""
+        upload_data = {"fields": dict(_VALID_FIELDS), "s3_object_url": ""}
+
+        with pytest.raises(UpstreamSchemaError, match="S3 object URL"):
+            await uploader._upload_to_s3(test_attachment, upload_data, _make_s3_client())
+
+    # -- Valid presigned data ------------------------------------------------
 
     @pytest.mark.asyncio
     async def test_upload_to_s3_with_normal_fields(self, uploader, test_attachment):
-        """Test that _upload_to_s3 works normally with proper fields dict."""
+        """A valid presigned entry uploads successfully via the shared client."""
         upload_data = {
-            "fields": {
-                "policy": "base64-encoded-policy",
-                "x-amz-signature": "signature-value",
-                "x-amz-credential": "credential-value",
-                "key": "uploads/test.txt",
-            },
+            "fields": dict(_VALID_FIELDS),
             "s3_object_url": _S3_OBJECT_URL,
         }
+        client = _make_s3_client()
 
-        factory = FakeS3UploadClientFactory(FakeHttpResponse(status_code=204))
-        with patch(_UPLOAD_FACTORY, return_value=factory, autospec=True):
-            result = await uploader._upload_to_s3(test_attachment, upload_data)
+        result = await uploader._upload_to_s3(test_attachment, upload_data, client)
 
         assert result == _S3_OBJECT_URL
-        files_dict = factory.last_client.last_post.kwargs["files"]
+        files_dict = client.last_post.kwargs["files"]
         assert "policy" in files_dict
         assert "x-amz-signature" in files_dict
         assert "x-amz-credential" in files_dict
 
+    # -- Transport failures -----------------------------------------------
+
     @pytest.mark.asyncio
-    async def test_upload_to_s3_with_false_fields(self, uploader, test_attachment):
-        """Test that _upload_to_s3 handles falsy 'fields' values correctly."""
-        falsy_values = [None, False, 0, "", []]
+    async def test_s3_transport_error_raises_with_filename(self, uploader):
+        """A transport error surfaces as AttachmentUploadError with the filename."""
+        upload_data = {
+            "fields": dict(_VALID_FIELDS),
+            "s3_object_url": _S3_OBJECT_URL,
+        }
+        attachment = _make_attachment(filename="report.txt", body=b"content")
 
-        for falsy_value in falsy_values:
-            upload_data = {"fields": falsy_value, "s3_object_url": _S3_OBJECT_URL}
+        with pytest.raises(AttachmentUploadError, match=r"Failed to upload report\.txt to S3"):
+            await uploader._upload_to_s3(attachment, upload_data, _RaisingS3Client())
 
-            with _patch_s3_upload(FakeHttpResponse(status_code=204)):
-                result = await uploader._upload_to_s3(test_attachment, upload_data)
-
-            assert result == _S3_OBJECT_URL
+    # -- Orchestration boundary fail-closed behaviour -----------------------
 
     @pytest.mark.asyncio
     async def test_request_upload_urls_logs_on_auth_error(self, uploader):
@@ -127,34 +202,22 @@ class TestUploadManagerDefensive:
             await uploader._request_upload_urls(attachments, session)
 
     @pytest.mark.asyncio
-    async def test_upload_files_with_null_fields_in_response(self, uploader):
-        """Test full upload_files workflow when _request_upload_urls returns null fields.
+    async def test_upload_files_fails_closed_on_null_fields(self, uploader):
+        """A null-fields response raises without bypassing validation.
 
-        When _request_upload_urls returns data with null fields (bypassing the
-        validation in that method), _upload_to_s3 handles it defensively.
+        The full upload_files flow validates presigned entries inside
+        ``_request_upload_urls`` and must fail before any S3 upload starts.
         """
         attachments = [_make_attachment(body=b"Test content")]
 
-        async def stub_request_upload_urls(attachments, session):
-            """Inject null-fields upload data, bypassing response validation."""
-            uuid_to_attachment = {"uuid-1": attachments[0]}
-            api_response = {
-                "results": {"uuid-1": {"fields": None, "s3_object_url": _S3_OBJECT_URL}}
-            }
-            return api_response, uuid_to_attachment
+        api_response = {"results": {"uuid-1": {"fields": None, "s3_object_url": _S3_OBJECT_URL}}}
+        session = FakeHttpTransport(
+            FakeHttpResponse(ok=True, status_code=200, json_data=api_response)
+        )
 
-        session = FakeHttpTransport()
-        s3_factory = FakeS3UploadClientFactory(FakeHttpResponse(status_code=204))
-
-        with patch.object(uploader, "_request_upload_urls", side_effect=stub_request_upload_urls):
-            with patch.object(
-                uploader, "_create_async_session", return_value=session, autospec=True
-            ):
-                with patch(_UPLOAD_FACTORY, return_value=s3_factory, autospec=True):
-                    result = await uploader.upload_files(attachments)
-
-                    assert len(result) == 1
-                    assert result[0] == _S3_OBJECT_URL
+        with patch.object(uploader, "_create_async_session", return_value=session, autospec=True):
+            with pytest.raises(AttachmentUploadError, match="empty presigned URL"):
+                await uploader.upload_files(attachments)
 
 
 class TestUploadManagerQuotaHandling:
@@ -167,7 +230,7 @@ class TestUploadManagerQuotaHandling:
 
     @pytest.mark.asyncio
     async def test_rate_limited_response_raises_quota_error(self, uploader):
-        """Test that rate_limited: true produces a clear quota exhaustion message."""
+        """Test that rate_limited: true produces a clear quota exhaustion error."""
         attachments = [_make_attachment(body=b"content")]
 
         api_response = {
@@ -186,7 +249,7 @@ class TestUploadManagerQuotaHandling:
             FakeHttpResponse(ok=True, status_code=200, json_data=api_response)
         )
 
-        with pytest.raises(RuntimeError, match="File upload quota exhausted"):
+        with pytest.raises(AttachmentUploadError, match="File upload quota exhausted"):
             await uploader._request_upload_urls(attachments, session)
 
     @pytest.mark.asyncio
@@ -201,7 +264,7 @@ class TestUploadManagerQuotaHandling:
             FakeHttpResponse(ok=True, status_code=200, json_data=api_response)
         )
 
-        with pytest.raises(RuntimeError, match=r"perplexity\.ai/settings/account"):
+        with pytest.raises(AttachmentUploadError, match=r"perplexity\.ai/settings/account"):
             await uploader._request_upload_urls(attachments, session)
 
     @pytest.mark.asyncio
@@ -223,7 +286,7 @@ class TestUploadManagerQuotaHandling:
             FakeHttpResponse(ok=True, status_code=200, json_data=api_response)
         )
 
-        with pytest.raises(RuntimeError, match="File type not supported"):
+        with pytest.raises(AttachmentUploadError, match="File type not supported"):
             await uploader._request_upload_urls(attachments, session)
 
     @pytest.mark.asyncio
@@ -245,7 +308,7 @@ class TestUploadManagerQuotaHandling:
             FakeHttpResponse(ok=True, status_code=200, json_data=api_response)
         )
 
-        with pytest.raises(RuntimeError, match="authentication or account issue"):
+        with pytest.raises(AttachmentUploadError, match="authentication or account issue"):
             await uploader._request_upload_urls(attachments, session)
 
     @pytest.mark.asyncio
@@ -436,8 +499,8 @@ class TestUploadManagerLogging:
             assert any("pxcli auth login" in record.message for record in error_logs)
 
     @pytest.mark.asyncio
-    async def test_unexpected_fields_type_warning_logged(self, uploader, caplog):
-        """Test that a warning is logged when fields has unexpected type."""
+    async def test_invalid_fields_type_raises_upstream_error(self, uploader, caplog):
+        """A non-mapping fields type raises UpstreamSchemaError, never warns."""
         test_attachment = _make_attachment(body=b"Test file content")
 
         upload_data = {
@@ -445,9 +508,5 @@ class TestUploadManagerLogging:
             "s3_object_url": _S3_OBJECT_URL,
         }
 
-        with _patch_s3_upload(FakeHttpResponse(status_code=204)):
-            with caplog.at_level(logging.WARNING):
-                await uploader._upload_to_s3(test_attachment, upload_data)
-
-            warning_logs = [record for record in caplog.records if record.levelname == "WARNING"]
-            assert any("Unexpected fields type" in record.message for record in warning_logs)
+        with pytest.raises(UpstreamSchemaError, match="fields"):
+            await uploader._upload_to_s3(test_attachment, upload_data, _make_s3_client())

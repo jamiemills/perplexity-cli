@@ -12,19 +12,25 @@ Each identity is a ``file:line:type[:detail]`` fingerprint.
 Moving, replacing, or broadening a suppression creates a new identity and
 triggers a regression.
 
+Suppressions are extracted with Python's tokeniser so only real ``#``
+comments are scanned — suppression-like text inside strings or docstrings is
+ignored.
+
 Usage::
 
     uv run python scripts/check_suppressions.py [--update-baseline]
 
-Exit codes: 0 = pass, 1 = regression.
+Exit codes: 0 = pass, 1 = regression, 2 = tool/configuration error.
 """
 
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import re
 import sys
+import tokenize
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -44,6 +50,11 @@ PYPROJECT = PROJECT_ROOT / "pyproject.toml"
 BASELINE_NAME = "suppressions.json"
 DESCRIPTION = "Suppression ratchet: block new, moved, or broadened suppressions."
 _SCRIPT = Path(__file__).name
+
+
+class ToolError(Exception):
+    """Raised when identities cannot be computed reliably (fail-closed)."""
+
 
 _NOQA_RE = re.compile(r"#\s*noqa\b(?:\s*:\s*(.+?))?(?=\s*$|\s*#)")
 _NOSEMGREP_RE = re.compile(r"#\s*nosemgrep\b(?:\s*:\s*(.+?))?(?=\s*$|\s*#)")
@@ -75,15 +86,15 @@ def _make_identity(relative_path: str, line: int, stype: str, detail: str | None
     return f"{relative_path}:{line}:{stype}"
 
 
-def _extract_line_identities(rel: str, line_no: int, line: str) -> list[str]:
-    """Extract all suppression/pragma identities from a single source line."""
+def _extract_comment_identities(rel: str, line_no: int, comment: str) -> list[str]:
+    """Extract all suppression/pragma identities from a single comment token."""
     identities: list[str] = []
-    for m in _PRAGMA_RE.finditer(line):
+    for m in _PRAGMA_RE.finditer(comment):
         kind = m.group(1)
         detail = _normalise_detail(m.group(2))
         identities.append(_make_identity(rel, line_no, f"no-{kind}", detail))
     for stype, regex in _SUPPRESSION_TYPES:
-        for m in regex.finditer(line):
+        for m in regex.finditer(comment):
             try:
                 detail = _normalise_detail(m.group(1))
             except IndexError:
@@ -92,13 +103,34 @@ def _extract_line_identities(rel: str, line_no: int, line: str) -> list[str]:
     return identities
 
 
+def _iter_comment_tokens(text: str, path: Path) -> list[tuple[int, str]]:
+    """Return ``(line_no, comment_text)`` pairs for real comment tokens.
+
+    Raises:
+        ToolError: When the source cannot be tokenised.
+    """
+    try:
+        return [
+            (tok.start[0], tok.string)
+            for tok in tokenize.tokenize(io.BytesIO(text.encode("utf-8")).readline)
+            if tok.type == tokenize.COMMENT
+        ]
+    except (tokenize.TokenError, SyntaxError) as exc:
+        msg = f"Source file cannot be tokenised: {path}"
+        raise ToolError(msg) from exc
+
+
 def _collect_source_identities(src_dir: Path, root: Path) -> list[str]:
     identities: list[str] = []
     for path in sorted(src_dir.rglob("*.py")):
-        text = path.read_text(encoding="utf-8")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            msg = f"Unreadable source file: {path}"
+            raise ToolError(msg) from exc
         rel = str(path.relative_to(root))
-        for line_no, line in enumerate(text.splitlines(), start=1):
-            identities.extend(_extract_line_identities(rel, line_no, line))
+        for line_no, comment in _iter_comment_tokens(text, path):
+            identities.extend(_extract_comment_identities(rel, line_no, comment))
     return identities
 
 
@@ -115,14 +147,19 @@ def _extract_coverage_report_identities(report: dict[str, Any], pyproject_name: 
     return identities
 
 
-def _collect_coverage_config_identities(pyproject: Path) -> list[str]:
+def _load_tool_config(pyproject: Path) -> dict[str, Any]:
+    """Parse pyproject.toml, raising a ToolError when it is unreadable."""
     if not pyproject.is_file():
-        return []
+        return {}
     try:
-        config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
-        return []
+        return tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        msg = f"Failed to read or parse {pyproject}"
+        raise ToolError(msg) from exc
 
+
+def _collect_coverage_config_identities(pyproject: Path) -> list[str]:
+    config = _load_tool_config(pyproject)
     coverage = config.get("tool", {}).get("coverage", {})
     identities: list[str] = []
 
@@ -136,13 +173,7 @@ def _collect_coverage_config_identities(pyproject: Path) -> list[str]:
 
 
 def _collect_mutmut_config_identities(pyproject: Path) -> list[str]:
-    if not pyproject.is_file():
-        return []
-    try:
-        config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
-        return []
-
+    config = _load_tool_config(pyproject)
     mutmut = config.get("tool", {}).get("mutmut", {})
     identities: list[str] = []
 
@@ -194,7 +225,11 @@ def _load_baseline_identities(name: str) -> list[str]:
     path = BASELINE_DIR / name
     if not path.is_file():
         return []
-    baseline = json.loads(path.read_text())
+    try:
+        baseline = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        msg = f"Unreadable or unparseable baseline: {path}"
+        raise ToolError(msg) from exc
     identities = _load_identities_from_data(baseline)
     if identities is not None:
         return identities
@@ -240,18 +275,23 @@ def _report_regression(diff: FingerprintDiff) -> int:
 
 def main() -> None:
     args = _parse_args()
-    current = collect_identities()
+    try:
+        current = collect_identities()
 
-    if args.update_baseline:
-        path = save_fingerprints(BASELINE_NAME, current)
-        print(f"Suppression baseline refreshed: {len(current)} identity/identities -> {path}")
-        return
+        if args.update_baseline:
+            path = save_fingerprints(BASELINE_NAME, current)
+            print(f"Suppression baseline refreshed: {len(current)} identity/identities -> {path}")
+            return
 
-    baseline = _load_baseline_identities(BASELINE_NAME)
-    diff = diff_fingerprints(current, baseline)
-    if diff.is_regression:
-        sys.exit(_report_regression(diff))
-    _report_pass(diff, len(current))
+        baseline = _load_baseline_identities(BASELINE_NAME)
+    except ToolError as exc:
+        print(f"Suppression ratchet tool error: {exc}", file=sys.stderr)
+        sys.exit(2)
+    else:
+        diff = diff_fingerprints(current, baseline)
+        if diff.is_regression:
+            sys.exit(_report_regression(diff))
+        _report_pass(diff, len(current))
 
 
 if __name__ == "__main__":

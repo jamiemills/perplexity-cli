@@ -3,30 +3,22 @@
 from __future__ import annotations
 
 import json
-import socket
 import threading
+import time
 
 import httpx
 import pytest
 
-from tests.support.network_guard import _patched_create_connection
 from tests.support.protocol_server import (
+    REQUEST_TIMEOUT,
+    SHUTDOWN_TIMEOUT,
+    TEST_TIMEOUT,
     ProtocolServer,
     QueryResponse,
     UploadPutResponse,
     UploadUrlResponse,
     fake_time_monotonic,
 )
-
-
-@pytest.fixture
-def guard() -> None:
-    original = socket.create_connection
-    socket.create_connection = _patched_create_connection
-    try:
-        yield
-    finally:
-        socket.create_connection = original
 
 
 @pytest.fixture
@@ -49,7 +41,7 @@ class TestQueryStreaming:
         resp = httpx.post(
             f"{server.url}/api/query",
             json={"query_str": "test", "params": {}},
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
 
         assert resp.status_code == 200
@@ -67,7 +59,7 @@ class TestQueryStreaming:
         resp = httpx.post(
             f"{server.url}/api/query",
             json={"query_str": "test", "params": {}},
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
 
         events = _parse_sse(resp.text)
@@ -87,7 +79,7 @@ class TestQueryStreaming:
         resp = httpx.post(
             f"{server.url}/api/query",
             json={"query_str": "test", "params": {}},
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
 
         events = _parse_sse(resp.text)
@@ -129,7 +121,7 @@ class TestQueryStreaming:
         resp = httpx.post(
             f"{server.url}/api/query",
             json={"query_str": "test", "params": {}},
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
 
         events = _parse_sse(resp.text)
@@ -148,7 +140,7 @@ class TestQueryStreaming:
         resp = httpx.post(
             f"{server.url}/api/query",
             json={"query_str": "test", "params": {}},
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
 
         assert resp.status_code == 500
@@ -164,7 +156,7 @@ class TestQueryStreaming:
         resp = httpx.post(
             f"{server.url}/api/query",
             json={"query_str": "test", "params": {}},
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
 
         assert resp.headers.get("x-custom") == "harness-value"
@@ -177,7 +169,7 @@ class TestUploadUrl:
             body=server.make_upload_url_response(["uuid-1"]),
         )
 
-        resp = httpx.get(f"{server.url}/api/upload-url", timeout=5)
+        resp = httpx.get(f"{server.url}/api/upload-url", timeout=REQUEST_TIMEOUT)
 
         assert resp.status_code == 200
         data = resp.json()
@@ -195,7 +187,7 @@ class TestUploadUrl:
         resp = httpx.post(
             f"{server.url}/api/upload-url",
             json={"files": {"uuid-2": {"filename": "f.txt"}}},
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
 
         assert resp.status_code == 200
@@ -209,7 +201,7 @@ class TestUploadUrl:
             body={"error": "unauthorised"},
         )
 
-        resp = httpx.get(f"{server.url}/api/upload-url", timeout=5)
+        resp = httpx.get(f"{server.url}/api/upload-url", timeout=REQUEST_TIMEOUT)
 
         assert resp.status_code == 401
 
@@ -219,7 +211,7 @@ class TestUploadUrl:
             body=server.make_upload_url_response(["a", "b", "c"]),
         )
 
-        resp = httpx.get(f"{server.url}/api/upload-url", timeout=5)
+        resp = httpx.get(f"{server.url}/api/upload-url", timeout=REQUEST_TIMEOUT)
 
         data = resp.json()
         assert len(data["results"]) == 3
@@ -234,7 +226,7 @@ class TestUploadPut:
         resp = httpx.put(
             f"{server.url}/upload",
             content=b"file bytes here",
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
 
         assert resp.status_code == 204
@@ -246,7 +238,7 @@ class TestUploadPut:
         httpx.put(
             f"{server.url}/upload",
             content=b"my file content",
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
 
         assert server.last_upload_bytes == b"my file content"
@@ -261,7 +253,7 @@ class TestUploadPut:
         resp = httpx.put(
             f"{server.url}/upload",
             content=b"bad",
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
 
         assert resp.status_code == 400
@@ -269,10 +261,10 @@ class TestUploadPut:
 
 
 class TestFakeClock:
-    def test_fake_now_defaults_to_none(self, server: ProtocolServer) -> None:
+    def test_fake_now_defaults_to_none(self) -> None:
         """When not set, fake_now is None."""
-        srv = ProtocolServer()
-        assert srv.fake_now is None
+        with ProtocolServer() as srv:
+            assert srv.fake_now is None
 
     def test_set_and_advance_fake_now(self, server: ProtocolServer) -> None:
         """The fake clock can be set and advanced."""
@@ -284,16 +276,16 @@ class TestFakeClock:
 
     def test_fake_time_monotonic_falls_back_to_real(self) -> None:
         """When fake_now is None, returns real time.monotonic()."""
-        srv = ProtocolServer()
-        t = fake_time_monotonic(srv)
-        assert isinstance(t, float)
-        assert t > 0
+        with ProtocolServer() as srv:
+            t = fake_time_monotonic(srv)
+            assert isinstance(t, float)
+            assert t > 0
 
     def test_fake_time_monotonic_uses_fake_clock(self) -> None:
         """When fake_now is set, returns the fake value."""
-        srv = ProtocolServer()
-        srv.fake_now = 42.0
-        assert fake_time_monotonic(srv) == 42.0
+        with ProtocolServer() as srv:
+            srv.fake_now = 42.0
+            assert fake_time_monotonic(srv) == 42.0
 
 
 class TestServerLifecycle:
@@ -305,6 +297,48 @@ class TestServerLifecycle:
         srv.stop()
         assert not srv._started
 
+    def test_stop_is_idempotent(self) -> None:
+        """Calling stop() more than once is safe."""
+        srv = ProtocolServer()
+        srv.start()
+        srv.stop()
+        srv.stop()
+
+    def test_context_manager_manages_lifecycle(self) -> None:
+        """The context manager starts and stops the server."""
+        with ProtocolServer() as srv:
+            resp = httpx.get(f"{srv.url}/api/upload-url", timeout=REQUEST_TIMEOUT)
+            assert resp.status_code == 200
+        thread = srv._thread
+        assert thread is not None
+        assert not thread.is_alive()
+
+    def test_no_thread_leak_after_stop(self) -> None:
+        """The serve thread is joined and not left running after stop()."""
+        srv = ProtocolServer()
+        srv.start()
+        serve_thread = srv._thread
+        assert serve_thread is not None
+        assert serve_thread.is_alive()
+        srv.stop()
+        assert not serve_thread.is_alive()
+
+    def test_port_released_after_stop(self) -> None:
+        """The listening socket is closed so the port can be reused."""
+        srv = ProtocolServer()
+        srv.start()
+        port = srv.server_address[1]
+        srv.stop()
+
+        srv2 = ProtocolServer(port=port)
+        srv2.start()
+        try:
+            assert srv2.server_address[1] == port
+            resp = httpx.get(f"{srv2.url}/api/upload-url", timeout=REQUEST_TIMEOUT)
+            assert resp.status_code == 200
+        finally:
+            srv2.stop()
+
     def test_reset_clears_state(self, server: ProtocolServer) -> None:
         """reset() clears accumulated state."""
         server.upload_put_response = UploadPutResponse()
@@ -312,7 +346,7 @@ class TestServerLifecycle:
         httpx.put(
             f"{server.url}/upload",
             content=b"before reset",
-            timeout=5,
+            timeout=REQUEST_TIMEOUT,
         )
         assert server.last_upload_bytes == b"before reset"
 
@@ -326,30 +360,71 @@ class TestServerLifecycle:
             httpx.post(
                 f"{server.url}/api/query",
                 json={"query_str": "test", "params": {}},
-                timeout=5,
+                timeout=REQUEST_TIMEOUT,
             )
         assert server.request_count == 3
 
-    def test_concurrent_requests(self, server: ProtocolServer) -> None:
-        """The server handles concurrent requests from multiple threads."""
+    def test_concurrent_requests_served_threaded(self, server: ProtocolServer) -> None:
+        """Concurrent requests are served in parallel, not serially."""
+        server.handler_sleep = 0.3
+        barrier = threading.Barrier(5, timeout=TEST_TIMEOUT)
+        results: list[str] = []
 
         def _make_request() -> None:
-            httpx.post(
-                f"{server.url}/api/query",
-                json={"query_str": "test", "params": {}},
-                timeout=5,
-            )
+            try:
+                barrier.wait()
+            except threading.BrokenBarrierError:
+                results.append("barrier-broken")
+                return
+            try:
+                resp = httpx.post(
+                    f"{server.url}/api/query",
+                    json={"query_str": "test", "params": {}},
+                    timeout=REQUEST_TIMEOUT,
+                )
+                results.append(str(resp.status_code))
+            except Exception as exc:
+                results.append(f"error:{exc}")
 
-        threads = []
-        for _ in range(5):
-            t = threading.Thread(target=_make_request)
-            threads.append(t)
-            t.start()
+        threads = [threading.Thread(target=_make_request) for _ in range(5)]
+        started = time.monotonic()
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=TEST_TIMEOUT)
+        elapsed = time.monotonic() - started
 
-        for t in threads:
-            t.join()
-
+        assert results == ["200"] * 5
         assert server.request_count == 5
+        assert elapsed < 1.0, "requests appear to have been served serially"
+
+    def test_no_handler_errors_on_normal_requests(self, server: ProtocolServer) -> None:
+        """Well-formed requests do not record handler errors."""
+        httpx.post(
+            f"{server.url}/api/query",
+            json={"query_str": "test", "params": {}},
+            timeout=REQUEST_TIMEOUT,
+        )
+        server.assert_no_handler_errors()
+
+    def test_handler_exception_propagates(self) -> None:
+        """A handler failure is recorded and re-raised so the test fails."""
+        srv = ProtocolServer()
+        srv.handler_exception = RuntimeError("harness boom")
+        srv.start()
+        try:
+            with pytest.raises(httpx.HTTPError):
+                httpx.post(
+                    f"{srv.url}/api/query",
+                    json={"query_str": "test", "params": {}},
+                    timeout=REQUEST_TIMEOUT,
+                )
+            errors = srv.wait_for_handler_errors(timeout=SHUTDOWN_TIMEOUT)
+            assert len(errors) >= 1
+            assert any("harness boom" in str(error) for error in errors)
+        finally:
+            with pytest.raises(RuntimeError, match="harness boom"):
+                srv.stop()
 
 
 def _parse_sse(body: str) -> list[dict]:

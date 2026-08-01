@@ -17,11 +17,13 @@ advertised contract. The accepted solution is to derive command output schemas
 from the Pydantic models via ``model_json_schema()`` so there is exactly one
 source of truth.
 
-This test is therefore an accepted-debt RATCHET rather than a zero-debt
-invariant. It records the *current* hand-written schema debt as a known
-baseline and fails if the set grows. Shrinking the set (deleting a hand-written
-schema in favour of model derivation) is always allowed and updates the
-baseline.
+This test is therefore a monotonic accepted-debt RATCHET rather than a
+zero-debt invariant. It records the *currently accepted* hand-written schema
+debt as a known baseline and fails if the set grows. Shrinking the set
+(deleting a hand-written schema in favour of model derivation) is always
+allowed — the ratchet never blocks cleanup, and ``_ACCEPTED_DEBT`` may
+therefore contain entries that have already been paid down (prune them by
+hand when convenient).
 """
 
 from __future__ import annotations
@@ -75,9 +77,8 @@ def _collect_handwritten_schema_dicts() -> set[str]:
     return found
 
 
-def test_no_new_handwritten_schema_dicts() -> None:
-    """No hand-written schema dict may be added beyond the accepted debt."""
-    current = _collect_handwritten_schema_dicts()
+def _assert_no_new_schema_debt(current: set[str]) -> None:
+    """Assert that *current* stays within the accepted-debt baseline."""
     new = current - _ACCEPTED_DEBT
     assert not new, (
         "New hand-written schema dict(s) detected — derive command output "
@@ -86,11 +87,12 @@ def test_no_new_handwritten_schema_dicts() -> None:
     )
 
 
-def test_accepted_debt_still_exists() -> None:
-    """Each accepted-debt entry must still be present (catches stale baselines)."""
-    current = _collect_handwritten_schema_dicts()
-    stale = _ACCEPTED_DEBT - current
-    assert not stale, (
-        "Accepted schema-debt entry removed — good! Update _ACCEPTED_DEBT in "
-        "tests/test_schema_drift.py to shrink the baseline:\n  " + "\n  ".join(sorted(stale))
-    )
+def test_no_new_handwritten_schema_dicts() -> None:
+    """No hand-written schema dict may be added beyond the accepted debt."""
+    _assert_no_new_schema_debt(_collect_handwritten_schema_dicts())
+
+
+def test_accepted_debt_removal_passes() -> None:
+    """Removing accepted debt (good cleanup) must pass the monotonic ratchet."""
+    paid_down = _ACCEPTED_DEBT - {"src/perplexity_cli/commands/_schemas.py:COMMAND_RESULT_SCHEMAS"}
+    _assert_no_new_schema_debt(set(paid_down))

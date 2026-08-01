@@ -42,6 +42,63 @@ class TestURLConfig:
         with pytest.raises(ValidationError):
             URLConfig(query_endpoint="   ")
 
+    def test_surrounding_whitespace_normalised(self):
+        cfg = URLConfig(base_url="  https://www.perplexity.ai  ")
+        assert cfg.base_url == "https://www.perplexity.ai"
+
+
+class TestURLConfigValidation:
+    """Tests for the URLConfig URL validation contract."""
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://www.perplexity.ai",
+            "https://www.perplexity.ai/rest/sse/perplexity_ask",
+            "https://ppl-ai-file-upload.s3.amazonaws.com/",
+            "https://custom.example.com",
+            "https://custom.example.com/query?param=1",
+            "https://single-label-host",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+            "http://127.0.0.0",
+            "http://127.255.255.255",
+            "http://[::1]:8080",
+            "http://[::1]",
+        ],
+    )
+    def test_accepts_valid_urls(self, url):
+        cfg = URLConfig(base_url=url)
+        assert cfg.base_url == url
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "/api/custom/endpoint",
+            "api/custom/endpoint",
+            "www.perplexity.ai",
+            "//example.com/path",
+            "ftp://example.com",
+            "file:///etc/passwd",
+            "https://",
+            "https:///path",
+            "https://user:pass@example.com",
+            "https://user@example.com",
+            "https://example.com#fragment",
+            "https://example.com/path#frag",
+            "https://exa mple.com",
+            "https://example.com/pa th",
+            "https://example.com\\path",
+            "http://example.com",
+            "http://www.perplexity.ai",
+            "http://10.0.0.1",
+            "https://example.com/\x01",
+        ],
+    )
+    def test_rejects_invalid_urls(self, url):
+        with pytest.raises(ValidationError):
+            URLConfig(base_url=url)
+
 
 class TestRateLimitConfig:
     """Tests for RateLimitConfig model."""

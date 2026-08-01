@@ -13,6 +13,7 @@ from perplexity_cli.envelope import ErrorCode, envelope_to_dict, error_envelope
 from perplexity_cli.exit_codes import exit_code_for_exception
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
+    AttachmentUploadError,
     AuthenticationError,
     ConfigurationError,
     PerplexityHTTPStatusError,
@@ -48,6 +49,7 @@ _EXCEPTION_CLASSIFY_TABLE: list[tuple[type, ErrorCode, str | None]] = [
     (ConfigurationError, ErrorCode.configuration_error, None),
     (UpstreamSchemaError, ErrorCode.upstream_schema_error, None),
     (AttachmentError, ErrorCode.attachment_error, None),
+    (AttachmentUploadError, ErrorCode.attachment_error, None),
     (ValueError, ErrorCode.validation_error, None),
 ]
 
@@ -71,14 +73,14 @@ def handle_error(
     """Handle an exception, outputting either JSON or human-readable error, then exit."""
     code, fix = _classify_exception(exc)
     exit_code = exit_code_for_exception(exc)
+    message = str(exc) or type(exc).__name__
 
     if output_format == "json":
-        env = error_envelope(command, code, str(exc), (fix, None, None))
+        env = error_envelope(command, code, message, (fix, None, None))
         envelope_dict = envelope_to_dict(env, include_schema=include_schema)
         sys.stdout.write(json.dumps(envelope_dict, default=str) + "\n")
         sys.exit(exit_code)
     else:
-        message = str(exc)
         click.echo(f"Error: {message}", err=True)
         if fix:
             click.echo(f"Fix: {fix}", err=True)

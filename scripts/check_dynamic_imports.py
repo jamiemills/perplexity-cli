@@ -29,6 +29,16 @@ from pathlib import Path
 from typing import Any, cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _relative_file_identity(filepath: str) -> str:
+    """Return a repository-relative identity for a source file path."""
+    try:
+        return str(Path(filepath).relative_to(PROJECT_ROOT))
+    except ValueError:
+        return filepath
+
+
 SRC_ROOT = PROJECT_ROOT / "src" / "perplexity_cli"
 DEFAULT_TOML_PATH = PROJECT_ROOT / "quality" / "architecture.toml"
 BASELINE_PATH = PROJECT_ROOT / ".dynamic-imports-baseline.json"
@@ -377,7 +387,7 @@ def _report_non_constant(ctx: _DynamicCheckCtx, call: _DynamicImportCall) -> Non
                 f"non-constant argument. All production dynamic imports "
                 f"must use string literals with explicit allowlist entries."
             ),
-            file=f"{ctx.filepath}:{call.lineno}",
+            file=f"{_relative_file_identity(ctx.filepath)}:{call.lineno}",
         )
     )
 
@@ -409,7 +419,7 @@ def _check_dynamic_direction(ctx: _DynamicCheckCtx, target: str) -> None:
                 f"at line {ctx.lineno}, but {source_layer} may only import "
                 f"from: {', '.join(sorted(allowed))}"
             ),
-            file=f"{ctx.filepath}:{ctx.lineno}",
+            file=f"{_relative_file_identity(ctx.filepath)}:{ctx.lineno}",
         )
     )
 
@@ -493,7 +503,7 @@ def _check_single_file(filepath: Path, config: _RunConfig, result: AnalysisResul
                 severity=Severity.ERROR,
                 rule="parse-error",
                 message=f"{module_rel or '.'}: {parse_err}",
-                file=str(filepath),
+                file=_relative_file_identity(str(filepath)),
             )
         )
         return

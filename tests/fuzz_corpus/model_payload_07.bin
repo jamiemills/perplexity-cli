@@ -1,0 +1,1 @@
+{"uuid": "u-1", "backend_uuid": "b-1", "status": "completed", "text_completed": true, "blocks": [{"intended_usage": "ask_text", "content": {"text": "answer"}}, {"intended_usage": "web_results", "content": {"web_result_block": {"web_results": [{"name": "n", "url": "https://x", "snippet": "s"}]}}}]}

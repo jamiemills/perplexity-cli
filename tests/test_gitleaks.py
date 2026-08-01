@@ -7,6 +7,7 @@ and stdin refspec processing in isolation from a real repository.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,11 +19,26 @@ SCRIPT = PROJECT_ROOT / "scripts" / "gitleaks_check.sh"
 FIXTURES = PROJECT_ROOT / "tests" / "fixtures" / "gitleaks"
 
 
+def _require_gitleaks() -> None:
+    """Require the gitleaks binary; fail in CI contexts, skip locally.
+
+    These tests verify the secret-scanning pipeline, so in a CI context an
+    absent binary is a hard failure rather than a silent skip (authoritative
+    run).  Locally, skipping is a non-authoritative convenience.
+    """
+    if shutil.which("gitleaks") is not None:
+        return
+    if os.environ.get("CI"):
+        pytest.fail(
+            "gitleaks binary is required for the authoritative gitleaks "
+            "run in CI (install gitleaks 8.30.1)"
+        )
+    pytest.skip("gitleaks binary not installed")
+
+
 @pytest.fixture(autouse=True)
-def _skip_if_no_gitleaks() -> None:
-    """Skip tests that require the gitleaks binary when unavailable."""
-    if shutil.which("gitleaks") is None:
-        pytest.skip("gitleaks binary not installed")
+def _require_gitleaks_autouse() -> None:
+    _require_gitleaks()
 
 
 # ---------------------------------------------------------------------------

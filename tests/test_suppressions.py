@@ -10,13 +10,33 @@ Proves:
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import ModuleType
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import check_suppressions as cs
-from _ratchet import diff_fingerprints, save_fingerprints
+import pytest
+
+_SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+
+
+def _load_script(name: str) -> ModuleType:
+    """Load a ``scripts/`` module by path without mutating ``sys.path``."""
+    spec = importlib.util.spec_from_file_location(name, _SCRIPTS / f"{name}.py")
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load script: {name}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_ratchet = _load_script("_ratchet")
+cs = _load_script("check_suppressions")
+diff_fingerprints = _ratchet.diff_fingerprints
+save_fingerprints = _ratchet.save_fingerprints
+load_fingerprints = _ratchet.load_fingerprints
 
 
 def _make_src_tree(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -192,6 +212,77 @@ class TestCollectConfigIdentities:
         ids = cs._collect_coverage_config_identities(pyproject)
         assert len(ids) == 1
         assert "coverage-partial-branch" in ids[0]
+
+
+# ── Token-aware scanning tests ──────────────────────────────────────────────
+
+
+class TestTokenAwareScanning:
+    """Only real comments count — suppression text in strings/docstrings is ignored."""
+
+    def test_suppression_text_in_string_ignored(self, tmp_path: Path):
+        src = _make_src_tree(tmp_path, {"mod.py": 'x = "# noqa: F401"\n'})
+        ids = cs._collect_source_identities(src, tmp_path)
+        assert ids == []
+
+    def test_suppression_text_in_docstring_ignored(self, tmp_path: Path):
+        src = _make_src_tree(
+            tmp_path,
+            {"mod.py": '"""Example: "# pragma: no cover"\n"""\nx = 1\n'},
+        )
+        ids = cs._collect_source_identities(src, tmp_path)
+        assert ids == []
+
+    def test_multiple_suppressions_in_one_comment(self, tmp_path: Path):
+        src = _make_src_tree(
+            tmp_path,
+            {"mod.py": "x = 1  # noqa: F401  # type: ignore[arg-type]\n"},
+        )
+        ids = cs._collect_source_identities(src, tmp_path)
+        assert "src/mod.py:1:noqa:F401" in ids
+        assert "src/mod.py:1:type-ignore:arg-type" in ids
+
+
+# ── Fail-closed tests ───────────────────────────────────────────────────────
+
+
+class TestFailClosed:
+    """Unreadable sources, malformed TOML, and corrupt baselines must error out."""
+
+    def test_unreadable_source_raises_tool_error(self, tmp_path: Path, monkeypatch) -> None:
+        src = _make_src_tree(tmp_path, {"mod.py": "x = 1  # noqa\n"})
+
+        def _boom(self, *_args, **_kwargs):
+            raise OSError("simulated unreadable file")
+
+        monkeypatch.setattr(Path, "read_text", _boom)
+        with pytest.raises(cs.ToolError):
+            cs._collect_source_identities(src, tmp_path)
+
+    def test_malformed_toml_raises_tool_error(self, tmp_path: Path) -> None:
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text("[tool.coverage\nomit = [\n")
+        with pytest.raises(cs.ToolError):
+            cs._collect_coverage_config_identities(pyproject)
+
+    def test_corrupt_baseline_raises_tool_error(self, tmp_path: Path, monkeypatch) -> None:
+        _temp_baseline_dir(monkeypatch, tmp_path)
+        (tmp_path / "baselines" / "suppressions.json").write_text("not json")
+        with pytest.raises(cs.ToolError):
+            cs._load_baseline_identities("suppressions.json")
+
+    def test_main_exits_tool_error_code(self, tmp_path: Path, monkeypatch) -> None:
+        src = _make_src_tree(tmp_path, {"mod.py": "x = 1\n"})
+        pyproject = _make_pyproject(tmp_path)
+        _patch_check_module(monkeypatch, tmp_path, src, pyproject)
+        _temp_baseline_dir(monkeypatch, tmp_path)
+        (tmp_path / "baselines" / "suppressions.json").write_text("not json")
+
+        monkeypatch.setattr(sys, "argv", ["check_suppressions.py"])
+        exited_with: list[int] = []
+        monkeypatch.setattr(sys, "exit", exited_with.append)
+        cs.main()
+        assert exited_with == [2]
 
 
 # ── Regression detection tests ─────────────────────────────────────────────
@@ -407,7 +498,7 @@ class TestCountOnlyNotSufficient:
 
     def test_replaced_identities_same_file_total(self, tmp_path: Path, monkeypatch) -> None:
         # Baseline: two
-        # Current:  two # type: ignore on lines 1 and 2 (same count, diff type)
+        # Current:  two bare type: ignore on lines 1 and 2 (same count, diff type)
         src = _make_src_tree(
             tmp_path,
             {"mod.py": ("x = 1  # type: ignore\ny = 2  # type: ignore\n")},

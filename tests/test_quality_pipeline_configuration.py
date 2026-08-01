@@ -277,3 +277,74 @@ def test_mutmut_ignores_repository_infrastructure_tests() -> None:
         "--ignore=tests/test_quality_gates_documentation.py",
     }
     assert required <= arguments
+
+
+def test_ordinary_and_coverage_selectors_use_core_exclusion_manifest() -> None:
+    """The safe and coverage lanes exclude the property/mutation families."""
+    manifest_start = MAKEFILE.index("MUTATION_PROPERTY_FILES :=")
+    manifest_end = MAKEFILE.index("\n\n", manifest_start)
+    manifest = MAKEFILE[manifest_start:manifest_end]
+    for path in ("tests/test_property.py", "tests/test_mutation_policy.py"):
+        assert f"\t{path}" in manifest
+    for target in ("\ntest:", "\ntest-coverage-report:"):
+        start = MAKEFILE.index(target) + 1
+        end = MAKEFILE.find("\n\n", start)
+        recipe = MAKEFILE[start:end]
+        assert "not integration" in recipe
+        assert "$(addprefix --ignore=,$(MUTATION_PROPERTY_FILES))" in recipe
+
+
+def test_check_does_not_consume_coverage() -> None:
+    """`make check` must be static-only and never require a coverage report."""
+    check_start = MAKEFILE.index("\ncheck:")
+    check_end = MAKEFILE.find("\n\n", check_start)
+    check_body = MAKEFILE[check_start:check_end]
+    assert "module-coverage" not in check_body
+    assert "CHECK_PREREQS" in check_body
+    assert "ci-test-coverage: test-coverage" in MAKEFILE
+    assert "module-coverage" in MAKEFILE  # the target itself still exists
+
+
+def test_ci_quality_inventory_is_wired() -> None:
+    """The deterministic offline quality-gate inventory target must exist."""
+    line = next(line for line in MAKEFILE.splitlines() if line.startswith("ci-quality:"))
+    for member in (
+        "format-check",
+        "lint",
+        "typecheck-all",
+        "bandit",
+        "vulture",
+        "complexity",
+        "semgrep",
+        "arch-check",
+        "arch-check-dynamic",
+        "import-linter",
+        "coupling-check",
+        "ratchets",
+        "analyser-contract-tests",
+        "deptry",
+        "make-policy",
+        "workflow-policy",
+        "actionlint",
+    ):
+        assert member in line
+
+
+def test_make_policy_and_workflow_policy_targets_exist() -> None:
+    """The policy validators must be reachable as canonical make goals."""
+    assert "\nmake-policy:" in MAKEFILE
+    assert "scripts/validate_make_policy.py" in MAKEFILE
+    assert "\nworkflow-policy:" in MAKEFILE
+    assert "scripts/validate_workflow_policy.py --strict" in MAKEFILE
+
+
+def test_package_contract_target_exists() -> None:
+    """The distribution-contract target must chain build, verify, test, smoke."""
+    start = MAKEFILE.index("package-contract:")
+    end = MAKEFILE.find("\n\n", start)
+    body = MAKEFILE[start:end]
+    assert "uv build" in body
+    assert "scripts/verify_wheel.py" in body
+    assert "tests/test_packaging.py" in body
+    assert "tests/test_distribution_contract.py" in body
+    assert "scripts/smoke_test.py" in body

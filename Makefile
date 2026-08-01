@@ -14,6 +14,25 @@ SEMGREP_VERSION := 1.171.0
 ACTIONLINT_PY_VERSION := 1.7.12.24
 SEMGREP := uvx --from semgrep==$(SEMGREP_VERSION) semgrep
 ACTIONLINT := uvx --from actionlint-py==$(ACTIONLINT_PY_VERSION) actionlint
+# Literal core-exclusion manifest (plan decision A003): the property and
+# mutation families are excluded verbatim from the safe ordinary and coverage
+# lanes. No broad globs -- each path is explicit.
+MUTATION_PROPERTY_FILES := \
+	tests/test_property.py \
+	tests/test_property_policy.py \
+	tests/test_mutate_diff_files.py \
+	tests/test_mutation_api_utils_mcp.py \
+	tests/test_mutation_final_api.py \
+	tests/test_mutation_final_rich_scraper.py \
+	tests/test_mutation_formatting.py \
+	tests/test_mutation_kill_api_threads.py \
+	tests/test_mutation_policy.py \
+	tests/test_mutation_r3_api_rich.py \
+	tests/test_mutation_r3_runners.py \
+	tests/test_mutation_r3_threads_auth.py \
+	tests/test_mutation_runners_auth.py \
+	tests/test_mutation_threads_query.py \
+	tests/test_mutation_utils.py
 SEMGREP_CONFIGS := \
 	--config .semgrep.yml \
 	--config .semgrep-community-python.yml \
@@ -319,11 +338,14 @@ mutate-browse:  ## Browse mutation results in interactive TUI
 .PHONY: test test-coverage-report module-coverage test-coverage test-fuzz test-integration test-property-policy test-property test-property-push test-property-ci
 
 test:  ## Run tests without coverage (fail-fast, parallel)
-	uv run pytest tests/ -q --tb=line -x -n auto -m "not property and not hermetic_integration and not real_api and not manual and not real_user_config and not fuzz"
+	uv run pytest tests/ -q --tb=line -x -n auto \
+		-m "not property and not hermetic_integration and not integration and not real_api and not manual and not real_user_config and not fuzz" \
+		$(addprefix --ignore=,$(MUTATION_PROPERTY_FILES))
 
 test-coverage-report:  ## Run tests and produce coverage reports
 	uv run pytest tests/ -q --tb=line -x -n auto --dist loadfile \
-		-m "not property and not hermetic_integration and not real_api and not manual and not real_user_config and not fuzz" \
+		-m "not property and not hermetic_integration and not integration and not real_api and not manual and not real_user_config and not fuzz" \
+		$(addprefix --ignore=,$(MUTATION_PROPERTY_FILES)) \
 		--cov=perplexity_cli --cov-report=term-missing \
 		--cov-report=json --cov-report=xml:coverage.xml
 
@@ -336,7 +358,8 @@ test-fuzz:  ## Run fuzz tests
 	uv run pytest tests/test_fuzz.py -q --tb=line -x -m fuzz
 
 test-integration:  ## Run hermetic integration tests (loopback only)
-	uv run pytest tests/ -q --tb=short -m hermetic_integration
+	uv run pytest tests/ -q --tb=short -m hermetic_integration \
+		$(addprefix --ignore=,$(MUTATION_PROPERTY_FILES))
 
 test-property-policy:  ## Validate the exact property-test manifest
 	uv run pytest tests/test_property_policy.py -q
@@ -417,7 +440,7 @@ infisical-scan:  ## Scan uncommitted changes for secrets
 # Build and verify
 # ---------------------------------------------------------------------------
 
-.PHONY: build verify smoke-test
+.PHONY: build verify smoke-test package-contract
 
 build:  ## Build sdist and wheel
 	rm -rf dist
@@ -429,6 +452,12 @@ verify:  ## Verify built distributions
 
 smoke-test:  ## Install wheel in isolated venv and run smoke tests
 	scripts/smoke_test.sh
+
+package-contract:  ## Build, verify, test and smoke the distribution contract
+	uv build
+	uv run python scripts/verify_wheel.py
+	uv run pytest tests/test_packaging.py tests/test_distribution_contract.py -q
+	uv run python scripts/smoke_test.py
 
 # ---------------------------------------------------------------------------
 # Release
@@ -498,9 +527,7 @@ ifeq ($(CHECK_DEPTRY),true)
 CHECK_PREREQS += deptry
 endif
 
-CHECK_PREREQS += module-coverage
-
-check: $(CHECK_PREREQS)  ## Run configured checks plus existing module coverage
+check: $(CHECK_PREREQS)  ## Run configured static checks (no stale coverage dependency)
 
 agent-check:
 	uv run python scripts/agent_check.py pre-commit
@@ -511,7 +538,7 @@ agent-check-no-tests:
 agent-check-push:
 	uv run python scripts/agent_check.py pre-push
 
-.PHONY: check ci ci-static ci-test-coverage ci-test-compat ci-fuzz-status ci-property ci-package ci-trusted analyser-contract-validate analyser-contract-tests
+.PHONY: check ci ci-static ci-test-coverage ci-test-compat ci-fuzz-status ci-property ci-package ci-trusted ci-quality ci-conventional analyser-contract-validate analyser-contract-tests
 
 analyser-contract-validate:  ## Validate the production analyser contract registry
 	uv run python scripts/check_analyser_contracts.py --validate
@@ -534,6 +561,27 @@ ci-package: build verify ## CI package build and verification
 ci: ci-static ci-test-coverage ci-fuzz-status pip-audit sonar-reports ci-property ci-package smoke-test  ## Full local CI pipeline
 
 ci-trusted: ci safety-gate  ## Full CI plus authenticated Safety for trusted code
+
+ci-quality: format-check lint typecheck-all bandit vulture complexity semgrep arch-check arch-check-dynamic import-linter coupling-check ratchets analyser-contract-tests deptry make-policy workflow-policy actionlint  ## Deterministic offline quality gate inventory
+
+ci-conventional:  ## Serial final gate list (deterministic, offline, exact order)
+	@export UV_OFFLINE=1 npm_config_offline=true; \
+	set -e; \
+	make format-check; \
+	make lint; \
+	make typecheck-all; \
+	uv run pytest tests/test_network_guard.py tests/test_test_isolation.py -q; \
+	make test-coverage; \
+	make test-integration; \
+	make ci-quality; \
+	uv run pytest tests/test_mcp_server.py tests/test_mcp_protocol.py -q; \
+	make test-fuzz; \
+	npm --prefix .opencode run test:coverage; \
+	npm --prefix .opencode run check; \
+	make package-contract; \
+	make gitleaks-ci; \
+	uv run python scripts/architecture_model.py; \
+	uv run python scripts/check_architecture.py
 
 # ---------------------------------------------------------------------------
 # Quality gates
@@ -638,3 +686,15 @@ quality-architecture: import-linter arch-check coupling-report  ## Run import/ar
 
 actionlint:  ## Validate GitHub Actions workflows with actionlint
 	$(ACTIONLINT)
+
+# ---------------------------------------------------------------------------
+# Policy validators
+# ---------------------------------------------------------------------------
+
+.PHONY: make-policy workflow-policy
+
+make-policy:  ## Validate Make target ownership and dependency policy
+	uv run python scripts/validate_make_policy.py
+
+workflow-policy:  ## Validate GitHub Actions workflow policy (strict)
+	uv run python scripts/validate_workflow_policy.py --strict

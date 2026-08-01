@@ -1,6 +1,11 @@
-"""Tests for scripts/coverage_policy.py — fragment combination and diff-coverage.
+"""Tests for the surviving conventional per-module coverage policy.
 
-Fixture-based only.  No real coverage generation.
+``scripts/coverage_policy.py`` and ``quality/schemas/diff-coverage-v1.json``
+were removed as dormant pseudo-diff infrastructure (decision A006).  These
+tests exercise the policy surface that remains in
+``scripts/check_module_coverage.py``: fail-closed report validation and
+executable-module classification.  ``diff-cover`` remains the sole
+changed-line coverage authority.
 """
 
 from __future__ import annotations
@@ -9,136 +14,177 @@ from pathlib import Path
 
 import pytest
 
-from scripts.coverage_policy import (
-    _build_report,
+from scripts._gates import load_gates
+from scripts.check_module_coverage import (
+    _check_branch_data_present,
+    _classify_source,
+    _load_report,
     _parse_args,
-    _ReportInputs,
-    _validate_fragment_path,
+    validate_report,
 )
 
-FIXTURES = Path(__file__).parent / "fixtures" / "coverage"
-FIXTURE_SRC = FIXTURES / "src_tree"
 
+class TestReportLoading:
+    """Missing or malformed report files must fail closed."""
 
-class TestValidateFragmentPath:
-    def test_valid_fragment(self) -> None:
-        p = _validate_fragment_path(str(FIXTURES / "valid.json"), "Unit")
-        assert p.is_file()
-
-    def test_missing_fragment_aborts(self) -> None:
+    def test_missing_report_aborts(self) -> None:
         with pytest.raises(SystemExit) as exc:
-            _validate_fragment_path("/nonexistent/path.coverage", "Unit")
+            _load_report("/nonexistent/coverage.json")
+        assert exc.value.code == 2
+
+    def test_malformed_json_aborts(self, tmp_path: Path) -> None:
+        report = tmp_path / "coverage.json"
+        report.write_text('{"files": [', encoding="utf-8")
+        with pytest.raises(SystemExit) as exc:
+            _load_report(str(report))
+        assert exc.value.code == 2
+
+    def test_non_object_json_aborts(self, tmp_path: Path) -> None:
+        report = tmp_path / "coverage.json"
+        report.write_text("[1, 2, 3]", encoding="utf-8")
+        with pytest.raises(SystemExit) as exc:
+            _load_report(str(report))
         assert exc.value.code == 2
 
 
-class TestBuildReport:
-    def test_success_report(self) -> None:
-        report = _build_report(
-            _ReportInputs(
-                success=True,
-                errors=[],
-                overall_pct=95.0,
-                threshold=85.0,
-                total_modules=10,
-                fragments=["f1.coverage"],
-            )
-        )
-        assert report["success"] is True
-        assert report["overall_pct"] == 95.0
-        assert report["threshold"] == 85.0
-        assert report["errors"] == []
-        assert "timestamp" in report
-        assert report["schema_version"] == "1"
+class TestReportStructure:
+    """Structurally invalid reports must be rejected, never silently passed."""
 
-    def test_failure_report(self) -> None:
-        report = _build_report(
-            _ReportInputs(
-                success=False,
-                errors=["Module below threshold: cli.py"],
-                overall_pct=50.0,
-                threshold=85.0,
-                total_modules=1,
-                fragments=["f1.coverage", "f2.coverage"],
-            )
-        )
-        assert report["success"] is False
-        assert len(report["errors"]) == 1
+    def test_missing_files_key_rejected(self, tmp_path: Path) -> None:
+        errors = validate_report({"meta": {}}, min_coverage=80.0, src_root=tmp_path)
+        assert any("no module entries" in e for e in errors)
 
-    def test_with_shas(self) -> None:
-        report = _build_report(
-            _ReportInputs(
-                success=True,
-                errors=[],
-                overall_pct=100.0,
-                threshold=85.0,
-                total_modules=1,
-                fragments=["f1.coverage"],
-                base_sha="abc123",
-                tested_sha="def456",
-            )
-        )
-        assert report["base_sha"] == "abc123"
-        assert report["tested_sha"] == "def456"
+    def test_empty_files_rejected(self, tmp_path: Path) -> None:
+        errors = validate_report({"files": {}}, min_coverage=80.0, src_root=tmp_path)
+        assert any("no module entries" in e for e in errors)
 
-    def test_with_diff_info(self) -> None:
-        report = _build_report(
-            _ReportInputs(
-                success=True,
-                errors=[],
-                overall_pct=100.0,
-                threshold=85.0,
-                total_modules=1,
-                fragments=["f1.coverage"],
-                diff_info={"changed_files": ["a.py"], "empty_diff": False, "git_error": False},
-            )
-        )
-        assert report["changed_files"] == ["a.py"]
-        assert report["empty_diff"] is False
-        assert report["git_error"] is False
+    def test_non_object_report_rejected(self, tmp_path: Path) -> None:
+        errors = validate_report(["not", "an", "object"], min_coverage=80.0, src_root=tmp_path)
+        assert any("JSON object" in e for e in errors)
+
+    def test_non_object_totals_rejected(self, tmp_path: Path) -> None:
+        (tmp_path / "m.py").write_text("x = 1\n", encoding="utf-8")
+        report = {
+            "meta": {"branch_coverage": False, "format": 3},
+            "files": {
+                "m.py": {
+                    "summary": {
+                        "percent_covered": 100.0,
+                        "num_statements": 1,
+                        "missing_lines": 0,
+                    }
+                }
+            },
+            "totals": "garbage",
+        }
+        errors = validate_report(report, min_coverage=80.0, src_root=tmp_path)
+        assert any("totals" in e for e in errors)
 
 
-class TestParseArgs:
-    def test_minimal_args(self) -> None:
-        """Required arguments are parsed correctly when provided."""
-        import sys as _sys
+class TestBranchCoverageRequired:
+    """Branch coverage must be enabled or the report is rejected."""
 
-        sys_argv = _sys.argv[:]
-        _sys.argv = ["coverage_policy.py", "--unit-coverage", "/tmp/test.coverage"]
-        try:
-            args = _parse_args()
-            assert args.unit_coverage == "/tmp/test.coverage"
-            assert args.min_coverage is not None
-        finally:
-            _sys.argv = sys_argv
+    def test_branch_disabled_rejected(self) -> None:
+        errors: list[str] = []
+        _check_branch_data_present({"meta": {"branch_coverage": False}}, errors)
+        assert any("branch" in e for e in errors)
 
-    def test_missing_required_arg(self) -> None:
-        with pytest.raises(SystemExit) as exc:
-            _parse_args()
-        assert exc.value.code == 2
+    def test_missing_meta_rejected(self) -> None:
+        errors: list[str] = []
+        _check_branch_data_present({}, errors)
+        assert any("branch" in e for e in errors)
 
-
-class TestProcessFragments:
-    def test_single_fragment_returns_data(self, tmp_path: Path) -> None:
-        """Single fragment just generates JSON from the given data file."""
-        pytest.skip("Requires real coverage binary; fixture-based tests cover fragment processing")
-        data = {"files": {}}
+    def test_branch_enabled_accepted(self) -> None:
+        errors: list[str] = []
+        _check_branch_data_present({"meta": {"branch_coverage": True}}, errors)
+        assert errors == []
 
 
-class TestCombineFragments:
-    def test_combine_two_fragments(self, tmp_path: Path) -> None:
-        """Combining two coverage fragments produces valid combined data."""
-        pytest.skip("Requires real coverage binary; fixture-based validation tested elsewhere")
+class TestExecutableClassification:
+    """Which module shapes must appear in the coverage report."""
 
-    def test_empty_fragment_list(self, tmp_path: Path) -> None:
-        """An empty fragment list is invalid — not testable via _combine_fragments."""
-        assert True
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("import json\n", "executable"),
+            ('"""Interface documentation."""\n', "docstring"),
+            ("class Repository(Protocol):\n    key: str\n    ...\n", "re-export"),
+            ('from .repository import Repository\n__all__ = ["Repository"]\n', "executable"),
+            ("x = 1\n", "executable"),
+        ],
+        ids=[
+            "import-only-module",
+            "docstring-only-module",
+            "declarative-protocol",
+            "init-reexport",
+            "genuinely-executable",
+        ],
+    )
+    def test_classification_fixture_matrix(self, source: str, expected: str) -> None:
+        assert _classify_source(source) == expected
+
+    def test_protocol_with_concrete_method_is_executable(self) -> None:
+        source = "class Repository(Protocol):\n    def load(self) -> object:\n        return {}\n"
+        assert _classify_source(source) == "executable"
+
+    def test_decorated_protocol_is_executable(self) -> None:
+        source = "@runtime_checkable\nclass Repository(Protocol):\n    key: str\n    ...\n"
+        assert _classify_source(source) == "executable"
 
 
-class TestStaleReportPrevention:
-    def test_stale_artifact_rejected(self, tmp_path: Path) -> None:
-        """A corrupted/old .coverage artifact causes coverage json to fail."""
-        pytest.skip("Requires real coverage binary")
+class TestReportEntryUniqueness:
+    """Entries must be unique within the source root."""
 
-    def test_zero_byte_artifact_rejected(self, tmp_path: Path) -> None:
-        """Zero-byte .coverage files are rejected by coverage tools."""
-        pytest.skip("Requires real coverage binary")
+    def test_colliding_keys_rejected(self, tmp_path: Path) -> None:
+        (tmp_path / "collide.py").write_text("x = 1\n", encoding="utf-8")
+        entry = {
+            "summary": {
+                "percent_covered": 100.0,
+                "num_statements": 1,
+                "missing_lines": 0,
+                "num_branches": 0,
+                "num_partial_branches": 0,
+            }
+        }
+        report = {
+            "meta": {"branch_coverage": True, "format": 3},
+            "files": {
+                "src/perplexity_cli/collide.py": entry,
+                "collide.py": entry,
+            },
+            "totals": {"percent_covered": 100.0},
+        }
+        errors = validate_report(report, min_coverage=80.0, src_root=tmp_path)
+        assert any("Duplicate entry for source module" in e for e in errors)
+
+
+class TestFailClosedOnUnparseableInput:
+    """Inputs that cannot be parsed must never be treated as covered."""
+
+    def test_unparseable_source_classified_executable(self) -> None:
+        assert _classify_source("def broken(\n") == "executable"
+
+    def test_non_dict_report_entry_fails_closed(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.py").write_text("x = 1\n", encoding="utf-8")
+        report = {
+            "meta": {"branch_coverage": False, "format": 3},
+            "files": {"bad.py": "not-a-summary"},
+            "totals": {"percent_covered": 100.0},
+        }
+        errors = validate_report(report, min_coverage=80.0, src_root=tmp_path)
+        assert any("Non-numeric percent_covered" in e for e in errors)
+
+
+class TestCliContract:
+    """The CLI surface the Makefile depends on stays intact."""
+
+    def test_min_coverage_sourced_from_gates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("sys.argv", ["check_module_coverage.py"])
+        args = _parse_args()
+        expected = float(load_gates().get_int("MIN_COVERAGE", 85))
+        assert args.min_coverage == expected
+
+    def test_report_default_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("sys.argv", ["check_module_coverage.py"])
+        args = _parse_args()
+        assert args.report == "coverage.json"

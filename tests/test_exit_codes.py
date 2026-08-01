@@ -15,6 +15,7 @@ from perplexity_cli.exit_codes import (
 )
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
+    AttachmentUploadError,
     AuthenticationError,
     ConfigurationError,
     PerplexityHTTPStatusError,
@@ -86,6 +87,9 @@ class TestExitCodeMapping:
     def test_attachment_error(self):
         assert exit_code_for_exception(AttachmentError("bad file")) == 7
 
+    def test_attachment_upload_error(self):
+        assert exit_code_for_exception(AttachmentUploadError("upload failed")) == 1
+
     def test_value_error(self):
         assert exit_code_for_exception(ValueError("invalid")) == 1
 
@@ -94,6 +98,48 @@ class TestExitCodeMapping:
 
     def test_generic_exception(self):
         assert exit_code_for_exception(Exception("unknown")) == 1
+
+
+class TestUnifiedTaxonomyConsistency:
+    """Human and JSON error paths must agree with exit_code_for_exception."""
+
+    def test_each_error_class_same_code_in_both_modes(self):
+        from io import StringIO
+        from unittest.mock import patch
+
+        from perplexity_cli.error_handler import handle_error
+
+        exceptions = [
+            AuthenticationError("auth"),
+            RateLimitError("rate"),
+            PerplexityRequestError("network"),
+            PerplexityHTTPStatusError("err", response=SimpleResponse(status_code=401)),
+            PerplexityHTTPStatusError("err", response=SimpleResponse(status_code=429)),
+            PerplexityHTTPStatusError("err", response=SimpleResponse(status_code=500)),
+            ConfigurationError("config"),
+            UpstreamSchemaError("schema"),
+            AttachmentError("file"),
+            AttachmentUploadError("upload"),
+            ValueError("value"),
+            Exception("generic"),
+        ]
+        expected = [exit_code_for_exception(exc) for exc in exceptions]
+
+        actual = []
+        for exc in exceptions:
+            codes = []
+            for output_format in ("human", "json"):
+                stdout = StringIO()
+                stderr = StringIO()
+                with patch("sys.stdout", stdout), patch("sys.stderr", stderr):
+                    try:
+                        handle_error(exc, "test", output_format=output_format)
+                    except SystemExit as e:
+                        codes.append(e.code)
+            assert codes[0] == codes[1]
+            actual.append(codes[0])
+
+        assert actual == expected
 
 
 class TestFormatExitCodesHelp:

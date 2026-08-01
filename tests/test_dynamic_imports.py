@@ -12,15 +12,35 @@
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from types import ModuleType
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
 
-import scripts.check_dynamic_imports as cdi  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
-from scripts.check_dynamic_imports import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+
+def _load_script(name: str, register_as: str | None = None) -> ModuleType:
+    """Load a scripts/<name>.py module by file path without sys.path mutation."""
+    module_name = register_as or f"scripts.{name}"
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        return existing
+    spec = importlib.util.spec_from_file_location(
+        module_name, PROJECT_ROOT / "scripts" / f"{name}.py"
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load scripts/{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_load_script("check_dynamic_imports")
+import scripts.check_dynamic_imports as cdi  # noqa: E402  # owner: quality-infrastructure; reason: module registered in sys.modules by _load_script
+from scripts.check_dynamic_imports import (  # noqa: E402  # owner: quality-infrastructure; reason: module registered in sys.modules by _load_script
     AnalysisResult,
     _build_dynamic_allowlist,
     _build_layer_map,

@@ -1,8 +1,8 @@
 [schema]
 version = 1
 
-# An active analyser with no test_node_ids — should produce a coverage-gap
-# warning but not a validation error.
+# An active analyser with no test_node_ids — executable evidence is now a
+# validation failure, not a warning.
 [[analysers]]
 id = "untested-analyser"
 target = "untested-analyser"

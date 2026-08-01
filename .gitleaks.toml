@@ -24,15 +24,42 @@ useDefault = true
 [allowlist]
 description = "Project-specific false-positive allowlist – audited per entry"
 
-# ---- Path-scoped exceptions -------------------------------------------------
-# Owner: jamie.mills@gmail.com (project maintainer)
+# ---- Exact per-file exceptions ---------------------------------------------
+# Policy: NO directory-level allowlists (the blanket tests/ rule is removed
+# so a real credential committed under tests/ is always detected).  Every
+# entry below names ONE exact file, documented with owner + reason.
 #
-# Reason: tests/ and its fixture subdirectories contain deliberately non-secret
-# synthetic strings (e.g. "test-token", "fake-api-key", "placeholder-key")
-# used exclusively for unit and integration testing.  These are never real
-# credentials and are committed intentionally.
+# 1. tests/fixtures/gitleaks/secret-repo-setup.sh
+#      Rules: generic-api-key
+#      Owner: jamie.mills@gmail.com (project maintainer)
+#      Reason: fixture script writes a synthetic AWS key pair into a
+#      throwaway temp repo so integration tests can assert exit-code 10
+#      deterministically.  Deliberately non-secret test data.
+# 2. tests/fixtures/gitleaks/secrets_test_data.txt
+#      Rules: github-pat, private-key
+#      Owner: jamie.mills@gmail.com (project maintainer)
+#      Reason: synthetic GitHub PAT + PEM sample strings used to document
+#      gitleaks built-in rule patterns for the integration suite.
+#      Deliberately non-secret test data.
+# 3. tests/test_gitleaks_integration.py
+#      Rules: generic-api-key, github-pat, private-key
+#      Owner: jamie.mills@gmail.com (project maintainer)
+#      Reason: historical committed content predating T004 assembled the
+#      detector strings as module-level literals.  The file now builds those
+#      strings at runtime, but the old committed blobs still match, so the
+#      full-history scan needs this exact path exemption.
+# 4. tests/test_gitleaks_prepush.py
+#      Rules: generic-api-key
+#      Owner: jamie.mills@gmail.com (project maintainer)
+#      Reason: the merge-resolution test historically committed a synthetic
+#      API secret literal; it is now assembled at runtime.  The old committed
+#      blobs still match, so the full-history scan needs this exact path
+#      exemption.
 paths = [
-  '''tests/''',
+  '''^tests/fixtures/gitleaks/secret-repo-setup\.sh$''',
+  '''^tests/fixtures/gitleaks/secrets_test_data\.txt$''',
+  '''^tests/test_gitleaks_integration\.py$''',
+  '''^tests/test_gitleaks_prepush\.py$''',
 ]
 
 # ---- Stopword exceptions ----------------------------------------------------

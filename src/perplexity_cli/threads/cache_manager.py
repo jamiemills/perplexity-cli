@@ -6,21 +6,64 @@ invalidation - only fetching fresh data when necessary.
 """
 
 import json
-import os
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from dateutil import parser as dateutil_parser
 from pydantic import ValidationError
 
+from perplexity_cli.threads.date_parser import to_iso8601
 from perplexity_cli.threads.exporter import ThreadRecord
-from perplexity_cli.threads.models import CacheContent, CacheFormat
+from perplexity_cli.threads.models import (
+    CacheContent,
+    CacheFormat,
+    parse_iso8601_timestamp,
+    validate_date_args,
+)
+from perplexity_cli.utils.atomic_write import atomic_write_text
 from perplexity_cli.utils.config import get_config_paths
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
 from perplexity_cli.utils.exceptions import ConfigurationError
 from perplexity_cli.utils.file_permissions import verify_secure_permissions
 from perplexity_cli.utils.logging import get_logger, redact_path
+
+
+def _parse_coverage_timestamp(value: str) -> datetime:
+    """Parse a cache coverage timestamp, treating malformed values as corrupt config.
+
+    Args:
+        value: Coverage timestamp string from cache metadata.
+
+    Returns:
+        The parsed datetime.
+
+    Raises:
+        ConfigurationError: If the timestamp cannot be parsed.
+    """
+    try:
+        return parse_iso8601_timestamp(value)
+    except ValueError as exc:
+        msg = f"Malformed cache coverage date '{value}'"
+        raise ConfigurationError(msg) from exc
+
+
+def _parse_thread_timestamp(value: str) -> datetime:
+    """Parse a cached thread creation timestamp.
+
+    Args:
+        value: Thread creation timestamp string.
+
+    Returns:
+        The parsed datetime.
+
+    Raises:
+        ConfigurationError: If the timestamp cannot be parsed.
+    """
+    try:
+        return parse_iso8601_timestamp(value)
+    except ValueError as exc:
+        msg = f"Malformed cached thread timestamp '{value}'"
+        raise ConfigurationError(msg) from exc
 
 
 class ThreadCacheManager:
@@ -123,11 +166,6 @@ class ThreadCacheManager:
             )
             raise ConfigurationError(msg)
 
-        if not cache_format.cache:
-            self.logger.error("Cache file missing encrypted cache data")
-            msg = "Cache file is missing encrypted cache data"
-            raise ConfigurationError(msg)
-
         return cache_format
 
     def _decrypt_and_validate_cache(self, outer_cache: CacheFormat) -> CacheContent:
@@ -193,20 +231,17 @@ class ThreadCacheManager:
             cache_json = json.dumps(cache_data)
             encrypted_cache = encrypt_token(cache_json)
 
-            # Write encrypted cache to file with metadata
-            with open(self.cache_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "version": self.CACHE_VERSION,
-                        "encrypted": True,
-                        "cache": encrypted_cache,
-                        "created_at": datetime.now(UTC).isoformat(),
-                    },
-                    f,
-                )
-
-            # Set restrictive permissions
-            os.chmod(self.cache_path, self.SECURE_PERMISSIONS)
+            # Write encrypted cache to file atomically with secure permissions
+            atomic_write_text(
+                self.cache_path,
+                {
+                    "version": self.CACHE_VERSION,
+                    "encrypted": True,
+                    "cache": encrypted_cache,
+                    "created_at": datetime.now(UTC).isoformat(),
+                },
+                mode=self.SECURE_PERMISSIONS,
+            )
 
             # Audit log: cache saved
             self.logger.info(
@@ -245,6 +280,9 @@ class ThreadCacheManager:
         Returns:
             Tuple of (oldest_date, newest_date) as date objects, or None
             if cache does not exist or metadata is incomplete.
+
+        Raises:
+            ConfigurationError: If cache coverage dates are malformed.
         """
         cache = self.load_cache()
         if not cache:
@@ -258,8 +296,8 @@ class ThreadCacheManager:
             return None
 
         return (
-            dateutil_parser.parse(cache_oldest_str).date(),
-            dateutil_parser.parse(cache_newest_str).date(),
+            _parse_coverage_timestamp(cache_oldest_str).date(),
+            _parse_coverage_timestamp(cache_newest_str).date(),
         )
 
     @staticmethod
@@ -308,15 +346,18 @@ class ThreadCacheManager:
             - fetch_to_date: End date for API fetch (if needed), or None
 
         Raises:
-            ValueError: If date format is invalid.
+            ValueError: If a date argument is not YYYY-MM-DD, or from_date
+                is after to_date.
         """
+        request_from, request_to = validate_date_args(from_date, to_date)
+
         coverage = self._parse_cache_coverage()
         if coverage is None:
             return True, from_date, to_date
 
         cache_oldest, cache_newest = coverage
-        request_from = dateutil_parser.parse(from_date).date() if from_date else cache_oldest
-        request_to = dateutil_parser.parse(to_date).date() if to_date else datetime.now(UTC).date()
+        request_from = request_from or cache_oldest
+        request_to = request_to or datetime.now(UTC).date()
 
         return self._calculate_fetch_range(request_from, request_to, cache_oldest, cache_newest)
 
@@ -400,14 +441,14 @@ class ThreadCacheManager:
                 "total_threads": 0,
             }
 
-        # Threads are expected to be sorted newest-first
-        oldest = threads[-1].created_at
-        newest = threads[0].created_at
+        timestamps = [_parse_thread_timestamp(t.created_at) for t in threads]
+        oldest = min(timestamps)
+        newest = max(timestamps)
 
         return {
             "last_sync_time": datetime.now(UTC).isoformat(),
-            "oldest_thread_date": oldest,
-            "newest_thread_date": newest,
+            "oldest_thread_date": to_iso8601(oldest),
+            "newest_thread_date": to_iso8601(newest),
             "total_threads": len(threads),
         }
 

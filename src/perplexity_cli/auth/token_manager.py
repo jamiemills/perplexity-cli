@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from typing import Final, cast
 
+from perplexity_cli.utils.atomic_write import atomic_write_text
 from perplexity_cli.utils.config import get_config_paths, get_save_cookies_enabled
 from perplexity_cli.utils.encryption import decrypt_token, encrypt_token
 from perplexity_cli.utils.exceptions import AuthenticationError
@@ -64,8 +64,11 @@ class TokenManager:
     def save_token(self, token: str, cookies: dict[str, str] | None = None) -> None:
         """Save authentication token and cookies securely to disk with encryption.
 
-        Encrypts the token and cookies using a system-derived key and creates the token file
-        with restricted permissions (0600). If the file already exists, it is overwritten.
+        Encrypts the token and cookies using a system-derived key and writes the
+        token file atomically with restricted permissions (0600). The file is
+        replaced via a same-directory temporary file so a crash mid-write never
+        leaves a truncated token file; if the file already exists it is
+        overwritten, and any pre-replace failure preserves the previous token.
 
         Args:
             token: The authentication token to store.
@@ -78,11 +81,7 @@ class TokenManager:
         try:
             encrypted_token = encrypt_token(token)
             token_record = self._prepare_token_data(encrypted_token, cookies)
-
-            with open(self.token_path, "w", encoding="utf-8") as f:
-                json.dump(token_record, f)
-
-            os.chmod(self.token_path, self.SECURE_PERMISSIONS)
+            atomic_write_text(self.token_path, token_record, mode=self.SECURE_PERMISSIONS)
 
             saved_cookies = "cookies" in token_record
             cookie_count = len(cookies) if cookies else 0

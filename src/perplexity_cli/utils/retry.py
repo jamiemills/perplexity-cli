@@ -1,5 +1,6 @@
 """Retry utilities with exponential backoff for network requests."""
 
+import math
 import random
 import time
 from collections.abc import Callable
@@ -17,8 +18,10 @@ from perplexity_cli.utils.exceptions import (
     PerplexityRequestError,
 )
 
+_HTTP_STATUS_FORBIDDEN: Final[int] = 403
 _HTTP_STATUS_TOO_MANY_REQUESTS: Final[int] = 429
 _HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
+_MAX_RETRY_AFTER_DELAY: Final[float] = 60.0
 _rng = random
 
 T = TypeVar("T")
@@ -86,6 +89,9 @@ def retry_http_request[T](
 def is_retryable_error(exception: Exception) -> bool:
     """Check if an exception is retryable.
 
+    Network request errors and HTTP 403, 429, and 5xx status errors are
+    retryable.  All other status codes and exception types are not.
+
     Args:
         exception: Exception to check.
 
@@ -98,10 +104,11 @@ def is_retryable_error(exception: Exception) -> bool:
 
     # HTTP 5xx errors are retryable
     if isinstance(exception, PerplexityHTTPStatusError):
-        if exception.response.status_code >= _HTTP_SERVER_ERROR_FLOOR:
+        status_code = exception.response.status_code
+        if status_code >= _HTTP_SERVER_ERROR_FLOOR:
             return True
-        # Rate limiting (429) is retryable
-        if exception.response.status_code == _HTTP_STATUS_TOO_MANY_REQUESTS:
+        # Rate limiting (429) and forbidden (403) are retryable
+        if status_code in (_HTTP_STATUS_FORBIDDEN, _HTTP_STATUS_TOO_MANY_REQUESTS):
             return True
 
     return False
@@ -116,7 +123,9 @@ def sleep_with_backoff(attempt: int, base_delay: float = 1.0, max_delay: float =
         max_delay: Maximum delay in seconds.
     """
     delay = get_backoff_delay(attempt, base_delay=base_delay, max_delay=max_delay)
-    time.sleep(delay)
+    time.sleep(  # nosemgrep: python.lang.best-practice.sleep.arbitrary-sleep  # owner: quality-infrastructure; reason: this is the canonical backoff sleep site the custom retry rule exempts
+        delay
+    )  # nosemgrep: python.lang.best-practice.sleep.arbitrary-sleep  # owner: quality-infrastructure; reason: this is the canonical backoff sleep site the custom retry rule exempts
 
 
 def get_backoff_delay(
@@ -125,7 +134,17 @@ def get_backoff_delay(
     max_delay: float = 60.0,
     jitter_factor: float = 0.1,
 ) -> float:
-    """Calculate exponential backoff delay with bounded jitter."""
+    """Calculate exponential backoff delay with bounded jitter.
+
+    Args:
+        attempt: Current attempt number (0-indexed).
+        base_delay: Base delay in seconds.
+        max_delay: Maximum delay in seconds.
+        jitter_factor: Jitter window as a fraction of the delay; zero disables jitter.
+
+    Returns:
+        The delay in seconds, bounded by *max_delay*.
+    """
     delay = min(base_delay * (2**attempt), max_delay)
     if jitter_factor <= 0:
         return delay
@@ -136,19 +155,59 @@ def get_backoff_delay(
 
 
 def get_retry_after_delay(exception: Exception) -> float | None:
-    """Extract a Retry-After delay from an HTTP exception, if present."""
+    """Extract a Retry-After delay from an HTTP exception, if present.
+
+    Only finite non-negative numeric values are honoured; invalid, negative,
+    NaN or infinite values return None so callers fall back to exponential
+    backoff.  Values are capped at ``_MAX_RETRY_AFTER_DELAY`` (60 seconds).
+
+    Args:
+        exception: The exception to inspect.
+
+    Returns:
+        The delay in seconds, or None when no usable Retry-After header exists.
+    """
     if not isinstance(exception, PerplexityHTTPStatusError):
         return None
 
-    retry_after = exception.response.headers.get("Retry-After") or exception.response.headers.get(
-        "retry-after"
-    )
+    retry_after = _read_retry_after_header(exception)
     if retry_after is None:
         return None
 
+    delay = _parse_retry_after(retry_after)
+    if delay is None:
+        return None
+    return min(delay, _MAX_RETRY_AFTER_DELAY)
+
+
+def _read_retry_after_header(exception: PerplexityHTTPStatusError) -> str | None:
+    """Return the Retry-After header value, if present."""
+    return exception.response.headers.get("Retry-After") or exception.response.headers.get(
+        "retry-after"
+    )
+
+
+def _parse_retry_after(retry_after: str) -> float | None:
+    """Parse a numeric Retry-After value, rejecting invalid forms.
+
+    Returns:
+        A finite non-negative delay, or None for invalid/negative/NaN/inf.
+    """
     try:
         delay = float(retry_after)
     except ValueError:
         return None
+    if not math.isfinite(delay) or delay < 0.0:
+        return None
+    return delay
 
-    return max(0.0, delay)
+
+def sleep_exact(delay: float) -> None:
+    """Sleep for an exact duration; the deterministic seam for retry tests.
+
+    Args:
+        delay: Exact sleep duration in seconds.
+    """
+    time.sleep(  # nosemgrep: python.lang.best-practice.sleep.arbitrary-sleep  # owner: quality-infrastructure; reason: canonical backoff sleep implementation
+        delay
+    )

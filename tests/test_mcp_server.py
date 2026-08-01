@@ -16,10 +16,13 @@ from perplexity_cli.mcp_server import (
     _load_authentication,
     _normalise_output_format,
     _parse_args,
+    _perplexity_deep_info,
+    _perplexity_quick_info,
     _render_answer,
     _search_mode_for_query_mode,
     _server_meta,
     create_mcp_server,
+    main,
     run_mcp_query,
 )
 from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, PerplexityRequestError
@@ -264,12 +267,9 @@ async def test_quick_info_reports_progress_via_ctx(monkeypatch: pytest.MonkeyPat
         "perplexity_cli.mcp_server._request_answer",
         lambda q, m: Answer(text="test", references=[]),
     )
-    server = create_mcp_server()
-    tool = server._tool_manager._tools["perplexity_quick_info"]
-    fn = tool.fn
 
     mock_ctx = AsyncMock()
-    result = await fn(query="test", output_format="plain", ctx=mock_ctx)
+    result = await _perplexity_quick_info(query="test", output_format="plain", ctx=mock_ctx)
 
     assert result.answer == "test"
     mock_ctx.info.assert_called_once()
@@ -283,13 +283,36 @@ async def test_deep_info_reports_progress_via_ctx(monkeypatch: pytest.MonkeyPatc
         "perplexity_cli.mcp_server._request_answer",
         lambda q, m: Answer(text="deep result", references=[]),
     )
-    server = create_mcp_server()
-    tool = server._tool_manager._tools["perplexity_deep_info"]
-    fn = tool.fn
 
     mock_ctx = AsyncMock()
-    result = await fn(query="research question", output_format="plain", ctx=mock_ctx)
+    result = await _perplexity_deep_info(
+        query="research question", output_format="plain", ctx=mock_ctx
+    )
 
     assert result.answer == "deep result"
     mock_ctx.info.assert_called_once()
     assert mock_ctx.report_progress.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# main — config forwarding
+# ---------------------------------------------------------------------------
+
+
+def test_main_forwards_config_to_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    """main() passes the parsed config to create_mcp_server and run exactly."""
+    config = ServerConfig(
+        transport="streamable-http", host="127.0.0.1", port=9876, mount_path="/custom"
+    )
+    monkeypatch.setattr("perplexity_cli.mcp_server._parse_args", lambda: config)
+    server_mock = Mock()
+    monkeypatch.setattr(
+        "perplexity_cli.mcp_server.create_mcp_server", Mock(return_value=server_mock)
+    )
+
+    main()
+
+    from perplexity_cli.mcp_server import create_mcp_server
+
+    create_mcp_server.assert_called_once_with(config)
+    server_mock.run.assert_called_once_with(transport="streamable-http", mount_path="/custom")

@@ -2,12 +2,15 @@
 
 Tests the full protocol stack---client request serialisation, SSE parsing,
 error handling, retry behaviour, and credential/path redaction---against
-the local loopback harness server.  No external network, no real credentials.
+the local loopback harness server.  No external network, no real
+credentials; the module is marked ``hermetic_integration`` so it never
+runs in the ordinary lane.
 """
 
 from __future__ import annotations
 
 import json
+import socket
 import time
 import uuid
 from pathlib import Path
@@ -28,7 +31,7 @@ from perplexity_cli.utils.logging import (
 )
 from tests.support.protocol_server import ProtocolServer, QueryResponse
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.hermetic_integration]
 
 
 def _patch_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -399,3 +402,22 @@ class TestUpstreamHandling:
             list(api.submit_query(QueryInput(query="")))
 
         assert harness_server.request_count == 0
+
+
+class TestNetworkGuard:
+    """The fail-closed guard rejects external connections and allows loopback."""
+
+    def test_external_connection_blocked(self) -> None:
+        """Attempting a non-loopback connection raises OSError."""
+        with pytest.raises(OSError, match="Network guard"):
+            socket.create_connection(("93.184.216.34", 80))
+
+    def test_loopback_connection_allowed(self) -> None:
+        """Loopback addresses pass through the guard."""
+        try:
+            socket.create_connection(("127.0.0.1", 0))
+        except OSError as exc:
+            if "Network guard" in str(exc):
+                pytest.fail(f"Guard incorrectly blocked loopback: {exc}")
+        except ConnectionRefusedError:
+            pass

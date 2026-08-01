@@ -247,8 +247,8 @@ class TestStreamingOutputFailures:
         query_input = QueryInput(query="test query")
         trace = TraceContext()
 
-        with patch("perplexity_cli.query_streaming.click.echo") as mock_echo:
-            mock_echo.side_effect = [None, None, None, None, None]
+        with patch("perplexity_cli.query_streaming._write_stdout") as mock_stdout:
+            mock_stdout.side_effect = [None, None, None, None, None]
 
             with pytest.raises(SystemExit) as exc_info:
                 stream_query_response(mock_api, query_input, render, trace)

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
+from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
+from perplexity_cli.config.models import RateLimitConfig
 from perplexity_cli.runners.export import (
     _handle_cache_clear,
     _handle_http_status_error,
@@ -19,35 +22,85 @@ from perplexity_cli.runners.export import (
     _validate_export_dates,
     run_export_threads_command,
 )
+from perplexity_cli.threads.exporter import ThreadRecord
+from perplexity_cli.utils.exceptions import (
+    AuthenticationError,
+    PerplexityHTTPStatusError,
+    SimpleRequest,
+    SimpleResponse,
+)
+from tests.helpers.fake_services import FakeCacheManager, FakeThreadScraper, FakeTokenManager
+
+_LOGGER = logging.getLogger("test-export-runner")
+
+_THREAD_1 = ThreadRecord(title="Thread 1", created_at="2025-01-01", url="https://perplexity.ai/t/1")
 
 
-def _close_run_async_return(value):
-    def run(coro):
-        coro.close()
-        return value
-
-    return run
-
-
-def _close_run_async_raise(exc):
-    def run(coro):
-        coro.close()
-        raise exc
-
-    return run
+@contextmanager
+def _export_dependencies(token_manager, cache_manager, scraper, rate_config):
+    """Patch the export runner's dependency boundaries with typed fakes."""
+    with (
+        patch("perplexity_cli.runners.export._create_token_manager", new=lambda: token_manager),
+        patch("perplexity_cli.runners.export._create_cache_manager", new=lambda: cache_manager),
+        patch("perplexity_cli.runners.export.ThreadScraper", new=lambda *args, **kwargs: scraper),
+        patch("perplexity_cli.runners.export.get_rate_limiting_config", new=lambda: rate_config),
+    ):
+        yield
 
 
 class TestRunExportThreadsCommand:
     """Tests for run_export_threads_command()."""
 
-    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
-    def test_not_authenticated_human(self, mock_tm_class, capsys):
+    def test_not_authenticated_human(self, capsys) -> None:
         """Human output shows not authenticated error."""
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = (None, None)
-        mock_tm_class.return_value = mock_tm
+        tm = FakeTokenManager(load_token_result=(None, None))
+        with _export_dependencies(
+            tm, FakeCacheManager(), FakeThreadScraper(), RateLimitConfig(enabled=False)
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                run_export_threads_command(
+                    ctx_obj={},
+                    from_date=None,
+                    to_date=None,
+                    output=None,
+                    force_refresh=False,
+                    clear_cache=False,
+                )
 
-        with pytest.raises(SystemExit) as exc_info:
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "Not authenticated" in captured.err
+
+    def test_not_authenticated_json(self, capsys) -> None:
+        """JSON output shows error envelope when not authenticated."""
+        tm = FakeTokenManager(load_token_result=(None, None))
+        with _export_dependencies(
+            tm, FakeCacheManager(), FakeThreadScraper(), RateLimitConfig(enabled=False)
+        ):
+            with pytest.raises(SystemExit):
+                run_export_threads_command(
+                    ctx_obj={"json": True},
+                    from_date=None,
+                    to_date=None,
+                    output=None,
+                    force_refresh=False,
+                    clear_cache=False,
+                )
+
+        envelope = json.loads(capsys.readouterr().out.strip())
+        assert envelope["ok"] is False
+        assert envelope["command"] == "pxcli threads export"
+
+    def test_success_human(self, tmp_path, monkeypatch, capsys) -> None:
+        """Human output shows export complete."""
+        monkeypatch.chdir(tmp_path)
+        scraper = FakeThreadScraper(threads=[_THREAD_1])
+        with _export_dependencies(
+            FakeTokenManager(load_token_result=("token", {})),
+            FakeCacheManager(),
+            scraper,
+            RateLimitConfig(enabled=False),
+        ):
             run_export_threads_command(
                 ctx_obj={},
                 from_date=None,
@@ -57,18 +110,21 @@ class TestRunExportThreadsCommand:
                 clear_cache=False,
             )
 
-        assert exc_info.value.code == 1
         captured = capsys.readouterr()
-        assert "Not authenticated" in captured.err
+        assert "Export complete" in captured.out
+        assert "ERROR" not in captured.err
+        assert list(tmp_path.glob("threads-*.csv"))
 
-    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
-    def test_not_authenticated_json(self, mock_tm_class, capsys):
-        """JSON output shows error envelope when not authenticated."""
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = (None, None)
-        mock_tm_class.return_value = mock_tm
-
-        with pytest.raises(SystemExit):
+    def test_success_json(self, tmp_path, monkeypatch, capsys) -> None:
+        """JSON output shows success envelope with thread data."""
+        monkeypatch.chdir(tmp_path)
+        scraper = FakeThreadScraper(threads=[_THREAD_1])
+        with _export_dependencies(
+            FakeTokenManager(load_token_result=("token", {})),
+            FakeCacheManager(),
+            scraper,
+            RateLimitConfig(enabled=False),
+        ):
             run_export_threads_command(
                 ctx_obj={"json": True},
                 from_date=None,
@@ -78,95 +134,15 @@ class TestRunExportThreadsCommand:
                 clear_cache=False,
             )
 
-        envelope = json.loads(capsys.readouterr().out.strip())
-        assert envelope["ok"] is False
-        assert envelope["command"] == "pxcli threads export"
-
-    @patch("perplexity_cli.runners.export.write_threads_csv", autospec=True)
-    @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
-    @patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True)
-    @patch("perplexity_cli.runners.export.ThreadScraper", autospec=True)
-    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
-    def test_success_human(
-        self,
-        mock_tm_class,
-        mock_scraper_class,
-        mock_cm_class,
-        mock_rate_config,
-        mock_run_async,
-        mock_write_csv,
-        capsys,
-    ):
-        """Human output shows export complete."""
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = ("token", {})
-        mock_tm_class.return_value = mock_tm
-
-        mock_rate_config.return_value = Mock(enabled=False)
-        mock_run_async.side_effect = _close_run_async_return(
-            [{"title": "Thread 1", "created_at": "2025-01-01", "url": "https://perplexity.ai/t/1"}]
-        )
-        mock_write_csv.return_value = Path("/tmp/threads.csv")
-
-        run_export_threads_command(
-            ctx_obj={},
-            from_date=None,
-            to_date=None,
-            output=None,
-            force_refresh=False,
-            clear_cache=False,
-        )
-
-        captured = capsys.readouterr()
-        assert "Export complete" in captured.out
-        assert "ERROR" not in captured.err
-
-    @patch("perplexity_cli.runners.export.write_threads_csv", autospec=True)
-    @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
-    @patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True)
-    @patch("perplexity_cli.runners.export.ThreadScraper", autospec=True)
-    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
-    def test_success_json(
-        self,
-        mock_tm_class,
-        mock_scraper_class,
-        mock_cm_class,
-        mock_rate_config,
-        mock_run_async,
-        mock_write_csv,
-        capsys,
-    ):
-        """JSON output shows success envelope with thread data."""
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = ("token", {})
-        mock_tm_class.return_value = mock_tm
-
-        mock_rate_config.return_value = Mock(enabled=False)
-        mock_run_async.side_effect = _close_run_async_return(
-            [{"title": "Thread 1", "created_at": "2025-01-01", "url": "https://perplexity.ai/t/1"}]
-        )
-        mock_write_csv.return_value = Path("/tmp/threads.csv")
-
-        run_export_threads_command(
-            ctx_obj={"json": True},
-            from_date=None,
-            to_date=None,
-            output=None,
-            force_refresh=False,
-            clear_cache=False,
-        )
-
         captured = capsys.readouterr()
         envelope = json.loads(captured.out.strip())
         assert envelope["ok"] is True
         assert envelope["command"] == "pxcli threads export"
         assert envelope["result"]["total"] == 1
         assert len(envelope["result"]["threads"]) == 1
-        mock_write_csv.assert_not_called()
         assert envelope["result"]["output_path"] is None
         assert "ERROR" not in captured.err
+        assert not list(tmp_path.glob("threads-*.csv"))
 
 
 class TestValidateExportDates:
@@ -196,75 +172,79 @@ class TestValidateExportDates:
 class TestSetupRateLimiter:
     """Tests for _setup_rate_limiter."""
 
-    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
-    def test_returns_none_when_disabled(self, mock_config):
+    def test_returns_none_when_disabled(self):
         """When rate limiting is disabled, returns None."""
-        mock_config.return_value = Mock(enabled=False)
-        result = _setup_rate_limiter(Mock())
+        with patch(
+            "perplexity_cli.runners.export.get_rate_limiting_config",
+            new=lambda: RateLimitConfig(enabled=False),
+        ):
+            result = _setup_rate_limiter(_LOGGER)
         assert result is None
 
-    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
-    def test_returns_rate_limiter_when_enabled(self, mock_config):
+    def test_returns_rate_limiter_when_enabled(self):
         """When rate limiting is enabled, returns a RateLimiter instance."""
-        mock_config.return_value = Mock(enabled=True, requests_per_period=10, period_seconds=60)
-        result = _setup_rate_limiter(Mock())
+        with patch(
+            "perplexity_cli.runners.export.get_rate_limiting_config",
+            new=lambda: RateLimitConfig(enabled=True, requests_per_period=10, period_seconds=60),
+        ):
+            result = _setup_rate_limiter(_LOGGER)
         assert result is not None
 
 
 class TestHandleCacheClear:
     """Tests for _handle_cache_clear."""
 
-    def test_no_cache_exists(self, capsys):
+    def test_no_cache_exists(self, tmp_path, capsys):
         """When no cache file exists, info message is shown."""
-        cm = Mock()
-        cm.cache_exists.return_value = False
-        _handle_cache_clear(cm, clear_cache=True, output_format="human", logger=Mock())
+        cm = FakeCacheManager(cache_path=tmp_path / "cache.json")
+        _handle_cache_clear(cm, clear_cache=True, output_format="human", logger=_LOGGER)
         captured = capsys.readouterr()
         assert "No cache file to clear" in captured.out
-        cm.clear_cache.assert_not_called()
+        assert cm.clear_calls == 0
 
-    def test_cache_cleared(self, capsys):
+    def test_cache_cleared(self, tmp_path, capsys):
         """When cache exists, it is cleared and confirmed."""
-        cm = Mock()
-        cm.cache_exists.return_value = True
-        _handle_cache_clear(cm, clear_cache=True, output_format="human", logger=Mock())
-        cm.clear_cache.assert_called_once()
+        cache_file = tmp_path / "cache.json"
+        cache_file.write_text("{}")
+        cm = FakeCacheManager(cache_path=cache_file)
+        _handle_cache_clear(cm, clear_cache=True, output_format="human", logger=_LOGGER)
+        assert cm.clear_calls == 1
+        assert not cache_file.exists()
         assert "Cache cleared" in capsys.readouterr().out
 
-    def test_no_clear_requested(self):
+    def test_no_clear_requested(self, tmp_path):
         """When clear_cache is False, nothing happens."""
-        cm = Mock()
-        _handle_cache_clear(cm, clear_cache=False, output_format="human", logger=Mock())
-        cm.cache_exists.assert_not_called()
+        cm = FakeCacheManager(cache_path=tmp_path / "cache.json")
+        _handle_cache_clear(cm, clear_cache=False, output_format="human", logger=_LOGGER)
+        assert cm.cache_exists_calls == 0
 
-    def test_json_mode_silent_no_cache(self, capsys):
+    def test_json_mode_silent_no_cache(self, tmp_path, capsys):
         """In JSON mode, no output is written when cache doesn't exist."""
-        cm = Mock()
-        cm.cache_exists.return_value = False
-        _handle_cache_clear(cm, clear_cache=True, output_format="json", logger=Mock())
+        cm = FakeCacheManager(cache_path=tmp_path / "cache.json")
+        _handle_cache_clear(cm, clear_cache=True, output_format="json", logger=_LOGGER)
         assert capsys.readouterr().out == ""
 
-    def test_json_mode_silent_cleared(self, capsys):
+    def test_json_mode_silent_cleared(self, tmp_path, capsys):
         """In JSON mode, no output is written when cache is cleared."""
-        cm = Mock()
-        cm.cache_exists.return_value = True
-        _handle_cache_clear(cm, clear_cache=True, output_format="json", logger=Mock())
+        cache_file = tmp_path / "cache.json"
+        cache_file.write_text("{}")
+        cm = FakeCacheManager(cache_path=cache_file)
+        _handle_cache_clear(cm, clear_cache=True, output_format="json", logger=_LOGGER)
         assert capsys.readouterr().out == ""
 
 
 class TestScrapeThreads:
     """Tests for _scrape_threads progress callback."""
 
-    @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    def test_progress_callback_echoes(self, mock_run_async, capsys):
-        """Progress callback prints extraction progress in human mode."""
-        mock_run_async.side_effect = _close_run_async_return([{"title": "T1"}])
-        scraper = Mock()
+    def test_progress_callback_echoes(self, capsys):
+        """Progress callback is invoked and prints extraction progress."""
+        scraper = FakeThreadScraper(
+            threads=[ThreadRecord(title="T1", url="https://x.ai", created_at="2025-01-01")]
+        )
         result = _scrape_threads(scraper, None, None, output_format="human")
-        assert result == [{"title": "T1"}]
-
-        # Verify run_async was called (progress callback tested implicitly)
-        mock_run_async.assert_called_once()
+        assert result == [ThreadRecord(title="T1", url="https://x.ai", created_at="2025-01-01")]
+        assert scraper.progress_calls == [(1, 1)]
+        assert "Extracting 1/1 threads" in capsys.readouterr().out
 
 
 class TestHandleNoThreads:
@@ -292,16 +272,14 @@ class TestHandleKnownError:
         """In JSON mode, handle_error is called before exit."""
         with patch("perplexity_cli.runners.export.handle_error", autospec=True) as mock_handle:
             with pytest.raises(SystemExit):
-                _handle_known_error(ValueError("fail"), output_format="json", logger=Mock())
+                _handle_known_error(ValueError("fail"), output_format="json", logger=_LOGGER)
             mock_handle.assert_called_once()
 
     def test_auth_error_shows_reauth_hint(self, capsys):
         """AuthenticationError shows re-authentication hint."""
-        from perplexity_cli.utils.exceptions import AuthenticationError
-
         with pytest.raises(SystemExit):
             _handle_known_error(
-                AuthenticationError("expired"), output_format="human", logger=Mock()
+                AuthenticationError("expired"), output_format="human", logger=_LOGGER
             )
         err = capsys.readouterr().err
         assert "re-authenticate" in err
@@ -312,23 +290,21 @@ class TestHandleHttpStatusError:
 
     def test_json_mode_calls_handle_error(self):
         """In JSON mode, handle_error is invoked."""
-        mock_response = Mock()
-        mock_response.status_code = 500
-        mock_response.headers = {}
-        error = Mock(spec=Exception)
-        error.response = mock_response
-
+        error = PerplexityHTTPStatusError(
+            "server error",
+            response=SimpleResponse(status_code=500, headers={}),
+        )
         with patch("perplexity_cli.runners.export.handle_error", autospec=True) as mock_handle:
             with patch("perplexity_cli.runners.export.handle_http_error", autospec=True):
-                _handle_http_status_error(error, output_format="json", ctx_obj={}, logger=Mock())
+                _handle_http_status_error(error, output_format="json", ctx_obj={}, logger=_LOGGER)
             mock_handle.assert_called_once()
 
     def test_human_mode_calls_handle_http_error(self):
         """In human mode, handle_http_error is called."""
-        error = Mock()
+        error = PerplexityHTTPStatusError("server error")
         with patch("perplexity_cli.runners.export.handle_http_error", autospec=True) as mock_handle:
             _handle_http_status_error(
-                error, output_format="human", ctx_obj={"debug": False}, logger=Mock()
+                error, output_format="human", ctx_obj={"debug": False}, logger=_LOGGER
             )
         mock_handle.assert_called_once()
 
@@ -341,7 +317,7 @@ class TestHandleUnexpectedError:
         with patch("perplexity_cli.runners.export.handle_error", autospec=True) as mock_handle:
             with patch("perplexity_cli.runners.export.handle_unexpected_cli_error", autospec=True):
                 _handle_unexpected_error(
-                    RuntimeError("boom"), output_format="json", ctx_obj={}, logger=Mock()
+                    RuntimeError("boom"), output_format="json", ctx_obj={}, logger=_LOGGER
                 )
             mock_handle.assert_called_once()
 
@@ -351,7 +327,7 @@ class TestHandleUnexpectedError:
             "perplexity_cli.runners.export.handle_unexpected_cli_error", autospec=True
         ) as mock_handle:
             _handle_unexpected_error(
-                RuntimeError("boom"), output_format="human", ctx_obj={}, logger=Mock()
+                RuntimeError("boom"), output_format="human", ctx_obj={}, logger=_LOGGER
             )
         mock_handle.assert_called_once()
 
@@ -359,87 +335,66 @@ class TestHandleUnexpectedError:
 class TestRunExportErrorHandlers:
     """Tests for run_export_threads_command error handler branches."""
 
-    def _prepare_mocks(self, output_format="human"):
-        """Set up common mocks for authenticated export."""
-        patches = {
-            "tm": patch("perplexity_cli.runners.export.TokenManager", autospec=True),
-            "rate": patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True),
-            "cm": patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True),
-            "scraper": patch("perplexity_cli.runners.export.ThreadScraper", autospec=True),
-        }
-        mocks = {k: p.start() for k, p in patches.items()}
-        tm = Mock()
-        tm.load_token.return_value = ("token", {})
-        mocks["tm"].return_value = tm
-        mocks["rate"].return_value = Mock(enabled=False)
-        ctx = {"json": True} if output_format == "json" else {}
-        return patches, mocks, ctx
+    @staticmethod
+    def _auth_dependencies(scraper):
+        """Patch dependencies for an authenticated export run."""
+        return (
+            FakeTokenManager(load_token_result=("token", {})),
+            FakeCacheManager(),
+            scraper,
+            RateLimitConfig(enabled=False),
+        )
 
-    def _stop_patches(self, patches):
-        for p in patches.values():
-            p.stop()
-
-    @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    def test_keyboard_interrupt(self, mock_run_async, capsys):
+    def test_keyboard_interrupt(self, capsys):
         """KeyboardInterrupt exits with code 130."""
-        patches, _, ctx = self._prepare_mocks()
-        mock_run_async.side_effect = _close_run_async_raise(KeyboardInterrupt())
-
-        with pytest.raises(SystemExit) as exc_info:
-            run_export_threads_command(ctx, None, None, None, False, False)
+        scraper = FakeThreadScraper(scrape_error=KeyboardInterrupt())
+        with _export_dependencies(*self._auth_dependencies(scraper)):
+            with pytest.raises(SystemExit) as exc_info:
+                run_export_threads_command({}, None, None, None, False, False)
 
         assert exc_info.value.code == 130
-        self._stop_patches(patches)
 
-    @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    def test_known_error_handler(self, mock_run_async, capsys):
+    def test_known_error_handler(self, capsys):
         """ValueError routes through _handle_known_error."""
-        patches, _, ctx = self._prepare_mocks()
-        mock_run_async.side_effect = _close_run_async_raise(ValueError("bad value"))
-
-        with pytest.raises(SystemExit):
-            run_export_threads_command(ctx, None, None, None, False, False)
+        scraper = FakeThreadScraper(scrape_error=ValueError("bad value"))
+        with _export_dependencies(*self._auth_dependencies(scraper)):
+            with pytest.raises(SystemExit):
+                run_export_threads_command({}, None, None, None, False, False)
 
         assert "bad value" in capsys.readouterr().err
-        self._stop_patches(patches)
 
-    @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    def test_http_status_error_handler(self, mock_run_async):
+    def test_http_status_error_handler(self):
         """PerplexityHTTPStatusError routes through _handle_http_status_error."""
-        from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError
-
-        patches, _, ctx = self._prepare_mocks()
-        mock_response = Mock()
-        mock_response.status_code = 500
-        mock_response.headers = {}
-        error = PerplexityHTTPStatusError("server error", request=Mock(), response=mock_response)
-        mock_run_async.side_effect = _close_run_async_raise(error)
-
-        with patch(
-            "perplexity_cli.runners.export.handle_http_error",
-            side_effect=SystemExit(1),
-            autospec=True,
+        error = PerplexityHTTPStatusError(
+            "server error",
+            request=SimpleRequest(method="POST", url="https://perplexity.ai/t"),
+            response=SimpleResponse(status_code=500, headers={}),
+        )
+        scraper = FakeThreadScraper(scrape_error=error)
+        with (
+            _export_dependencies(*self._auth_dependencies(scraper)),
+            patch(
+                "perplexity_cli.runners.export.handle_http_error",
+                side_effect=SystemExit(1),
+                autospec=True,
+            ),
         ):
             with pytest.raises(SystemExit):
-                run_export_threads_command(ctx, None, None, None, False, False)
+                run_export_threads_command({}, None, None, None, False, False)
 
-        self._stop_patches(patches)
-
-    @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    def test_unexpected_error_handler(self, mock_run_async):
+    def test_unexpected_error_handler(self):
         """Unexpected exceptions route through _handle_unexpected_error."""
-        patches, _, ctx = self._prepare_mocks()
-        mock_run_async.side_effect = _close_run_async_raise(RuntimeError("boom"))
-
-        with patch(
-            "perplexity_cli.runners.export.handle_unexpected_cli_error",
-            side_effect=SystemExit(1),
-            autospec=True,
+        scraper = FakeThreadScraper(scrape_error=RuntimeError("boom"))
+        with (
+            _export_dependencies(*self._auth_dependencies(scraper)),
+            patch(
+                "perplexity_cli.runners.export.handle_unexpected_cli_error",
+                side_effect=SystemExit(1),
+                autospec=True,
+            ),
         ):
             with pytest.raises(SystemExit):
-                run_export_threads_command(ctx, None, None, None, False, False)
-
-        self._stop_patches(patches)
+                run_export_threads_command({}, None, None, None, False, False)
 
 
 class TestExportRunnerMutationKillers:
@@ -577,10 +532,7 @@ class TestExportRunnerMutationKillers:
     def test_thread_payload_from_object(self):
         from perplexity_cli.runners.export import _thread_payload
 
-        record = Mock()
-        record.title = "Obj Title"
-        record.created_at = "2025-06-01"
-        record.url = "https://obj.ai"
+        record = ThreadRecord(title="Obj Title", url="https://obj.ai", created_at="2025-06-01")
         payload = _thread_payload(record)
         assert payload == {
             "title": "Obj Title",
@@ -641,7 +593,7 @@ class TestExportRunnerMutationKillers:
 
     def test_handle_known_error_non_auth_no_reauth_hint(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
-            _handle_known_error(ValueError("oops"), output_format="human", logger=Mock())
+            _handle_known_error(ValueError("oops"), output_format="human", logger=_LOGGER)
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "[ERROR] Export failed: oops" in captured.err
@@ -651,87 +603,59 @@ class TestExportRunnerMutationKillers:
         from perplexity_cli.runners.export import _handle_auth_missing
 
         with pytest.raises(SystemExit) as exc_info:
-            _handle_auth_missing("human", Mock())
+            _handle_auth_missing("human", _LOGGER)
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "[ERROR] Not authenticated." in captured.err
         assert "pxcli auth login" in captured.err
 
-    @patch("perplexity_cli.runners.export.write_threads_csv", autospec=True)
-    @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
-    @patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True)
-    @patch("perplexity_cli.runners.export.ThreadScraper", autospec=True)
-    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
-    def test_success_human_with_date_range(
-        self,
-        mock_tm_class,
-        mock_scraper_class,
-        mock_cm_class,
-        mock_rate_config,
-        mock_run_async,
-        mock_write_csv,
-        capsys,
-    ):
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = ("token", {})
-        mock_tm_class.return_value = mock_tm
-        mock_rate_config.return_value = Mock(enabled=False)
-        mock_run_async.side_effect = _close_run_async_return(
-            [{"title": "T1", "created_at": "2025-03-01", "url": "https://x.ai"}]
+    def test_success_human_with_date_range(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        scraper = FakeThreadScraper(
+            threads=[ThreadRecord(title="T1", url="https://x.ai", created_at="2025-03-01")]
         )
-        mock_write_csv.return_value = Path("/tmp/threads.csv")
-
-        run_export_threads_command(
-            ctx_obj={},
-            from_date="2025-01-01",
-            to_date="2025-06-30",
-            output=None,
-            force_refresh=False,
-            clear_cache=False,
-        )
+        with _export_dependencies(
+            FakeTokenManager(load_token_result=("token", {})),
+            FakeCacheManager(),
+            scraper,
+            RateLimitConfig(enabled=False),
+        ):
+            run_export_threads_command(
+                ctx_obj={},
+                from_date="2025-01-01",
+                to_date="2025-06-30",
+                output=None,
+                force_refresh=False,
+                clear_cache=False,
+            )
 
         captured = capsys.readouterr()
         assert "Exported 1 threads" in captured.out
         assert "2025-01-01 to 2025-06-30" in captured.err
 
-    @patch("perplexity_cli.runners.export.write_threads_csv", autospec=True)
-    @patch("perplexity_cli.runners.export.run_async", autospec=True)
-    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
-    @patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True)
-    @patch("perplexity_cli.runners.export.ThreadScraper", autospec=True)
-    @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
-    def test_success_json_with_explicit_output(
-        self,
-        mock_tm_class,
-        mock_scraper_class,
-        mock_cm_class,
-        mock_rate_config,
-        mock_run_async,
-        mock_write_csv,
-        capsys,
-    ):
-        mock_tm = Mock()
-        mock_tm.load_token.return_value = ("token", {})
-        mock_tm_class.return_value = mock_tm
-        mock_rate_config.return_value = Mock(enabled=False)
-        mock_run_async.side_effect = _close_run_async_return(
-            [{"title": "T1", "created_at": "2025-01-01", "url": "https://x.ai"}]
+    def test_success_json_with_explicit_output(self, tmp_path, capsys):
+        out_path = tmp_path / "out.csv"
+        scraper = FakeThreadScraper(
+            threads=[ThreadRecord(title="T1", url="https://x.ai", created_at="2025-01-01")]
         )
-        mock_write_csv.return_value = Path("/tmp/out.csv")
+        with _export_dependencies(
+            FakeTokenManager(load_token_result=("token", {})),
+            FakeCacheManager(),
+            scraper,
+            RateLimitConfig(enabled=False),
+        ):
+            run_export_threads_command(
+                ctx_obj={"json": True},
+                from_date=None,
+                to_date=None,
+                output=out_path,
+                force_refresh=False,
+                clear_cache=False,
+            )
 
-        run_export_threads_command(
-            ctx_obj={"json": True},
-            from_date=None,
-            to_date=None,
-            output=Path("/tmp/out.csv"),
-            force_refresh=False,
-            clear_cache=False,
-        )
-
-        mock_write_csv.assert_called_once()
+        assert out_path.exists()
         envelope = json.loads(capsys.readouterr().out.strip())
-        assert envelope["result"]["output_path"] is not None
+        assert envelope["result"]["output_path"] == str(out_path.resolve())
 
     def test_validate_export_dates_invalid_shows_format_hint(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
@@ -740,18 +664,18 @@ class TestExportRunnerMutationKillers:
         captured = capsys.readouterr()
         assert "Please use YYYY-MM-DD format" in captured.err
 
-    def test_handle_cache_clear_preserve_does_nothing(self):
-        cm = Mock()
-        _handle_cache_clear(cm, clear_cache=False, output_format="human", logger=Mock())
-        cm.cache_exists.assert_not_called()
-        cm.clear_cache.assert_not_called()
+    def test_handle_cache_clear_preserve_does_nothing(self, tmp_path):
+        cm = FakeCacheManager(cache_path=tmp_path / "cache.json")
+        _handle_cache_clear(cm, clear_cache=False, output_format="human", logger=_LOGGER)
+        assert cm.cache_exists_calls == 0
+        assert cm.clear_calls == 0
 
-    @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
-    def test_setup_rate_limiter_logs_config(self, mock_config):
-        mock_config.return_value = Mock(enabled=True, requests_per_period=5, period_seconds=30)
-        logger = Mock()
-        result = _setup_rate_limiter(logger)
+    def test_setup_rate_limiter_logs_config(self, caplog):
+        with patch(
+            "perplexity_cli.runners.export.get_rate_limiting_config",
+            new=lambda: RateLimitConfig(enabled=True, requests_per_period=5, period_seconds=30),
+        ):
+            with caplog.at_level(logging.INFO, logger="test-export-runner"):
+                result = _setup_rate_limiter(_LOGGER)
         assert result is not None
-        logger.info.assert_called_once_with(
-            "Rate limiting enabled: %s requests per %s seconds", 5, 30
-        )
+        assert "Rate limiting enabled: 5 requests per 30.0 seconds" in caplog.text

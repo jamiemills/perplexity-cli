@@ -205,34 +205,17 @@ class TestHandleHttpError:
 
 
 class TestMakeApiRequest:
-    """Tests for _make_api_request error handling paths."""
+    """Tests for _make_api_request pass-through behaviour."""
 
     @pytest.mark.asyncio
-    async def test_http_error_delegates_to_handle(self):
-        """PerplexityHTTPStatusError should be routed through _handle_http_error."""
+    async def test_typed_errors_propagate_unchanged(self):
+        """Typed errors raised by _execute_api_post propagate unchanged."""
         scraper = _make_scraper()
-        resp = SimpleResponse(status_code=401)
-        err = PerplexityHTTPStatusError("fail", response=resp)
-
+        err = AuthenticationError("auth failed")
         with patch.object(scraper, "_execute_api_post", new_callable=AsyncMock, side_effect=err):
-            with pytest.raises(AuthenticationError):
+            with pytest.raises(AuthenticationError) as exc_info:
                 await scraper._make_api_request(AsyncMock(), {}, {}, {})
-
-    @pytest.mark.asyncio
-    async def test_network_error_converted(self):
-        """RequestException should become PerplexityRequestError."""
-        scraper = _make_scraper()
-
-        from curl_cffi.requests.exceptions import RequestException
-
-        with patch.object(
-            scraper,
-            "_execute_api_post",
-            new_callable=AsyncMock,
-            side_effect=RequestException("boom"),
-        ):
-            with pytest.raises(PerplexityRequestError, match="Network error"):
-                await scraper._make_api_request(AsyncMock(), {}, {}, {})
+        assert exc_info.value is err
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +224,19 @@ class TestMakeApiRequest:
 
 
 class TestExecuteApiPost:
-    """Tests for _execute_api_post."""
+    """Tests for _execute_api_post typed error contracts."""
+
+    @staticmethod
+    def _make_error_response(status_code: int) -> Mock:
+        """Build a non-OK Mock response with the given status code."""
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = status_code
+        mock_response.text = "error"
+        mock_response.headers = {}
+        mock_response.url = "https://example.com"
+        mock_response.request = Mock(method="POST", url="https://example.com")
+        return mock_response
 
     @pytest.mark.asyncio
     async def test_rate_limit_wait_logged(self):
@@ -262,23 +257,50 @@ class TestExecuteApiPost:
         rl.acquire.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_not_ok_raises_http_status_error(self):
-        """Non-OK response should raise via raise_http_status_error."""
+    async def test_401_raises_authentication_error(self):
+        """401 responses raise AuthenticationError with the status error as cause."""
         scraper = _make_scraper()
-
-        mock_response = Mock()
-        mock_response.ok = False
-        mock_response.status_code = 500
-        mock_response.text = "Internal Server Error"
-        mock_response.headers = {}
-        mock_response.url = "https://example.com"
-        mock_response.request = Mock(method="POST", url="https://example.com")
-
         client = AsyncMock()
-        client.post.return_value = mock_response
+        client.post.return_value = self._make_error_response(401)
 
-        with pytest.raises((PerplexityHTTPStatusError, Exception)):
+        with pytest.raises(AuthenticationError) as exc_info:
             await scraper._execute_api_post(client, {}, {}, {})
+        assert isinstance(exc_info.value.__cause__, PerplexityHTTPStatusError)
+
+    @pytest.mark.asyncio
+    async def test_429_raises_rate_limit_error(self):
+        """429 responses raise RateLimitError with the status error as cause."""
+        scraper = _make_scraper()
+        client = AsyncMock()
+        client.post.return_value = self._make_error_response(429)
+
+        with pytest.raises(RateLimitError) as exc_info:
+            await scraper._execute_api_post(client, {}, {}, {})
+        assert isinstance(exc_info.value.__cause__, PerplexityHTTPStatusError)
+
+    @pytest.mark.asyncio
+    async def test_500_preserves_http_status_error(self):
+        """5xx responses are preserved as PerplexityHTTPStatusError."""
+        scraper = _make_scraper()
+        client = AsyncMock()
+        client.post.return_value = self._make_error_response(500)
+
+        with pytest.raises(PerplexityHTTPStatusError) as exc_info:
+            await scraper._execute_api_post(client, {}, {}, {})
+        assert exc_info.value.response.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_network_error_converted(self):
+        """Transport RequestException becomes PerplexityRequestError."""
+        from curl_cffi.requests.exceptions import RequestException
+
+        scraper = _make_scraper()
+        client = AsyncMock()
+        client.post.side_effect = RequestException("boom")
+
+        with pytest.raises(PerplexityRequestError, match="Network error") as exc_info:
+            await scraper._execute_api_post(client, {}, {}, {})
+        assert isinstance(exc_info.value.__cause__, RequestException)
 
     @pytest.mark.asyncio
     async def test_malformed_json_raises_upstream_schema_error(self):
@@ -306,7 +328,7 @@ class TestExecuteApiPost:
 
 
 class TestHasMorePages:
-    """Tests for _has_more_pages."""
+    """Tests for _has_more_pages boolean pagination contract."""
 
     def test_empty_returns_false(self):
         assert _has_more_pages([]) is False
@@ -316,6 +338,16 @@ class TestHasMorePages:
 
     def test_has_next_page_true(self):
         assert _has_more_pages([{"has_next_page": True}]) is True
+
+    def test_first_record_is_authoritative(self):
+        """Flags on later records are ignored; the first record decides."""
+        assert _has_more_pages([{"has_next_page": False}, {"has_next_page": True}]) is False
+        assert _has_more_pages([{"has_next_page": True}, {"has_next_page": False}]) is True
+
+    def test_non_boolean_flag_raises(self):
+        """A non-boolean has_next_page raises UpstreamSchemaError."""
+        with pytest.raises(UpstreamSchemaError, match="Malformed has_next_page"):
+            _has_more_pages([{"has_next_page": "yes"}])
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +390,24 @@ class TestProcessThreadBatch:
                 threads,
                 None,
             )
+
+    def test_progress_reports_total_from_first_record(self):
+        """total_threads is read from the first record when unset."""
+        cb = MagicMock()
+        scraper = _make_scraper()
+        threads: list[ThreadRecord] = []
+        data = [
+            {
+                "last_query_datetime": "2026-06-01T00:00:00",
+                "slug": "s",
+                "title": "T",
+                "total_threads": 42,
+            },
+        ]
+        stopped = scraper._process_thread_batch(data, threads, "2026-01-01", None, cb)
+        assert stopped is False
+        assert len(threads) == 1
+        cb.assert_called_once_with(1, 42)
 
 
 # ---------------------------------------------------------------------------
@@ -490,3 +540,83 @@ class TestFetchAllThreadsFromApi:
 
         assert len(result) == 1
         assert mock_session.post.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_two_page_pagination_uses_exact_offsets(self):
+        """A two-page fixture asserts the exact offsets and merged order."""
+        scraper = _make_scraper()
+
+        page1 = [
+            {
+                "last_query_datetime": "2026-06-10T00:00:00",
+                "slug": "a",
+                "title": "A",
+                "has_next_page": True,
+            },
+            {"last_query_datetime": "2026-06-09T00:00:00", "slug": "b", "title": "B"},
+        ]
+        page2 = [
+            {"last_query_datetime": "2026-06-08T00:00:00", "slug": "c", "title": "C"},
+        ]
+        requested_offsets: list[int] = []
+
+        def build_response(payload: list[dict]) -> Mock:
+            resp = Mock()
+            resp.ok = True
+            resp.json.return_value = payload
+            return resp
+
+        async def fake_post(*_args: object, **kwargs: object) -> Mock:
+            requested_offsets.append(kwargs["json"]["offset"])  # type: ignore[index]
+            if kwargs["json"]["offset"] == 0:  # type: ignore[index]
+                return build_response(page1)
+            return build_response(page2)
+
+        mock_session = AsyncMock()
+        mock_session.post.side_effect = fake_post
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_session
+        mock_ctx.__aexit__.return_value = False
+
+        with patch("perplexity_cli.utils.session_factory.AsyncSession", return_value=mock_ctx):
+            result = await scraper._fetch_all_threads_from_api("tok")
+
+        assert requested_offsets == [0, 100]
+        assert [t.title for t in result] == ["A", "B", "C"]
+        assert mock_session.post.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_repeated_page_signature_raises(self):
+        """Identical consecutive pages raise UpstreamSchemaError."""
+        scraper = _make_scraper()
+
+        page = [
+            {
+                "last_query_datetime": "2026-06-10T00:00:00",
+                "slug": "a",
+                "title": "A",
+                "has_next_page": True,
+            },
+            {"last_query_datetime": "2026-06-09T00:00:00", "slug": "b", "title": "B"},
+        ]
+
+        def build_response(_: object) -> Mock:
+            resp = Mock()
+            resp.ok = True
+            resp.json.return_value = page
+            return resp
+
+        async def fake_post(*_args: object, **_kwargs: object) -> Mock:
+            return build_response(None)
+
+        mock_session = AsyncMock()
+        mock_session.post.side_effect = fake_post
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_session
+        mock_ctx.__aexit__.return_value = False
+
+        with patch("perplexity_cli.utils.session_factory.AsyncSession", return_value=mock_ctx):
+            with pytest.raises(UpstreamSchemaError, match="Repeated page signature"):
+                await scraper._fetch_all_threads_from_api("tok")
+
+        assert mock_session.post.await_count == 2

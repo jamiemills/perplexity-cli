@@ -39,6 +39,10 @@ from hypothesis.database import DirectoryBasedExampleDatabase
 from perplexity_cli.threads.cache_manager import ThreadCacheManager
 from perplexity_cli.utils.config import clear_feature_config_cache, clear_urls_cache
 
+# Fail-closed network isolation for non-live lanes (installed in
+# pytest_configure, before test-module collection).
+pytest_plugins = ["tests.support.network_guard"]
+
 # ---------------------------------------------------------------------------
 # Hypothesis profiles
 # ---------------------------------------------------------------------------

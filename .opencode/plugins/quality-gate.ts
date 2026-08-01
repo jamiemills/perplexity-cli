@@ -82,6 +82,9 @@ export function isAddingBypass(oldStr: string, newStr: string): string | null {
     return "removed severity level(s) from --severity flag";
   }
 
+  const lowered = loweredSeverity(oldStr, newStr);
+  if (lowered) return lowered;
+
   for (const gate of GATE_REFERENCES) {
     if (countMatches(oldStr, gate.re) > countMatches(newStr, gate.re)) {
       return `removed ${gate.label} gate reference`;
@@ -109,16 +112,56 @@ export interface PatchChange {
   removed: string[];
 }
 
+const SEVERITY_RANK: Readonly<Record<string, number>> = {
+  CRITICAL: 0,
+  HIGH: 1,
+  MEDIUM: 2,
+  LOW: 3,
+  INFO: 4,
+};
+
+function loweredSeverity(oldStr: string, newStr: string): string | null {
+  const oldFlags = oldStr.match(/--severity\s+(\w+)/g) ?? [];
+  const newFlags = newStr.match(/--severity\s+(\w+)/g) ?? [];
+  for (const flag of oldFlags) {
+    const value = /--severity\s+(\w+)/.exec(flag)?.[1] ?? "";
+    const rank = SEVERITY_RANK[value.toUpperCase()];
+    if (rank === undefined) continue;
+    const preserved = newFlags.some((candidate) => {
+      const candidateValue = /--severity\s+(\w+)/.exec(candidate)?.[1] ?? "";
+      const candidateRank = SEVERITY_RANK[candidateValue.toUpperCase()];
+      return candidateRank !== undefined && candidateRank <= rank;
+    });
+    if (!preserved) {
+      return `lowered severity level (--severity ${value})`;
+    }
+  }
+  return null;
+}
+
+const PATCH_SECTION_RE = /^\*\*\* (?:Add|Update|Delete|Move) File: (.+)$/;
+const MOVE_ARROW_RE = /(.*?)\s*(?:→|->)\s*(.*)/;
+
 export function protectedPatchChanges(patchText: string): Map<string, PatchChange> {
   const changes = new Map<string, PatchChange>();
   let current: PatchChange | null = null;
 
   for (const line of patchText.split("\n")) {
-    const fileMatch = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/.exec(line);
+    const fileMatch = PATCH_SECTION_RE.exec(line);
     if (fileMatch) {
-      const filePath = (fileMatch[1] ?? "").trim();
-      current = isProtectedFile(filePath) ? { added: [], removed: [] } : null;
-      if (current) changes.set(filePath, current);
+      const rawPath = (fileMatch[1] ?? "").trim();
+      const arrow = MOVE_ARROW_RE.exec(rawPath);
+      const targets = arrow
+        ? [(arrow[1] ?? "").trim(), (arrow[2] ?? "").trim()].filter(Boolean)
+        : [rawPath];
+      const protectedTargets = targets.filter(isProtectedFile);
+      if (protectedTargets.length > 0) {
+        const filePath = protectedTargets[0] ?? "";
+        current = changes.get(filePath) ?? { added: [], removed: [] };
+        changes.set(filePath, current);
+      } else {
+        current = null;
+      }
       continue;
     }
     if (line.startsWith("*** ")) {
@@ -261,6 +304,11 @@ export const QualityGatePlugin: Plugin = ({ client, $, directory }) => {
       if (input.tool === "write") {
         const filePath = argString(args, "filePath");
         if (!isProtectedFile(filePath)) return;
+
+        const contentArg = args.content;
+        if (typeof contentArg === "string" && contentArg.length === 0) {
+          await block(filePath, "empty writes to a protected file are blocked");
+        }
 
         const newContent = argString(args, "content");
         if (!newContent) return;

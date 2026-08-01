@@ -1,85 +1,86 @@
 """Tests for style configuration manager."""
 
+from __future__ import annotations
+
 import json
-import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from perplexity_cli.utils.style_manager import StyleManager
 
 
+@dataclass(frozen=True, slots=True)
+class MockConfigPaths:
+    """Minimal stand-in for resolved config paths."""
+
+    style_path: Path
+
+
+@pytest.fixture
+def mocked_style_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point StyleManager at an isolated temporary style file.
+
+    Returns the style file path, patched into
+    ``perplexity_cli.utils.style_manager.get_config_paths``.
+    """
+    style_path = tmp_path / "style.json"
+    config_paths = MockConfigPaths(style_path=style_path)
+    monkeypatch.setattr(
+        "perplexity_cli.utils.style_manager.get_config_paths",
+        lambda: config_paths,
+    )
+    return style_path
+
+
 class TestStyleManagerBasic:
     """Test basic StyleManager functionality."""
 
-    @staticmethod
-    def _mock_paths(style_path: Path):
-        return type("MockPaths", (), {"style_path": style_path})()
-
-    def test_load_style_returns_none_when_not_set(self):
+    def test_load_style_returns_none_when_not_set(self, mocked_style_path: Path):
         """Test load_style returns None when style file doesn't exist."""
-        with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
-            mock_paths.return_value = self._mock_paths(Path("/nonexistent/path/style.json"))
-            sm = StyleManager()
-            result = sm.load_style()
-            assert result is None
+        sm = StyleManager()
+        result = sm.load_style()
+        assert result is None
 
-    def test_save_style_creates_file(self):
+    def test_save_style_creates_file(self, mocked_style_path: Path):
         """Test save_style creates style file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            style_path = Path(tmpdir) / "style.json"
+        sm = StyleManager()
+        sm.save_style("be concise")
 
-            with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
-                mock_paths.return_value = self._mock_paths(style_path)
-                sm = StyleManager()
-                sm.save_style("be concise")
+        assert mocked_style_path.exists()
+        with open(mocked_style_path, encoding="utf-8") as f:
+            data = json.load(f)
+            assert data["style"] == "be concise"
+            assert "created_at" in data
 
-                assert style_path.exists()
-                with open(style_path, encoding="utf-8") as f:
-                    data = json.load(f)
-                    assert data["style"] == "be concise"
-                    assert "created_at" in data
-
-    def test_save_and_load_style(self):
+    def test_save_and_load_style(self, mocked_style_path: Path):
         """Test save_style and load_style roundtrip."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            style_path = Path(tmpdir) / "style.json"
+        sm = StyleManager()
 
-            with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
-                mock_paths.return_value = self._mock_paths(style_path)
-                sm = StyleManager()
+        test_style = "provide brief answers"
+        sm.save_style(test_style)
+        loaded_style = sm.load_style()
 
-                test_style = "provide brief answers"
-                sm.save_style(test_style)
-                loaded_style = sm.load_style()
+        assert loaded_style == test_style
 
-                assert loaded_style == test_style
-
-    def test_clear_style_removes_file(self):
+    def test_clear_style_removes_file(self, mocked_style_path: Path):
         """Test clear_style removes style file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            style_path = Path(tmpdir) / "style.json"
+        sm = StyleManager()
 
-            with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
-                mock_paths.return_value = self._mock_paths(style_path)
-                sm = StyleManager()
+        # Create a style file
+        sm.save_style("test style")
+        assert mocked_style_path.exists()
 
-                # Create a style file
-                sm.save_style("test style")
-                assert style_path.exists()
+        # Clear it
+        sm.clear_style()
+        assert not mocked_style_path.exists()
 
-                # Clear it
-                sm.clear_style()
-                assert not style_path.exists()
-
-    def test_clear_style_is_idempotent(self):
+    def test_clear_style_is_idempotent(self, mocked_style_path: Path):
         """Test clear_style doesn't error when file doesn't exist."""
-        with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
-            mock_paths.return_value = self._mock_paths(Path("/nonexistent/path/style.json"))
-            sm = StyleManager()
-            # Should not raise
-            sm.clear_style()
+        sm = StyleManager()
+        # Should not raise
+        sm.clear_style()
 
 
 class TestStyleManagerValidation:
@@ -110,85 +111,60 @@ class TestStyleManagerValidation:
         long_string = "x" * 10001
         assert sm.validate_style(long_string) is False
 
-    def test_save_style_rejects_empty_string(self):
+    def test_save_style_rejects_empty_string(self, mocked_style_path: Path):
         """Test save_style raises ValueError for empty string."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            style_path = Path(tmpdir) / "style.json"
+        sm = StyleManager()
 
-            with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
-                mock_paths.return_value = TestStyleManagerBasic._mock_paths(style_path)
-                sm = StyleManager()
+        with pytest.raises(ValueError):
+            sm.save_style("")
 
-                with pytest.raises(ValueError):
-                    sm.save_style("")
+        with pytest.raises(ValueError):
+            sm.save_style("   ")
 
-                with pytest.raises(ValueError):
-                    sm.save_style("   ")
-
-    def test_save_style_rejects_non_string(self):
+    def test_save_style_rejects_non_string(self, mocked_style_path: Path):
         """Test save_style raises ValueError for non-string."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            style_path = Path(tmpdir) / "style.json"
+        sm = StyleManager()
 
-            with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
-                mock_paths.return_value = TestStyleManagerBasic._mock_paths(style_path)
-                sm = StyleManager()
+        with pytest.raises(ValueError):
+            sm.save_style(None)  # type: ignore
 
-                with pytest.raises(ValueError):
-                    sm.save_style(None)  # type: ignore
-
-                with pytest.raises(ValueError):
-                    sm.save_style(123)  # type: ignore
+        with pytest.raises(ValueError):
+            sm.save_style(123)  # type: ignore
 
 
 class TestStyleManagerFilePermissions:
     """Test style file security."""
 
-    def test_save_style_sets_secure_permissions(self):
+    def test_save_style_sets_secure_permissions(self, mocked_style_path: Path):
         """Test save_style sets 0600 file permissions."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            style_path = Path(tmpdir) / "style.json"
+        sm = StyleManager()
+        sm.save_style("test style")
 
-            with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
-                mock_paths.return_value = TestStyleManagerBasic._mock_paths(style_path)
-                sm = StyleManager()
-                sm.save_style("test style")
-
-                # Check file permissions
-                mode = style_path.stat().st_mode & 0o777
-                assert mode == 0o600
+        # Check file permissions
+        mode = mocked_style_path.stat().st_mode & 0o777
+        assert mode == 0o600
 
 
 class TestStyleManagerErrorHandling:
     """Test error handling."""
 
-    def test_load_style_handles_corrupted_json(self):
+    def test_load_style_handles_corrupted_json(self, mocked_style_path: Path):
         """Test load_style raises OSError for corrupted JSON."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            style_path = Path(tmpdir) / "style.json"
+        # Write corrupted JSON
+        with open(mocked_style_path, "w", encoding="utf-8") as f:
+            f.write("{invalid json")
 
-            # Write corrupted JSON
-            with open(style_path, "w", encoding="utf-8") as f:
-                f.write("{invalid json")
+        sm = StyleManager()
 
-            with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
-                mock_paths.return_value = TestStyleManagerBasic._mock_paths(style_path)
-                sm = StyleManager()
+        with pytest.raises(OSError):
+            sm.load_style()
 
-                with pytest.raises(OSError):
-                    sm.load_style()
-
-    def test_load_style_handles_missing_style_key(self):
+    def test_load_style_handles_missing_style_key(self, mocked_style_path: Path):
         """Test load_style raises OSError when style key missing."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            style_path = Path(tmpdir) / "style.json"
+        with open(mocked_style_path, "w", encoding="utf-8") as f:
+            json.dump({"created_at": "2025-01-01"}, f)
 
-            with open(style_path, "w", encoding="utf-8") as f:
-                json.dump({"created_at": "2025-01-01"}, f)
-
-            with patch("perplexity_cli.utils.style_manager.get_config_paths") as mock_paths:
-                mock_paths.return_value = TestStyleManagerBasic._mock_paths(style_path)
-                sm = StyleManager()
-                result = sm.load_style()
-                # Returns None for missing style key (via .get)
-                assert result is None
+        sm = StyleManager()
+        result = sm.load_style()
+        # Returns None for missing style key (via .get)
+        assert result is None

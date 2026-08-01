@@ -173,6 +173,53 @@ def test_ci_has_no_needs_secret_scan() -> None:
     assert offenders == [], f"ci.yml jobs declaring needs: secret-scan: {offenders}"
 
 
+def test_ci_has_hermetic_integration_job() -> None:
+    """CI must run the hermetic integration lane under the default-on guard."""
+    ci = _load_workflow("ci.yml")
+    job = ci["jobs"]["hermetic-integration"]
+    assert job["runs-on"] == "ubuntu-latest"
+    recipe = " ".join(str(step.get("run", "")) for step in job["steps"] if isinstance(step, dict))
+    assert "make test-integration" in recipe
+    assert "RUN_REAL_API_TESTS" not in recipe
+    assert "permissions" not in job or job["permissions"]["contents"] == "read"
+
+
+def test_ci_has_windows_packaging_smoke_job() -> None:
+    """CI must smoke the wheel on Windows with bounded, network-free commands."""
+    ci = _load_workflow("ci.yml")
+    job = ci["jobs"]["windows_packaging_smoke"]
+    assert job["runs-on"] == "windows-latest"
+    assert _normalise_needs(job.get("needs")) == ["package"]
+    uses = [
+        str(step.get("uses", ""))
+        for step in job["steps"]
+        if isinstance(step, dict) and step.get("uses")
+    ]
+    assert any("download-artifact" in use for use in uses)
+    recipe = " ".join(str(step.get("run", "")) for step in job["steps"] if isinstance(step, dict))
+    for command in (
+        "pxcli.exe --version",
+        "pxcli.exe config show",
+        "pxcli.exe skill show",
+        "perplexity-cli.exe --version",
+        "pxcli-mcp.exe --help",
+    ):
+        assert command in recipe
+
+
+def test_ci_test_coverage_installs_gitleaks() -> None:
+    """The coverage job must install gitleaks before running the suite."""
+    ci = _load_workflow("ci.yml")
+    steps = ci["jobs"]["test-coverage"]["steps"]
+    names = [step.get("name", "") for step in steps]
+    assert "Install gitleaks 8.30.1" in names
+    gitleaks_step = next(step for step in steps if step.get("name") == "Install gitleaks 8.30.1")
+    assert "8.30.1" in str(gitleaks_step.get("run", ""))
+    run_index = names.index("Run tests with coverage")
+    install_index = names.index("Install gitleaks 8.30.1")
+    assert install_index < run_index
+
+
 def test_scheduled_workflows_have_concurrency() -> None:
     """Every scheduled workflow must declare a concurrency group with cancel."""
     for name in SCHEDULED_WORKFLOWS:

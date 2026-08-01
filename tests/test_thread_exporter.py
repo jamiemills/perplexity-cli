@@ -1,11 +1,16 @@
 """Tests for the thread CSV export functionality."""
 
 import csv
+import stat
+import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
 from perplexity_cli.threads.exporter import ThreadRecord, write_threads_csv
+
+_POSIX = sys.platform != "win32"
 
 
 class TestThreadRecord:
@@ -225,3 +230,129 @@ class TestWriteThreadsCsv:
         # Verify we can read it back as UTF-8
         content = output_path.read_text(encoding="utf-8")
         assert "UTF-8 test" in content
+
+
+class TestFormulaNeutralisation:
+    """Tests for spreadsheet formula prefix neutralisation in every cell."""
+
+    _COLUMN_INDEX: ClassVar[dict[str, int]] = {"created_at": 0, "title": 1, "url": 2}
+
+    @staticmethod
+    def _build_record(field: str, value: str) -> ThreadRecord:
+        fields = {
+            "title": "benign",
+            "url": "https://example.com",
+            "created_at": "2025-01-01T00:00:00Z",
+        }
+        fields[field] = value
+        return ThreadRecord(**fields)
+
+    @staticmethod
+    def _read_rows(output_path: Path) -> list[list[str]]:
+        with output_path.open(newline="", encoding="utf-8") as csvfile:
+            return list(csv.reader(csvfile))
+
+    @pytest.mark.parametrize("field", ["title", "url", "created_at"])
+    @pytest.mark.parametrize("prefix", ["=", "+", "-", "@"])
+    def test_formula_prefix_neutralised_in_every_column(self, tmp_path, field, prefix):
+        """A formula prefix in any column gets a leading apostrophe."""
+        value = prefix + "SUM(A1)"
+        output_path = tmp_path / "threads.csv"
+        write_threads_csv([self._build_record(field, value)], output_path)
+        rows = self._read_rows(output_path)
+        assert rows[1][self._COLUMN_INDEX[field]] == "'" + value
+
+    @pytest.mark.parametrize("leading", ["  ", "\t", "\n", "\r\n"])
+    @pytest.mark.parametrize("prefix", ["=", "+", "-", "@"])
+    def test_leading_whitespace_variants_neutralised(self, tmp_path, leading, prefix):
+        """A prefix after leading whitespace still gets neutralised."""
+        value = leading + prefix + "cmd()"
+        output_path = tmp_path / "threads.csv"
+        write_threads_csv([self._build_record("title", value)], output_path)
+        rows = self._read_rows(output_path)
+        assert rows[1][1] == "'" + value
+
+    def test_benign_cells_preserved_exactly(self, tmp_path):
+        """Unicode, quotes, commas and newlines are preserved untouched."""
+        title = 'Title with "quotes", commas, and\nnewlines'
+        url = "https://example.com/h\u00e9llo?q=caf\u00e9&x=1"
+        created_at = "2025-01-01T13:51:50Z"
+        record = ThreadRecord(title=title, url=url, created_at=created_at)
+        output_path = tmp_path / "threads.csv"
+        write_threads_csv([record], output_path)
+        rows = self._read_rows(output_path)
+        assert rows[1] == [created_at, title, url]
+
+    def test_whitespace_only_and_empty_cells_unchanged(self, tmp_path):
+        """Whitespace-only and empty cells are left exactly as provided."""
+        record = ThreadRecord(title="   ", url="", created_at="  ")
+        output_path = tmp_path / "threads.csv"
+        write_threads_csv([record], output_path)
+        rows = self._read_rows(output_path)
+        assert rows[1] == ["  ", "   ", ""]
+
+
+class TestAtomicCsvWrite:
+    """Tests for atomic replacement of the destination."""
+
+    @staticmethod
+    def _temp_files(directory: Path) -> list[Path]:
+        return [path for path in directory.iterdir() if path.name.endswith(".tmp")]
+
+    def test_successful_write_leaves_no_temp_files(self, tmp_path):
+        """A successful write leaves no temporary siblings behind."""
+        output_path = tmp_path / "threads.csv"
+        write_threads_csv([ThreadRecord(title="t", url="u", created_at="c")], output_path)
+        assert self._temp_files(tmp_path) == []
+        assert output_path.exists()
+
+    @pytest.mark.skipif(not _POSIX, reason="POSIX mode bits are not asserted on Windows")
+    def test_written_file_has_default_mode(self, tmp_path):
+        """A newly written CSV gets the conventional 0644 mode."""
+        output_path = tmp_path / "threads.csv"
+        write_threads_csv([ThreadRecord(title="t", url="u", created_at="c")], output_path)
+        assert stat.S_IMODE(output_path.stat().st_mode) == 0o644
+
+    def test_failed_write_preserves_existing_destination(self, tmp_path, monkeypatch):
+        """A pre-replace failure preserves the old file byte-for-byte."""
+        output_path = tmp_path / "threads.csv"
+        output_path.write_text("ORIGINAL-CONTENT")
+
+        def _fail(*_args, **_kwargs):
+            raise OSError("injected replace failure")
+
+        monkeypatch.setattr("perplexity_cli.threads.exporter._replace_temp", _fail)
+        with pytest.raises(OSError, match="injected replace failure"):
+            write_threads_csv([ThreadRecord(title="t", url="u", created_at="c")], output_path)
+
+        assert output_path.read_text() == "ORIGINAL-CONTENT"
+        assert self._temp_files(tmp_path) == []
+
+    def test_failed_write_creates_no_partial_destination(self, tmp_path, monkeypatch):
+        """A replace failure leaves no destination file at all."""
+        output_path = tmp_path / "threads.csv"
+
+        def _fail(*_args, **_kwargs):
+            raise OSError("injected replace failure")
+
+        monkeypatch.setattr("perplexity_cli.threads.exporter._replace_temp", _fail)
+        with pytest.raises(OSError, match="injected replace failure"):
+            write_threads_csv([ThreadRecord(title="t", url="u", created_at="c")], output_path)
+
+        assert not output_path.exists()
+        assert self._temp_files(tmp_path) == []
+
+    def test_symlink_destination_rejected(self, tmp_path):
+        """A symlink destination is refused and its target left untouched."""
+        target = tmp_path / "target.csv"
+        target.write_text("ORIGINAL")
+        output_path = tmp_path / "threads.csv"
+        try:
+            output_path.symlink_to(target)
+        except (OSError, NotImplementedError, PermissionError):
+            pytest.skip("symlink creation is not supported on this platform")
+        with pytest.raises(OSError, match="symlink"):
+            write_threads_csv([ThreadRecord(title="t", url="u", created_at="c")], output_path)
+        assert output_path.is_symlink()
+        assert target.read_text() == "ORIGINAL"
+        assert self._temp_files(tmp_path) == []

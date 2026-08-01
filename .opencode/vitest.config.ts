@@ -9,5 +9,17 @@ export default defineConfig({
       enabled: true,
       tsconfig: "./tsconfig.json",
     },
+    coverage: {
+      provider: "v8",
+      include: ["plugins/quality-gate.ts", "plugins/pxcli-quality.ts"],
+      exclude: [],
+      thresholds: {
+        lines: 85,
+        statements: 85,
+        functions: 85,
+        branches: 85,
+        perFile: true,
+      },
+    },
   },
 });

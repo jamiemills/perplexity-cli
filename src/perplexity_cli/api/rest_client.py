@@ -16,9 +16,22 @@ if TYPE_CHECKING:
 
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.utils.cookies import to_curl_cffi_cookies
+from perplexity_cli.utils.exceptions import (
+    PerplexityRequestError,
+    UpstreamSchemaError,
+)
 from perplexity_cli.utils.http_errors import raise_http_status_error
 from perplexity_cli.utils.http_headers import build_perplexity_headers
 from perplexity_cli.utils.logging import get_logger
+
+RequestException: type[Exception] = Exception
+
+try:
+    from curl_cffi.requests.exceptions import RequestException as _CurlRequestException
+
+    RequestException = _CurlRequestException
+except ImportError:  # pragma: no cover
+    RequestException = Exception
 
 
 class RestClient:
@@ -105,21 +118,26 @@ class RestClient:
         Raises:
             PerplexityHTTPStatusError: For HTTP errors (401, 403, 429, etc.).
             PerplexityRequestError: For network/connection errors.
+            UpstreamSchemaError: If the response body is not valid JSON.
         """
         headers = self.get_headers()
         cookies = to_curl_cffi_cookies(self.auth.cookies)
         client = self._get_client()
 
         self.logger.debug("REST GET %s", url)
-        response = client.get(
-            url,
-            headers=headers,
-            cookies=cookies,
-            timeout=self.timeout,
-        )
+        try:
+            response = client.get(
+                url,
+                headers=headers,
+                cookies=cookies,
+                timeout=self.timeout,
+            )
+        except RequestException as e:
+            msg = f"REST GET {url} failed: {e}"
+            raise PerplexityRequestError(msg) from e
 
         if not response.ok:
-            raise_http_status_error(response)
+            raise_http_status_error(response, method="GET")
 
         return self._extract_json(response)
 
@@ -139,8 +157,15 @@ class RestClient:
 
         Returns:
             The parsed JSON body as an opaque object.
+
+        Raises:
+            UpstreamSchemaError: If the response body is not valid JSON.
         """
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as e:
+            msg = "Failed to decode JSON response body"
+            raise UpstreamSchemaError(msg) from e
 
 
 class _RestResponse(Protocol):

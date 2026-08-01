@@ -1,23 +1,25 @@
-"""Fake S3 upload endpoint for hermetic upload-boundary tests.
+"""Fake upload endpoints for hermetic upload-boundary tests.
 
-Replaces ``httpx.AsyncClient`` at the *outer* boundary so tests can verify
-S3 upload behaviour without patching the ``httpx.AsyncClient`` constructor
-or wiring deeply-nested ``__aenter__`` / ``__aexit__`` mocks.
+Two boundaries are covered:
 
-Two collaborators are provided:
-
-* :class:`FakeS3UploadClient` - the async client itself (an async context
-  manager with an async ``post`` method that records calls);
-* :class:`FakeS3UploadClientFactory` - the callable factory that produces
-  clients, dropped in for the module's ``_get_httpx_async_client_factory``
-  seam.
+* **S3 HTTP boundary** — replaces ``httpx.AsyncClient`` so tests can verify
+  S3 upload behaviour without patching the ``httpx.AsyncClient`` constructor
+  or wiring deeply-nested ``__aenter__`` / ``__aexit__`` mocks
+  (:class:`FakeS3UploadClient` and :class:`FakeS3UploadClientFactory`).
+* **Uploader boundary** — a typed drop-in for
+  :class:`~perplexity_cli.attachments.AttachmentUploader` at the CLI/query
+  component boundary (:class:`FakeAttachmentUploader`), so component tests
+  never construct real S3 sessions.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from tests.helpers.fake_transport import FakeHttpResponse, RecordedRequest
+
+if TYPE_CHECKING:
+    from perplexity_cli.utils.attachment_models import FileAttachment
 
 
 class FakeS3UploadClient:
@@ -103,3 +105,55 @@ class FakeS3UploadClientFactory:
         client = FakeS3UploadClient(self._response)
         self.created.append(client)
         return client
+
+
+class FakeAttachmentUploader:
+    """Typed uploader fake for the CLI/query component boundary.
+
+    Drop-in for :class:`~perplexity_cli.attachments.AttachmentUploader` used
+    by the ``query`` command path.  ``upload_files`` records the attachments
+    it received and returns a preconfigured list of S3 URL strings, so tests
+    can assert the exact attachment order and body without real S3 traffic.
+
+    Example:
+        >>> fake = FakeAttachmentUploader(["https://s3.example.com/a.txt"])
+        >>> urls = await fake.upload_files(attachments)
+        >>> assert urls == ["https://s3.example.com/a.txt"]
+
+    Attributes:
+        results: S3 URLs returned by :meth:`upload_files`.
+        received: Every attachment list passed to :meth:`upload_files`.
+        upload_calls: Number of :meth:`upload_files` invocations.
+    """
+
+    def __init__(self, results: list[str] | None = None) -> None:
+        """Initialise the fake with the S3 URLs to return.
+
+        Args:
+            results: S3 URL strings returned on every upload.  Defaults to an
+                empty list.
+        """
+        self.results: list[str] = list(results or [])
+        self.received: list[list[FileAttachment]] = []
+        self.upload_calls: int = 0
+
+    def set_results(self, results: list[str]) -> None:
+        """Override the S3 URLs returned by subsequent uploads.
+
+        Args:
+            results: S3 URL strings to return.
+        """
+        self.results = list(results)
+
+    async def upload_files(self, attachments: list[FileAttachment]) -> list[str]:
+        """Record the attachment list and return the configured S3 URLs.
+
+        Args:
+            attachments: File attachment objects to upload.
+
+        Returns:
+            The configured S3 URL strings.
+        """
+        self.received.append(list(attachments))
+        self.upload_calls += 1
+        return list(self.results)

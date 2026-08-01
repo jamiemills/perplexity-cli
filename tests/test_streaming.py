@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 from io import StringIO
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from click import ClickException
 
 from perplexity_cli.api.models import QueryInput, TraceContext, WebResult
 from perplexity_cli.formatting.context import OutputOptions, RenderContext
@@ -15,6 +16,10 @@ from perplexity_cli.query_streaming import (
     _process_stream_message,
     _write_ndjson_result,
     stream_query_response,
+)
+from perplexity_cli.utils.exceptions import (
+    PerplexityHTTPStatusError,
+    UpstreamSchemaError,
 )
 
 
@@ -107,7 +112,7 @@ def test_stream_query_response_renders_rich_references_via_formatter():
     assert render.formatter.render_complete.call_args.kwargs["strip_references"] is True
 
 
-def test_stream_query_response_surfaces_output_failure():
+def test_stream_query_response_surfaces_output_failure(capsys):
     """Local render failures produce the dedicated streaming output error."""
     api = Mock()
     api.submit_query.return_value = iter(
@@ -123,60 +128,65 @@ def test_stream_query_response_surfaces_output_failure():
     query_input = QueryInput(query="test query")
     trace = TraceContext()
 
-    with patch("perplexity_cli.query_streaming.click.echo") as mock_echo:
-        mock_echo.side_effect = [None, None, None, None, None]
-
-        with pytest.raises(SystemExit) as exc_info:
-            stream_query_response(api, query_input, render, trace)
+    with pytest.raises(SystemExit) as exc_info:
+        stream_query_response(api, query_input, render, trace)
 
     assert exc_info.value.code == 1
-    assert any(
-        call.args and call.args[0] == "[ERROR] Failed to render streaming output: stdout closed"
-        for call in mock_echo.call_args_list
-    )
+    captured = capsys.readouterr()
+    assert "[ERROR] Failed to render streaming output: stdout closed" in captured.err
 
 
-def test_stream_query_response_uses_shared_unexpected_error_handler():
-    """Unexpected streaming failures route through the shared CLI fallback helper."""
+def test_stream_query_response_uses_unexpected_stream_error_handler():
+    """Unexpected streaming failures route through the local fallback handler."""
     api = Mock()
     api.submit_query.side_effect = RuntimeError("boom")
     render = _make_render_context(output_format="plain", strip_references=True)
     query_input = QueryInput(query="test query")
     trace = TraceContext()
 
-    with patch("perplexity_cli.query_streaming.handle_unexpected_cli_error") as mock_handle:
+    with patch("perplexity_cli.query_streaming._handle_stream_unexpected_error") as mock_unexpected:
+        mock_unexpected.side_effect = SystemExit(1)
         with pytest.raises(SystemExit):
-            mock_handle.side_effect = SystemExit(1)
             stream_query_response(api, query_input, render, trace)
 
-    mock_handle.assert_called_once()
-    assert mock_handle.call_args.args[0].args[0] == "boom"
-    assert mock_handle.call_args.kwargs["message_tuple"][2] is True
+    mock_unexpected.assert_called_once()
+    assert mock_unexpected.call_args.args[0].args[0] == "boom"
 
 
-def test_stream_query_response_maps_click_exception_to_render_failure():
-    """Click output failures stay on the dedicated render-failure path."""
+def test_stream_query_response_maps_output_oserror_to_render_failure(capsys):
+    """Output OSErrors stay on the dedicated render-failure path."""
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_stream_error(OSError("bad tty"))
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "[ERROR] Failed to render streaming output: bad tty" in captured.err
+
+
+def test_stream_query_response_divergent_snapshot_emits_no_garbage(capsys):
+    """A divergent snapshot stops streaming without emitting partial text."""
     api = Mock()
-    api.submit_query.return_value = iter([_make_message("Answer text")])
+    api.submit_query.return_value = iter(
+        [
+            _make_message("Hello"),
+            _make_message("Hallo"),
+        ]
+    )
     render = _make_render_context(output_format="plain", strip_references=True)
     query_input = QueryInput(query="test query")
     trace = TraceContext()
 
-    with patch("perplexity_cli.query_streaming.click.echo") as mock_echo:
-        mock_echo.side_effect = [ClickException("bad tty"), None, None]
-
-        with pytest.raises(SystemExit) as exc_info:
-            stream_query_response(api, query_input, render, trace)
+    with pytest.raises(SystemExit) as exc_info:
+        stream_query_response(api, query_input, render, trace)
 
     assert exc_info.value.code == 1
-    assert any(
-        call.args and call.args[0] == "[ERROR] Failed to render streaming output: bad tty"
-        for call in mock_echo.call_args_list
-    )
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "Hello"
+    assert "Upstream response format changed" in captured.err
 
 
 class TestProcessStreamMessage:
-    """Tests for _process_stream_message edge cases."""
+    """Tests for _process_stream_message snapshot contract."""
 
     def test_returns_accumulated_when_text_unchanged(self):
         """When extracted text equals accumulated text, no output is emitted."""
@@ -191,23 +201,51 @@ class TestProcessStreamMessage:
         result = _process_stream_message(message, "existing", None)
         assert result == "existing"
 
-    def test_returns_accumulated_when_new_text_empty(self):
-        """When text slice produces empty new_text, accumulated text is unchanged."""
-        message = Mock()
-        # text is non-None and != accumulated, but slicing gives empty string
-        message.extract_answer_text.return_value = "He"
+    def test_returns_accumulated_when_empty_snapshot(self):
+        """An empty snapshot emits no output and leaves text unchanged."""
+        message = _make_message("")
         result = _process_stream_message(message, "Hello", None)
-        # "He"[len("Hello"):] would be empty because "He" is shorter
-        # Actually "He" != "Hello" and "He"[5:] == "" so returns "Hello"
         assert result == "Hello"
 
+    def test_prefix_extension_emits_suffix_human_path(self, capsys):
+        """A strict prefix extension emits exactly the suffix (human path)."""
+        message = _make_message("Hello world")
+        result = _process_stream_message(message, "Hello", None)
+        assert result == "Hello world"
+        captured = capsys.readouterr()
+        assert captured.out == " world"
+
     def test_writes_to_ndjson_writer_when_present(self):
-        """When ndjson_writer is provided, chunk is called instead of click.echo."""
+        """A strict prefix extension emits exactly the suffix (NDJSON path)."""
         writer = Mock()
         message = _make_message("Hello world")
         result = _process_stream_message(message, "Hello", writer)
         writer.chunk.assert_called_once_with(" world")
         assert result == "Hello world"
+
+    def test_divergent_snapshot_raises_without_output(self, capsys):
+        """A non-prefix snapshot raises UpstreamSchemaError before output."""
+        message = _make_message("Help")
+        with pytest.raises(UpstreamSchemaError):
+            _process_stream_message(message, "Hello", None)
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_shortened_snapshot_raises_without_output(self, capsys):
+        """A shortened snapshot raises UpstreamSchemaError before output."""
+        message = _make_message("He")
+        with pytest.raises(UpstreamSchemaError):
+            _process_stream_message(message, "Hello", None)
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_divergent_snapshot_raises_before_ndjson_output(self):
+        """A non-prefix snapshot raises before any NDJSON chunk is written."""
+        writer = Mock()
+        message = _make_message("Help")
+        with pytest.raises(UpstreamSchemaError):
+            _process_stream_message(message, "Hello", writer)
+        writer.chunk.assert_not_called()
 
 
 class TestWriteNdjsonResult:
@@ -261,26 +299,19 @@ class TestHandleStreamError:
 
     def test_returns_after_matched_handler(self):
         """Handler returns (does not fall through) for a matched error type."""
-        import perplexity_cli.query_streaming as streaming_mod
-
-        # Reset the handler cache so it reinitialises
-        streaming_mod._STREAM_ERROR_HANDLERS = []
-
-        from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError
-
         mock_response = Mock()
         mock_response.status_code = 500
         mock_response.headers = {}
         error = PerplexityHTTPStatusError("test", request=Mock(), response=mock_response)
 
-        with patch("perplexity_cli.query_streaming.handle_http_error"):
-            with patch("perplexity_cli.query_streaming.click.echo"):
-                # Should return without calling handle_unexpected_cli_error
-                with patch(
-                    "perplexity_cli.query_streaming.handle_unexpected_cli_error"
-                ) as mock_unexpected:
-                    _handle_stream_error(error)
-                    mock_unexpected.assert_not_called()
+        with patch(
+            "perplexity_cli.query_streaming._handle_stream_unexpected_error"
+        ) as mock_unexpected:
+            with pytest.raises(SystemExit) as exc_info:
+                _handle_stream_error(error)
+
+        assert exc_info.value.code == 1
+        mock_unexpected.assert_not_called()
 
 
 class TestStreamQueryResponseJsonMode:
@@ -313,3 +344,25 @@ class TestStreamQueryResponseJsonMode:
         result = json.loads(lines[-1])
         assert result["type"] == "result"
         assert result["ok"] is True
+
+
+def test_query_streaming_keeps_application_layer_imports():
+    """query_streaming must not import adapter, presentation, or framework modules."""
+    source_path = (
+        Path(__file__).resolve().parents[1] / "src" / "perplexity_cli" / "query_streaming.py"
+    )
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    banned_prefixes = (
+        "click",
+        "perplexity_cli.utils.http_errors",
+        "perplexity_cli.utils.logging",
+        "perplexity_cli.formatting",
+    )
+    imported_modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_modules.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_modules.append(node.module)
+    offenders = [name for name in imported_modules if name.startswith(banned_prefixes)]
+    assert offenders == []

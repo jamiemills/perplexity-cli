@@ -2,8 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-import pytest
-
 from perplexity_cli.api.models import Answer
 from perplexity_cli.cli import (
     auth_login,
@@ -383,8 +381,9 @@ class TestCLICommands:
 
         result = runner.invoke(query, ["--no-stream", "test"])
 
-        assert result.exit_code == 1
-        assert "Network error" in result.output
+        assert result.exit_code == 6
+        assert "Connection failed" in result.output
+        assert "Check your internet connection" in result.output
 
     @patch("perplexity_cli.runners.auth.TokenManager", autospec=True)
     @patch("perplexity_cli.runners.auth.authenticate_sync", autospec=True)
@@ -419,9 +418,8 @@ class TestCLICommands:
         assert "Troubleshooting" in result.output
 
 
-@pytest.mark.real_api
 class TestCLIIntegration:
-    """Integration tests for CLI with real components."""
+    """CLI integration tests with locally mocked components."""
 
     def test_status_with_real_token(self, runner):
         """Test status command with real token if available."""

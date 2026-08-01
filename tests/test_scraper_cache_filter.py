@@ -1,7 +1,8 @@
 """Tests for thread cache date-range filtering.
 
-Verifies that the scraper only persists threads within the requested date
-range to the cache, rather than caching every thread ever fetched.
+Verifies that the scraper persists the complete merged known set to the cache
+and applies the requested date range only to the returned/exported view, so
+that narrow exports never delete broader cached history.
 """
 
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -51,12 +52,15 @@ def scraper(mock_cache_manager):
 
 
 class TestCacheDateRangeFiltering:
-    """Verify that only date-filtered threads are saved to cache."""
+    """Verify the cache receives the complete merged set while the returned
+    view is filtered by the requested date range."""
 
     @pytest.mark.asyncio
-    async def test_save_cache_receives_filtered_threads(self, scraper, mock_cache_manager):
-        """When from_date is provided, save_cache must receive only threads
-        on or after that date — not the full fetched set."""
+    async def test_cache_receives_complete_set_while_result_is_filtered(
+        self, scraper, mock_cache_manager
+    ):
+        """When from_date is provided, save_cache must receive the complete
+        fetched set while the returned list is narrowed to that date."""
         with patch.object(
             scraper,
             "_fetch_all_threads_from_api",
@@ -69,18 +73,15 @@ class TestCacheDateRangeFiltering:
         assert len(result) == 2
         assert all("Feb" in t.title for t in result)
 
-        # The cache should have received the same filtered list
+        # The cache should receive the complete set, not the filtered one
         mock_cache_manager.save_cache.assert_called_once()
         cached_threads = mock_cache_manager.save_cache.call_args[0][0]
-        assert len(cached_threads) == 2
-        assert all("Feb" in t.title for t in cached_threads)
+        assert len(cached_threads) == 5
 
     @pytest.mark.asyncio
-    async def test_save_cache_receives_filtered_threads_with_to_date(
-        self, scraper, mock_cache_manager
-    ):
-        """When both from_date and to_date are provided, save_cache must
-        receive only threads within that range."""
+    async def test_cache_receives_complete_set_with_to_date(self, scraper, mock_cache_manager):
+        """When both dates are provided, save_cache must receive the complete
+        fetched set while the returned list is narrowed to that range."""
         with patch.object(
             scraper,
             "_fetch_all_threads_from_api",
@@ -93,8 +94,7 @@ class TestCacheDateRangeFiltering:
         assert all("Jan" in t.title for t in result)
 
         cached_threads = mock_cache_manager.save_cache.call_args[0][0]
-        assert len(cached_threads) == 2
-        assert all("Jan" in t.title for t in cached_threads)
+        assert len(cached_threads) == 5
 
     @pytest.mark.asyncio
     async def test_save_cache_receives_all_threads_when_no_date_filter(
@@ -116,9 +116,11 @@ class TestCacheDateRangeFiltering:
         assert len(cached_threads) == 5
 
     @pytest.mark.asyncio
-    async def test_merged_threads_are_filtered_before_caching(self, scraper, mock_cache_manager):
-        """When cache has old threads and API returns new ones, the merged
-        set must be filtered before being saved to cache."""
+    async def test_full_merged_set_is_persisted_and_result_filtered(
+        self, scraper, mock_cache_manager
+    ):
+        """When cache has old threads and API returns new ones, the full
+        merged set must be persisted while only the returned view is filtered."""
         # Simulate existing cache with December thread
         cached_dec = [_make_thread("Dec 25", "2025-12-25T10:00:00Z", "dec-25")]
         mock_cache_manager.load_cache.return_value = {
@@ -145,11 +147,74 @@ class TestCacheDateRangeFiltering:
         # Result should be filtered to February only
         assert len(result) == 2
 
-        # Cache should also be filtered — not the full merged set of 5
+        # Cache should receive the full merged set of 5 — not the filtered 2
         cached_threads = mock_cache_manager.save_cache.call_args[0][0]
-        assert len(cached_threads) == 2
-        dates = [t.created_at for t in cached_threads]
-        assert all(d.startswith("2026-02") for d in dates)
+        assert len(cached_threads) == 5
+        titles = {t.title for t in cached_threads}
+        assert titles == {"Dec 25", "Jan 10", "Jan 20", "Feb 05", "Feb 10"}
+
+
+class TestCachePreservationScenario:
+    """Broad fetches must not delete earlier cached history.
+
+    Exercises a broad -> narrow -> broad sequence against the real
+    ThreadCacheManager to prove the cache retains the complete set even when a
+    narrow export is performed in between.
+    """
+
+    @pytest.mark.asyncio
+    async def test_broad_then_narrow_export_preserves_cache(self, cache_manager):
+        """A narrow export must not delete earlier cached months, and a later
+        narrow request is served correctly from the preserved cache."""
+        scraper = ThreadScraper(
+            token='{"user": {"accessToken": "test-token"}}',
+            cache_manager=cache_manager,
+        )
+
+        # 1. Broad fetch (no date filter) caches the complete set.
+        with patch.object(
+            scraper,
+            "_fetch_all_threads_from_api",
+            new_callable=AsyncMock,
+            return_value=list(_THREADS_ALL),
+        ):
+            result = await scraper.scrape_all_threads()
+        assert len(result) == 5
+        cached = cache_manager.load_cache()
+        assert cached is not None
+        assert len(cached["threads"]) == 5
+        assert cache_manager.get_cache_coverage() == (
+            "2025-12-25T10:00:00Z",
+            "2026-02-10T12:00:00Z",
+        )
+
+        # 2. Narrow export must not delete the broader cached history.
+        with patch.object(
+            scraper,
+            "_fetch_all_threads_from_api",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await scraper.scrape_all_threads(from_date="2026-02-01", to_date="2026-02-28")
+        assert len(result) == 2
+        assert all("Feb" in t.title for t in result)
+        cached = cache_manager.load_cache()
+        assert cached is not None
+        assert len(cached["threads"]) == 5
+        titles = {t["title"] for t in cached["threads"]}
+        assert titles == {"Dec 25", "Jan 10", "Jan 20", "Feb 05", "Feb 10"}
+
+        # 3. A later narrow request is served correctly from the preserved cache.
+        with patch.object(
+            scraper,
+            "_fetch_all_threads_from_api",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_fetch:
+            result = await scraper.scrape_all_threads(from_date="2025-12-25", to_date="2026-01-31")
+        assert len(result) == 3
+        assert {t.title for t in result} == {"Dec 25", "Jan 10", "Jan 20"}
+        mock_fetch.assert_not_awaited()
 
 
 class TestThreadScraperRateLimiting:
@@ -269,6 +334,16 @@ class TestDateValidation:
         with pytest.raises(ValueError, match="bad-value"):
             _validate_date_params("bad-value", None)
 
+    def test_validate_date_params_rejects_non_strict_date(self):
+        """A dateutil-parseable but non YYYY-MM-DD date should be rejected."""
+        with pytest.raises(ValueError, match="Invalid from_date"):
+            _validate_date_params("2026-1-1", None)
+
+    def test_validate_date_params_rejects_from_after_to(self):
+        """from_date after to_date should raise ValueError."""
+        with pytest.raises(ValueError, match="Invalid date range"):
+            _validate_date_params("2026-02-01", "2026-01-01")
+
     @pytest.mark.asyncio
     async def test_scrape_all_threads_rejects_invalid_from_date(self):
         """scrape_all_threads should raise ValueError for unparseable from_date."""
@@ -282,3 +357,10 @@ class TestDateValidation:
         scraper = ThreadScraper(token="test-token")
         with pytest.raises(ValueError, match="Invalid to_date"):
             await scraper.scrape_all_threads(to_date="abc123")
+
+    @pytest.mark.asyncio
+    async def test_scrape_all_threads_rejects_from_after_to(self):
+        """scrape_all_threads should reject from_date after to_date."""
+        scraper = ThreadScraper(token="test-token")
+        with pytest.raises(ValueError, match="Invalid date range"):
+            await scraper.scrape_all_threads(from_date="2026-02-01", to_date="2026-01-01")

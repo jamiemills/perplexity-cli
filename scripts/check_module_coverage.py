@@ -4,16 +4,22 @@ Reads the JSON report produced by ``pytest --cov --cov-report=json``
 (default output: ``coverage.json``) and exits non-zero if any module
 falls below the required minimum.
 
+This checker is the sole conventional coverage authority; ``diff-cover``
+remains the only changed-line coverage engine.
+
 The checker performs full coverage-integrity validation:
 
 * Independently enumerates ``src/perplexity_cli/**/*.py`` via ``Path.glob()``.
 * Requires every executable module to have a coverage.json report entry.
-* AST-classifies ``__init__.py`` files: a module may be absent from
-  coverage only if it contains no executable statements (docstring,
-  imports, ``__all__``, and constants are permitted).
+* AST-classifies modules: a module may be absent from coverage only if
+  it is demonstrably inert (empty, docstring-only, or solely declarative
+  Protocol interfaces).  Imports, constant assignments, and concrete
+  method bodies all execute at import time and can raise, so modules
+  containing them must be present.
 * Rejects duplicate entries, outside-root paths, omitted executable
   modules, and unexpected entries.
-* Validates that branch data is present in the report.
+* Fails closed when branch coverage is not enabled or branch data is
+  missing from the report.
 * Rejects non-numeric, NaN, and infinity coverage values.
 
 Usage::
@@ -100,7 +106,7 @@ def _classify_module(path: Path) -> str:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return "executable"
-    return _classify_source(text, str(path), is_init=path.name == "__init__.py")
+    return _classify_source(text, str(path))
 
 
 def _try_parse(source: str, filename: str) -> ast.Module | None:
@@ -110,69 +116,101 @@ def _try_parse(source: str, filename: str) -> ast.Module | None:
         return None
 
 
-def _classify_source(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
-    source: str, filename: str = "<string>", is_init: bool = False
-) -> str:
+def _classify_source(source: str, filename: str = "<string>") -> str:
     tree = _try_parse(source, filename)
     if tree is None:
         return "executable"
-    return _classify_from_tree(tree, is_init=is_init)
+    return _classify_from_tree(tree)
 
 
-def _classify_from_tree(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
-    tree: ast.Module, is_init: bool = False
-) -> str:
+def _classify_from_tree(tree: ast.Module) -> str:
     if not tree.body:
         return "empty"
     if len(tree.body) == 1 and _is_docstring_node(tree.body[0]):
         return "docstring"
-    if _is_statement_free(tree.body, is_init):
+    if _is_inert_module(tree.body):
         return "re-export"
     return "executable"
 
 
-def _is_statement_free(  # nosemgrep: boolean-flag-argument  # owner: quality-infrastructure; reason: is_init classifies __init__.py vs regular module, not a feature toggle.
-    body: list[ast.stmt], is_init: bool
-) -> bool:
+def _is_inert_module(body: list[ast.stmt]) -> bool:
+    """Return True if *body* contains only demonstrably inert statements."""
+    return all(_is_docstring_node(n) or _is_declarative_protocol_classdef(n) for n in body)
+
+
+def _is_declarative_protocol_classdef(node: ast.AST) -> bool:
+    """Return True for a ``class X(Protocol):`` with no executable statements.
+
+    A Protocol subclass is inert only while its body stays purely declarative
+    (docstrings, annotations, ``pass``, and ``...`` stubs).  Concrete method
+    bodies, decorators, and imports execute at import time, so classes or
+    modules containing them must appear in the coverage report.
+    """
+    if not isinstance(node, ast.ClassDef):
+        return False
+    if not any(_is_protocol_base(base) for base in node.bases):
+        return False
+    if node.decorator_list:
+        return False
+    return _is_declarative_body(node.body)
+
+
+def _is_declarative_body(body: list[ast.stmt]) -> bool:
     """Return True if *body* contains no executable statements."""
-    if _all_import_or_docstring(body):
+    return all(_is_declarative_statement(n) for n in body)
+
+
+def _is_declarative_statement(node: ast.AST) -> bool:
+    """Return True for a docstring, annotation, stub, or declarative def/class."""
+    if _is_inert_leaf(node):
         return True
-    return is_init and _all_init_stub(body)
-
-
-def _all_import_or_docstring(body: list[ast.stmt]) -> bool:
-    return all(
-        _is_docstring_node(n) or _is_import_node(n) or _is_protocol_classdef(n) for n in body
-    )
-
-
-def _all_init_stub(body: list[ast.stmt]) -> bool:
-    """Return True if every node is a docstring, import, or constant assignment."""
-    return all(_is_docstring_node(n) or _is_import_node(n) or _is_constant_assign(n) for n in body)
-
-
-def _is_constant_assign(node: ast.AST) -> bool:
-    """Return True for simple ``NAME = value`` or ``NAME: type = value`` assignments."""
-    if isinstance(node, ast.Assign):
-        return all(isinstance(t, ast.Name) for t in node.targets)
-    if isinstance(node, ast.AnnAssign):
-        return isinstance(node.target, ast.Name)
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return _is_declarative_definition(node)
     return False
 
 
-def _is_docstring_node(node: ast.AST) -> bool:
-    return isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+def _is_inert_leaf(node: ast.AST) -> bool:
+    """Return True for a docstring, bare annotation, pass, or ellipsis statement."""
+    return (
+        _is_docstring_node(node)
+        or _is_ellipsis_node(node)
+        or _is_pass_node(node)
+        or _is_annotation_stmt(node)
+    )
 
 
-def _is_import_node(node: ast.AST) -> bool:
-    return isinstance(node, (ast.Import, ast.ImportFrom))
-
-
-def _is_protocol_classdef(node: ast.AST) -> bool:
-    """Return True for ``class X(Protocol):`` definitions (declarative interfaces)."""
-    if not isinstance(node, ast.ClassDef):
+def _is_declarative_definition(
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
+) -> bool:
+    """Return True for an unadorned def/class whose body is declarative."""
+    if node.decorator_list:
         return False
-    return any(_is_protocol_base(base) for base in node.bases)
+    return _is_declarative_body(node.body)
+
+
+def _is_docstring_node(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    )
+
+
+def _is_ellipsis_node(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value is Ellipsis
+    )
+
+
+def _is_pass_node(node: ast.AST) -> bool:
+    return isinstance(node, ast.Pass)
+
+
+def _is_annotation_stmt(node: ast.AST) -> bool:
+    """Return True for a bare ``NAME: type`` annotation, which is never evaluated."""
+    return isinstance(node, ast.AnnAssign) and node.value is None
 
 
 def _is_protocol_base(base: ast.expr) -> bool:
@@ -190,8 +228,16 @@ def _load_report(path: str) -> dict[str, Any]:
         print(f"Coverage report not found: {path}", file=sys.stderr)
         print("Run pytest with --cov --cov-report=json first.", file=sys.stderr)
         sys.exit(2)
-    with report_path.open(encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with report_path.open(encoding="utf-8") as f:
+            report_payload: Any = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Coverage report is not valid JSON: {path} ({exc})", file=sys.stderr)
+        sys.exit(2)
+    if not isinstance(report_payload, dict):
+        print(f"Coverage report must be a JSON object: {path}", file=sys.stderr)
+        sys.exit(2)
+    return cast("dict[str, Any]", report_payload)
 
 
 def _format_module_name(filepath: Any) -> str:
@@ -232,7 +278,7 @@ def _check_modules(
 
 
 # ---------------------------------------------------------------------------
-# Full validation (used by coverage_policy.py)
+# Full validation
 # ---------------------------------------------------------------------------
 
 
@@ -308,10 +354,17 @@ def _validate_entry_branches(
 
 
 def _check_duplicate(fp: str, seen: set[str], errors: list[str]) -> bool:
-    if fp in seen:
-        errors.append(f"Duplicate entry in report: {fp}")
+    """Record a report entry, returning True if its source module was already seen.
+
+    Entries are keyed by their source-root-relative path so two report keys
+    mapping to the same module (for example ``src/perplexity_cli/a.py`` and
+    ``a.py``) are rejected as duplicates.
+    """
+    normalised = _strip_src_prefix(fp)
+    if normalised in seen:
+        errors.append(f"Duplicate entry for source module: {normalised}")
         return True
-    seen.add(fp)
+    seen.add(normalised)
     return False
 
 
@@ -329,14 +382,22 @@ def _process_report_entries(
             continue
         if not _validate_entry_path(fp, source_modules, errors):
             continue
-        normalised = _strip_src_prefix(fp)
-        report_paths.add(normalised)
-        entry_dict = _entry_as_dict(entry)
-        summary = _summary_from_entry(entry_dict)
-        _validate_entry_summary(fp, summary, config.min_coverage, errors)
-        if config.branch_enabled:
-            _validate_entry_branches(fp, summary, errors)
+        report_paths.add(_strip_src_prefix(fp))
+        _validate_report_entry(fp, entry, config, errors)
     return report_paths
+
+
+def _validate_report_entry(
+    fp: str,
+    entry: Any,
+    config: _ValidationConfig,
+    errors: list[str],
+) -> None:
+    entry_dict = _entry_as_dict(entry)
+    summary = _summary_from_entry(entry_dict)
+    _validate_entry_summary(fp, summary, config.min_coverage, errors)
+    if config.branch_enabled:
+        _validate_entry_branches(fp, summary, errors)
 
 
 def _check_missing_executable(
@@ -358,30 +419,55 @@ def _log_missing_statement_free(
         logger.info("Statement-free module not in report (allowed): %s", mod_path)
 
 
-def validate_report(
-    coverage_data: dict[str, Any],
-    min_coverage: float = DEFAULT_MIN_COVERAGE,
-    src_root: Path | None = None,
-) -> list[str]:
-    """Full validation of a coverage.json report against the source tree."""
-    root = src_root or SRC_ROOT
-    errors: list[str] = []
-
-    files: object = coverage_data.get("files")
+def _report_files(coverage_data: Any, errors: list[str]) -> dict[str, Any] | None:
+    """Extract the files map, recording fail-closed errors on malformed input."""
+    if not isinstance(coverage_data, dict):
+        errors.append("Coverage report must be a JSON object.")
+        return None
+    coverage_map = cast("dict[str, Any]", coverage_data)
+    files: object = coverage_map.get("files")
     if not isinstance(files, dict) or not files:
         errors.append("Coverage report contains no module entries.")
-        return errors
+        return None
+    return cast("dict[Any, Any]", files)
 
-    typed_files = cast(dict[str, Any], files)
+
+def _report_config(coverage_data: dict[str, Any], min_coverage: float) -> _ValidationConfig:
     meta: object = coverage_data.get("meta")
     meta_dict = cast(dict[str, Any], meta) if isinstance(meta, dict) else {}
-    config = _ValidationConfig(
+    return _ValidationConfig(
         min_coverage=min_coverage,
         branch_enabled=bool(meta_dict.get("branch_coverage", False)),
     )
 
-    source_modules = _enumerate_source_modules(root)
-    report_paths = _process_report_entries(typed_files, source_modules, config, errors)
+
+def _validate_totals(coverage_data: dict[str, Any], errors: list[str]) -> None:
+    totals: object = coverage_data.get("totals")
+    if totals is None:
+        return
+    if not isinstance(totals, dict):
+        errors.append("Coverage report 'totals' must be an object.")
+        return
+    typed_totals = cast(dict[str, Any], totals)
+    pct = typed_totals.get("percent_covered")
+    if pct is not None and not isinstance(pct, (int, float)):
+        errors.append("Non-numeric overall percent_covered in report totals.")
+
+
+def validate_report(
+    coverage_data: Any,
+    min_coverage: float = DEFAULT_MIN_COVERAGE,
+    src_root: Path | None = None,
+) -> list[str]:
+    """Full validation of a coverage.json report against the source tree."""
+    errors: list[str] = []
+    files = _report_files(coverage_data, errors)
+    if files is None:
+        return errors
+    config = _report_config(coverage_data, min_coverage)
+    _validate_totals(coverage_data, errors)
+    source_modules = _enumerate_source_modules(src_root or SRC_ROOT)
+    report_paths = _process_report_entries(files, source_modules, config, errors)
     _check_missing_executable(source_modules, report_paths, errors)
     _log_missing_statement_free(source_modules, report_paths)
     return errors
@@ -408,7 +494,8 @@ def _print_success(coverage_data: dict[str, Any], min_coverage: float) -> None:
     totals: object = coverage_data.get("totals", {})
     if isinstance(totals, dict):
         typed_totals = cast(dict[str, Any], totals)
-        total_pct = float(typed_totals.get("percent_covered", 0.0))
+        raw_pct = typed_totals.get("percent_covered", 0.0)
+        total_pct = float(raw_pct) if isinstance(raw_pct, (int, float)) else 0.0
     else:
         total_pct = 0.0
     file_count = len(coverage_data.get("files", {}))
@@ -433,5 +520,16 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# Exported for test use (tests/test_module_coverage.py imports these directly).
-__all__ = ["_check_modules", "_format_module_name", "main"]
+# Exported for test use (tests import these directly).
+__all__ = [
+    "_check_branch_data_present",
+    "_check_duplicate",
+    "_check_modules",
+    "_classify_module",
+    "_classify_source",
+    "_enumerate_source_modules",
+    "_format_module_name",
+    "_load_report",
+    "main",
+    "validate_report",
+]

@@ -98,6 +98,34 @@ export function getFilePath(args: Record<string, unknown> | undefined): string |
   return null;
 }
 
+const PATCH_SECTION_RE = /^\*\*\* (?:Add|Update|Delete|Move) File: (.+)$/;
+const MOVE_ARROW_RE = /(.*?)\s*(?:→|->)\s*(.*)/;
+
+/**
+ * Extract the file paths touched by an apply_patch patch text.
+ *
+ * Move sections yield both the source and destination paths. Duplicate paths
+ * are de-duplicated so a file patched twice is only checked once.
+ */
+export function getPatchFilePaths(patchText: string): string[] {
+  const paths: string[] = [];
+  for (const line of patchText.split("\n")) {
+    const match = PATCH_SECTION_RE.exec(line);
+    if (!match) continue;
+    const rawPath = (match[1] ?? "").trim();
+    const arrow = MOVE_ARROW_RE.exec(rawPath);
+    if (arrow) {
+      const from = (arrow[1] ?? "").trim();
+      const to = (arrow[2] ?? "").trim();
+      if (from) paths.push(from);
+      if (to) paths.push(to);
+    } else {
+      paths.push(rawPath);
+    }
+  }
+  return [...new Set(paths)];
+}
+
 // ---------------------------------------------------------------------------
 // Output formatting
 // ---------------------------------------------------------------------------
@@ -528,6 +556,56 @@ export const PxcliQualityPlugin: Plugin = ({ client, $, directory }) => {
   // Hook implementations
   // -----------------------------------------------------------------------
 
+  /**
+   * Run the applicable quality checks for a single touched file and append
+   * any findings to the tool output so the LLM sees them immediately.
+   */
+  async function checkToolResult(
+    filePath: string,
+    output: { output: string },
+  ): Promise<void> {
+    // --- Python file quality checks ---
+    if (isPythonFile(filePath) && !isSkippedFile(filePath)) {
+      modifiedFiles.add(filePath);
+
+      // Run all four tools in parallel
+      const [ruffFindings, radonFindings, banditFindings, tyFindings] =
+        await Promise.all([
+          checkRuff(filePath),
+          checkRadon(filePath),
+          checkBandit(filePath),
+          checkTy(filePath),
+        ]);
+
+      const allFindings = [
+        ...ruffFindings,
+        ...radonFindings,
+        ...banditFindings,
+        ...tyFindings,
+      ];
+
+      if (allFindings.length > 0) {
+        output.output += formatFindings(allFindings);
+      }
+      return;
+    }
+
+    // --- Dependency file security check ---
+    if (isDependencyFile(filePath)) {
+      const findings = await checkSafety();
+      if (findings.length > 0) {
+        const lines = findings.map(
+          (f) => `safety: ${f.code} — ${f.message}`,
+        );
+        const count = findings.length;
+        output.output +=
+          `\n\n--- Dependency Security Check ---\n` +
+          `${lines.join("\n")}\n` +
+          `(${count} vulnerabilit${count === 1 ? "y" : "ies"} found)`;
+      }
+    }
+  }
+
   return Promise.resolve({
     /**
      * Inject coding conventions into the system prompt.
@@ -538,55 +616,27 @@ export const PxcliQualityPlugin: Plugin = ({ client, $, directory }) => {
     },
 
     /**
-     * After a file write/edit, run quality checks and append findings
-     * to the tool output so the LLM sees them immediately.
+     * After a file write/edit/apply_patch, run quality checks and append
+     * findings to the tool output so the LLM sees them immediately.
      */
     "tool.execute.after": async (input, output) => {
-      if (input.tool !== "write" && input.tool !== "edit") return;
+      const args = input.args as Record<string, unknown> | undefined;
 
-      const filePath = getFilePath(input.args as Record<string, unknown> | undefined);
-      if (!filePath) return;
-
-      // --- Python file quality checks ---
-      if (isPythonFile(filePath) && !isSkippedFile(filePath)) {
-        modifiedFiles.add(filePath);
-
-        // Run all four tools in parallel
-        const [ruffFindings, radonFindings, banditFindings, tyFindings] =
-          await Promise.all([
-            checkRuff(filePath),
-            checkRadon(filePath),
-            checkBandit(filePath),
-            checkTy(filePath),
-          ]);
-
-        const allFindings = [
-          ...ruffFindings,
-          ...radonFindings,
-          ...banditFindings,
-          ...tyFindings,
-        ];
-
-        if (allFindings.length > 0) {
-          output.output += formatFindings(allFindings);
+      // Edits applied through a patch must not bypass the checks.
+      if (input.tool === "apply_patch") {
+        const patchText = typeof args?.patchText === "string" ? args.patchText : "";
+        const paths = getPatchFilePaths(patchText);
+        if (paths.length > 0) {
+          await Promise.all(paths.map((path) => checkToolResult(path, output)));
         }
         return;
       }
 
-      // --- Dependency file security check ---
-      if (isDependencyFile(filePath)) {
-        const findings = await checkSafety();
-        if (findings.length > 0) {
-          const lines = findings.map(
-            (f) => `safety: ${f.code} — ${f.message}`,
-          );
-          const count = findings.length;
-          output.output +=
-            `\n\n--- Dependency Security Check ---\n` +
-            `${lines.join("\n")}\n` +
-            `(${count} vulnerabilit${count === 1 ? "y" : "ies"} found)`;
-        }
-      }
+      if (input.tool !== "write" && input.tool !== "edit") return;
+
+      const filePath = getFilePath(args);
+      if (!filePath) return;
+      await checkToolResult(filePath, output);
     },
 
     /**

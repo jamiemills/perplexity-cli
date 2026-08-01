@@ -18,6 +18,7 @@ from perplexity_cli.utils.retry import (
     is_retryable_error,
     retry_http_request,
     retry_with_backoff,
+    sleep_exact,
     sleep_with_backoff,
 )
 
@@ -52,11 +53,11 @@ class TestRetryUtilities:
         assert is_retryable_error(error) is False
 
     def test_is_retryable_error_403(self):
-        """Test that 403 errors are not retryable."""
+        """Test that 403 errors are retryable (Cloudflare challenges)."""
         req = SimpleRequest(method="GET", url="http://example.com")
         resp = SimpleResponse(status_code=403, request=req)
         error = PerplexityHTTPStatusError("Forbidden", request=req, response=resp)
-        assert is_retryable_error(error) is False
+        assert is_retryable_error(error) is True
 
     def test_is_retryable_error_404(self):
         """Test that 404 errors are not retryable."""
@@ -109,6 +110,45 @@ class TestRetryUtilities:
         error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
 
         assert get_retry_after_delay(error) is None
+
+    def test_get_retry_after_delay_negative_returns_none(self):
+        """Test negative Retry-After values fall back to exponential backoff."""
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=429, headers={"Retry-After": "-3"}, request=req)
+        error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
+
+        assert get_retry_after_delay(error) is None
+
+    def test_get_retry_after_delay_nan_returns_none(self):
+        """Test NaN Retry-After values fall back to exponential backoff."""
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=429, headers={"Retry-After": "nan"}, request=req)
+        error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
+
+        assert get_retry_after_delay(error) is None
+
+    def test_get_retry_after_delay_infinite_returns_none(self):
+        """Test infinite Retry-After values fall back to exponential backoff."""
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=429, headers={"Retry-After": "inf"}, request=req)
+        error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
+
+        assert get_retry_after_delay(error) is None
+
+    def test_get_retry_after_delay_capped_at_max_backoff(self):
+        """Test Retry-After values are capped at the maximum backoff delay."""
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=429, headers={"Retry-After": "120"}, request=req)
+        error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
+
+        assert get_retry_after_delay(error) == pytest.approx(60.0)
+
+    def test_sleep_exact(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test sleep_exact records the exact duration."""
+        delays: list[float] = []
+        monkeypatch.setattr("perplexity_cli.utils.retry.time.sleep", delays.append)
+        sleep_exact(3.5)
+        assert delays == [3.5]
 
     def test_get_retry_after_delay_not_http_status_error(self):
         """Return None for non-PerplexityHTTPStatusError exceptions."""

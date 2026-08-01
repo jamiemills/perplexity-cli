@@ -8,6 +8,9 @@ Each test exercises a distinct segment of the protocol:
 2. Exact byte verification of uploaded content
 3. Non-2xx S3 upload status error handling
 4. Query request construction including attachment URL order
+
+The module is marked ``hermetic_integration`` because every test is
+loopback-only; it never runs in the ordinary lane.
 """
 
 from __future__ import annotations
@@ -23,6 +26,8 @@ from perplexity_cli.attachments import AttachmentUploader
 from perplexity_cli.utils.async_bridge import run_async
 from perplexity_cli.utils.attachment_models import FileAttachment
 from tests.support.protocol_server import ProtocolServer, QueryResponse, UploadUrlResponse
+
+pytestmark = [pytest.mark.hermetic_integration]
 
 
 @pytest.mark.usefixtures("harness_config")

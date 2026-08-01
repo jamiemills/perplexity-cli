@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import pytest
@@ -28,10 +29,73 @@ class _FakeClock:
         self.now += seconds
 
 
+class _SchedulerClock:
+    """Deterministic clock whose ``sleep`` suspends until the clock advances.
+
+    Unlike ``_FakeClock``, ``sleep`` yields control back to the event loop so
+    genuinely concurrent waiters can be observed, and only returns once the
+    virtual clock has been advanced past the requested wake time. It also
+    tracks how many waiters are sleeping simultaneously.
+    """
+
+    def __init__(self, start: float = 1000.0) -> None:
+        self.now = start
+        self._real_sleep = asyncio.sleep
+        self._sleepers: dict[asyncio.Future[None], float] = {}
+        self.active_sleeps = 0
+        self.max_active_sleeps = 0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    async def sleep(self, seconds: float) -> None:
+        """Register a sleeper that returns once the clock is advanced."""
+        if seconds <= 0:
+            return
+        self.active_sleeps += 1
+        self.max_active_sleeps = max(self.max_active_sleeps, self.active_sleeps)
+        wake_time = self.now + seconds
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        self._sleepers[future] = wake_time
+        try:
+            await future
+        finally:
+            self._sleepers.pop(future, None)
+            self.active_sleeps -= 1
+
+    async def advance(self, seconds: float) -> None:
+        """Advance the virtual clock and wake any sleepers whose time has come."""
+        self.now += seconds
+        for _ in range(100):
+            await self._real_sleep(0)
+            await self._real_sleep(0)
+            due = [future for future, wake in self._sleepers.items() if wake <= self.now]
+            if not due:
+                break
+            for future in due:
+                future.set_result(None)
+            await self._real_sleep(0)
+
+    async def yield_control(self) -> None:
+        """Yield to the event loop so pending tasks can start."""
+        for _ in range(3):
+            await self._real_sleep(0)
+
+
 @pytest.fixture
 def fake_clock(monkeypatch: pytest.MonkeyPatch) -> _FakeClock:
     """Patch the rate-limiter module to use a controllable fake clock."""
     clock = _FakeClock()
+    monkeypatch.setattr("perplexity_cli.utils.rate_limiter.time.monotonic", clock.monotonic)
+    monkeypatch.setattr("perplexity_cli.utils.rate_limiter.asyncio.sleep", clock.sleep)
+    return clock
+
+
+@pytest.fixture
+def scheduler_clock(monkeypatch: pytest.MonkeyPatch) -> _SchedulerClock:
+    """Patch the rate-limiter module to use a scheduler-driven clock."""
+    clock = _SchedulerClock()
     monkeypatch.setattr("perplexity_cli.utils.rate_limiter.time.monotonic", clock.monotonic)
     monkeypatch.setattr("perplexity_cli.utils.rate_limiter.asyncio.sleep", clock.sleep)
     return clock
@@ -246,3 +310,129 @@ class TestRateLimiterRepr:
         """Test that __repr__() returns a string."""
         limiter = RateLimiter(requests_per_period=10, period_seconds=30.0)
         assert isinstance(repr(limiter), str)
+
+
+class TestRateLimiterConcurrency:
+    """Concurrency-safety tests for the lock-protected acquire()."""
+
+    async def _run_burst(
+        self,
+        limiter: RateLimiter,
+        clock: _SchedulerClock,
+        total: int,
+    ) -> list[tuple[float, float]]:
+        """Run ``total`` barrier-released concurrent acquisitions.
+
+        Returns a list of ``(wait_time, release_time)`` tuples.
+        """
+        barrier = asyncio.Barrier(total)
+
+        async def worker() -> tuple[float, float]:
+            await barrier.wait()
+            wait = await limiter.acquire()
+            return wait, clock.monotonic()
+
+        gather_task = asyncio.gather(*(worker() for _ in range(total)))
+        while not gather_task.done():
+            await clock.advance(2.0)
+        return await gather_task
+
+    @pytest.mark.asyncio
+    async def test_simultaneous_burst_never_exceeds_capacity(
+        self, scheduler_clock: _SchedulerClock
+    ) -> None:
+        """A simultaneous burst admits at most bucket capacity immediately."""
+        limiter = RateLimiter(requests_per_period=3, period_seconds=3.0)
+        total = 8
+
+        results = await self._run_burst(limiter, scheduler_clock, total)
+        waits = [wait for wait, _ in results]
+
+        assert sum(1 for wait in waits if wait == 0.0) == 3
+        deferred = [wait for wait in waits if wait > 0.0]
+        assert len(deferred) == total - 3
+        assert all(wait == pytest.approx(1.0) for wait in deferred)
+        assert limiter.total_requests == total
+        assert sum(waits) == pytest.approx(limiter.total_wait_time)
+        assert limiter._state.tokens <= 3.0
+
+    @pytest.mark.asyncio
+    async def test_concurrent_waiters_spaced_by_refill_interval(
+        self, scheduler_clock: _SchedulerClock
+    ) -> None:
+        """Concurrent waiters are serialised and never released together."""
+        limiter = RateLimiter(requests_per_period=1, period_seconds=1.0)
+        total = 4
+
+        results = await self._run_burst(limiter, scheduler_clock, total)
+        waits = [wait for wait, _ in results]
+        releases = [released_at for _, released_at in results]
+
+        assert sum(1 for wait in waits if wait == 0.0) == 1
+        deferred = [wait for wait in waits if wait > 0.0]
+        assert len(deferred) == total - 1
+        assert all(wait == pytest.approx(1.0) for wait in deferred)
+        assert scheduler_clock.max_active_sleeps == 1
+        assert len(set(releases)) == total
+        assert limiter.total_requests == total
+
+    @pytest.mark.asyncio
+    async def test_cancelled_waiter_consumes_no_token(
+        self, scheduler_clock: _SchedulerClock
+    ) -> None:
+        """Cancelling a waiter leaves tokens and statistics consistent."""
+        limiter = RateLimiter(requests_per_period=1, period_seconds=1.0)
+        assert await limiter.acquire() == pytest.approx(0.0)
+        assert limiter.total_requests == 1
+        assert limiter._state.tokens == pytest.approx(0.0)
+
+        task = asyncio.create_task(limiter.acquire())
+        await scheduler_clock.yield_control()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert limiter.total_requests == 1
+        assert limiter._state.tokens == pytest.approx(0.0)
+        assert limiter._state.last_refill_time == pytest.approx(1000.0)
+
+        await scheduler_clock.advance(1.5)
+        wait = await limiter.acquire()
+        assert wait == pytest.approx(0.0)
+        assert limiter.total_requests == 2
+
+    @pytest.mark.asyncio
+    async def test_backwards_clock_does_not_remove_tokens(self, fake_clock: _FakeClock) -> None:
+        """A backwards-moving clock is clamped so tokens are never removed."""
+        limiter = RateLimiter(requests_per_period=5, period_seconds=0.05)
+
+        for _ in range(3):
+            await limiter.acquire()
+        assert limiter._state.tokens == pytest.approx(2.0)
+
+        fake_clock.advance(-0.2)
+        wait = await limiter.acquire()
+        assert wait == pytest.approx(0.0)
+        assert limiter._state.tokens == pytest.approx(1.0)
+
+        fake_clock.advance(0.15)
+        await limiter.acquire()
+        assert limiter._state.tokens == pytest.approx(4.0)
+        assert limiter._state.tokens <= 5.0
+
+    @pytest.mark.asyncio
+    async def test_totals_equal_successful_acquisitions(
+        self, scheduler_clock: _SchedulerClock
+    ) -> None:
+        """Statistics only count acquisitions that actually succeeded."""
+        limiter = RateLimiter(requests_per_period=2, period_seconds=2.0)
+        total = 5
+
+        results = await self._run_burst(limiter, scheduler_clock, total)
+        waits = [wait for wait, _ in results]
+
+        assert len(waits) == total
+        assert limiter.total_requests == total
+        assert sum(waits) == pytest.approx(limiter.total_wait_time)
+        assert sum(1 for wait in waits if wait == 0.0) == 2
+        assert limiter._state.tokens <= 2.0

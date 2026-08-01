@@ -347,27 +347,18 @@ def test_load_fingerprints_missing_baseline_returns_empty() -> None:
     assert result == []
 
 
-def test_load_fingerprints_flat_list_format() -> None:
+def test_load_fingerprints_flat_list_format(monkeypatch) -> None:
     """Fingerprints stored as a flat JSON list are loaded correctly."""
     import json
     import tempfile
 
-    from scripts._ratchet import BASELINE_DIR, load_fingerprints
+    from scripts import _ratchet
 
-    original = BASELINE_DIR
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            import scripts._ratchet as _mod
+    with tempfile.TemporaryDirectory() as tmpdir:
+        baseline_dir = Path(tmpdir)
+        monkeypatch.setattr(_ratchet, "BASELINE_DIR", baseline_dir)
+        baseline_file = baseline_dir / "test-list.json"
+        baseline_file.write_text(json.dumps(["a:1:R", "b:2:S"]))
 
-            _mod.BASELINE_DIR = Path(tmpdir)
-            baseline_file = Path(tmpdir) / "test-list.json"
-            baseline_file.write_text(json.dumps(["a:1:R", "b:2:S"]))
-
-            result = load_fingerprints("test-list.json")
-            assert result == ["a:1:R", "b:2:S"]
-    except Exception:
-        pass
-    finally:
-        import scripts._ratchet as _mod2
-
-        _mod2.BASELINE_DIR = original
+        result = _ratchet.load_fingerprints("test-list.json")
+        assert result == ["a:1:R", "b:2:S"]

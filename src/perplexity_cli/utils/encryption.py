@@ -6,6 +6,8 @@ making it deterministic and machine-specific. This is best treated as
 machine-bound obfuscation rather than strong OS-backed secret storage.
 """
 
+from __future__ import annotations
+
 import base64
 import hashlib
 import os
@@ -22,6 +24,11 @@ from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationEr
 _KEY_DERIVATION_SALT = b"perplexity-cli-token-encryption"
 _ENCRYPTED_TOKEN_VERSION_PREFIX = b"v2:"
 _PER_MESSAGE_SALT_BYTES = 16
+
+_DECRYPT_FAILURE_HINT = (
+    "This usually means the token was encrypted on a different machine or "
+    "with a different user. Please re-authenticate with: perplexity-cli auth"
+)
 
 
 def _build_key_material() -> bytes:
@@ -92,6 +99,8 @@ def derive_encryption_key() -> bytes:
 def encrypt_token(token: str) -> str:
     """Encrypt a token using the system-derived key.
 
+    Always produces a versioned payload with a fresh random per-message salt.
+
     Args:
         token: The plaintext token to encrypt.
 
@@ -113,8 +122,43 @@ def encrypt_token(token: str) -> str:
         raise ConfigurationError(msg) from e
 
 
+def _decode_strict(encrypted_token: str) -> bytes:
+    """Strictly decode the outer base64url payload exactly once.
+
+    Rejects any character outside the base64url alphabet and any incorrect
+    padding so malformed payloads fail fast instead of silently downgrading.
+
+    Args:
+        encrypted_token: The base64url-encoded encrypted token.
+
+    Returns:
+        The decoded payload bytes.
+
+    Raises:
+        AuthenticationError: If the token is not valid base64url.
+    """
+    try:
+        return base64.b64decode(encrypted_token.encode("ascii"), altchars=b"-_", validate=True)
+    except ValueError as e:
+        msg = f"Failed to decrypt token: payload is not valid base64. {_DECRYPT_FAILURE_HINT}"
+        raise AuthenticationError(msg) from e
+
+
 def _decrypt_with_current_format(decoded_payload: bytes) -> str:
-    """Decrypt a token stored in the current format with a per-message salt."""
+    """Decrypt a token stored in the current format with a per-message salt.
+
+    Args:
+        decoded_payload: The decoded outer payload, expected to start with the
+            v2 version prefix.
+
+    Returns:
+        The decrypted plaintext token.
+
+    Raises:
+        ValueError: If the payload does not carry the version prefix or is
+            truncated.
+        InvalidToken: If the payload fails to authenticate with the derived key.
+    """
     if not decoded_payload.startswith(_ENCRYPTED_TOKEN_VERSION_PREFIX):
         msg = "Encrypted token is not in the current format"
         raise ValueError(msg)
@@ -131,57 +175,80 @@ def _decrypt_with_current_format(decoded_payload: bytes) -> str:
     return decrypted.decode()
 
 
-def _decrypt_with_legacy_pbkdf2(encrypted_token: str) -> str:
-    """Decrypt a token stored with the legacy fixed-salt PBKDF2 format."""
+def _decrypt_with_legacy_pbkdf2(decoded_payload: bytes) -> str:
+    """Decrypt a token stored with the legacy fixed-salt PBKDF2 format.
+
+    Args:
+        decoded_payload: The decoded Fernet token bytes.
+
+    Returns:
+        The decrypted plaintext token.
+
+    Raises:
+        InvalidToken: If the token does not decrypt with the legacy key.
+        ConfigurationError: If key derivation fails.
+    """
     cipher = Fernet(derive_encryption_key())
-    encrypted_bytes = base64.urlsafe_b64decode(encrypted_token.encode())
-    decrypted = cipher.decrypt(encrypted_bytes)
+    decrypted = cipher.decrypt(decoded_payload)
     return decrypted.decode()
 
 
-def _decrypt_with_legacy_sha256(encrypted_token: str) -> str:
-    """Decrypt a token stored with the legacy SHA-256-derived format."""
+def _decrypt_with_legacy_sha256(decoded_payload: bytes) -> str:
+    """Decrypt a token stored with the legacy SHA-256-derived format.
+
+    Args:
+        decoded_payload: The decoded Fernet token bytes.
+
+    Returns:
+        The decrypted plaintext token.
+
+    Raises:
+        InvalidToken: If the token does not decrypt with the legacy key.
+        ConfigurationError: If key derivation fails.
+    """
     cipher = Fernet(_derive_encryption_key_legacy())
-    encrypted_bytes = base64.urlsafe_b64decode(encrypted_token.encode())
-    decrypted = cipher.decrypt(encrypted_bytes)
+    decrypted = cipher.decrypt(decoded_payload)
     return decrypted.decode()
 
 
 def decrypt_token(encrypted_token: str) -> str:
     """Decrypt a token using the system-derived key.
 
-    Supports backward compatibility with tokens encrypted using the old SHA-256
-    key derivation method. Will first try PBKDF2, then fall back to SHA-256
-    if PBKDF2 fails.
+    A payload starting with the ``v2:`` prefix is decrypted with the current
+    per-message-salt format only; any v2 failure raises ``AuthenticationError``
+    with no legacy fallback.  Unversioned payloads are tried with the fixed-salt
+    PBKDF2 reader first, then the legacy SHA-256 reader, in that order.
+
+    Read-only compatibility: no migration-on-read and no silent rewrite happens
+    here; ``encrypt_token`` always emits fresh random-salt v2 payloads.
 
     Args:
-        encrypted_token: Base64-encoded encrypted token.
+        encrypted_token: Base64url-encoded encrypted token.
 
     Returns:
         str: The decrypted plaintext token.
 
     Raises:
-        RuntimeError: If decryption fails with both methods.
+        AuthenticationError: If decryption fails in every applicable format.
     """
+    decoded_payload = _decode_strict(encrypted_token)
+    if decoded_payload.startswith(_ENCRYPTED_TOKEN_VERSION_PREFIX):
+        try:
+            return _decrypt_with_current_format(decoded_payload)
+        except (InvalidToken, ValueError, TypeError, ConfigurationError, OSError) as e:
+            msg = f"Failed to decrypt token in the current format. {_DECRYPT_FAILURE_HINT}"
+            raise AuthenticationError(msg) from e
     try:
-        decoded_payload = base64.urlsafe_b64decode(encrypted_token.encode())
-        return _decrypt_with_current_format(decoded_payload)
+        return _decrypt_with_legacy_pbkdf2(decoded_payload)
     except (ConfigurationError, ValueError, TypeError, InvalidToken):
         try:
-            return _decrypt_with_legacy_pbkdf2(encrypted_token)
-        except (ConfigurationError, ValueError, TypeError, InvalidToken):
-            try:
-                return _decrypt_with_legacy_sha256(encrypted_token)
-            except (ConfigurationError, ValueError, TypeError, InvalidToken) as e:
-                msg = (
-                    "Failed to decrypt token. This usually means the token was "
-                    "encrypted on a different machine or with a different user. "
-                    "Please re-authenticate with: perplexity-cli auth"
-                )
-                raise AuthenticationError(msg) from e
+            return _decrypt_with_legacy_sha256(decoded_payload)
+        except (ConfigurationError, ValueError, TypeError, InvalidToken) as e:
+            msg = f"Failed to decrypt token. {_DECRYPT_FAILURE_HINT}"
+            raise AuthenticationError(msg) from e
 
 
-class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]
+class _CouplingProtocol(Protocol):  # pyright: ignore[reportUnusedClass]  # owner: quality-infrastructure; reason: coupling-metrics abstractness protocol, intentionally unreferenced
     """Abstract coupling protocol."""
 
     ...

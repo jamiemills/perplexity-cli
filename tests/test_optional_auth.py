@@ -316,13 +316,12 @@ class TestQueryAuthenticationErrors:
 
         result = runner.invoke(query, ["test question"])
 
-        # Should exit with error code
-        assert result.exit_code == 1
+        # Should exit with error code 4 (authentication required)
+        assert result.exit_code == 4
         assert isinstance(result.exception, SystemExit)
-        assert result.exception.code == 1
-        # Exact 401 contract messages go to stderr, never stdout.
-        assert "[ERROR] Authentication failed. Token may be expired." in result.stderr
-        assert "Re-authenticate with: perplexity-cli auth" in result.stderr
+        assert result.exception.code == 4
+        # The unified handler reports the HTTP error to stderr, never stdout.
+        assert "Error: Unauthorized" in result.stderr
         assert "[ERROR]" not in result.stdout
         assert result.stdout == ""
 
@@ -356,12 +355,12 @@ class TestQueryAuthenticationErrors:
 
         result = runner.invoke(query, ["test question"])
 
-        # Should exit with error code
-        assert result.exit_code == 1
+        # Should exit with error code 6 (transient error)
+        assert result.exit_code == 6
         assert isinstance(result.exception, SystemExit)
-        assert result.exception.code == 1
-        # Exact 429 contract message goes to stderr, never stdout.
-        assert "[ERROR] Rate limit exceeded. Please wait and try again." in result.stderr
+        assert result.exception.code == 6
+        # The unified handler reports the HTTP error to stderr, never stdout.
+        assert "Error: Rate limit exceeded" in result.stderr
         assert "[ERROR]" not in result.stdout
         assert result.stdout == ""
 
@@ -382,13 +381,13 @@ class TestAttachmentAuthentication:
 
         result = runner.invoke(query, ["--attach", "file.txt", "test question"])
 
-        # Should exit with error code
-        assert result.exit_code == 1
+        # Should exit with error code 4 (authentication required)
+        assert result.exit_code == 4
         assert isinstance(result.exception, SystemExit)
-        assert result.exception.code == 1
+        assert result.exception.code == 4
         # Exact auth-required contract messages go to stderr, never stdout.
-        assert "[ERROR] File attachments require authentication." in result.stderr
-        assert "Please authenticate first with: pxcli auth login" in result.stderr
+        assert "Error: File attachments require authentication." in result.stderr
+        assert "Fix: Run `pxcli auth login` to authenticate." in result.stderr
         assert "[ERROR]" not in result.stdout
         assert result.stdout == ""
         # File resolution was attempted before the auth gate tripped.
@@ -409,13 +408,13 @@ class TestAttachmentAuthentication:
 
         result = runner.invoke(query, ["Tell me about ./README.md"])
 
-        # Should exit with error code
-        assert result.exit_code == 1
+        # Should exit with error code 4 (authentication required)
+        assert result.exit_code == 4
         assert isinstance(result.exception, SystemExit)
-        assert result.exception.code == 1
+        assert result.exception.code == 4
         # Exact auth-required contract messages go to stderr, never stdout.
-        assert "[ERROR] File attachments require authentication." in result.stderr
-        assert "Please authenticate first with: pxcli auth login" in result.stderr
+        assert "Error: File attachments require authentication." in result.stderr
+        assert "Fix: Run `pxcli auth login` to authenticate." in result.stderr
         assert "[ERROR]" not in result.stdout
         assert result.stdout == ""
         # The inline file path was resolved from the query text before the auth gate.

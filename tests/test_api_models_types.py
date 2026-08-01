@@ -7,6 +7,7 @@ and helper signatures remain fully typed (no ``typing.Any``) so that
 
 from __future__ import annotations
 
+import inspect
 import typing
 
 import pytest
@@ -20,6 +21,18 @@ from perplexity_cli.api.models import (
     QueryParams,
     SSEMessage,
 )
+
+
+def test_models_uses_shared_pure_version_source() -> None:
+    """Regression: ``api.models`` (ports) must not import an ADAPTER-layer version.
+
+    ``utils.version`` was reclassified to the ``shared_pure`` layer (pure
+    stdlib), so ports may import it; the single source of truth for the API
+    version must remain ``get_api_version`` rather than a duplicated constant.
+    """
+    source = inspect.getsource(models_module)
+    assert "from perplexity_cli.utils.version import get_api_version" in source
+    assert "_API_VERSION" not in source
 
 
 @pytest.mark.parametrize(
@@ -79,6 +92,12 @@ def test_query_params_to_dict_returns_object_value_dict() -> None:
     hints = typing.get_type_hints(QueryParams.to_dict)
     source = repr(hints["return"])
     assert "Any" not in source
+
+
+def test_query_params_default_version_serialises_as_2_18() -> None:
+    """The default ``version`` query param must remain ``2.18`` in the payload."""
+    serialised = QueryParams().to_dict()
+    assert serialised["version"] == "2.18"
 
 
 def test_query_input_defaults_produce_typed_containers() -> None:

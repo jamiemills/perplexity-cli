@@ -7,24 +7,49 @@
 - Detects syntax errors and parse failures
 - Checks fail closed (errors produce violations, not silent empty)
 - Consumes quality/architecture.toml for classification
+- Requires exact module classification (no prefix fallback)
+- Uses repository-relative violation identities
+- Fails closed on malformed/absent baseline JSON
+- Validates the architecture manifest before the operational check
 - The --no-baseline and --explain flags work
 """
 # noqa: D (tests are exempt from docstring requirements)  # owner: quality-infrastructure; reason: test modules exempt from pydocstyle
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
 
-import scripts.check_architecture as ca  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
-from scripts.check_architecture import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+
+def _load_script(name: str, register_as: str | None = None) -> ModuleType:
+    """Load a scripts/<name>.py module by file path without sys.path mutation."""
+    module_name = register_as or f"scripts.{name}"
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        return existing
+    spec = importlib.util.spec_from_file_location(
+        module_name, PROJECT_ROOT / "scripts" / f"{name}.py"
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load scripts/{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_load_script("architecture_model", register_as="architecture_model")
+ca = _load_script("check_architecture")
+from scripts.check_architecture import (  # noqa: E402  # owner: quality-infrastructure; reason: module registered in sys.modules by _load_script
     AnalysisResult,
+    BaselineError,
     Severity,
     _build_adapter_groups,
     _build_layer_map,
@@ -33,6 +58,7 @@ from scripts.check_architecture import (  # noqa: E402  # owner: quality-infrast
     _check_import_direction,
     _collect_production_modules,
     _ImportCheckCtx,
+    _load_baseline,
     _load_toml,
     _parse_file_imports,
     _resolve_internal_target,
@@ -125,7 +151,12 @@ def test_direction_violation_detected():
     """services (application) importing from cli (presentation) is caught."""
     result = _run_fixture_checks("violation_pkg")
     dir_errors = [v for v in result.errors if v.rule == "import-direction"]
-    assert len(dir_errors) >= 1, f"Expected direction errors, got {result.violations}"
+    assert len(dir_errors) == 1, f"Expected exactly one direction error, got {result.violations}"
+    assert dir_errors[0].severity == Severity.ERROR
+    assert dir_errors[0].message.startswith(
+        "services (layer: application) imports cli (layer: presentation)"
+    )
+    assert "may only import from:" in dir_errors[0].message
 
 
 def test_direction_violation_unit():
@@ -173,9 +204,13 @@ def test_relative_import_violation_detected():
     """Relative imports that resolve to a forbidden layer should be caught."""
     result = _run_fixture_checks("relative_violation_pkg")
     dir_errors = [v for v in result.errors if v.rule == "import-direction"]
-    assert len(dir_errors) >= 1, (
-        f"Expected direction errors from relative imports, got {result.violations}"
+    assert len(dir_errors) == 1, (
+        f"Expected one direction error from relative imports, got {result.violations}"
     )
+    assert "services (layer: application) imports cli (layer: presentation)" in (
+        dir_errors[0].message
+    )
+    assert dir_errors[0].file.endswith("services.py:3")
 
 
 def test_relative_import_resolution():
@@ -213,9 +248,11 @@ def foo():
     try:
         with _with_src_root(pkg_dir):
             module_rel, ml, fl, tc, err = _parse_file_imports(test_file)
-            assert len(fl) >= 1
+            assert err is None
+            assert len(fl) == 1
+            assert fl[0] == (".cli", "render", 2)
             assert not tc
-            assert fl[0][0] == ".cli"
+            assert not ml
     finally:
         test_file.unlink()
 
@@ -232,7 +269,28 @@ if TYPE_CHECKING:
     try:
         with _with_src_root(pkg_dir):
             module_rel, ml, fl, tc, err = _parse_file_imports(test_file)
-            assert len(tc) >= 1, f"Expected TYPE_CHECKING imports, got ml={ml}, fl={fl}, tc={tc}"
+            assert err is None
+            assert len(tc) == 1, f"Expected TYPE_CHECKING imports, got ml={ml}, fl={fl}, tc={tc}"
+            assert tc[0] == (".cli", "render", 3)
+            assert not fl
+    finally:
+        test_file.unlink()
+
+
+def test_aliased_import_edge():
+    """An `import x as y` / `from x import y as z` edge is captured."""
+    pkg_dir = FIXTURE_DIR / "relative_violation_pkg" / "pkg"
+    test_file = pkg_dir / "_test_alias.py"
+    test_file.write_text("""\
+import logging as log
+from .cli import render as r
+""")
+    try:
+        with _with_src_root(pkg_dir):
+            module_rel, ml, fl, tc, err = _parse_file_imports(test_file)
+            assert err is None
+            assert ("logging", None, 1) in ml
+            assert (".cli", "render", 2) in ml
     finally:
         test_file.unlink()
 
@@ -323,7 +381,43 @@ def test_unclassified_module_detected():
     """Modules not assigned to any layer produce errors."""
     result = _run_fixture_checks("unclassified_pkg")
     class_errors = [v for v in result.errors if v.rule == "unclassified-module"]
-    assert len(class_errors) >= 1, f"Expected unclassified module errors, got {result.violations}"
+    assert any("unlisted" in v.message for v in class_errors), (
+        f"Expected unclassified-module error naming 'unlisted', got {result.violations}"
+    )
+    assert all(v.severity == Severity.ERROR for v in class_errors)
+
+
+def test_exact_classification_required_no_prefix_inheritance(tmp_path):
+    """A leaf module must be classified exactly; a classified package prefix
+    does not silently classify its children."""
+    pkg_dir = tmp_path / "pkg"
+    (pkg_dir / "util").mkdir(parents=True)
+    (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
+    (pkg_dir / "util" / "__init__.py").write_text("", encoding="utf-8")
+    (pkg_dir / "util" / "deep.py").write_text("", encoding="utf-8")
+    toml = tmp_path / "architecture.toml"
+    toml.write_text(
+        "[schema]\n"
+        "version = 1\n\n"
+        "[[layers]]\n"
+        'name = "shared_pure"\n'
+        'description = "pure"\n'
+        'allowed_deps = ["shared_pure"]\n'
+        'modules = ["util"]\n',
+        encoding="utf-8",
+    )
+    toml_data = _load_toml(toml)
+    layer_map = _build_layer_map(toml_data)
+    config = _RunConfig(layer_map=layer_map, adapter_groups=_build_adapter_groups(toml_data))
+    files = sorted(p for p in pkg_dir.rglob("*.py") if "__pycache__" not in str(p))
+    with _with_src_root(pkg_dir):
+        result = _run_checks(files, config)
+    class_errors = [v for v in result.errors if v.rule == "unclassified-module"]
+    messages = {v.message for v in class_errors}
+    assert any("'util.deep'" in m for m in messages), (
+        f"'util.deep' must be flagged unclassified, got {sorted(messages)}"
+    )
+    assert "Production module 'util' has no layer assignment" not in messages
 
 
 def test_collect_production_modules_includes_all():
@@ -346,7 +440,10 @@ def test_syntax_error_produces_parse_error():
     """Files with syntax errors should produce 'parse-error' violation."""
     result = _run_fixture_checks("syntax_error_pkg")
     parse_errors = [v for v in result.errors if v.rule == "parse-error"]
-    assert len(parse_errors) >= 1, f"Expected parse error, got {result.violations}"
+    assert len(parse_errors) == 1, f"Expected one parse error, got {result.violations}"
+    assert "Syntax error" in parse_errors[0].message
+    assert parse_errors[0].severity == Severity.ERROR
+    assert parse_errors[0].file.endswith("syntax_error.py")
 
 
 def test_syntax_error_parse_file_imports():
@@ -418,3 +515,143 @@ def test_absolute_import_across_layers():
     v = ctx.result.violations[0]
     assert v.rule == "import-direction"
     assert "presentation" in v.message
+
+
+# ------------------------------------------------------------------
+# Repository-relative identity tests
+# ------------------------------------------------------------------
+
+
+def test_violation_identities_are_repository_relative():
+    """Violation file identities must be repo-relative, never absolute paths."""
+    result = _run_fixture_checks("violation_pkg")
+    for v in result.violations:
+        if v.file == "<classification>":
+            continue
+        assert not v.file.startswith("/"), f"Absolute identity leaked: {v.file}"
+        assert str(PROJECT_ROOT) not in v.file, f"Project root leaked: {v.file}"
+        assert v.file.startswith("tests/fixtures/"), f"Not repo-relative: {v.file}"
+
+
+def test_repo_relative_path_keeps_foreign_paths_unchanged():
+    """Synthetic (non-repo) identities survive normalisation unchanged."""
+    assert ca._repo_relative_path("src/perplexity_cli/api/models.py") == (
+        "src/perplexity_cli/api/models.py"
+    )
+    assert ca._repo_relative_path("test:source:svc") == "test:source:svc"
+
+
+# ------------------------------------------------------------------
+# Baseline fail-closed tests
+# ------------------------------------------------------------------
+
+
+def _baseline_with(tmp_path: Path, payload: str) -> Path:
+    """Write a baseline payload to a temp path and point the module at it."""
+    baseline_path = tmp_path / ".architecture-baseline.json"
+    baseline_path.write_text(payload, encoding="utf-8")
+    return baseline_path
+
+
+def test_missing_baseline_fails_closed(tmp_path, monkeypatch):
+    """An absent baseline file raises BaselineError rather than degrading to empty."""
+    monkeypatch.setattr(ca, "BASELINE_PATH", tmp_path / "does-not-exist.json")
+    with pytest.raises(BaselineError):
+        _load_baseline()
+
+
+def test_malformed_baseline_fails_closed(tmp_path, monkeypatch):
+    """Malformed baseline JSON raises BaselineError."""
+    baseline_path = _baseline_with(tmp_path, "not valid json {{{")
+    monkeypatch.setattr(ca, "BASELINE_PATH", baseline_path)
+    with pytest.raises(BaselineError):
+        _load_baseline()
+
+
+def test_baseline_wrong_schema_version_fails_closed(tmp_path, monkeypatch):
+    """An unsupported baseline schema version raises BaselineError."""
+    baseline_path = _baseline_with(
+        tmp_path, '{"version": 2, "accepted": [{"rule": "r", "file": "f", "message": "m"}]}'
+    )
+    monkeypatch.setattr(ca, "BASELINE_PATH", baseline_path)
+    with pytest.raises(BaselineError):
+        _load_baseline()
+
+
+def test_baseline_entry_missing_fields_fails_closed(tmp_path, monkeypatch):
+    """A baseline entry missing rule/file/message raises BaselineError."""
+    baseline_path = _baseline_with(tmp_path, '{"version": 1, "accepted": [{"rule": "r"}]}')
+    monkeypatch.setattr(ca, "BASELINE_PATH", baseline_path)
+    with pytest.raises(BaselineError):
+        _load_baseline()
+
+
+def test_valid_baseline_loads_with_repo_relative_keys(tmp_path, monkeypatch):
+    """A valid baseline loads and its absolute paths map to repo-relative keys."""
+    import json
+
+    payload = json.dumps(
+        {
+            "version": 1,
+            "accepted": [
+                {
+                    "rule": "import-direction",
+                    "file": f"{PROJECT_ROOT}/src/perplexity_cli/api/models.py:20",
+                    "message": "m",
+                }
+            ],
+        }
+    )
+    baseline_path = _baseline_with(tmp_path, payload)
+    monkeypatch.setattr(ca, "BASELINE_PATH", baseline_path)
+    baseline = _load_baseline()
+    assert ("import-direction", "src/perplexity_cli/api/models.py:20", "m") in baseline
+
+
+def test_main_fails_closed_on_malformed_baseline(tmp_path, monkeypatch):
+    """Baseline filtering raises BaselineError when the baseline file is malformed."""
+    baseline_path = _baseline_with(tmp_path, "{broken")
+    monkeypatch.setattr(ca, "BASELINE_PATH", baseline_path)
+    result = AnalysisResult(files_checked=1)
+    with pytest.raises(BaselineError):
+        ca._filter_with_baseline(result, {"no_baseline": False})
+
+
+# ------------------------------------------------------------------
+# Manifest validation tests
+# ------------------------------------------------------------------
+
+
+def test_manifest_validation_reports_schema_errors(tmp_path):
+    """Architecture manifest schema/coverage errors are surfaced, not masked."""
+    bad_toml = tmp_path / "bad.toml"
+    bad_toml.write_text(
+        "[schema]\n"
+        "version = 1\n\n"
+        "[[layers]]\n"
+        'name = "adapter"\n'
+        'description = "d"\n'
+        'allowed_deps = ["bogus_layer"]\n'
+        'modules = ["mod"]\n',
+        encoding="utf-8",
+    )
+    errors = ca._validate_architecture_manifest(bad_toml, src_root=ca.SRC_ROOT)
+    assert any("references unknown layer" in e for e in errors)
+
+
+def test_main_exits_nonzero_on_invalid_manifest(tmp_path):
+    """main() fails closed when the manifest does not validate."""
+    bad_toml = tmp_path / "bad.toml"
+    bad_toml.write_text(
+        "[schema]\n"
+        "version = 1\n\n"
+        "[[layers]]\n"
+        'name = "adapter"\n'
+        'description = "d"\n'
+        'allowed_deps = ["bogus_layer"]\n'
+        'modules = ["mod"]\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        ca.main(["--toml", str(bad_toml)])
+    assert excinfo.value.code != 0

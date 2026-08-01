@@ -15,8 +15,7 @@ from __future__ import annotations
 import importlib
 import json
 import logging
-import threading
-from collections.abc import Callable, Iterator, Mapping, Sequence, Sized
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence, Sized
 from typing import Final, Protocol, TypeGuard, cast
 
 from perplexity_cli.api.models import HttpRequestContext
@@ -44,6 +43,7 @@ from perplexity_cli.utils.retry import (
     get_backoff_delay,
     get_retry_after_delay,
     is_retryable_error,
+    sleep_exact,
     sleep_with_backoff,
 )
 
@@ -397,19 +397,48 @@ class SSEParser:
         data_lines: list[str] = []
 
         for raw_line in response.iter_lines():
-            line = SSEParser._decode_line(raw_line)
+            line = SSEParser._decode_safe(raw_line)
             event_type, data_lines, event = SSEParser._accumulate_line(line, event_type, data_lines)
             if event is not None:
                 yield event
 
         # Handle final message if stream ends without empty line.
-        if event_type and data_lines:
+        if data_lines:
             yield SSEParser._yield_event(data_lines)
 
     @staticmethod
     def _decode_line(raw_line: bytes | str) -> str:
-        """Decode a raw SSE line from bytes to string if necessary."""
+        """Decode a raw SSE line from bytes to string if necessary.
+
+        Args:
+            raw_line: The raw line from the transport.
+
+        Returns:
+            The decoded string line.
+
+        Raises:
+            UnicodeDecodeError: If the line is not valid UTF-8.
+        """
         return raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+
+    @staticmethod
+    def _decode_safe(raw_line: bytes | str) -> str:
+        """Decode a raw SSE line, surfacing invalid UTF-8 as a schema error.
+
+        Args:
+            raw_line: The raw line from the transport.
+
+        Returns:
+            The decoded string line.
+
+        Raises:
+            UpstreamSchemaError: If the line is not valid UTF-8.
+        """
+        try:
+            return SSEParser._decode_line(raw_line)
+        except UnicodeDecodeError as e:
+            msg = f"Failed to decode SSE line as UTF-8: {raw_line!r}"
+            raise UpstreamSchemaError(msg) from e
 
     @staticmethod
     def _accumulate_line(
@@ -428,7 +457,7 @@ class SSEParser:
             Tuple of (updated event_type, updated data_lines, event or None).
         """
         if not line:
-            event = SSEParser._yield_event(data_lines) if event_type and data_lines else None
+            event = SSEParser._yield_event(data_lines) if data_lines else None
             return None, [], event
 
         updated_type, updated_lines = SSEParser._parse_line(line, event_type, data_lines)
@@ -602,31 +631,42 @@ class RetryHandler:
         self._sleep_attempt = None
         return sleep_attempt
 
-    def handle_network_error(self, error: Exception, attempt: int) -> int:
-        """Handle network errors, retrying if possible.
+    def handle_network_error(self, error: Exception, attempt: int) -> float:
+        """Classify a network error and decide whether to retry.
+
+        Returns the wait time in seconds when the error is retryable and
+        attempts remain.  Raises immediately for exhausted or non-retryable
+        errors, wrapping raw transport exceptions in PerplexityRequestError.
 
         Args:
             error: The network error.
             attempt: Current attempt number (0-indexed).
 
         Returns:
-            Updated attempt number if retrying.
+            Wait time in seconds if the request should be retried.
 
         Raises:
-            PerplexityRequestError: When retries are exhausted.
+            PerplexityRequestError: When a transport request error is exhausted.
+            Exception: When the error is not retryable.
         """
-        if _is_request_exception(error):
-            self.logger.error("Network error after %s attempts: %s", attempt + 1, error)
-            raise PerplexityRequestError(str(error)) from error
-
-        if is_retryable_error(error) and attempt < self.max_retries - 1:
+        if attempt < self.max_retries - 1 and (
+            _is_request_exception(error) or is_retryable_error(error)
+        ):
+            next_attempt = attempt + 1
+            wait_time = get_backoff_delay(next_attempt)
+            self._sleep_attempt = next_attempt
             self.logger.warning(
-                "Network error, retrying (attempt %s/%s): %s",
-                attempt + 2,
+                "Network error, retrying in %ss (attempt %s/%s): %s",
+                wait_time,
+                next_attempt + 1,
                 self.max_retries,
                 error,
             )
-            return attempt + 1
+            return wait_time
+
+        if _is_request_exception(error):
+            self.logger.error("Network error after %s attempts: %s", attempt + 1, error)
+            raise PerplexityRequestError(str(error)) from error
 
         self.logger.error("Network error after %s attempts: %s", attempt + 1, error)
         raise error
@@ -797,19 +837,29 @@ class SSEClient:
             sleep_with_backoff(sleep_attempt)
             return
 
-        threading.Event().wait(wait_time)
+        sleep_exact(wait_time)
 
     def _retry_stream_error(self, error: Exception, attempt: int) -> int:
-        """Translate a stream error into the next retry attempt number."""
+        """Translate a stream error into the next retry attempt number.
+
+        Args:
+            error: The raised stream error.
+            attempt: Current attempt number (0-indexed).
+
+        Returns:
+            The next attempt number when the request should be retried.
+
+        Raises:
+            Exception: When the error is not retryable or retries are exhausted.
+        """
         if isinstance(error, PerplexityHTTPStatusError):
             wait_time = self._retry.handle_http_error(error, attempt)
-            self._sleep_for_retry(wait_time)
-            return attempt + 1
-
-        if isinstance(error, PerplexityRequestError) or _is_request_exception(error):
-            return self._retry.handle_network_error(error, attempt)
-
-        raise error
+        elif isinstance(error, PerplexityRequestError) or _is_request_exception(error):
+            wait_time = self._retry.handle_network_error(error, attempt)
+        else:
+            raise error
+        self._sleep_for_retry(wait_time)
+        return attempt + 1
 
     def stream_post(self, url: str, json_data: JsonObject) -> Iterator[JsonObject]:
         """POST request with SSE streaming response.
@@ -824,7 +874,7 @@ class SSEClient:
         Raises:
             PerplexityHTTPStatusError: For HTTP errors (401, 403, 500, etc.).
             PerplexityRequestError: For network/connection errors.
-            ValueError: For malformed SSE messages.
+            UpstreamSchemaError: For malformed SSE messages.
         """
         headers = self.get_headers()
         is_deep_research, effective_timeout = self._resolve_effective_timeout(json_data)
@@ -838,11 +888,42 @@ class SSEClient:
 
         attempt = 0
         while attempt < self.max_retries:
-            try:
-                yield from self._execute_stream_request(ctx, attempt)
+            next_attempt = yield from self._run_attempt(ctx, attempt)
+            if next_attempt is None:
                 return
-            except Exception as e:  # catch-all CLI error handler
-                attempt = self._retry_stream_error(e, attempt)
+            attempt = next_attempt
+
+    def _run_attempt(
+        self,
+        ctx: HttpRequestContext,
+        attempt: int,
+    ) -> Generator[JsonObject, None, int | None]:
+        """Run one streaming attempt, retrying only pre-output failures.
+
+        Args:
+            ctx: HTTP request metadata (URL, headers, body, timeout).
+            attempt: Current attempt number (0-indexed).
+
+        Yields:
+            Parsed JSON events from the stream.
+
+        Returns:
+            The next attempt number when a pre-output failure should retry,
+            or ``None`` when the stream completed and must not be retried.
+
+        Raises:
+            Exception: When a failure occurs after output or is not retryable.
+        """
+        event_yielded = False
+        try:
+            for event in self._execute_stream_request(ctx, attempt):
+                event_yielded = True
+                yield event
+        except Exception as e:
+            if event_yielded:
+                raise
+            return self._retry_stream_error(e, attempt)
+        return None
 
     def _execute_stream_request(
         self,
