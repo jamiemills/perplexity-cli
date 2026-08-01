@@ -1,727 +1,339 @@
-# =============================================================================
-# quality/property-inventory.toml — exhaustive inventory of every @given test
-#
-# Wave 6, Rank 22 — Property test ownership, remove redundancy, register
-# marker, improve weak properties.
-# =============================================================================
+# Exact manifest of supported top-level Hypothesis property tests.
+# Rationale fields are human-reviewed semantics, not source-derived facts.
 
-[metadata]
-wave = "6"
-rank = 22
-head_commit = "adf4a74a3376b4e939fc555a086d8a836dfa8f26"
-created = "2026-07-26"
-file = "tests/test_property.py"
+schema_version = 1
 
-# ---------------------------------------------------------------------------
-# Weak property definitions
-#
-# "self-round-trip"  = assertion only checks serialise → deserialise identity
-# "conditional-only" = assertion guarded by if/assume filtering most inputs
-# ---------------------------------------------------------------------------
-
-# ======================== Encryption (2) ========================
+# Encryption
 
 [[property]]
 node_id = "tests/test_property.py::test_encrypt_decrypt_roundtrip"
-settings = { deadline = 1000 }
-examples = ['""', '"café—日本語🎉"']
-oracle_type = "self-round-trip"
-assume_or_conditional = ""
-lines_covered = "encrypt_token, decrypt_token"
-weakness = "self-round-trip"
-notes = "Assertion is purely encrypt→decrypt→original.  Already complemented by test_encrypt_produces_different_ciphertexts."
+oracle_type = "round-trip-and-output-invariant"
+rationale = "Decryption restores the token, while non-empty plaintext is not returned as ciphertext."
 
 [[property]]
 node_id = "tests/test_property.py::test_encrypt_produces_different_ciphertexts"
-settings = { deadline = 1000 }
-examples = []
-oracle_type = "independent-invariant"
-assume_or_conditional = ""
-lines_covered = "encrypt_token"
-weakness = ""
-notes = "Independent: proves non-deterministic encryption (nonce/salt)."
+oracle_type = "non-determinism-invariant"
+rationale = "Two encryptions of the same token produce different ciphertexts."
 
-# ======================== Envelope (6) ========================
+# Envelopes
 
 [[property]]
 node_id = "tests/test_property.py::test_success_envelope_roundtrip"
-settings = { suppress_health_check = ["too_slow"] }
-examples = []
-oracle_type = "self-round-trip"
-assume_or_conditional = ""
-lines_covered = "Envelope.model_dump_json, Envelope.model_validate_json"
-weakness = "self-round-trip"
-notes = "Pure dump→load round-trip, no independent property asserted."
+oracle_type = "round-trip-invariant"
+rationale = "JSON serialisation preserves success-envelope fields and nested values."
 
 [[property]]
 node_id = "tests/test_property.py::test_error_envelope_roundtrip"
-settings = {}
-examples = []
-oracle_type = "self-round-trip"
-assume_or_conditional = ""
-lines_covered = "ErrorEnvelope, ErrorDetail, NextAction, ErrorCode"
-weakness = "self-round-trip"
-notes = "Dump→load round-trip for error envelopes."
+oracle_type = "round-trip-invariant"
+rationale = "JSON serialisation preserves error-envelope status, detail, fix, and actions."
 
 [[property]]
 node_id = "tests/test_property.py::test_success_envelope_builder_always_ok"
-settings = {}
-examples = []
 oracle_type = "builder-invariant"
-assume_or_conditional = ""
-lines_covered = "success_envelope"
-weakness = ""
-notes = "Independent: ok=True always, command/result preserved."
+rationale = "The success builder always sets ok and preserves its command and result."
 
 [[property]]
 node_id = "tests/test_property.py::test_error_envelope_builder_always_not_ok"
-settings = {}
-examples = []
 oracle_type = "builder-invariant"
-assume_or_conditional = ""
-lines_covered = "error_envelope"
-weakness = ""
-notes = "Independent: ok=False always, code/message preserved."
+rationale = "The error builder always clears ok and preserves its command and message."
 
 [[property]]
 node_id = "tests/test_property.py::test_envelope_to_dict_schema_toggle_excludes_schema"
-settings = {}
-examples = []
 oracle_type = "toggle-invariant"
-assume_or_conditional = ""
-lines_covered = "envelope_to_dict"
-weakness = ""
-notes = "Independent: no_schema means $schema absent."
+rationale = "The no-schema mode omits the schema while preserving success fields."
 
 [[property]]
 node_id = "tests/test_property.py::test_envelope_to_dict_schema_toggle_includes_schema"
-settings = {}
-examples = []
 oracle_type = "toggle-invariant"
-assume_or_conditional = ""
-lines_covered = "envelope_to_dict"
-weakness = ""
-notes = "Independent: with_schema means $schema present and valid."
+rationale = "The with-schema mode includes the envelope model schema."
 
-# ======================== SSE Message (6) ========================
+# API models
 
 [[property]]
 node_id = "tests/test_property.py::test_sse_message_roundtrip"
-settings = {}
-examples = ['uuid="" status="" display_model=""', 'uuid="тест-123" status="完了" display_model="模型-v2"']
-oracle_type = "self-round-trip"
-assume_or_conditional = ""
-lines_covered = "SSEMessage.model_dump_json, model_validate_json"
-weakness = "self-round-trip"
-notes = "Pure dump→load round-trip.  SSE chunk-boundary equivalence NOT feasible — no sse_stream parser at model layer."
+oracle_type = "round-trip-invariant"
+rationale = "JSON serialisation preserves the core SSE message fields."
 
 [[property]]
 node_id = "tests/test_property.py::test_sse_message_defaults"
-settings = {}
-examples = ['uuid="" status=""', 'uuid="   " status="   "']
-oracle_type = "self-round-trip"
-assume_or_conditional = ""
-lines_covered = "SSEMessage.model_dump_json, model_validate_json, _derive_web_results"
-weakness = "self-round-trip"
-notes = "Round-trip with single extra assertion (blocks==[])."
+oracle_type = "default-and-round-trip-invariant"
+rationale = "Minimal SSE messages retain their fields and default to no blocks."
 
 [[property]]
 node_id = "tests/test_property.py::test_sse_message_derives_web_results"
-settings = {}
-examples = ['name="" url="" snippet=""']
 oracle_type = "derivation-invariant"
-assume_or_conditional = ""
-lines_covered = "SSEMessage._derive_web_results, Block.extract_web_results"
-weakness = ""
-notes = "Tests that web_results are derived from blocks when not explicitly provided."
+rationale = "A web-results block derives a matching model when no explicit result is supplied."
 
 [[property]]
 node_id = "tests/test_property.py::test_sse_message_preserves_explicit_web_results"
-settings = {}
-examples = ["explicit_results=[]"]
 oracle_type = "preservation-invariant"
-assume_or_conditional = ""
-lines_covered = "SSEMessage._derive_web_results"
-weakness = ""
-notes = "Explicit web_results are never overwritten by derivation."
+rationale = "Explicit web results take precedence over block-derived values."
 
 [[property]]
 node_id = "tests/test_property.py::test_describe_block_usages_format"
-settings = {}
-examples = ["usages=[]"]
 oracle_type = "format-invariant"
-assume_or_conditional = ""
-lines_covered = "SSEMessage.describe_block_usages"
-weakness = ""
-notes = "Tests comma-join or 'none' for empty."
-
-# NOTE: test_describe_block_usages_empty and test_describe_block_usages_missing_usage
-# are standard unit tests (no @given) — not property tests.
-
-# ======================== WebResult (1) ========================
+rationale = "Block usages are comma-joined in order, with none representing an empty list."
 
 [[property]]
 node_id = "tests/test_property.py::test_web_result_roundtrip"
-settings = {}
-examples = ['name="" url="" snippet=None', 'name="   " url="   " snippet="   "', 'name="résumé" url="https://münchen.de/paß" snippet="garçon"']
-oracle_type = "self-round-trip"
-assume_or_conditional = ""
-lines_covered = "WebResult.model_dump_json, model_validate_json, require_mapping"
-weakness = "self-round-trip"
-notes = "Pure dump→load round-trip."
-
-# ======================== QueryParams (2) ========================
+oracle_type = "round-trip-invariant"
+rationale = "JSON serialisation preserves all WebResult fields."
 
 [[property]]
 node_id = "tests/test_property.py::test_query_params_rejects_invalid_search_mode"
-settings = {}
-examples = []
 oracle_type = "validation-invariant"
-assume_or_conditional = "if mode in (standard, multi_step)"
-lines_covered = "QueryParams.validate_search_mode"
-weakness = ""
-notes = "Both branches assert: valid modes accepted, invalid modes raise ValueError."
+rationale = "Only the two supported search implementation modes are accepted."
 
 [[property]]
 node_id = "tests/test_property.py::test_query_params_accepts_valid_values"
-settings = {}
-examples = []
-oracle_type = "self-round-trip"
-assume_or_conditional = ""
-lines_covered = "QueryParams.model_dump_json, model_validate_json"
-weakness = "self-round-trip"
-notes = "Dump→load round-trip for valid QueryParams."
-
-# ======================== Block.extract_text (1) ========================
+oracle_type = "validation-and-round-trip-invariant"
+rationale = "Valid query values are accepted and survive JSON serialisation."
 
 [[property]]
 node_id = "tests/test_property.py::test_block_extract_text_never_crashes"
-settings = {}
-examples = ['content={}', 'content={"text": None}', 'content={"message": {"content": [1,2,3]}}', 'content={"値": "日本語"}']
-oracle_type = "crash-resilience"
-assume_or_conditional = ""
-lines_covered = "Block.extract_text, _extract_from_markdown_block, _extract_from_text_field, _extract_from_diff_block, _extract_from_answer_block, _extract_patch_value"
-weakness = ""
-notes = "Independent: never raises, returns str|None.  Accesses all extraction code paths."
-
-# ======================== Date Parser (5) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_to_iso8601_always_z_suffix"
-settings = {}
-examples = []
-oracle_type = "format-invariant"
-assume_or_conditional = ""
-lines_covered = "to_iso8601"
-weakness = ""
-notes = "Independent: Z-suffix is guaranteed for UTC datetimes."
-
-[[property]]
-node_id = "tests/test_property.py::test_to_iso8601_parseable_utc_roundtrip"
-settings = {}
-examples = []
-oracle_type = "computational-round-trip"
-assume_or_conditional = ""
-lines_covered = "to_iso8601, datetime.fromisoformat"
-weakness = ""
-notes = "Format→parse cycle preserves UTC datetime — not a trivial dump/load."
-
-[[property]]
-node_id = "tests/test_property.py::test_to_iso8601_order_preserving"
-settings = {}
-examples = []
-oracle_type = "monotonicity-invariant"
-assume_or_conditional = ""
-lines_covered = "to_iso8601"
-weakness = ""
-notes = "Lexicographic ordering of ISO strings matches chronological."
-
-[[property]]
-node_id = "tests/test_property.py::test_is_in_date_range_unbounded_always_true"
-settings = {}
-examples = []
-oracle_type = "boundary-invariant"
-assume_or_conditional = ""
-lines_covered = "is_in_date_range"
-weakness = ""
-notes = "None bounds always include any date."
-
-[[property]]
-node_id = "tests/test_property.py::test_is_in_date_range_same_day_range_inclusive"
-settings = {}
-examples = ["datetime(2024,2,29,12,0,tzinfo=UTC)"]
-oracle_type = "boundary-invariant"
-assume_or_conditional = ""
-lines_covered = "is_in_date_range"
-weakness = ""
-notes = "Same-day from/to is inclusive of the date."
-
-# ======================== Date parser (2) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_date_parser_roundtrip_iso"
-settings = {}
-examples = ["year=2024 month=2 day=29 hour=12 minute=0"]
-oracle_type = "computational-round-trip"
-assume_or_conditional = ""
-lines_covered = "parse_absolute_date_string"
-weakness = ""
-notes = "Format→parse cycle for ISO-format dates."
-
-[[property]]
-node_id = "tests/test_property.py::test_date_parser_handles_formatted_dates"
-settings = {}
-examples = []
-oracle_type = "parser-robustness"
-assume_or_conditional = ""
-lines_covered = "parse_absolute_date_string"
-weakness = ""
-notes = "Handles various human-readable date formats within 5s tolerance."
-
-# ======================== Formatter (5) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_strip_citations_idempotent"
-settings = {}
-examples = ['"The answer is [1]."', '"   \\t \\n "']
-oracle_type = "idempotence-invariant"
-assume_or_conditional = ""
-lines_covered = "Formatter.strip_citations"
-weakness = ""
-notes = "Idempotence: applying twice equals applying once."
-
-[[property]]
-node_id = "tests/test_property.py::test_strip_citations_never_longer"
-settings = {}
-examples = []
-oracle_type = "size-invariant"
-assume_or_conditional = ""
-lines_covered = "Formatter.strip_citations"
-weakness = ""
-notes = "Output never longer than input."
-
-[[property]]
-node_id = "tests/test_property.py::test_strip_citations_removes_numeric_markers"
-settings = {}
-examples = ['"Alpha [12] beta [3]."']
-oracle_type = "output-invariant"
-assume_or_conditional = ""
-lines_covered = "Formatter.strip_citations"
-weakness = ""
-notes = "No [N] numeric citation markers remain."
-
-[[property]]
-node_id = "tests/test_property.py::test_unwrap_paragraph_lines_idempotent"
-settings = {}
-examples = ['"   \\n\\n   \\n\\n   "']
-oracle_type = "idempotence-invariant"
-assume_or_conditional = ""
-lines_covered = "Formatter.unwrap_paragraph_lines"
-weakness = ""
-notes = "Idempotence: applying twice equals once."
-
-[[property]]
-node_id = "tests/test_property.py::test_unwrap_paragraph_lines_preserves_non_whitespace_chars"
-settings = {}
-examples = []
-oracle_type = "character-preservation-invariant"
-assume_or_conditional = ""
-lines_covered = "Formatter.unwrap_paragraph_lines"
-weakness = ""
-notes = "Non-whitespace characters are preserved (only whitespace is rearranged)."
-
-# ======================== Structural line (1) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_structural_line_classifier_accepts_known_markdown"
-settings = {}
-examples = []
-oracle_type = "classification-invariant"
-assume_or_conditional = ""
-lines_covered = "_is_structural_line"
-weakness = ""
-notes = "Known structural markdown lines pass classification."
-
-# ======================== ErrorDetail (1) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_error_detail_accepts_arbitrary_input"
-settings = {}
-examples = []
-oracle_type = "self-round-trip"
-assume_or_conditional = ""
-lines_covered = "ErrorDetail.model_dump_json, model_validate_json"
-weakness = "self-round-trip"
-notes = "Dump→load round-trip with arbitrary input dict."
-
-# ======================== Contracts (3) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_require_mapping_raises_on_non_dict"
-settings = {}
-examples = ['"not a dict"', "[]"]
-oracle_type = "contract-invariant"
-assume_or_conditional = "if isinstance(value, dict)"
-lines_covered = "require_mapping"
-weakness = ""
-notes = "Both branches assert: non-dict raises, dict passes through."
-
-[[property]]
-node_id = "tests/test_property.py::test_require_list_raises_on_non_list"
-settings = {}
-examples = ['"not a list"', '{"k":"v"}']
-oracle_type = "contract-invariant"
-assume_or_conditional = "if isinstance(value, list)"
-lines_covered = "require_list"
-weakness = ""
-notes = "Both branches assert: non-list raises, list passes through."
-
-[[property]]
-node_id = "tests/test_property.py::test_describe_payload_shape_never_crashes"
-settings = {}
-examples = ['""', '{"key": {"nested": [1, None, 3.14]}}']
-oracle_type = "crash-resilience"
-assume_or_conditional = ""
-lines_covered = "describe_payload_shape"
-weakness = ""
-notes = "Always returns a non-empty string for any input."
-
-# ======================== Retry Logic (10) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_backoff_delay_never_exceeds_max"
-settings = {}
-examples = ["attempt=0 base_delay=1.0 max_delay=10.0"]
-oracle_type = "boundedness-invariant"
-assume_or_conditional = ""
-lines_covered = "get_backoff_delay"
-weakness = ""
-notes = "delay ≤ max_delay always."
-
-[[property]]
-node_id = "tests/test_property.py::test_backoff_delay_increases_with_attempts"
-settings = {}
-examples = []
-oracle_type = "monotonicity-invariant"
-assume_or_conditional = ""
-lines_covered = "get_backoff_delay"
-weakness = ""
-notes = "Non-decreasing with attempt number (or capped at max)."
-
-[[property]]
-node_id = "tests/test_property.py::test_is_retryable_error_only_for_5xx_and_429"
-settings = {}
-examples = []
-oracle_type = "classification-invariant"
-assume_or_conditional = ""
-lines_covered = "is_retryable_error, PerplexityHTTPStatusError, SimpleResponse"
-weakness = ""
-notes = "Retryable ≡ status≥500 or status==429."
-
-[[property]]
-node_id = "tests/test_property.py::test_backoff_delay_non_negative"
-settings = {}
-examples = ["attempt=0 base_delay=0.0 max_delay=0.1 jitter_factor=0.0"]
-oracle_type = "sign-invariant"
-assume_or_conditional = ""
-lines_covered = "get_backoff_delay"
-weakness = ""
-notes = "delay ≥ 0.0 regardless of jitter factor."
-
-[[property]]
-node_id = "tests/test_property.py::test_backoff_delay_monotonic_without_jitter"
-settings = {}
-examples = []
-oracle_type = "deterministic-monotonicity-invariant"
-assume_or_conditional = ""
-lines_covered = "get_backoff_delay"
-weakness = ""
-notes = "With jitter_factor=0, strict non-decreasing."
-
-[[property]]
-node_id = "tests/test_property.py::test_backoff_delay_within_jitter_bounds"
-settings = {}
-examples = ["attempt=0 base_delay=0.01 max_delay=0.1 jitter_factor=0.001"]
-oracle_type = "boundedness-in-range-invariant"
-assume_or_conditional = ""
-lines_covered = "get_backoff_delay"
-weakness = ""
-notes = "0.0 ≤ delay ≤ max_delay even with jitter."
-
-[[property]]
-node_id = "tests/test_property.py::test_get_retry_after_delay_none_for_non_http_error"
-settings = {}
-examples = []
-oracle_type = "type-specific-dispatch-invariant"
-assume_or_conditional = ""
-lines_covered = "get_retry_after_delay"
-weakness = ""
-notes = "Non-HTTP errors return None."
-
-[[property]]
-node_id = "tests/test_property.py::test_get_retry_after_delay_handles_both_header_casings"
-settings = {}
-examples = []
-oracle_type = "case-insensitivity-invariant"
-assume_or_conditional = ""
-lines_covered = "get_retry_after_delay"
-weakness = ""
-notes = "Both Retry-After and retry-after headers parse identically."
-
-[[property]]
-node_id = "tests/test_property.py::test_get_retry_after_delay_clamps_negative"
-settings = {}
-examples = []
-oracle_type = "clamping-invariant"
-assume_or_conditional = ""
-lines_covered = "get_retry_after_delay"
-weakness = ""
-notes = "Negative Retry-After → 0.0."
-
-[[property]]
-node_id = "tests/test_property.py::test_exceptions_preserve_cause"
-settings = {}
-examples = []
-oracle_type = "chain-integrity-invariant"
-assume_or_conditional = ""
-lines_covered = "ConfigurationError"
-weakness = ""
-notes = "Exceptions preserve __cause__ chain."
-
-# ======================== Exception hierarchy (1) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_all_exception_types_are_importable_and_stringable"
-settings = {}
-examples = []
-oracle_type = "string-representation-invariant"
-assume_or_conditional = ""
-lines_covered = "AuthenticationError, ConfigurationError, PerplexityRequestError, RateLimitError"
-weakness = ""
-notes = "All exception types can be instantiated and message preserved in str()."
-
-# ======================== Error classification (3) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_classify_exception_maps_known_types"
-settings = {}
-examples = []
-oracle_type = "classification-invariant"
-assume_or_conditional = ""
-lines_covered = "_classify_exception"
-weakness = ""
-notes = "Known exception types map to correct ErrorCode."
-
-[[property]]
-node_id = "tests/test_property.py::test_classify_exception_maps_http_status_errors"
-settings = {}
-examples = []
-oracle_type = "classification-invariant"
-assume_or_conditional = ""
-lines_covered = "_classify_exception, PerplexityHTTPStatusError, SimpleResponse"
-weakness = ""
-notes = "HTTP status codes 401/403/429 map correctly."
-
-[[property]]
-node_id = "tests/test_property.py::test_classify_exception_unmapped_http_status_defaults_to_network_error"
-settings = {}
-examples = []
-oracle_type = "default-fallback-invariant"
-assume_or_conditional = ""
-lines_covered = "_classify_exception"
-weakness = ""
-notes = "Unmapped status codes default to network_error."
-
-# ======================== Thread cache merge (5) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_merge_threads_no_duplicate_urls"
-settings = {}
-examples = ["explicit thread record pairs"]
-oracle_type = "uniqueness-invariant"
-assume_or_conditional = "assume unique URLs within each input list"
-lines_covered = "ThreadCacheManager.merge_threads"
-weakness = ""
-notes = "Merge output has unique URLs."
-
-[[property]]
-node_id = "tests/test_property.py::test_merge_threads_sorted_newest_first"
-settings = {}
-examples = []
-oracle_type = "ordering-invariant"
-assume_or_conditional = ""
-lines_covered = "ThreadCacheManager.merge_threads"
-weakness = ""
-notes = "Merge output sorted by created_at descending."
-
-[[property]]
-node_id = "tests/test_property.py::test_merge_threads_cached_record_preferred_on_duplicate"
-settings = {}
-examples = []
-oracle_type = "preference-invariant"
-assume_or_conditional = "assume unique URLs within cached list"
-lines_covered = "ThreadCacheManager.merge_threads"
-weakness = ""
-notes = "Cached records take precedence over new on URL collision."
-
-[[property]]
-node_id = "tests/test_property.py::test_merge_threads_idempotent"
-settings = {}
-examples = []
-oracle_type = "idempotence-invariant"
-assume_or_conditional = ""
-lines_covered = "ThreadCacheManager.merge_threads"
-weakness = ""
-notes = "merge(merge(x,y),[]) == merge(x,y)."
-
-[[property]]
-node_id = "tests/test_property.py::test_merge_threads_empty_lists_merge_to_empty"
-settings = {}
-examples = ["([], [])"]
-oracle_type = "conditional-only"
-assume_or_conditional = "if not cached and not new: assert merged == []"
-lines_covered = "ThreadCacheManager.merge_threads"
-weakness = "conditional-only"
-notes = "ASSERTION ONLY EXECUTES WHEN BOTH LISTS EMPTY.  Replaced by test_merge_threads_cached_superset in Wave 6."
-
-# ======================== Fetch range (2) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_calculate_fetch_range_inside_coverage_returns_none"
-settings = {}
-examples = []
-oracle_type = "coverage-boundary-invariant"
-assume_or_conditional = "strategy filters for inside-coverage dates"
-lines_covered = "ThreadCacheManager._calculate_fetch_range"
-weakness = ""
-notes = "When request is fully inside cache coverage, no fetch needed."
-
-[[property]]
-node_id = "tests/test_property.py::test_calculate_fetch_range_fetch_bounds_within_request"
-settings = { suppress_health_check = ["filter_too_much"] }
-examples = []
-oracle_type = "boundedness-invariant"
-assume_or_conditional = "strategy filters for outside-coverage dates"
-lines_covered = "ThreadCacheManager._calculate_fetch_range"
-weakness = ""
-notes = "Fetch bounds lie within request bounds when coverage gap exists."
-
-# ======================== Rate Limiter (4) ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_rate_limiter_invalid_params_raises_value_error"
-settings = {}
-examples = []
-oracle_type = "validation-invariant"
-assume_or_conditional = "assume(requests_per_period <= 0 or period_seconds <= 0)"
-lines_covered = "RateLimiter.__init__"
-weakness = ""
-notes = "Invalid params raise ValueError (assume narrows to invalid domain)."
-
-[[property]]
-node_id = "tests/test_property.py::test_rate_limiter_stats_consistency"
-settings = {}
-examples = []
-oracle_type = "accounting-invariant"
-assume_or_conditional = ""
-lines_covered = "RateLimiter.acquire, get_stats, total_requests, total_wait_time"
-weakness = ""
-notes = "Stats counters match accumulated wait times and request counts."
-
-[[property]]
-node_id = "tests/test_property.py::test_rate_limiter_token_bounds"
-settings = {}
-examples = []
-oracle_type = "boundedness-invariant"
-assume_or_conditional = ""
-lines_covered = "RateLimiter.acquire, _state.tokens"
-weakness = ""
-notes = "Token count stays in [0.0, requests_per_period]."
-
-[[property]]
-node_id = "tests/test_property.py::test_rate_limiter_sleep_durations_match_wait_times"
-settings = {}
-examples = []
-oracle_type = "consistency-invariant"
-assume_or_conditional = ""
-lines_covered = "RateLimiter.acquire, asyncio.sleep"
-weakness = ""
-notes = "Every non-zero wait time corresponds to exactly one sleep() call."
-
-# ======================== New in Wave 6 ========================
-
-[[property]]
-node_id = "tests/test_property.py::test_encrypt_output_differs_from_input"
-settings = {}
-examples = []
-oracle_type = "independent-invariant"
-assume_or_conditional = ""
-lines_covered = "encrypt_token"
-weakness = ""
-notes = "NEW (Wave 6): Ciphertext always differs from plaintext — replaces focus on encrypt-decrypt round-trip."
+oracle_type = "resilience-invariant"
+rationale = "Arbitrary supported content shapes return text or no text without raising."
 
 [[property]]
 node_id = "tests/test_property.py::test_query_params_model_schema_stability"
-settings = {}
-examples = []
 oracle_type = "schema-invariant"
-assume_or_conditional = ""
-lines_covered = "QueryParams.model_json_schema"
-weakness = ""
-notes = "NEW (Wave 6): Schema has expected top-level keys — independent of dump/load round-trip."
+rationale = "QueryParams retains its object schema and required top-level field definitions."
 
 [[property]]
 node_id = "tests/test_property.py::test_web_result_schema_stability"
-settings = {}
-examples = []
 oracle_type = "schema-invariant"
-assume_or_conditional = ""
-lines_covered = "WebResult.model_json_schema"
-weakness = ""
-notes = "NEW (Wave 6): Schema defines name, url, snippet — independent of round-trip."
+rationale = "WebResult retains schema definitions for name, URL, and snippet."
+
+# Date handling
 
 [[property]]
-node_id = "tests/test_property.py::test_merge_threads_cached_superset"
-settings = {}
-examples = []
+node_id = "tests/test_property.py::test_to_iso8601_always_z_suffix"
+oracle_type = "format-invariant"
+rationale = "UTC datetimes are emitted with the canonical Z suffix."
+
+[[property]]
+node_id = "tests/test_property.py::test_to_iso8601_parseable_utc_roundtrip"
+oracle_type = "computational-round-trip"
+rationale = "Parsing emitted ISO text preserves the original UTC instant."
+
+[[property]]
+node_id = "tests/test_property.py::test_to_iso8601_order_preserving"
+oracle_type = "monotonicity-invariant"
+rationale = "Lexicographic order of emitted UTC timestamps follows chronological order."
+
+[[property]]
+node_id = "tests/test_property.py::test_is_in_date_range_unbounded_always_true"
+oracle_type = "boundary-invariant"
+rationale = "An unbounded date range includes every generated datetime."
+
+[[property]]
+node_id = "tests/test_property.py::test_is_in_date_range_same_day_range_inclusive"
+oracle_type = "boundary-invariant"
+rationale = "A same-day range includes every instant on that day."
+
+[[property]]
+node_id = "tests/test_property.py::test_date_parser_roundtrip_iso"
+oracle_type = "parser-invariant"
+rationale = "Parsing generated ISO components recovers the represented date and minute."
+
+[[property]]
+node_id = "tests/test_property.py::test_date_parser_handles_formatted_dates"
+oracle_type = "parser-invariant"
+rationale = "Parsing the supported human-readable format recovers the represented instant."
+
+# Formatting
+
+[[property]]
+node_id = "tests/test_property.py::test_strip_citations_idempotent"
+oracle_type = "idempotence-invariant"
+rationale = "Stripping citations twice has the same result as stripping once."
+
+[[property]]
+node_id = "tests/test_property.py::test_strip_citations_never_longer"
+oracle_type = "size-invariant"
+rationale = "Citation stripping never increases text length."
+
+[[property]]
+node_id = "tests/test_property.py::test_strip_citations_removes_numeric_markers"
+oracle_type = "output-invariant"
+rationale = "No numeric citation marker remains after stripping."
+
+[[property]]
+node_id = "tests/test_property.py::test_unwrap_paragraph_lines_idempotent"
+oracle_type = "idempotence-invariant"
+rationale = "Unwrapping paragraph lines twice has the same result as unwrapping once."
+
+[[property]]
+node_id = "tests/test_property.py::test_unwrap_paragraph_lines_preserves_non_whitespace_chars"
+oracle_type = "character-preservation-invariant"
+rationale = "Paragraph unwrapping rearranges whitespace without changing other characters."
+
+[[property]]
+node_id = "tests/test_property.py::test_structural_line_classifier_accepts_known_markdown"
+oracle_type = "classification-invariant"
+rationale = "Representative structural Markdown forms are classified as structural."
+
+# Contracts and errors
+
+[[property]]
+node_id = "tests/test_property.py::test_error_detail_accepts_arbitrary_input"
+oracle_type = "round-trip-invariant"
+rationale = "Error details preserve arbitrary input mappings through JSON serialisation."
+
+[[property]]
+node_id = "tests/test_property.py::test_require_mapping_raises_on_non_dict"
+oracle_type = "contract-invariant"
+rationale = "Mappings pass through unchanged and every generated non-mapping is rejected."
+
+[[property]]
+node_id = "tests/test_property.py::test_require_list_raises_on_non_list"
+oracle_type = "contract-invariant"
+rationale = "Lists pass through unchanged and every generated non-list is rejected."
+
+[[property]]
+node_id = "tests/test_property.py::test_describe_payload_shape_never_crashes"
+oracle_type = "resilience-invariant"
+rationale = "Every generated payload produces a non-empty shape description."
+
+[[property]]
+node_id = "tests/test_property.py::test_exceptions_preserve_cause"
+oracle_type = "chain-integrity-invariant"
+rationale = "Configuration errors retain an assigned cause and both messages."
+
+[[property]]
+node_id = "tests/test_property.py::test_all_exception_types_are_importable_and_stringable"
+oracle_type = "representation-invariant"
+rationale = "Public exception types can be instantiated and retain their message in text form."
+
+[[property]]
+node_id = "tests/test_property.py::test_classify_exception_maps_known_types"
+oracle_type = "classification-invariant"
+rationale = "Known exception classes map to their designated envelope error codes."
+
+[[property]]
+node_id = "tests/test_property.py::test_classify_exception_maps_http_status_errors"
+oracle_type = "classification-invariant"
+rationale = "Recognised HTTP status codes map to their designated envelope error codes."
+
+[[property]]
+node_id = "tests/test_property.py::test_classify_exception_unmapped_http_status_defaults_to_network_error"
+oracle_type = "fallback-invariant"
+rationale = "Unmapped HTTP statuses use the network-error fallback."
+
+# Retry behaviour
+
+[[property]]
+node_id = "tests/test_property.py::test_backoff_delay_never_exceeds_max"
+oracle_type = "boundedness-invariant"
+rationale = "Backoff delay never exceeds its configured maximum."
+
+[[property]]
+node_id = "tests/test_property.py::test_backoff_delay_increases_with_attempts"
+oracle_type = "monotonicity-invariant"
+rationale = "Successive backoff attempts do not reduce delay before or at the cap."
+
+[[property]]
+node_id = "tests/test_property.py::test_is_retryable_error_only_for_5xx_and_429"
+oracle_type = "classification-invariant"
+rationale = "Only server errors and rate limiting are classified as retryable."
+
+[[property]]
+node_id = "tests/test_property.py::test_backoff_delay_non_negative"
+oracle_type = "boundedness-invariant"
+rationale = "Backoff delay remains non-negative across supported jitter values."
+
+[[property]]
+node_id = "tests/test_property.py::test_backoff_delay_monotonic_without_jitter"
+oracle_type = "monotonicity-invariant"
+rationale = "Without jitter, successive attempts have non-decreasing delays."
+
+[[property]]
+node_id = "tests/test_property.py::test_backoff_delay_within_jitter_bounds"
+oracle_type = "boundedness-invariant"
+rationale = "Jittered delays remain between zero and the configured maximum."
+
+[[property]]
+node_id = "tests/test_property.py::test_get_retry_after_delay_none_for_non_http_error"
+oracle_type = "type-dispatch-invariant"
+rationale = "Non-HTTP exceptions do not produce Retry-After delays."
+
+[[property]]
+node_id = "tests/test_property.py::test_get_retry_after_delay_handles_both_header_casings"
+oracle_type = "case-insensitivity-invariant"
+rationale = "Canonical and lowercase Retry-After headers produce the same delay."
+
+[[property]]
+node_id = "tests/test_property.py::test_get_retry_after_delay_clamps_negative"
+oracle_type = "clamping-invariant"
+rationale = "Negative Retry-After values are clamped to zero."
+
+# Thread cache
+
+[[property]]
+node_id = "tests/test_property.py::test_merge_threads_no_duplicate_urls"
+oracle_type = "uniqueness-invariant"
+rationale = "Merging inputs with internally unique URLs produces no duplicate URL."
+
+[[property]]
+node_id = "tests/test_property.py::test_merge_threads_sorted_newest_first"
+oracle_type = "ordering-invariant"
+rationale = "Merged threads are ordered by creation timestamp from newest to oldest."
+
+[[property]]
+node_id = "tests/test_property.py::test_merge_threads_cached_record_preferred_on_duplicate"
+oracle_type = "precedence-invariant"
+rationale = "A cached record wins when a new record has the same URL."
+
+[[property]]
+node_id = "tests/test_property.py::test_merge_threads_idempotent"
+oracle_type = "idempotence-invariant"
+rationale = "Merging an already merged result with an empty list changes nothing."
+
+[[property]]
+node_id = "tests/test_property.py::test_merge_threads_empty_lists_merge_to_empty"
 oracle_type = "superset-invariant"
-assume_or_conditional = ""
-lines_covered = "ThreadCacheManager.merge_threads"
-weakness = ""
-notes = "NEW (Wave 6): Merge result contains ALL cached records (superset property). Replaces conditional-only test_merge_threads_empty_lists_merge_to_empty."
+rationale = "Despite its historical name, the current property proves every cached URL remains in the merge."
+
+[[property]]
+node_id = "tests/test_property.py::test_calculate_fetch_range_inside_coverage_returns_none"
+oracle_type = "coverage-boundary-invariant"
+rationale = "A request fully covered by cache requires no additional fetch range."
+
+[[property]]
+node_id = "tests/test_property.py::test_calculate_fetch_range_fetch_bounds_within_request"
+oracle_type = "boundedness-invariant"
+rationale = "A required fetch range stays within the requested date bounds."
+
+# Rate limiting
+
+[[property]]
+node_id = "tests/test_property.py::test_rate_limiter_invalid_params_raises_value_error"
+oracle_type = "validation-invariant"
+rationale = "Non-positive request rates or periods are rejected."
+
+[[property]]
+node_id = "tests/test_property.py::test_rate_limiter_stats_consistency"
+oracle_type = "accounting-invariant"
+rationale = "Request and wait statistics agree with observed acquisitions."
+
+[[property]]
+node_id = "tests/test_property.py::test_rate_limiter_token_bounds"
+oracle_type = "boundedness-invariant"
+rationale = "Available tokens remain between zero and bucket capacity."
+
+[[property]]
+node_id = "tests/test_property.py::test_rate_limiter_sleep_durations_match_wait_times"
+oracle_type = "consistency-invariant"
+rationale = "Each positive acquisition wait corresponds to one sleep of the same duration."
+
+# Configuration precedence
 
 [[property]]
 node_id = "tests/test_property.py::test_feature_config_env_overrides_file"
-settings = {}
-examples = []
 oracle_type = "precedence-invariant"
-assume_or_conditional = ""
-lines_covered = "get_feature_config, _apply_feature_env_overrides, _load_feature_config_from_file"
-weakness = ""
-notes = "NEW (Wave 6): Environment variable overrides take precedence over config file values."
+rationale = "Environment values take precedence over file values."
 
 [[property]]
 node_id = "tests/test_property.py::test_feature_config_file_overrides_defaults"
-settings = {}
-examples = []
 oracle_type = "precedence-invariant"
-assume_or_conditional = ""
-lines_covered = "get_feature_config, _load_feature_config_from_file"
-weakness = ""
-notes = "NEW (Wave 6): Config file values take precedence over hardcoded defaults."
-
-# =============================================================================
-# Summary
-# =============================================================================
-
-[stats]
-total_at_given_tests = 59
-tests_with_settings = 29
-tests_with_examples = 22
-self_round_trips = 8
-conditional_only = 1
-independent_invariants = 39
-computational_round_trips = 2
-new_wave6 = 5
-weak_total = 9
-remediated_this_wave = 2
+rationale = "File values take precedence over built-in defaults when environment values are absent."

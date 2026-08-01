@@ -1,184 +1,494 @@
-"""Property-test policy enforcement — marker completeness and validation.
+"""Property-test marker, manifest, and reproduction-helper policy tests.
 
-Proves that every ``@given`` test in ``test_property.py`` carries the
-``property`` marker, and that every ``property``-marked test uses
-Hypothesis.  Also verifies that CI failures emit a usable reproduction
-blob so developers can re-run the failing case locally.
+The repository manifest must exactly match supported top-level Hypothesis
+properties. Marker checks cover explicit function markers and the designated
+module marker; reproduction tests validate a command helper rather than
+claiming that Hypothesis failures invoke it automatically.
 """
 
 from __future__ import annotations
 
 import ast
+import re
+import tomllib
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
-# ---------------------------------------------------------------------------
-# AST helpers
-# ---------------------------------------------------------------------------
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_MAKEFILE = _REPO_ROOT / "Makefile"
+_PROPERTY_INVENTORY = _REPO_ROOT / "quality/property-inventory.toml"
+_FUNCTION_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+_PROPERTY_FILES_PREFIX = "override PROPERTY_TEST_FILES :="
+_SAFE_PROPERTY_PATH = re.compile(r"[A-Za-z0-9_./-]+\.py")
 
 
-def _has_given_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check whether *node* is decorated with ``@given`` (any import form)."""
-    for deco in node.decorator_list:
-        if isinstance(deco, ast.Name) and deco.id == "given":
-            return True
-        if isinstance(deco, ast.Call):
-            name = _unpack_decorator_name(deco.func)
-            if name == "given":
-                return True
-        if isinstance(deco, ast.Attribute) and deco.attr == "given":
-            return True
-    return False
+def _load_property_test_files(makefile: Path, repo_root: Path) -> tuple[Path, ...]:
+    """Load the independently declared property source paths from Make."""
+    assignments = [
+        line.removeprefix(_PROPERTY_FILES_PREFIX).strip()
+        for line in makefile.read_text(encoding="utf-8").splitlines()
+        if line.startswith(_PROPERTY_FILES_PREFIX)
+    ]
+    if len(assignments) != 1:
+        raise ValueError("Makefile must declare PROPERTY_TEST_FILES exactly once")
+    tokens = tuple(assignments[0].split())
+    if not tokens or any(_is_unsafe_property_path(token) for token in tokens):
+        raise ValueError("PROPERTY_TEST_FILES must contain safe repository-relative paths")
+    paths = tuple(repo_root / token for token in tokens)
+    if any(not path.is_file() for path in paths):
+        raise ValueError("PROPERTY_TEST_FILES must reference existing files")
+    return paths
 
 
-def _unpack_decorator_name(expr: ast.expr) -> str | None:
-    """Walk dotted/attributed names to get the final identifier."""
-    if isinstance(expr, ast.Name):
-        return expr.id
-    if isinstance(expr, ast.Attribute):
-        return expr.attr
-    return None
+def _is_unsafe_property_path(value: str) -> bool:
+    """Return whether a Make property source could escape or expand dynamically."""
+    path = Path(value)
+    return path.is_absolute() or ".." in path.parts or _SAFE_PROPERTY_PATH.fullmatch(value) is None
+
+
+_PROPERTY_TEST_FILES = _load_property_test_files(_MAKEFILE, _REPO_ROOT)
+
+
+@dataclass(frozen=True, slots=True)
+class _GivenBindings:
+    direct: frozenset[str]
+    modules: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
+class _PropertyFunction:
+    node_id: str
+    source_path: Path
+    name: str
+    lineno: int
+    has_property_marker: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _PropertyDiscovery:
+    functions: tuple[_PropertyFunction, ...]
+    duplicate_ids: tuple[str, ...]
+
+    @property
+    def node_ids(self) -> frozenset[str]:
+        return frozenset(function.node_id for function in self.functions)
+
+
+@dataclass(frozen=True, slots=True)
+class _InventoryProperty:
+    node_id: str
+    oracle_type: str
+    rationale: str
+
+
+@dataclass(frozen=True, slots=True)
+class _ManifestParity:
+    source_only: tuple[str, ...]
+    inventory_only: tuple[str, ...]
+    source_duplicates: tuple[str, ...]
+    inventory_duplicates: tuple[str, ...]
+
+    @property
+    def is_exact(self) -> bool:
+        return not any(
+            (
+                self.source_only,
+                self.inventory_only,
+                self.source_duplicates,
+                self.inventory_duplicates,
+            )
+        )
+
+
+class _UnsupportedPropertyPlacement(ValueError):
+    """Raised when a Hypothesis property is nested or defined on a class."""
+
+
+def _given_bindings(tree: ast.Module) -> _GivenBindings:
+    direct: set[str] = set()
+    modules: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module == "hypothesis":
+            direct.update(
+                alias.asname or alias.name for alias in node.names if alias.name == "given"
+            )
+        if isinstance(node, ast.Import):
+            modules.update(
+                alias.asname or "hypothesis" for alias in node.names if alias.name == "hypothesis"
+            )
+    return _GivenBindings(frozenset(direct), frozenset(modules))
+
+
+def _is_given_decorator(decorator: ast.expr, bindings: _GivenBindings) -> bool:
+    if not isinstance(decorator, ast.Call):
+        return False
+    if isinstance(decorator.func, ast.Name):
+        return decorator.func.id in bindings.direct
+    return (
+        isinstance(decorator.func, ast.Attribute)
+        and decorator.func.attr == "given"
+        and isinstance(decorator.func.value, ast.Name)
+        and decorator.func.value.id in bindings.modules
+    )
+
+
+def _has_given_decorator(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    bindings: _GivenBindings,
+) -> bool:
+    return any(_is_given_decorator(decorator, bindings) for decorator in node.decorator_list)
 
 
 def _has_property_marker(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check whether *node* carries ``@pytest.mark.property``."""
-    for deco in node.decorator_list:
-        if isinstance(deco, ast.Attribute) and (
-            isinstance(deco.value, ast.Attribute)
-            and isinstance(deco.value.value, ast.Name)
-            and deco.value.value.id == "pytest"
-            and deco.value.attr == "mark"
-            and deco.attr == "property"
+    for decorator in node.decorator_list:
+        marker = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if (
+            isinstance(marker, ast.Attribute)
+            and marker.attr == "property"
+            and isinstance(marker.value, ast.Attribute)
+            and marker.value.attr == "mark"
+            and isinstance(marker.value.value, ast.Name)
+            and marker.value.value.id == "pytest"
         ):
             return True
-        if isinstance(deco, ast.Call):
-            name = _unpack_decorator_name(deco.func)
-            if name == "property":
-                return True
     return False
 
 
-def _parse_property_test_functions(source_path: Path) -> dict[str, dict[str, object]]:
-    """Return info about every function in *source_path*.
+def _relative_source_path(source_path: Path, repo_root: Path) -> str:
+    try:
+        return source_path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError as error:
+        message = f"Property source must be inside repository root: {source_path}"
+        raise ValueError(message) from error
 
-    Returns:
-        dict mapping function name to ``{has_given, has_property_marker, lineno}``.
-    """
-    tree = ast.parse(source_path.read_text(encoding="utf-8"))
-    result: dict[str, dict[str, object]] = {}
 
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
-            "test_"
+def _discover_source(source_path: Path, repo_root: Path) -> tuple[_PropertyFunction, ...]:
+    source = source_path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(source_path))
+    bindings = _given_bindings(tree)
+    top_level_functions = {
+        id(node): node for node in tree.body if isinstance(node, _FUNCTION_NODES)
+    }
+    decorated = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, _FUNCTION_NODES) and _has_given_decorator(node, bindings)
+    ]
+    unsupported = [node for node in decorated if id(node) not in top_level_functions]
+    if unsupported:
+        locations = ", ".join(f"{node.name}:{node.lineno}" for node in unsupported)
+        message = f"Unsupported nested or class @given placement in {source_path}: {locations}"
+        raise _UnsupportedPropertyPlacement(message)
+
+    relative_path = _relative_source_path(source_path, repo_root)
+    return tuple(
+        _PropertyFunction(
+            node_id=f"{relative_path}::{node.name}",
+            source_path=source_path,
+            name=node.name,
+            lineno=node.lineno,
+            has_property_marker=_has_property_marker(node),
+        )
+        for node in decorated
+        if node.name.startswith("test_")
+    )
+
+
+def _discover_property_tests(
+    source_paths: Sequence[Path],
+    repo_root: Path,
+) -> _PropertyDiscovery:
+    functions = tuple(
+        function
+        for source_path in source_paths
+        for function in _discover_source(source_path, repo_root)
+    )
+    counts = Counter(function.node_id for function in functions)
+    duplicates = tuple(sorted(node_id for node_id, count in counts.items() if count > 1))
+    return _PropertyDiscovery(functions, duplicates)
+
+
+def _top_level_test_functions(
+    source_path: Path,
+) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+    return tuple(
+        node
+        for node in tree.body
+        if isinstance(node, _FUNCTION_NODES) and node.name.startswith("test_")
+    )
+
+
+def _has_module_property_marker(source_path: Path) -> bool:
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(
+            isinstance(target, ast.Name) and target.id == "pytestmark" for target in node.targets
         ):
-            result[node.name] = {
-                "has_given": _has_given_decorator(node),
-                "has_property_marker": _has_property_marker(node),
-                "lineno": node.lineno,
-            }
-
-    return result
-
-
-def _has_module_pytestmark(source_text: str, tree: ast.Module) -> bool:
-    """Check whether *tree* has a global ``pytestmark`` containing ``property``."""
-    for node in ast.iter_child_nodes(tree):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "pytestmark":
-                    segment = ast.get_source_segment(source_text, node.value)
-                    if segment and "property" in segment:
-                        return True
+            return _marker_collection_has_property(node.value)
     return False
 
 
-def _gather_given_functions(source_path: Path) -> list[str]:
-    """Return names of all ``@given``-decorated test functions."""
-    info = _parse_property_test_functions(source_path)
-    return [name for name, meta in info.items() if meta["has_given"]]
+def _marker_collection_has_property(value: ast.expr) -> bool:
+    """Return whether a marker assignment directly contains the property marker."""
+    values = value.elts if isinstance(value, ast.List | ast.Tuple | ast.Set) else (value,)
+    return any(_is_property_marker(value) for value in values)
 
 
-# ============================================================================
-# Policy 1 — Every @given test has the property marker
-# ============================================================================
+def _is_property_marker(value: ast.expr) -> bool:
+    """Return whether an expression is exactly ``pytest.mark.property``."""
+    return (
+        isinstance(value, ast.Attribute)
+        and value.attr == "property"
+        and isinstance(value.value, ast.Attribute)
+        and value.value.attr == "mark"
+        and isinstance(value.value.value, ast.Name)
+        and value.value.value.id == "pytest"
+    )
+
+
+def _load_inventory(inventory_path: Path) -> tuple[_InventoryProperty, ...]:
+    data = tomllib.loads(inventory_path.read_text(encoding="utf-8"))
+    if set(data) != {"schema_version", "property"} or data["schema_version"] != 1:
+        raise ValueError("Property inventory must use schema_version = 1 and [[property]] entries")
+    raw_properties = data["property"]
+    if not isinstance(raw_properties, list):
+        raise TypeError("Property inventory 'property' value must be a list")
+    return tuple(_parse_inventory_property(value) for value in raw_properties)
+
+
+def _parse_inventory_property(value: object) -> _InventoryProperty:
+    expected_keys = {"node_id", "oracle_type", "rationale"}
+    if not isinstance(value, Mapping) or set(value) != expected_keys:
+        raise ValueError("Each property entry must contain node_id, oracle_type, and rationale")
+    fields = tuple(value[key] for key in ("node_id", "oracle_type", "rationale"))
+    if not all(isinstance(field, str) and field.strip() for field in fields):
+        raise ValueError("Property inventory fields must be non-empty strings")
+    return _InventoryProperty(*fields)
+
+
+def _compare_manifest(
+    discovery: _PropertyDiscovery,
+    inventory: Sequence[_InventoryProperty],
+) -> _ManifestParity:
+    inventory_counts = Counter(item.node_id for item in inventory)
+    inventory_ids = frozenset(inventory_counts)
+    return _ManifestParity(
+        source_only=tuple(sorted(discovery.node_ids - inventory_ids)),
+        inventory_only=tuple(sorted(inventory_ids - discovery.node_ids)),
+        source_duplicates=discovery.duplicate_ids,
+        inventory_duplicates=tuple(
+            sorted(node_id for node_id, count in inventory_counts.items() if count > 1)
+        ),
+    )
+
+
+def _format_ids(title: str, node_ids: Sequence[str]) -> str:
+    values = "\n".join(f"  {node_id}" for node_id in node_ids) or "  (none)"
+    return f"{title}:\n{values}"
+
+
+def _format_parity_failure(parity: _ManifestParity) -> str:
+    return "\n".join(
+        (
+            "PROPERTY MANIFEST POLICY VIOLATION",
+            "==================================",
+            _format_ids("Source-only IDs (missing from inventory)", parity.source_only),
+            _format_ids("Inventory-only IDs (stale)", parity.inventory_only),
+            _format_ids("Duplicate source IDs", parity.source_duplicates),
+            _format_ids("Duplicate inventory IDs", parity.inventory_duplicates),
+            "Run: pytest -p no:cacheprovider tests/test_property_policy.py -v",
+        )
+    )
 
 
 def test_all_given_tests_have_property_marker() -> None:
-    """Every test decorated with ``@given`` carries the ``@pytest.mark.property`` marker."""
-    source_path = Path(__file__).resolve().parent / "test_property.py"
-    source_text = source_path.read_text()
-    info = _parse_property_test_functions(source_path)
+    discovery = _discover_property_tests(_PROPERTY_TEST_FILES, _REPO_ROOT)
+    module_markers = {
+        source_path: _has_module_property_marker(source_path)
+        for source_path in _PROPERTY_TEST_FILES
+    }
+    missing = [
+        function.node_id
+        for function in discovery.functions
+        if not function.has_property_marker and not module_markers[function.source_path]
+    ]
+    assert not missing, _format_ids("@given tests missing the property marker", missing)
 
-    tree = ast.parse(source_text)
-    has_module_marker = _has_module_pytestmark(source_text, tree)
 
-    missing: list[str] = []
-    for name, meta in info.items():
-        if meta["has_given"] and not meta["has_property_marker"] and not has_module_marker:
-            lineno = meta["lineno"]
-            missing.append(
-                f"  {name} at line {lineno}\n"
-                f"    → Add @pytest.mark.property decorator "
-                f"or ensure pytestmark = [pytest.mark.property] is present"
-            )
+def test_explicit_property_markers_use_hypothesis() -> None:
+    discovery = _discover_property_tests(_PROPERTY_TEST_FILES, _REPO_ROOT)
+    given_locations = {(function.source_path, function.name) for function in discovery.functions}
+    invalid = [
+        f"{_relative_source_path(source_path, _REPO_ROOT)}::{node.name}"
+        for source_path in _PROPERTY_TEST_FILES
+        for node in _top_level_test_functions(source_path)
+        if _has_property_marker(node) and (source_path, node.name) not in given_locations
+    ]
+    assert not invalid, _format_ids("Explicit property markers without @given", invalid)
 
-    assert not missing, (
-        "PROPERTY MARKER POLICY VIOLATION\n"
-        "===============================\n"
-        f"The following @given tests are missing the 'property' marker:\n"
-        f"{''.join(missing)}\n"
-        "REPRODUCTION BLOB:\n"
-        f"  file: {source_path}\n"
-        f"  fix:  Add @pytest.mark.property decorator above each listed test\n"
-        f"        or add pytestmark = [pytest.mark.property] at module level.\n"
-        f"  ci:   Run `pytest tests/test_property_policy.py -v` to re-validate."
+
+def test_property_inventory_exactly_matches_source() -> None:
+    discovery = _discover_property_tests(_PROPERTY_TEST_FILES, _REPO_ROOT)
+    parity = _compare_manifest(discovery, _load_inventory(_PROPERTY_INVENTORY))
+    assert parity.is_exact, _format_parity_failure(parity)
+
+
+def test_property_source_scope_comes_from_make() -> None:
+    """The manifest cannot reduce the independently declared source scope."""
+    assert _PROPERTY_TEST_FILES
+    assert all(path.is_file() and path.is_relative_to(_REPO_ROOT) for path in _PROPERTY_TEST_FILES)
+
+
+def test_property_source_scope_rejects_unsafe_or_duplicate_assignments(tmp_path: Path) -> None:
+    """Malformed Make source declarations fail closed."""
+    makefile = tmp_path / "Makefile"
+    makefile.write_text(
+        "override PROPERTY_TEST_FILES := ../outside.py\n"
+        "override PROPERTY_TEST_FILES := tests/test_other.py\n",
+        encoding="utf-8",
     )
+    with pytest.raises(ValueError, match="exactly once"):
+        _load_property_test_files(makefile, tmp_path)
 
 
-# ============================================================================
-# Policy 2 — Every property-marked test uses Hypothesis
-# ============================================================================
-
-
-def test_all_property_marked_tests_use_hypothesis() -> None:
-    """Every test with an *explicit* ``@pytest.mark.property`` must use ``@given``.
-
-    Tests in a module with ``pytestmark = [pytest.mark.property]`` are exempt
-    from this check — the blanket marker is intentional and the file is
-    designated as a property-test module.  Only individually-decorated tests
-    are verified for Hypothesis use.
-    """
-    source_path = Path(__file__).resolve().parent / "test_property.py"
-    info = _parse_property_test_functions(source_path)
-
-    invalid: list[str] = []
-    for name, meta in info.items():
-        if meta["has_property_marker"] and not meta["has_given"]:
-            lineno = meta["lineno"]
-            invalid.append(
-                f"  {name} at line {lineno}\n"
-                f"    → Test has explicit @pytest.mark.property but does not use @given.\n"
-                f"    Either add @given or remove the explicit property marker."
-            )
-
-    assert not invalid, (
-        "PROPERTY MARKER POLICY VIOLATION\n"
-        "===============================\n"
-        f"The following property-marked tests do not use Hypothesis (@given):\n"
-        f"{''.join(invalid)}\n"
-        "REPRODUCTION BLOB:\n"
-        f"  file: {source_path}\n"
-        f"  fix:  Either decorate with @given or remove the @pytest.mark.property marker.\n"
-        f"  ci:   Run `pytest tests/test_property_policy.py -v` to re-validate."
+@pytest.mark.parametrize(
+    "marker_value",
+    ['"pytest.mark.property"', "pytest.mark.property if False else pytest.mark.slow"],
+)
+def test_module_property_marker_rejects_non_marker_expressions(
+    tmp_path: Path, marker_value: str
+) -> None:
+    """Strings and conditional expressions do not satisfy marker policy."""
+    source_path = _write_synthetic_source(
+        tmp_path,
+        f"import pytest\npytestmark = [{marker_value}]\n",
     )
+    assert not _has_module_property_marker(source_path)
 
 
-# ============================================================================
-# Policy 3 — Simulated CI failure emits usable reproduction blob
-# ============================================================================
+def _write_synthetic_source(tmp_path: Path, source: str) -> Path:
+    source_path = tmp_path / "test_synthetic.py"
+    source_path.write_text(source, encoding="utf-8")
+    return source_path
+
+
+def test_discovery_supports_direct_aliased_module_and_async_forms(tmp_path: Path) -> None:
+    source_path = _write_synthetic_source(
+        tmp_path,
+        """
+from hypothesis import given
+from hypothesis import given as generated
+import hypothesis
+import hypothesis as hyp
+
+@given(value=None)
+def test_direct(value): pass
+
+@generated(value=None)
+def test_direct_alias(value): pass
+
+@hypothesis.given(value=None)
+def test_module(value): pass
+
+@hyp.given(value=None)
+async def test_module_alias(value): pass
+""",
+    )
+    discovery = _discover_property_tests((source_path,), tmp_path)
+    assert discovery.node_ids == {
+        "test_synthetic.py::test_direct",
+        "test_synthetic.py::test_direct_alias",
+        "test_synthetic.py::test_module",
+        "test_synthetic.py::test_module_alias",
+    }
+
+
+def test_discovery_ignores_unrelated_given_attribute(tmp_path: Path) -> None:
+    source_path = _write_synthetic_source(
+        tmp_path,
+        """
+import unrelated
+
+@unrelated.given(value=None)
+def test_not_hypothesis(value): pass
+""",
+    )
+    assert not _discover_property_tests((source_path,), tmp_path).node_ids
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+from hypothesis import given
+def outer():
+    @given(value=None)
+    def test_nested(value): pass
+""",
+        """
+from hypothesis import given
+class TestProperties:
+    @given(value=None)
+    def test_method(self, value): pass
+""",
+    ],
+)
+def test_discovery_rejects_unsupported_property_placements(
+    tmp_path: Path,
+    source: str,
+) -> None:
+    source_path = _write_synthetic_source(tmp_path, source)
+    with pytest.raises(_UnsupportedPropertyPlacement, match="Unsupported nested or class"):
+        _discover_property_tests((source_path,), tmp_path)
+
+
+def test_discovery_reports_duplicate_source_ids(tmp_path: Path) -> None:
+    source_path = _write_synthetic_source(
+        tmp_path,
+        """
+from hypothesis import given
+@given(value=None)
+def test_duplicate(value): pass
+@given(value=None)
+def test_duplicate(value): pass
+""",
+    )
+    discovery = _discover_property_tests((source_path,), tmp_path)
+    assert discovery.duplicate_ids == ("test_synthetic.py::test_duplicate",)
+
+
+def test_manifest_comparison_separates_missing_stale_and_duplicate_ids() -> None:
+    source_function = _PropertyFunction(
+        "tests/test_source.py::test_missing",
+        Path("tests/test_source.py"),
+        "test_missing",
+        1,
+        False,
+    )
+    discovery = _PropertyDiscovery(
+        functions=(source_function,),
+        duplicate_ids=("tests/test_source.py::test_source_duplicate",),
+    )
+    stale = _InventoryProperty("tests/test_source.py::test_stale", "invariant", "Reviewed")
+    parity = _compare_manifest(discovery, (stale, stale))
+
+    assert parity.source_only == ("tests/test_source.py::test_missing",)
+    assert parity.inventory_only == ("tests/test_source.py::test_stale",)
+    assert parity.source_duplicates == ("tests/test_source.py::test_source_duplicate",)
+    assert parity.inventory_duplicates == ("tests/test_source.py::test_stale",)
+    message = _format_parity_failure(parity)
+    assert "Source-only IDs (missing from inventory)" in message
+    assert "Inventory-only IDs (stale)" in message
 
 
 def _build_reproduction_blob(
@@ -186,216 +496,78 @@ def _build_reproduction_blob(
     hypothesis_seed: int | None = None,
     **kwargs: Any,
 ) -> str:
-    """Construct a standalone reproduction command for a failing property test.
+    """Construct a command for manually replaying a property-test seed.
 
     Args:
         test_id: Fully qualified pytest node ID.
-        hypothesis_seed: The seed to replay (from Hypothesis output).
+        hypothesis_seed: The seed to replay from Hypothesis output.
         **kwargs: Additional diagnostic key-value pairs.
 
     Returns:
-        A shell command and context that reproduces the failure.
+        A shell command and diagnostic context for manual reproduction.
     """
     seed_arg = f" --hypothesis-seed={hypothesis_seed}" if hypothesis_seed is not None else ""
-    profile_arg = " --hypothesis-profile=ci"
-
     lines = [
         "# --- Reproduction blob ---",
         f"# test_id:  {test_id}",
         f"# seed:     {hypothesis_seed}",
     ]
-    for key, value in sorted(kwargs.items()):
-        lines.append(f"# {key}: {value}")
+    lines.extend(f"# {key}: {value}" for key, value in sorted(kwargs.items()))
     lines.extend(
-        [
+        (
             "# ---",
-            f"pytest {test_id} -x -s --tb=long{seed_arg}{profile_arg}",
+            f"pytest {test_id} -x -s --tb=long{seed_arg} --hypothesis-profile=ci",
             "# --- End reproduction blob ---",
-        ]
+        )
     )
     return "\n".join(lines)
 
 
-_EXAMPLE_SEED: int = 12345
+_EXAMPLE_SEED = 12345
 
 
 @given(value=st.integers(min_value=-100, max_value=100))
 @example(value=0)
 @settings()
 def test_fake_property_that_always_passes(value: int) -> None:
-    """Trivial property used only to prove the reproduction blob is well-formed."""
     assert isinstance(value, int)
 
 
 def test_reproduction_blob_is_well_formed() -> None:
-    """The reproduction blob generator produces a runnable command.
-
-    This is tested directly (not via an actual Hypothesis failure) to
-    avoid making the suite depend on the Hypothesis example database or
-    specific random seeds.
-    """
-    test_id = "tests/test_property.py::test_fake_property_that_always_passes"
+    test_id = "tests/test_property_policy.py::test_fake_property_that_always_passes"
     blob = _build_reproduction_blob(
         test_id,
         hypothesis_seed=_EXAMPLE_SEED,
-        note="This is a policy validation, not an actual failure",
+        note="This validates the helper, not automatic failure output",
     )
 
     assert test_id in blob
     assert str(_EXAMPLE_SEED) in blob
-    assert "pytest " in blob
-    assert "--hypothesis-seed=" in blob
-    assert "--- Reproduction blob ---" in blob
-    assert "--- End reproduction blob ---" in blob
-
-    # Verify it parses as a well-formed shell command line
-    cmd_line = next(line for line in blob.splitlines() if line.startswith("pytest "))
-    assert "tests/" in cmd_line
-    assert "-x" in cmd_line
-    assert "--tb=long" in cmd_line
+    command = next(line for line in blob.splitlines() if line.startswith("pytest "))
+    assert "--hypothesis-seed=" in command
+    assert "--hypothesis-profile=ci" in command
+    assert "-x -s --tb=long" in command
+    assert blob.endswith("# --- End reproduction blob ---")
 
 
 def test_reproduction_blob_includes_all_diagnostics() -> None:
-    """Extra kwargs appear in the reproduction blob."""
     blob = _build_reproduction_blob(
         "tests/test_foo.py::test_bar",
         hypothesis_seed=42,
         detected_violation="merge returned duplicates",
         input_urls="a,b,c",
     )
-    assert "detected_violation" in blob
-    assert "merge returned duplicates" in blob
-    assert "input_urls" in blob
-    assert "a,b,c" in blob
-    assert "42" in blob
+    assert "# detected_violation: merge returned duplicates" in blob
+    assert "# input_urls: a,b,c" in blob
+    assert "# seed:     42" in blob
 
 
-# ============================================================================
-# Policy 4 — Marker count integrity (defence against accidental removal)
-# ============================================================================
-
-
-def test_property_test_count_within_expected_range() -> None:
-    """Sanity-check that the number of @given tests does not unexpectedly shrink.
-
-    The count is compared against the property-inventory.toml baseline.
-    Accidental deletion of @given decorators (e.g. during refactors)
-    would drop this number, which this test catches.
-    """
-    source_path = Path(__file__).resolve().parent / "test_property.py"
-    given_names = _gather_given_functions(source_path)
-
-    # Minimum expected — from inventory baseline (59 + 4 new in Wave 6)
-    minimum_expected = 60
-
-    assert len(given_names) >= minimum_expected, (
-        "PROPERTY COUNT POLICY VIOLATION\n"
-        "==============================\n"
-        f"Found {len(given_names)} @given tests, expected at least {minimum_expected}.\n"
-        "REPRODUCTION BLOB:\n"
-        f"  file:    {source_path}\n"
-        f"  current: {len(given_names)} @given tests\n"
-        f"  minimum: {minimum_expected}\n"
-        f"  action:  Verify that @given decorators were not accidentally removed.\n"
-        f"           Check test_property.py for removed or renamed tests.\n"
-        f"  ci:      Run `pytest tests/test_property_policy.py -v` to re-validate."
-    )
-
-
-# ============================================================================
-# Policy 5 — Structural integrity: no dead Hypothesis imports
-# ============================================================================
-
-
-def test_hypothesis_imports_are_used() -> None:
-    """Verify that key Hypothesis imports in test_property.py are actually used.
-
-    Checks that ``given``, ``settings``, ``assume``, and ``example`` appear
-    as decorators in the file (not just as a stale import).
-    """
-    source_path = Path(__file__).resolve().parent / "test_property.py"
-    source = source_path.read_text()
-
-    used_constructs: dict[str, int] = {}
-
-    # Count usage occurrences as decorators or call expressions
+def test_hypothesis_constructs_are_used_in_property_source() -> None:
+    source = _PROPERTY_TEST_FILES[0].read_text(encoding="utf-8")
     tree = ast.parse(source)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            for deco in node.decorator_list:
-                name = _unpack_decorator_name(deco.func) if isinstance(deco, ast.Call) else None
-                if isinstance(deco, ast.Name):
-                    name = deco.id
-                if isinstance(deco, ast.Attribute):
-                    name = deco.attr
-                if name in {"given", "example"}:
-                    used_constructs[name] = used_constructs.get(name, 0) + 1
-        if isinstance(node, ast.Call):
-            name = _unpack_decorator_name(node.func)
-            if name in {"assume", "settings"}:
-                used_constructs[name] = used_constructs.get(name, 0) + 1
-
-    assert used_constructs.get("given", 0) > 0, (
-        "PROPERTY INTEGRITY VIOLATION\n"
-        "==========================\n"
-        "No @given decorator found in test_property.py.  Verify imports are in use.\n"
-    )
-    assert used_constructs.get("settings", 0) > 0, (
-        "PROPERTY INTEGRITY VIOLATION\n"
-        "==========================\n"
-        "No @settings usage found.  Verify settings are applied to at least one test.\n"
-    )
-
-
-# ============================================================================
-# Policy 6 — Simulated marker violation produces actionable output
-# ============================================================================
-
-
-_MARKER_VIOLATION_MESSAGE = (
-    "PROPERTY MARKER POLICY VIOLATION — SIMULATED CI FAILURE\n"
-    "=======================================================\n"
-    "Test ID:    {test_id}\n"
-    "File:       {source_file}\n"
-    "Line:       {lineno}\n"
-    "Violation:  {reason}\n"
-    "---\n"
-    "Fix: Add the following decorator above the test function:\n"
-    "\n"
-    "    @pytest.mark.property\n"
-    "\n"
-    "Or ensure the module has:\n"
-    "\n"
-    "    pytestmark = [pytest.mark.property]\n"
-    "\n"
-    "Reproduction:\n"
-    "    pytest tests/test_property_policy.py::test_marker_violation_message_is_usable -v\n"
-    "--- End CI failure blob ---"
-)
-
-
-def test_marker_violation_message_is_usable() -> None:
-    """When a marker violation is detected, the error message is self-contained.
-
-    This test validates the template itself — it must include:
-    - Test identification (name, file, line)
-    - The specific violation reason
-    - A concrete fix instruction
-    - A reproduction command
-    """
-    msg = _MARKER_VIOLATION_MESSAGE.format(
-        test_id="tests/test_property.py::test_encrypt_decrypt_roundtrip",
-        source_file="tests/test_property.py",
-        lineno=77,
-        reason="@given present but @pytest.mark.property missing",
-    )
-
-    # Must contain actionable information
-    assert "test_encrypt_decrypt_roundtrip" in msg
-    assert "tests/test_property.py" in msg
-    assert "77" in msg or ":77" in msg
-    assert "Fix:" in msg or "Add" in msg
-    assert "pytest.mark.property" in msg
-    assert "pytestmark" in msg
-    assert "Reproduction:" in msg or "reproduction" in msg.lower()
-    assert "--- End CI failure blob ---" in msg
+    called_names = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert {"given", "settings", "assume", "example"} <= called_names

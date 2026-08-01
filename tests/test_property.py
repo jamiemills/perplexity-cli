@@ -12,7 +12,6 @@ import asyncio
 import json
 import re
 import time
-import warnings
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -68,8 +67,6 @@ from tests.strategies import (
     thread_record_lists,
     utc_datetimes,
 )
-
-warnings.filterwarnings("ignore", message=".*Unknown pytest.mark.property.*")
 
 pytestmark = [pytest.mark.property]
 
