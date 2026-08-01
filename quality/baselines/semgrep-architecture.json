@@ -1,6 +1,6 @@
 {
   "fingerprints": [
     "src/perplexity_cli/attachments/upload_manager.py:51:function-local-import",
-    "src/perplexity_cli/threads/scraper.py:59:function-local-import"
+    "src/perplexity_cli/threads/scraper.py:111:function-local-import"
   ]
 }

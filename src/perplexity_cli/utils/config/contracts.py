@@ -1,15 +1,15 @@
-"""Pure data types, constants, and type guards for configuration (no IO)."""
+"""Pure data types, constants, and type guards for configuration (no IO).
+
+The Pydantic configuration models live in :mod:`perplexity_cli.config.models`
+and are re-exported by the package facade, so this module stays dependency-free
+to keep the config contract leaf stable.
+"""
 
 from __future__ import annotations
 
 from typing import Any, TypeGuard
 
-from perplexity_cli.config.models import FeatureConfig, RateLimitConfig, URLConfig
-
 __all__ = [
-    "FeatureConfig",
-    "RateLimitConfig",
-    "URLConfig",
     "default_feature_config",
     "default_rate_limiting",
     "is_str_dict",

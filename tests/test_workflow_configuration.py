@@ -207,6 +207,37 @@ def test_ci_has_windows_packaging_smoke_job() -> None:
         assert command in recipe
 
 
+def test_ci_has_repository_policy_job() -> None:
+    """CI must run the full deterministic quality-gate inventory in CI."""
+    ci = _load_workflow("ci.yml")
+    job = ci["jobs"]["repository-policy"]
+    assert job["runs-on"] == "ubuntu-latest"
+    assert job["timeout-minutes"] == 30
+    assert "if" not in job
+    steps = job["steps"]
+    names = [step.get("name", "") for step in steps if isinstance(step, dict)]
+    assert "Warm uvx tool cache" in names
+    assert "Run ci-quality inventory" in names
+    python_step = next(
+        step
+        for step in steps
+        if isinstance(step, dict) and "actions/setup-python" in str(step.get("uses", ""))
+    )
+    assert python_step["with"]["python-version"] == "3.12"
+    recipe = " ".join(str(step.get("run", "")) for step in steps if isinstance(step, dict))
+    assert "uv sync --all-extras --locked --group dev" in recipe
+    assert "uvx --from semgrep==1.171.0 semgrep --version" in recipe
+    assert "uvx --from actionlint-py==1.7.12.24 actionlint --version" in recipe
+    assert "make ci-quality" in recipe
+    assert "twine" not in recipe
+    assert names.index("Warm uvx tool cache") < names.index("Run ci-quality inventory")
+    for step in steps:
+        if isinstance(step, dict):
+            assert "env" not in step, (
+                f"repository-policy step must not use secrets: {step.get('name')}"
+            )
+
+
 def test_ci_test_coverage_installs_gitleaks() -> None:
     """The coverage job must install gitleaks before running the suite."""
     ci = _load_workflow("ci.yml")

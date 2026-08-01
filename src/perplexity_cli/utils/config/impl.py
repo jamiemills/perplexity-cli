@@ -10,7 +10,7 @@ from importlib import (  # nosemgrep: python.lang.compatibility.python37.python3
     resources,
 )
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from perplexity_cli.config.models import FeatureConfig, RateLimitConfig, URLConfig
 from perplexity_cli.utils.config.contracts import (
@@ -575,3 +575,31 @@ def set_feature(key: str, value: object) -> None:
         json.dump(config_content, f, indent=2)
 
     clear_feature_config_cache()
+
+
+class ConfigProviderImpl:
+    """Concrete config provider binding the module-level accessor functions.
+
+    The module-level functions below genuinely implement the abstract
+    :class:`ConfigProvider` contract; this object exposes them as a single
+    provider so the reference is real and usable.
+    """
+
+    get_urls = staticmethod(get_urls)
+    get_feature_config = staticmethod(get_feature_config)
+    get_rate_limiting_config = staticmethod(get_rate_limiting_config)
+    get_config_paths = staticmethod(get_config_paths)
+    set_feature = staticmethod(set_feature)
+
+
+if TYPE_CHECKING:
+    from perplexity_cli.utils.config import ConfigProvider
+
+
+def get_config_provider() -> ConfigProvider:
+    """Return a concrete object satisfying the config accessor contract.
+
+    The provider is a genuine implementation of the abstract
+    :class:`ConfigProvider` interface defined by the package facade.
+    """
+    return ConfigProviderImpl()

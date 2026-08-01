@@ -1,15 +1,4 @@
 {
   "version": 1,
-  "accepted": [
-    {
-      "rule": "dynamic-import-non-constant",
-      "file": "src/perplexity_cli/query_runner.py:142",
-      "message": "query_runner: importlib.import_module() at line 142 uses a non-constant argument. All production dynamic imports must use string literals with explicit allowlist entries."
-    },
-    {
-      "rule": "dynamic-import-direction",
-      "file": "src/perplexity_cli/query_runner.py:421",
-      "message": "query_runner (layer: application) dynamically imports attachments (layer: adapter) at line 421, but application may only import from: application, domain, ports, shared_pure"
-    }
-  ]
+  "accepted": []
 }

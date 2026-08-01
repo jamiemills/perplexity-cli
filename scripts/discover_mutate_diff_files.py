@@ -34,8 +34,8 @@ if TYPE_CHECKING:
     from scripts.differential_context import DiffContext
 
 _PROJECT_ROOT_PATH = Path(__file__).resolve().parents[1]
-if str(_PROJECT_ROOT_PATH) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT_PATH))
+if __package__ in (None, ""):
+    sys.path.append(str(_PROJECT_ROOT_PATH))
 
 logger = logging.getLogger(__name__)
 

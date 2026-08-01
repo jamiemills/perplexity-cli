@@ -53,12 +53,15 @@ def _run_script(
     cwd: Path = PROJECT_ROOT,
 ) -> subprocess.CompletedProcess[str]:
     env = {**dict(__import__("os").environ), **(env_extra or {})}
+    # gitleaks scans the full commit history (754+ commits) in ci-full and
+    # CI_NO_SKIP modes; the bound must accommodate parallel xdist workers
+    # sharing the disk, so a generous fixed timeout is used throughout.
     result = subprocess.run(
         ["bash", str(SCRIPT), *args],
         capture_output=True,
         text=True,
         cwd=str(cwd),
-        timeout=15,
+        timeout=60,
         input=stdin_text,
         env=env,
     )

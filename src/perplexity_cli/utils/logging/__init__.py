@@ -1,14 +1,26 @@
-"""Logging configuration and utilities for Perplexity CLI."""
+"""Logging configuration and utilities for Perplexity CLI.
+
+The package's public abstract contract — the :class:`LoggerFactory` protocol,
+and the :class:`RedactionAgent` protocol defined alongside its concrete
+implementation in :mod:`perplexity_cli.utils.logging.impl` — is exposed here
+so that the stable facade honestly owns the abstract interface its callers
+depend on.
+"""
 
 from __future__ import annotations
 
-from perplexity_cli.utils.logging.contracts import LoggerFactory as LoggerFactory
-from perplexity_cli.utils.logging.contracts import RedactionAgent as RedactionAgent
+import logging
+from pathlib import Path
+from typing import Protocol, runtime_checkable
+
 from perplexity_cli.utils.logging.impl import (
     DynamicStderrHandler as DynamicStderrHandler,
 )
 from perplexity_cli.utils.logging.impl import (
     JSONLogFormatter as JSONLogFormatter,
+)
+from perplexity_cli.utils.logging.impl import (
+    RedactionAgent as RedactionAgent,
 )
 from perplexity_cli.utils.logging.impl import (
     configure_quiet_mode as configure_quiet_mode,
@@ -40,6 +52,24 @@ from perplexity_cli.utils.logging.impl import (
 from perplexity_cli.utils.logging.impl import (
     setup_logging as setup_logging,
 )
+
+
+@runtime_checkable
+class LoggerFactory(Protocol):
+    """Protocol for obtaining logger instances and configuring logging."""
+
+    def get_logger(self, name: str | None = None) -> logging.Logger:
+        """Return a logger instance, optionally child-scoped."""
+        ...
+
+    def setup_logging(
+        self,
+        verbosity: str = "warning",
+        log_file: Path | None = None,
+    ) -> logging.Logger:
+        """Configure logging for the application."""
+        ...
+
 
 __all__ = [
     "DynamicStderrHandler",

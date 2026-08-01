@@ -123,6 +123,33 @@ jobs:
       - name: Run hermetic integration tests
         run: make test-integration
 
+  repository-policy:
+    name: Repository Policy (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --locked --group dev
+
+      - name: Warm uvx tool cache
+        run: |
+          uvx --from semgrep==1.171.0 semgrep --version
+          uvx --from actionlint-py==1.7.12.24 actionlint --version
+
+      - name: Run ci-quality inventory
+        run: make ci-quality
+
   test-compat:
     name: Compatibility (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

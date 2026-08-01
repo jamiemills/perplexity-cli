@@ -321,7 +321,7 @@ class TestAtomicCsvWrite:
         def _fail(*_args, **_kwargs):
             raise OSError("injected replace failure")
 
-        monkeypatch.setattr("perplexity_cli.threads.exporter._replace_temp", _fail)
+        monkeypatch.setattr("perplexity_cli.utils.atomic_write._replace_temp", _fail)
         with pytest.raises(OSError, match="injected replace failure"):
             write_threads_csv([ThreadRecord(title="t", url="u", created_at="c")], output_path)
 
@@ -335,7 +335,7 @@ class TestAtomicCsvWrite:
         def _fail(*_args, **_kwargs):
             raise OSError("injected replace failure")
 
-        monkeypatch.setattr("perplexity_cli.threads.exporter._replace_temp", _fail)
+        monkeypatch.setattr("perplexity_cli.utils.atomic_write._replace_temp", _fail)
         with pytest.raises(OSError, match="injected replace failure"):
             write_threads_csv([ThreadRecord(title="t", url="u", created_at="c")], output_path)
 

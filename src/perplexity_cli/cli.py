@@ -3,14 +3,78 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import click
 
-from perplexity_cli import commands
+from perplexity_cli import attachments as _attachments_module
+from perplexity_cli import commands, query_runner
+from perplexity_cli.api.endpoints import PerplexityAPI
+from perplexity_cli.auth.token_manager import TokenManager
+from perplexity_cli.auth.utils import load_token_optional
 from perplexity_cli.commands import register_commands
-from perplexity_cli.utils.config import get_debug_mode_enabled
-from perplexity_cli.utils.logging import get_default_log_file, setup_logging
+from perplexity_cli.error_handler import handle_error
+from perplexity_cli.formatting import get_formatter, list_formatters
+from perplexity_cli.utils.async_bridge import run_async
+from perplexity_cli.utils.config import (
+    get_config_paths,
+    get_debug_mode_enabled,
+    get_save_cookies_enabled,
+)
+from perplexity_cli.utils.file_handler import load_attachments, resolve_file_arguments
+from perplexity_cli.utils.logging import (
+    get_default_log_file,
+    get_logger,
+    redact_path,
+    redact_text,
+    redact_url,
+    setup_logging,
+)
+from perplexity_cli.utils.style_manager import StyleManager
 from perplexity_cli.utils.version import get_version
+
+# ---------------------------------------------------------------------------
+# Composition-root wiring: query_runner lives in the application layer and may
+# not statically import adapter or presentation modules, so its seam
+# attributes are populated here where every layer is importable.  Seams that
+# are already bound (for example fakes installed by callers before cli is
+# imported) are left untouched so the wiring is non-destructive.
+# ---------------------------------------------------------------------------
+
+
+def _wire_query_runner_seam(name: str, collaborator: Any) -> None:
+    """Populate an unbound query_runner seam with a concrete collaborator."""
+    if getattr(query_runner, name) is None:
+        setattr(query_runner, name, collaborator)
+
+
+def _attachment_uploader_factory(**kwargs: Any) -> Any:
+    """Build the real attachment uploader, reading the seam at call time.
+
+    The ``perplexity_cli.attachments.AttachmentUploader`` module attribute is
+    patched by tests, so it must be re-read whenever an uploader is
+    constructed rather than captured at import time.
+    """
+    return _attachments_module.AttachmentUploader(**kwargs)
+
+
+_wire_query_runner_seam("handle_error", handle_error)
+_wire_query_runner_seam("get_logger", get_logger)
+_wire_query_runner_seam("redact_path", redact_path)
+_wire_query_runner_seam("redact_text", redact_text)
+_wire_query_runner_seam("redact_url", redact_url)
+_wire_query_runner_seam("get_config_paths", get_config_paths)
+_wire_query_runner_seam("get_save_cookies_enabled", get_save_cookies_enabled)
+_wire_query_runner_seam("get_formatter", get_formatter)
+_wire_query_runner_seam("list_formatters", list_formatters)
+_wire_query_runner_seam("StyleManager", StyleManager)
+_wire_query_runner_seam("TokenManager", TokenManager)
+_wire_query_runner_seam("load_token_optional", load_token_optional)
+_wire_query_runner_seam("PerplexityAPI", PerplexityAPI)
+_wire_query_runner_seam("resolve_file_arguments", resolve_file_arguments)
+_wire_query_runner_seam("load_attachments", load_attachments)
+_wire_query_runner_seam("run_async", run_async)
+_wire_query_runner_seam("AttachmentUploader", _attachment_uploader_factory)
 
 
 @click.group()

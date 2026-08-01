@@ -7,9 +7,39 @@ import sys
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TextIO
+from typing import Protocol, TextIO, runtime_checkable
 
 from perplexity_cli.utils.config import get_config_paths
+
+
+@runtime_checkable
+class RedactionAgent(Protocol):
+    """Contract for redacting sensitive values before logging.
+
+    The module-level ``redact_*`` helpers are the genuine implementation of
+    this protocol; the facade re-exports it so that the abstract redaction
+    contract is owned alongside its concrete implementation.
+    """
+
+    def redact_path(self, value: str | Path | None) -> str:
+        """Redact a local path for logging."""
+        ...
+
+    def redact_text(self, value: str | None, max_length: int = 32) -> str:
+        """Redact free-form text while preserving a short preview."""
+        ...
+
+    def redact_url(self, value: str | None) -> str:
+        """Redact a URL for logging."""
+        ...
+
+    def redact_mapping_keys(self, mapping: Mapping[str, object] | None) -> str:
+        """Redact mapping contents but keep the key count."""
+        ...
+
+    def redact_response_text(self, value: str | None) -> str:
+        """Redact HTTP response text for logs."""
+        ...
 
 
 class DynamicStderrHandler(logging.StreamHandler[TextIO]):

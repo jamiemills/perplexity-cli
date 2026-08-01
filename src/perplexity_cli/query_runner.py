@@ -4,9 +4,9 @@ This module keeps Click wiring in ``cli.py`` thin while preserving the
 existing query behaviour.  It lives in the application layer and therefore
 imports only from the standard library plus ``shared_pure``, ``domain``,
 ``ports`` and ``application`` modules.  Adapter and presentation
-collaborators are resolved at runtime through :func:`importlib.import_module`
-and exposed as module-level bindings; those bindings are the injection seams
-that the presentation layer (or tests) may override.
+collaborators are injected by the composition root (``cli.py``) as
+module-level bindings; those bindings are the injection seams that the
+composition root (or tests) may override.
 
 Compatibility note: human and JSON query failures both route through
 ``error_handler.handle_error`` so the same operation returns the same
@@ -16,7 +16,6 @@ correction (the previous human-only helpers exited 1 for every error).
 
 from __future__ import annotations
 
-import importlib
 import json
 import logging
 import os
@@ -27,16 +26,13 @@ import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NoReturn, Protocol
+from typing import Any, Protocol
 
 from perplexity_cli._types import OutputFormat, QueryOptions, SchemaInclusion
 from perplexity_cli.api.models import Answer, QueryInput, TraceContext, WebResult
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.envelope import Meta, envelope_to_dict, success_envelope
-from perplexity_cli.ports import (
-    AttachmentUploader as AttachmentUploaderPort,
-)
-from perplexity_cli.ports import AuthTokenStore, QueryGateway
+from perplexity_cli.ports import QueryGateway
 from perplexity_cli.query_streaming import stream_query_response
 from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.exceptions import (
@@ -52,23 +48,6 @@ _QUERY_JSON_COMMAND = "pxcli query --json"
 # ---------------------------------------------------------------------------
 # Ports (structural protocols)
 # ---------------------------------------------------------------------------
-
-
-class _ErrorTranslator(Protocol):
-    """Port for translating query exceptions into output and a taxonomy exit code.
-
-    Satisfied structurally by ``error_handler.handle_error``.
-    """
-
-    def __call__(
-        self,
-        exc: BaseException,
-        command: str,
-        output_format: OutputFormat = "human",
-        include_schema: SchemaInclusion = "no_schema",
-    ) -> NoReturn:
-        """Translate an exception into channel-appropriate output, then exit."""
-        ...
 
 
 class _Formatter(Protocol):
@@ -97,96 +76,34 @@ class _Formatter(Protocol):
         ...
 
 
-class _ApiFactory(Protocol):
-    """Factory port for the query gateway, satisfied by ``api.endpoints.PerplexityAPI``."""
-
-    def __call__(
-        self,
-        token: str | None,
-        cookies: dict[str, str] | None = None,
-        timeout: int | None = None,
-    ) -> QueryGateway:
-        """Build a query gateway for the given credentials and timeout."""
-        ...
-
-
-class _StyleProvider(Protocol):
-    """Provider of the configured style prompt."""
-
-    def load_style(self) -> str | None:
-        """Return the configured style prompt, or None when unset."""
-        ...
-
-
-class _ConfigPaths(Protocol):
-    """Structural subset of ``utils.config.ConfigPaths`` used for debug logging."""
-
-    token_path: Path
-
-
 # ---------------------------------------------------------------------------
-# Adapter / presentation bindings (runtime-resolved injection seams)
+# Adapter / presentation bindings (composition-root injection seams)
 # ---------------------------------------------------------------------------
+#
+# The application layer is not permitted to statically import adapter or
+# presentation modules (enforced by ``scripts/check_architecture.py``), so the
+# concrete collaborators are injected by the composition root (``cli.py``)
+# into these module-level names.  They are read at call time, which keeps them
+# patchable by tests exactly as the previous runtime-resolved bindings were.
 
 
-def _import_attribute(dotted_path: str) -> Any:
-    """Resolve a dotted ``module.attribute`` path at runtime.
-
-    The application layer is not permitted to statically import adapter or
-    presentation modules (enforced by ``scripts/check_architecture.py``), so
-    concrete collaborators are resolved lazily through importlib.  The
-    resulting module-level names remain patchable, which is how tests and
-    callers override the default wiring.
-    """
-    module_path, _, attribute = dotted_path.rpartition(".")
-    module = importlib.import_module(module_path)
-    return getattr(module, attribute)
-
-
-handle_error: _ErrorTranslator = _import_attribute("perplexity_cli.error_handler.handle_error")
-get_logger: Callable[[], logging.Logger] = _import_attribute(
-    "perplexity_cli.utils.logging.get_logger"
-)
-redact_path: Callable[[str | Path | None], str] = _import_attribute(
-    "perplexity_cli.utils.logging.redact_path"
-)
-redact_text: Callable[[str | None], str] = _import_attribute(
-    "perplexity_cli.utils.logging.redact_text"
-)
-redact_url: Callable[[str | None], str] = _import_attribute(
-    "perplexity_cli.utils.logging.redact_url"
-)
-get_config_paths: Callable[[], _ConfigPaths] = _import_attribute(
-    "perplexity_cli.utils.config.get_config_paths"
-)
-get_save_cookies_enabled: Callable[[], bool] = _import_attribute(
-    "perplexity_cli.utils.config.get_save_cookies_enabled"
-)
-get_formatter: Callable[[str], _Formatter] = _import_attribute(
-    "perplexity_cli.formatting.get_formatter"
-)
-list_formatters: Callable[[], list[str]] = _import_attribute(
-    "perplexity_cli.formatting.list_formatters"
-)
-StyleManager: Callable[[], _StyleProvider] = _import_attribute(
-    "perplexity_cli.utils.style_manager.StyleManager"
-)
-TokenManager: Callable[[], AuthTokenStore] = _import_attribute(
-    "perplexity_cli.auth.token_manager.TokenManager"
-)
-load_token_optional: Callable[
-    [AuthTokenStore, logging.Logger], tuple[str | None, dict[str, str] | None]
-] = _import_attribute("perplexity_cli.auth.utils.load_token_optional")
-PerplexityAPI: _ApiFactory = _import_attribute("perplexity_cli.api.endpoints.PerplexityAPI")
-resolve_file_arguments: Callable[..., list[Path]] = _import_attribute(
-    "perplexity_cli.utils.file_handler.resolve_file_arguments"
-)
-load_attachments: Callable[[list[Path]], list[FileAttachment]] = _import_attribute(
-    "perplexity_cli.utils.file_handler.load_attachments"
-)
-run_async: Callable[[object], Any] = _import_attribute(
-    "perplexity_cli.utils.async_bridge.run_async"
-)
+handle_error: Any = None
+get_logger: Any = None
+redact_path: Any = None
+redact_text: Any = None
+redact_url: Any = None
+get_config_paths: Any = None
+get_save_cookies_enabled: Any = None
+get_formatter: Any = None
+list_formatters: Any = None
+StyleManager: Any = None
+TokenManager: Any = None
+load_token_optional: Any = None
+PerplexityAPI: Any = None
+resolve_file_arguments: Any = None
+load_attachments: Any = None
+run_async: Any = None
+AttachmentUploader: Any = None
 
 
 # ---------------------------------------------------------------------------
@@ -411,17 +328,6 @@ def _load_and_upload_attachments(
     return _do_s3_upload(file_attachments, token, cookies, logger)
 
 
-def _resolve_attachment_uploader() -> Callable[..., AttachmentUploaderPort]:
-    """Resolve the attachment uploader class through the attachments package.
-
-    Resolved at call time (rather than bound at import time) so callers may
-    patch ``perplexity_cli.attachments.AttachmentUploader`` and have the
-    replacement take effect.
-    """
-    module: Any = importlib.import_module("perplexity_cli.attachments")
-    return module.AttachmentUploader
-
-
 def _do_s3_upload(
     file_attachments: list[FileAttachment],
     token: str,
@@ -440,7 +346,7 @@ def _do_s3_upload(
         List of uploaded attachment URLs.
     """
     logger.debug("Starting S3 upload for attachments")
-    uploader = _resolve_attachment_uploader()(token=token, cookies=cookies)
+    uploader = AttachmentUploader(token=token, cookies=cookies)
     try:
         attachment_urls = run_async(uploader.upload_files(file_attachments))
     except AttachmentUploadError as e:

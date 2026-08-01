@@ -40,8 +40,9 @@ from pathlib import Path
 from typing import Any, cast
 
 logger = logging.getLogger(__name__)
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _gates import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+if __package__ in (None, ""):
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+from scripts._gates import (  # noqa: E402  # owner: quality-infrastructure; reason: package-relative import after repo-root setup
     load_gates,
 )
 

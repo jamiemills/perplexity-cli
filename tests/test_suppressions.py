@@ -96,7 +96,10 @@ def _temp_baseline_dir(monkeypatch, tmp_path: Path) -> Path:
     # Also patch _ratchet itself so save_fingerprints writes to the right place.
     import _ratchet
 
+    import scripts._ratchet
+
     monkeypatch.setattr(_ratchet, "BASELINE_DIR", bd)
+    monkeypatch.setattr(scripts._ratchet, "BASELINE_DIR", bd)
     return bd
 
 

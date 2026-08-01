@@ -9,16 +9,12 @@ from __future__ import annotations
 
 import csv
 import io
-import os
-import tempfile
 from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel
 
-from perplexity_cli.utils.logging import get_logger, redact_path
-
-logger = get_logger()
+from perplexity_cli.utils.atomic_write import atomic_write_text
 
 _FORMULA_PREFIXES = ("=", "+", "-", "@")
 _CSV_MODE = 0o644
@@ -43,79 +39,6 @@ def _neutralise_cell(value: str) -> str:
     if value.lstrip(" \t\r\n").startswith(_FORMULA_PREFIXES):
         return "'" + value
     return value
-
-
-def _temp_sibling(path: Path) -> Path:
-    """Create a uniquely-named exclusive temporary file beside the destination."""
-    descriptor, temp_name = tempfile.mkstemp(
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        dir=path.parent,
-    )
-    os.close(descriptor)
-    return Path(temp_name)
-
-
-def _try_cleanup(temp_path: Path) -> None:
-    """Remove a temporary file after a failed write without masking the error."""
-    try:
-        temp_path.unlink(missing_ok=True)
-    except OSError:
-        logger.warning("Could not remove temporary file %s", redact_path(temp_path))
-
-
-def _reject_symlink_destination(path: Path) -> None:
-    """Raise ``OSError`` if the destination is a symlink."""
-    if path.is_symlink():
-        msg = "Refusing to write CSV through a symlink destination"
-        raise OSError(msg)
-
-
-def _replace_temp(temp_path: Path, path: Path) -> None:
-    """Atomically replace the destination with the temporary file."""
-    os.replace(temp_path, path)  # noqa: PTH105  # owner: quality-infrastructure; reason: os.replace is the atomic rename primitive, intentional PTH deviation
-
-
-def _fsync_directory(directory: Path) -> None:
-    """Best-effort directory fsync so the rename survives a crash."""
-    dir_flag = getattr(  # nosemgrep: getattr-with-string-literal  # owner: quality-infrastructure; reason: platform-optional O_DIRECTORY constant lookup
-        os, "O_DIRECTORY", None
-    )
-    if dir_flag is None:
-        return
-    try:
-        dir_fd = os.open(directory, os.O_RDONLY | dir_flag)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
-    except OSError:
-        return
-
-
-def _atomic_write_text(path: Path, content: str, mode: int) -> None:
-    """Atomically write raw text to the destination.
-
-    Writes to a uniquely-named temporary sibling, applies the requested mode
-    before writing any bytes (POSIX), flushes and fsyncs the temporary file,
-    and replaces the destination with ``os.replace``. On any pre-replace
-    failure the existing destination is preserved byte-for-byte and the
-    temporary file is removed.
-    """
-    temp_path = _temp_sibling(path)
-    try:
-        if os.name == "posix":
-            os.chmod(temp_path, mode)
-        with open(temp_path, "w", encoding="utf-8", newline="") as file_obj:
-            file_obj.write(content)
-            file_obj.flush()
-            os.fsync(file_obj.fileno())
-        _reject_symlink_destination(path)
-        _replace_temp(temp_path, path)
-    except BaseException:
-        _try_cleanup(temp_path)
-        raise
-    _fsync_directory(path.parent)
 
 
 def write_threads_csv(
@@ -186,7 +109,7 @@ def write_threads_csv(
 
     # Replace the destination atomically
     try:
-        _atomic_write_text(output_path, buffer.getvalue(), _CSV_MODE)
+        atomic_write_text(output_path, buffer.getvalue(), _CSV_MODE)
     except OSError as exc:
         msg = f"Failed to write CSV file to {output_path}: {exc}"
         raise OSError(msg) from exc

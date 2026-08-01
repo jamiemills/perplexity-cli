@@ -18,8 +18,9 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _ratchet import (
+if __package__ in (None, ""):
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+from scripts._ratchet import (
     CountDiff,
     add_update_flag,
     diff_counts,
@@ -30,8 +31,7 @@ from _ratchet import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC = PROJECT_ROOT / "src"
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _gates import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+from scripts._gates import (  # noqa: E402  # owner: quality-infrastructure; reason: package-relative import after repo-root setup
     load_gates,
 )
 

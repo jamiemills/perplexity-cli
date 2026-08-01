@@ -346,10 +346,10 @@ OpenCode session (advisory/interception only, not lifecycle gates)
   |    4 mutate-diff                         [hook.pre-push.mutate-diff]
   |    5 safety + fuzz                       [hook.pre-push.safety-and-fuzz]
   |
-  +-> CI (16 jobs, one concurrency group)
+  +-> CI (17 jobs, one concurrency group)
   |    universal: secret-scan, static, test-coverage, hermetic-integration,
-  |                test-compat (3.13/3.14), property (3.13), fuzz-status,
-  |                package, wheel-smoke-linux, wheel-smoke-macos,
+  |                repository-policy, test-compat (3.13/3.14), property (3.13),
+  |                fuzz-status, package, wheel-smoke-linux, wheel-smoke-macos,
   |                windows_packaging_smoke, pip-audit, test-macos
   |    push-only:  safety (make safety-gate)
   |    PR-only:    diff-coverage, mutation-diff
@@ -567,17 +567,20 @@ These surfaces are related but NOT equivalent:
   test-integration, ci-quality, MCP tests, test-fuzz, OpenCode
   test:coverage + check, package-contract, gitleaks-ci, architecture model +
   check.
-- **Workflow CI** — splits the same authority into 16 jobs for isolation and
+- **Workflow CI** — splits the same authority into 17 jobs for isolation and
   adds event/platform-specific work: gitleaks full-history, OpenCode
   plugin/config checks, analyser-contract validation/tests, blocking semgrep,
-  the 3.13/3.14 compatibility matrix, macOS, Windows packaging smoke, push-only
-  Safety, credential-free pip-audit, PR-only diff-coverage and mutation-diff.
+  the `repository-policy` job running the full `make ci-quality` inventory with
+  a warmed uvx tool cache (semgrep/actionlint), the 3.13/3.14 compatibility
+  matrix, macOS, Windows packaging smoke, push-only Safety, credential-free
+  pip-audit, PR-only diff-coverage and mutation-diff.
   Workflow CI **omits `sonar-reports`**.
 - **`make ci-trusted`** — `make ci` plus the fail-closed authenticated Safety
   gate; used on push CI and the tag release path.
 
 Architecture, coupling, ratchets, deptry, import-linter, and dynamic-imports
-run pre-push / on-demand only — they are **not** separate CI jobs (see
+run pre-push / on-demand, and are also covered in CI by the `repository-policy`
+job's `make ci-quality` run — they are **not** separate CI jobs (see
 [Composite And Topology Reference](#9-composite-and-topology-reference)).
 
 ### 6.5 Scheduled workflows
@@ -661,7 +664,7 @@ remote publishing/mutation step.
 | `hook.pre-push.safety-and-fuzz` | Safety + fuzz | composite | pre-push 6 | `make safety`, `make test-fuzz` | Blocks the push on authenticated safety failure or fuzz failure |
 | `inline.*` | Inline guards/fixers | atomic | pre-commit 2/3 | `lefthook.yml` jobs | Fails the commit (see each card) |
 | `make.*` | Make targets | atomic/composite | any | `Makefile` | Depends on caller (hook, workflow, on-demand) |
-| `ci.ci.*` | CI jobs (16) | atomic | CI | `.github/workflows/ci.yml` | Fails the job; see each card |
+| `ci.ci.*` | CI jobs (17) | atomic | CI | `.github/workflows/ci.yml` | Fails the job; see each card |
 | `automation.*` | Scheduled/release-drafter jobs | atomic/composite | scheduled | `.github/workflows/*.yml` | See each card |
 | `release.publish-to-pypi.publish` | Publish Distribution | release-action | release | `.github/workflows/publish-to-pypi.yml` | Fails the release on version mismatch / CI / publish error |
 | `test.*` | Test lanes and meta-gates | atomic | on-demand / CI | `Makefile`, `tests/` | See each card |
@@ -2950,7 +2953,8 @@ documents how to reproduce it and what it means.
   bandit vulture complexity semgrep arch-check arch-check-dynamic
   import-linter coupling-check ratchets analyser-contract-tests deptry
   make-policy workflow-policy actionlint`).
-- **Trigger and scope:** member of `make ci-conventional`; on-demand.
+- **Trigger and scope:** member of `make ci-conventional`; enforced by the
+  `ci.ci.repository-policy` CI job; on-demand.
 - **Execution context:** Local developer workstation; repository checkout; untrusted-local
   (developer) trust boundary.
 - **Contextual enforcement:** fails on any member.
@@ -3361,12 +3365,16 @@ documents how to reproduce it and what it means.
 
 ### CI workflow cards
 
-`ci.yml` has exactly sixteen jobs. Workflow-level concurrency: group
+`ci.yml` has exactly seventeen jobs. Workflow-level concurrency: group
 `ci-<workflow>-<pr-number | dispatch-run-id | ref>`, `cancel-in-progress:
 true` except for `workflow_dispatch`. Each job runs in a clean checkout with
 `uv sync --all-extras --locked --group dev` and delegates to Make targets.
 The `test-coverage` job installs gitleaks 8.30.1 before running the suite
-because the authoritative gitleaks tests fail when the binary is absent.
+because the authoritative gitleaks tests fail when the binary is absent. The
+`repository-policy` job is the required source of truth for the deterministic
+offline quality gates: it warms the pinned uvx tool cache (semgrep/actionlint)
+so `make ci-quality` does not stall on first-use downloads, then runs the
+full inventory.
 
 #### `ci.ci.secret-scan`: Secret Scan (gitleaks)
 
@@ -3451,6 +3459,37 @@ because the authoritative gitleaks tests fail when the binary is absent.
 - **Side effects:** none (loopback only).
 - **Replication checks:** hermetic tests pass offline under the default-on
   guard.
+
+#### `ci.ci.repository-policy`: Repository Policy (Python 3.12)
+
+- **Purpose:** enforce the full deterministic offline quality-gate inventory
+  (`make ci-quality`) in CI, after warming the pinned uvx tool cache so the
+  required job does not stall on first-use tool downloads.
+- **Authoritative source:** `.github/workflows/ci.yml` job `repository-policy`;
+  `make ci-quality`.
+- **Canonical invocation:** warms the uvx tool cache (`uvx --from
+  semgrep==1.171.0 semgrep --version` and `uvx --from
+  actionlint-py==1.7.12.24 actionlint --version`), then `make ci-quality`
+  (`format-check lint typecheck-all bandit vulture complexity semgrep
+  arch-check arch-check-dynamic import-linter coupling-check ratchets
+  analyser-contract-tests deptry make-policy workflow-policy actionlint`).
+- **Trigger and scope:** all CI events; Ubuntu; timeout 30 min; Python 3.12.
+- **Execution context:** GitHub Actions `ubuntu-latest`; all CI events; permissions
+  `contents: read`; Python 3.12.
+- **Contextual enforcement:** fails the job on any inventory member failure.
+- **Skip semantics:** none.
+- **Inputs and configuration:** as `make.ci-quality`; the uvx warm-cache step
+  pre-fetches the pinned semgrep 1.171.0 and actionlint-py 1.7.12.24 binaries
+  (package-job tools such as twine stay with the package job).
+- **Ordering and concurrency:** independent required job; the warm-cache step
+  precedes the inventory run.
+- **Outputs and evidence:** terminal output from every inventory member.
+- **Requirements:** uv environment; network to fetch the pinned uvx tools on
+  first use; no repository secrets.
+- **Side effects:** uvx tool cache in the job workspace.
+- **Replication checks:** `make ci-quality` passes locally with the same warm
+  uvx precondition; the guide's `make.ci-quality` membership matches the
+  Makefile prerequisites.
 
 #### `ci.ci.test-compat`: Compatibility matrix (3.13, 3.14)
 
@@ -4197,7 +4236,7 @@ the ordinary suite unless infrastructure-excluded from Mutmut.
 | `make ci-quality` | `format-check lint typecheck-all bandit vulture complexity semgrep arch-check arch-check-dynamic import-linter coupling-check ratchets analyser-contract-tests deptry make-policy workflow-policy actionlint` | Deterministic offline quality gates; no tests/build |
 | `make ci-conventional` | serial: format-check, lint, typecheck-all, network-guard/isolation tests, test-coverage, test-integration, ci-quality, MCP tests, test-fuzz, OpenCode test:coverage + check, package-contract, gitleaks-ci, architecture model + check | Offline (`UV_OFFLINE=1`); fails at first error |
 | `make ci-trusted` | `make ci` + `safety-gate` | Fail-closed authenticated Safety |
-| Workflow CI | 16 jobs (see section 6.4 / cards) | Omit sonar-reports; adds gitleaks, opencode, analyser-contracts, semgrep, compat matrix, macOS, Windows packaging smoke, push-only safety, pip-audit, PR diff-coverage and mutation-diff |
+| Workflow CI | 17 jobs (see section 6.4 / cards) | Omit sonar-reports; adds gitleaks, opencode, analyser-contracts, semgrep, repository-policy (full ci-quality), compat matrix, macOS, Windows packaging smoke, push-only safety, pip-audit, PR diff-coverage and mutation-diff |
 | `make agent-check-no-tests` | pyright, ty, bandit, vulture, radon-cc, radon-mi, semgrep, format-check, lint | Pre-push static group member |
 | `make agent-check-push` | test-coverage, safety, fuzz, arch-check, coupling-check, test-property-push | NOT wired into lefthook or make ci |
 
@@ -4206,11 +4245,13 @@ Key topology facts:
 - **Local `make ci` includes `sonar-reports` and `smoke-test` directly**;
   workflow CI omits Sonar and splits the pipeline into isolated jobs.
 - **Workflow CI adds** gitleaks full-history, OpenCode plugin/config checks,
-  analyser-contract validation/tests, blocking semgrep, 3.13/3.14 compatibility,
-  macOS, Windows packaging smoke, push-only Safety, pip-audit, PR diff-coverage,
-  PR mutation-diff.
+  analyser-contract validation/tests, blocking semgrep, the repository-policy
+  job (full `make ci-quality` inventory with warmed uvx cache), 3.13/3.14
+  compatibility, macOS, Windows packaging smoke, push-only Safety, pip-audit,
+  PR diff-coverage, PR mutation-diff.
 - **Architecture, coupling, ratchets, deptry, import-linter, and
-  dynamic-imports run pre-push/on-demand only — NOT as separate CI jobs.**
+  dynamic-imports run pre-push/on-demand and in the `repository-policy` CI job
+  via `make ci-quality` — NOT as separate CI jobs.**
 - **`make test` is the documented safe ordinary test command.** Marker
   exclusions live in the Make recipes (`not property and not
   hermetic_integration and not integration and not real_api and not manual and

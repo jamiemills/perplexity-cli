@@ -26,8 +26,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, TypeGuard
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _ratchet import (
+if __package__ in (None, ""):
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+from scripts._ratchet import (
     FingerprintDiff,
     add_update_flag,
     diff_fingerprints,

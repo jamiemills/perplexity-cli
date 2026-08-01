@@ -1,10 +1,11 @@
 {
   "report_version": "1",
   "total_modules": 105,
-  "flagged_count": 34,
+  "flagged_count": 28,
   "flagged_identities": [
     "api.endpoints",
     "api.models",
+    "attachments",
     "auth.token_manager",
     "auth.utils",
     "commands._examples",
@@ -22,15 +23,8 @@
     "runners",
     "threads.exporter",
     "utils.atomic_write",
-    "utils.config",
-    "utils.config.contracts",
     "utils.encryption",
     "utils.file_permissions",
-    "utils.http_errors",
-    "utils.http_errors.contracts",
-    "utils.http_headers",
-    "utils.logging",
-    "utils.logging.impl",
     "utils.rate_limiter",
     "utils.retry",
     "utils.session_factory",
@@ -203,7 +197,7 @@
         "runners.export",
         "runners.status",
         "services.model_service",
-        "utils.config.contracts",
+        "utils.config",
         "utils.config.impl"
       ]
     },
@@ -364,7 +358,7 @@
     },
     {
       "module": "utils.async_bridge",
-      "ca": 2,
+      "ca": 3,
       "ce": 0,
       "instability": 0.0,
       "abstractness": 0.0,
@@ -376,6 +370,7 @@
       "dependencies": [],
       "dependents": [
         "auth.oauth_handler",
+        "cli",
         "runners.export"
       ]
     },
@@ -400,6 +395,23 @@
       ]
     },
     {
+      "module": "utils.config.contracts",
+      "ca": 2,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.config.contracts",
+      "dependencies": [],
+      "dependents": [
+        "utils.config",
+        "utils.config.impl"
+      ]
+    },
+    {
       "module": "utils.cookies",
       "ca": 4,
       "ce": 0,
@@ -420,7 +432,7 @@
     },
     {
       "module": "utils.exceptions",
-      "ca": 30,
+      "ca": 29,
       "ce": 0,
       "instability": 0.0,
       "abstractness": 0.0,
@@ -456,7 +468,6 @@
         "utils.encryption",
         "utils.file_handler",
         "utils.file_permissions",
-        "utils.http_errors.contracts",
         "utils.http_errors.impl",
         "utils.retry",
         "utils.session_token",
@@ -503,11 +514,11 @@
     },
     {
       "module": "envelope",
-      "ca": 14,
+      "ca": 13,
       "ce": 1,
-      "instability": 0.067,
+      "instability": 0.071,
       "abstractness": 0.0,
-      "distance": 0.933,
+      "distance": 0.929,
       "zone_of_pain": true,
       "zone_of_uselessness": false,
       "advisory": true,
@@ -528,44 +539,7 @@
         "runners.skill",
         "runners.status",
         "threads.scraper",
-        "utils.http_errors.contracts",
         "utils.http_errors.impl"
-      ]
-    },
-    {
-      "module": "utils.logging",
-      "ca": 18,
-      "ce": 2,
-      "instability": 0.1,
-      "abstractness": 0.0,
-      "distance": 0.9,
-      "zone_of_pain": true,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "utils.logging",
-      "dependencies": [
-        "utils.logging.contracts",
-        "utils.logging.impl"
-      ],
-      "dependents": [
-        "api.client",
-        "api.rest_client",
-        "attachments.upload_manager",
-        "auth.oauth_handler",
-        "auth.token_manager",
-        "auth.utils",
-        "cli",
-        "mcp_server",
-        "runners.auth",
-        "runners.config",
-        "runners.export",
-        "runners.models",
-        "runners.status",
-        "threads.cache_manager",
-        "threads.exporter",
-        "threads.scraper",
-        "utils.atomic_write",
-        "utils.file_handler"
       ]
     },
     {
@@ -619,39 +593,6 @@
       ]
     },
     {
-      "module": "utils.config",
-      "ca": 15,
-      "ce": 2,
-      "instability": 0.118,
-      "abstractness": 0.0,
-      "distance": 0.882,
-      "zone_of_pain": true,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "utils.config",
-      "dependencies": [
-        "utils.config.contracts",
-        "utils.config.impl"
-      ],
-      "dependents": [
-        "api.endpoints",
-        "attachments.upload_manager",
-        "auth.oauth_handler",
-        "auth.token_manager",
-        "cli",
-        "runners.auth",
-        "runners.config",
-        "runners.export",
-        "runners.models",
-        "runners.status",
-        "threads.cache_manager",
-        "threads.scraper",
-        "utils.http_headers",
-        "utils.logging.impl",
-        "utils.style_manager"
-      ]
-    },
-    {
       "module": "commands._help_sections",
       "ca": 10,
       "ce": 2,
@@ -691,7 +632,7 @@
       "advisory": true,
       "finding_id": "threads.exporter",
       "dependencies": [
-        "utils.logging"
+        "utils.atomic_write"
       ],
       "dependents": [
         "runners.export",
@@ -724,6 +665,27 @@
       ]
     },
     {
+      "module": "utils.atomic_write",
+      "ca": 4,
+      "ce": 1,
+      "instability": 0.2,
+      "abstractness": 0.0,
+      "distance": 0.8,
+      "zone_of_pain": true,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.atomic_write",
+      "dependencies": [
+        "utils.logging"
+      ],
+      "dependents": [
+        "auth.token_manager",
+        "threads.cache_manager",
+        "threads.exporter",
+        "utils.style_manager"
+      ]
+    },
+    {
       "module": "commands._runner_adapter",
       "ca": 3,
       "ce": 1,
@@ -744,70 +706,6 @@
       ]
     },
     {
-      "module": "utils.atomic_write",
-      "ca": 3,
-      "ce": 1,
-      "instability": 0.25,
-      "abstractness": 0.0,
-      "distance": 0.75,
-      "zone_of_pain": true,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "utils.atomic_write",
-      "dependencies": [
-        "utils.logging"
-      ],
-      "dependents": [
-        "auth.token_manager",
-        "threads.cache_manager",
-        "utils.style_manager"
-      ]
-    },
-    {
-      "module": "utils.http_errors",
-      "ca": 6,
-      "ce": 2,
-      "instability": 0.25,
-      "abstractness": 0.0,
-      "distance": 0.75,
-      "zone_of_pain": true,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "utils.http_errors",
-      "dependencies": [
-        "utils.http_errors.contracts",
-        "utils.http_errors.impl"
-      ],
-      "dependents": [
-        "api.client",
-        "api.rest_client",
-        "attachments.upload_manager",
-        "runners.auth",
-        "runners.export",
-        "threads.scraper"
-      ]
-    },
-    {
-      "module": "utils.http_headers",
-      "ca": 3,
-      "ce": 1,
-      "instability": 0.25,
-      "abstractness": 0.0,
-      "distance": 0.75,
-      "zone_of_pain": true,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "utils.http_headers",
-      "dependencies": [
-        "utils.config"
-      ],
-      "dependents": [
-        "api.client",
-        "api.rest_client",
-        "attachments.upload_manager"
-      ]
-    },
-    {
       "module": "exit_codes",
       "ca": 2,
       "ce": 1,
@@ -824,25 +722,6 @@
       "dependents": [
         "commands._help_sections",
         "error_handler"
-      ]
-    },
-    {
-      "module": "utils.config.contracts",
-      "ca": 2,
-      "ce": 1,
-      "instability": 0.333,
-      "abstractness": 0.0,
-      "distance": 0.667,
-      "zone_of_pain": false,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "utils.config.contracts",
-      "dependencies": [
-        "config.models"
-      ],
-      "dependents": [
-        "utils.config",
-        "utils.config.impl"
       ]
     },
     {
@@ -903,25 +782,6 @@
       ]
     },
     {
-      "module": "utils.http_errors.contracts",
-      "ca": 1,
-      "ce": 2,
-      "instability": 0.667,
-      "abstractness": 1.0,
-      "distance": 0.667,
-      "zone_of_pain": false,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "utils.http_errors.contracts",
-      "dependencies": [
-        "envelope",
-        "utils.exceptions"
-      ],
-      "dependents": [
-        "utils.http_errors"
-      ]
-    },
-    {
       "module": "api.models",
       "ca": 7,
       "ce": 4,
@@ -949,12 +809,37 @@
       ]
     },
     {
-      "module": "auth.token_manager",
-      "ca": 6,
-      "ce": 6,
-      "instability": 0.5,
+      "module": "error_handler",
+      "ca": 5,
+      "ce": 4,
+      "instability": 0.444,
       "abstractness": 0.0,
-      "distance": 0.5,
+      "distance": 0.556,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "error_handler",
+      "dependencies": [
+        "_types",
+        "envelope",
+        "exit_codes",
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "cli",
+        "runners.auth",
+        "runners.config",
+        "runners.export",
+        "runners.models"
+      ]
+    },
+    {
+      "module": "auth.token_manager",
+      "ca": 7,
+      "ce": 6,
+      "instability": 0.462,
+      "abstractness": 0.0,
+      "distance": 0.538,
       "zone_of_pain": false,
       "zone_of_uselessness": false,
       "advisory": true,
@@ -969,6 +854,7 @@
       ],
       "dependents": [
         "auth",
+        "cli",
         "mcp_server",
         "runners.auth",
         "runners.export",
@@ -977,27 +863,21 @@
       ]
     },
     {
-      "module": "error_handler",
-      "ca": 4,
-      "ce": 4,
+      "module": "attachments",
+      "ca": 1,
+      "ce": 1,
       "instability": 0.5,
       "abstractness": 0.0,
       "distance": 0.5,
       "zone_of_pain": false,
       "zone_of_uselessness": false,
       "advisory": true,
-      "finding_id": "error_handler",
+      "finding_id": "attachments",
       "dependencies": [
-        "_types",
-        "envelope",
-        "exit_codes",
-        "utils.exceptions"
+        "attachments.upload_manager"
       ],
       "dependents": [
-        "runners.auth",
-        "runners.config",
-        "runners.export",
-        "runners.models"
+        "cli"
       ]
     },
     {
@@ -1044,24 +924,6 @@
         "commands.doctor_cmds",
         "commands.skill_cmds",
         "commands.style_cmds"
-      ]
-    },
-    {
-      "module": "utils.logging.impl",
-      "ca": 1,
-      "ce": 1,
-      "instability": 0.5,
-      "abstractness": 0.0,
-      "distance": 0.5,
-      "zone_of_pain": false,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "utils.logging.impl",
-      "dependencies": [
-        "utils.config"
-      ],
-      "dependents": [
-        "utils.logging"
       ]
     },
     {
@@ -1119,12 +981,32 @@
       ]
     },
     {
-      "module": "api.endpoints",
-      "ca": 3,
-      "ce": 5,
-      "instability": 0.625,
+      "module": "utils.style_manager",
+      "ca": 2,
+      "ce": 2,
+      "instability": 0.5,
       "abstractness": 0.0,
-      "distance": 0.375,
+      "distance": 0.5,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.style_manager",
+      "dependencies": [
+        "utils.atomic_write",
+        "utils.config"
+      ],
+      "dependents": [
+        "cli",
+        "runners.config"
+      ]
+    },
+    {
+      "module": "api.endpoints",
+      "ca": 4,
+      "ce": 5,
+      "instability": 0.556,
+      "abstractness": 0.0,
+      "distance": 0.444,
       "zone_of_pain": false,
       "zone_of_uselessness": false,
       "advisory": true,
@@ -1138,17 +1020,18 @@
       ],
       "dependents": [
         "api",
+        "cli",
         "mcp_server",
         "runners.status"
       ]
     },
     {
       "module": "auth.utils",
-      "ca": 2,
+      "ca": 3,
       "ce": 4,
-      "instability": 0.667,
+      "instability": 0.571,
       "abstractness": 0.0,
-      "distance": 0.333,
+      "distance": 0.429,
       "zone_of_pain": false,
       "zone_of_uselessness": false,
       "advisory": true,
@@ -1160,6 +1043,7 @@
         "utils.session_token"
       ],
       "dependents": [
+        "cli",
         "mcp_server",
         "runners.models"
       ]
@@ -1241,25 +1125,6 @@
       ]
     },
     {
-      "module": "utils.style_manager",
-      "ca": 1,
-      "ce": 2,
-      "instability": 0.667,
-      "abstractness": 0.0,
-      "distance": 0.333,
-      "zone_of_pain": false,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "utils.style_manager",
-      "dependencies": [
-        "utils.atomic_write",
-        "utils.config"
-      ],
-      "dependents": [
-        "runners.config"
-      ]
-    },
-    {
       "module": "auth.oauth_handler",
       "ca": 2,
       "ce": 5,
@@ -1280,6 +1145,30 @@
       "dependents": [
         "auth",
         "runners.auth"
+      ]
+    },
+    {
+      "module": "formatting",
+      "ca": 2,
+      "ce": 6,
+      "instability": 0.75,
+      "abstractness": 0.0,
+      "distance": 0.25,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "formatting",
+      "dependencies": [
+        "formatting.base",
+        "formatting.json",
+        "formatting.markdown",
+        "formatting.plain",
+        "formatting.registry",
+        "formatting.rich"
+      ],
+      "dependents": [
+        "cli",
+        "mcp_server"
       ]
     },
     {
@@ -1351,7 +1240,7 @@
       ]
     },
     {
-      "module": "utils.config.impl",
+      "module": "utils.file_handler",
       "ca": 1,
       "ce": 3,
       "instability": 0.75,
@@ -1360,14 +1249,14 @@
       "zone_of_pain": false,
       "zone_of_uselessness": false,
       "advisory": true,
-      "finding_id": "utils.config.impl",
+      "finding_id": "utils.file_handler",
       "dependencies": [
-        "config.models",
-        "utils.config.contracts",
-        "utils.exceptions"
+        "utils.attachment_models",
+        "utils.exceptions",
+        "utils.logging"
       ],
       "dependents": [
-        "utils.config"
+        "cli"
       ]
     },
     {
@@ -1388,6 +1277,26 @@
       ],
       "dependents": [
         "utils.http_errors"
+      ]
+    },
+    {
+      "module": "utils.http_headers",
+      "ca": 3,
+      "ce": 1,
+      "instability": 0.25,
+      "abstractness": 0.5,
+      "distance": 0.25,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.http_headers",
+      "dependencies": [
+        "utils.config"
+      ],
+      "dependents": [
+        "api.client",
+        "api.rest_client",
+        "attachments.upload_manager"
       ]
     },
     {
@@ -1475,6 +1384,27 @@
       ]
     },
     {
+      "module": "utils.config.impl",
+      "ca": 1,
+      "ce": 4,
+      "instability": 0.8,
+      "abstractness": 0.0,
+      "distance": 0.2,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.config.impl",
+      "dependencies": [
+        "config.models",
+        "utils.config",
+        "utils.config.contracts",
+        "utils.exceptions"
+      ],
+      "dependents": [
+        "utils.config"
+      ]
+    },
+    {
       "module": "api.client",
       "ca": 2,
       "ce": 9,
@@ -1525,6 +1455,24 @@
         "query_streaming",
         "runners.export",
         "runners.status"
+      ]
+    },
+    {
+      "module": "utils.logging.impl",
+      "ca": 1,
+      "ce": 1,
+      "instability": 0.5,
+      "abstractness": 0.333,
+      "distance": 0.167,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.logging.impl",
+      "dependencies": [
+        "utils.config"
+      ],
+      "dependents": [
+        "utils.logging"
       ]
     },
     {
@@ -1616,6 +1564,41 @@
       ]
     },
     {
+      "module": "utils.config",
+      "ca": 16,
+      "ce": 3,
+      "instability": 0.158,
+      "abstractness": 1.0,
+      "distance": 0.158,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.config",
+      "dependencies": [
+        "config.models",
+        "utils.config.contracts",
+        "utils.config.impl"
+      ],
+      "dependents": [
+        "api.endpoints",
+        "attachments.upload_manager",
+        "auth.oauth_handler",
+        "auth.token_manager",
+        "cli",
+        "runners.auth",
+        "runners.config",
+        "runners.export",
+        "runners.models",
+        "runners.status",
+        "threads.cache_manager",
+        "threads.scraper",
+        "utils.config.impl",
+        "utils.http_headers",
+        "utils.logging.impl",
+        "utils.style_manager"
+      ]
+    },
+    {
       "module": "api.rest_client",
       "ca": 1,
       "ce": 6,
@@ -1636,29 +1619,6 @@
       ],
       "dependents": [
         "runners.models"
-      ]
-    },
-    {
-      "module": "formatting",
-      "ca": 1,
-      "ce": 6,
-      "instability": 0.857,
-      "abstractness": 0.0,
-      "distance": 0.143,
-      "zone_of_pain": false,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "formatting",
-      "dependencies": [
-        "formatting.base",
-        "formatting.json",
-        "formatting.markdown",
-        "formatting.plain",
-        "formatting.registry",
-        "formatting.rich"
-      ],
-      "dependents": [
-        "mcp_server"
       ]
     },
     {
@@ -1793,6 +1753,30 @@
       ]
     },
     {
+      "module": "utils.http_errors",
+      "ca": 7,
+      "ce": 1,
+      "instability": 0.125,
+      "abstractness": 1.0,
+      "distance": 0.125,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.http_errors",
+      "dependencies": [
+        "utils.http_errors.impl"
+      ],
+      "dependents": [
+        "api.client",
+        "api.rest_client",
+        "attachments.upload_manager",
+        "runners.auth",
+        "runners.export",
+        "threads.scraper",
+        "utils.http_errors.contracts"
+      ]
+    },
+    {
       "module": "formatting.base",
       "ca": 8,
       "ce": 1,
@@ -1841,6 +1825,32 @@
       ],
       "dependents": [
         "attachments"
+      ]
+    },
+    {
+      "module": "query_runner",
+      "ca": 1,
+      "ce": 9,
+      "instability": 0.9,
+      "abstractness": 0.0,
+      "distance": 0.1,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "query_runner",
+      "dependencies": [
+        "_types",
+        "api.models",
+        "auth.models",
+        "envelope",
+        "ports",
+        "query_streaming",
+        "utils.attachment_models",
+        "utils.exceptions",
+        "utils.version"
+      ],
+      "dependents": [
+        "cli"
       ]
     },
     {
@@ -1980,6 +1990,41 @@
       ]
     },
     {
+      "module": "utils.logging",
+      "ca": 18,
+      "ce": 1,
+      "instability": 0.053,
+      "abstractness": 1.0,
+      "distance": 0.053,
+      "zone_of_pain": false,
+      "zone_of_uselessness": false,
+      "advisory": true,
+      "finding_id": "utils.logging",
+      "dependencies": [
+        "utils.logging.impl"
+      ],
+      "dependents": [
+        "api.client",
+        "api.rest_client",
+        "attachments.upload_manager",
+        "auth.oauth_handler",
+        "auth.token_manager",
+        "auth.utils",
+        "cli",
+        "mcp_server",
+        "runners.auth",
+        "runners.config",
+        "runners.export",
+        "runners.models",
+        "runners.status",
+        "threads.cache_manager",
+        "threads.scraper",
+        "utils.atomic_write",
+        "utils.file_handler",
+        "utils.logging.contracts"
+      ]
+    },
+    {
       "module": "",
       "ca": 0,
       "ce": 1,
@@ -2030,22 +2075,6 @@
       "dependents": []
     },
     {
-      "module": "attachments",
-      "ca": 0,
-      "ce": 1,
-      "instability": 1.0,
-      "abstractness": 0.0,
-      "distance": 0.0,
-      "zone_of_pain": false,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "attachments",
-      "dependencies": [
-        "attachments.upload_manager"
-      ],
-      "dependents": []
-    },
-    {
       "module": "auth",
       "ca": 0,
       "ce": 2,
@@ -2065,7 +2094,7 @@
     {
       "module": "cli",
       "ca": 0,
-      "ce": 4,
+      "ce": 14,
       "instability": 1.0,
       "abstractness": 0.0,
       "distance": 0.0,
@@ -2074,9 +2103,19 @@
       "advisory": true,
       "finding_id": "cli",
       "dependencies": [
+        "api.endpoints",
+        "attachments",
+        "auth.token_manager",
+        "auth.utils",
         "commands",
+        "error_handler",
+        "formatting",
+        "query_runner",
+        "utils.async_bridge",
         "utils.config",
+        "utils.file_handler",
         "utils.logging",
+        "utils.style_manager",
         "utils.version"
       ],
       "dependents": []
@@ -2170,30 +2209,6 @@
       "dependents": []
     },
     {
-      "module": "query_runner",
-      "ca": 0,
-      "ce": 9,
-      "instability": 1.0,
-      "abstractness": 0.0,
-      "distance": 0.0,
-      "zone_of_pain": false,
-      "zone_of_uselessness": false,
-      "advisory": true,
-      "finding_id": "query_runner",
-      "dependencies": [
-        "_types",
-        "api.models",
-        "auth.models",
-        "envelope",
-        "ports",
-        "query_streaming",
-        "utils.attachment_models",
-        "utils.exceptions",
-        "utils.version"
-      ],
-      "dependents": []
-    },
-    {
       "module": "services.ports",
       "ca": 1,
       "ce": 0,
@@ -2245,39 +2260,37 @@
       "dependents": []
     },
     {
-      "module": "utils.file_handler",
+      "module": "utils.http_errors.contracts",
       "ca": 0,
-      "ce": 3,
+      "ce": 1,
       "instability": 1.0,
       "abstractness": 0.0,
       "distance": 0.0,
       "zone_of_pain": false,
       "zone_of_uselessness": false,
       "advisory": true,
-      "finding_id": "utils.file_handler",
+      "finding_id": "utils.http_errors.contracts",
       "dependencies": [
-        "utils.attachment_models",
-        "utils.exceptions",
-        "utils.logging"
+        "utils.http_errors"
       ],
       "dependents": []
     },
     {
       "module": "utils.logging.contracts",
-      "ca": 1,
-      "ce": 0,
-      "instability": 0.0,
-      "abstractness": 1.0,
+      "ca": 0,
+      "ce": 1,
+      "instability": 1.0,
+      "abstractness": 0.0,
       "distance": 0.0,
       "zone_of_pain": false,
       "zone_of_uselessness": false,
       "advisory": true,
       "finding_id": "utils.logging.contracts",
-      "dependencies": [],
-      "dependents": [
+      "dependencies": [
         "utils.logging"
-      ]
+      ],
+      "dependents": []
     }
   ],
-  "timestamp": "2026-08-01T20:08:52.175160+00:00"
+  "timestamp": "2026-08-01T22:25:04.257264+00:00"
 }

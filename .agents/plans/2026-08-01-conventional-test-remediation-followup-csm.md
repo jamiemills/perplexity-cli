@@ -8,12 +8,12 @@
 ## Control
 - Plan ID: conventional-test-remediation-followup
 - Status: in_progress
-- Current CSM state: CHECKPOINT
-- Cycle: 1
+- Current CSM state: DISPATCH
+- Cycle: 2
 - Commits: allowed
-- Last checkpoint: 2026-08-01T20:20:00+00:00 - G1 CHECKPOINT: T001/T002/T006/T007/T009 completed; T003 completed at honest 34-count with T012 added by user decision; suppression baselines refreshed; 392 combined + 65 property tests green; G1 committed
-- Next transition: CHECKPOINT -> SELECT for G2 (T004, T005, T008, T010, T012)
-- Active tasks: T001, T002, T003, T006, T007, T009 (completed at checkpoint)
+- Last checkpoint: 2026-08-01T20:25:00+00:00 - G1 committed at 9d04649 (hook fixes: orphaned docstrings, suppression line-shift). G2 dependencies all satisfied
+- Next transition: DISPATCH -> INTEGRATE for G2 (T004, T005, T008, T010, T012)
+- Active tasks: T004, T005, T008, T010, T012 (dispatched in parallel, file-disjoint leases)
 - Blockers: none
 
 ## Goal
@@ -204,7 +204,7 @@ Parallel groups are file-disjoint: T001 owns protocol tests; T002 owns atomic_wr
    - Acceptance evidence: pre/post flagged counts, stub inventory, metric change description.
    - Repair attempts: 0
    - Recovery note: If removing stubs changes flagged identities, review each identity delta rather than regenerating blindly.
-4. [pending] Enforce ci-quality in GitHub Actions with tool-cache warming
+4. [completed] Enforce ci-quality in GitHub Actions with tool-cache warming
    - Task ID: T004
    - Depends on: T006 (manifest/doc test ownership overlap)
    - Parallel group: G2
@@ -218,7 +218,7 @@ Parallel groups are file-disjoint: T001 owns protocol tests; T002 owns atomic_wr
    - Acceptance evidence: job YAML excerpt, topology assertions, docs cards updated.
    - Repair attempts: 0
    - Recovery note: If actionlint rejects the new job, fix the workflow YAML, not the tests.
-5. [pending] Replace query-runner importlib seams with composition-root injection
+5. [completed] Replace query-runner importlib seams with composition-root injection
    - Task ID: T005
    - Depends on: T003 (repo-wide stub sweep first; T005 rewires query_runner module attributes)
    - Parallel group: G2
@@ -260,7 +260,7 @@ Parallel groups are file-disjoint: T001 owns protocol tests; T002 owns atomic_wr
    - Acceptance evidence: line-count before/after, extracted helper list, baseline diff.
    - Repair attempts: 0
    - Recovery note: Keep the public/internal API of scraper stable for the domain tests; extraction only.
-8. [pending] Reuse the atomic helper in the exporter (DRY)
+8. [completed] Reuse the atomic helper in the exporter (DRY)
    - Task ID: T008
    - Depends on: T002
    - Parallel group: G2
@@ -288,7 +288,7 @@ Parallel groups are file-disjoint: T001 owns protocol tests; T002 owns atomic_wr
    - Acceptance evidence: disposition per test (kept-with-docstring / fixed), F023 mapping.
    - Repair attempts: 0
    - Recovery note: Do not delete either test without evidence of redundancy.
-10. [pending] Remove scripts sys.path bootstrap
+10. [completed] Remove scripts sys.path bootstrap
    - Task ID: T010
    - Depends on: T003 (both edit `scripts/check_coupling.py`)
    - Parallel group: G2
@@ -316,7 +316,7 @@ Parallel groups are file-disjoint: T001 owns protocol tests; T002 owns atomic_wr
    - Acceptance evidence: full command/exit matrix, baseline deltas, review outcomes.
    - Repair attempts: 0
    - Recovery note: Never fix during final verification; route findings back to the owning task.
-12. [pending] Reduce honest coupling below the MAX_FLAGGED cap
+12. [completed] Reduce honest coupling below the MAX_FLAGGED cap
    - Task ID: T012
    - Depends on: T003 (honest 34-count baseline)
    - Parallel group: G2

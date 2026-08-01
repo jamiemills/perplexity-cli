@@ -48,11 +48,12 @@ from typing import TYPE_CHECKING, TypedDict, cast
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src" / "perplexity_cli"
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _gates import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+if __package__ in (None, ""):
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+from scripts._gates import (  # noqa: E402  # owner: quality-infrastructure; reason: package-relative import after repo-root setup
     load_gates,
 )
-from import_graph import (  # noqa: E402  # owner: quality-infrastructure; reason: repo-relative import after sys.path setup
+from scripts.import_graph import (  # noqa: E402  # owner: quality-infrastructure; reason: package-relative import after repo-root setup
     FileReadError,
     SyntaxErrorInSource,
     get_all_edges,

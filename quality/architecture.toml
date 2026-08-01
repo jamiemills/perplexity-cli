@@ -117,6 +117,7 @@ modules = [
     "threads.cache_manager",
     "threads.date_parser",
     "threads.exporter",
+    "threads.pagination",
     "threads.scraper",
     "threads.utils",
     "utils",

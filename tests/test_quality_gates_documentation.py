@@ -385,6 +385,23 @@ def _guide_card_block(card_id: str) -> str:
     return GUIDE_TEXT[start:end]
 
 
+def _guide_inventory_members(card_id: str) -> list[str]:
+    """Return the inventory tokens listed in a card's canonical invocation."""
+    block = _guide_card_block(card_id)
+    lines = block.splitlines()
+    start = next(
+        i for i, line in enumerate(lines) if line.strip().startswith("- **Canonical invocation:**")
+    )
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].strip().startswith("- **")),
+        len(lines),
+    )
+    invocation = " ".join(lines[start:end])
+    groups = re.findall(r"\(([^)]+)\)", invocation)
+    assert groups, f"{card_id} canonical invocation must parenthesise the member list"
+    return [token.strip("`") for token in groups[-1].split()]
+
+
 def _plugin_paths(text: str) -> list[str]:
     """Extract ``.opencode/plugins/*.ts`` (or agents) paths from JSONC text."""
     return re.findall(r'"((?:\.opencode/plugins|\.opencode/agents)/[^"]+\.ts)"', text)
@@ -634,6 +651,10 @@ class TestMakeComposites:
         block = _guide_card_block("make.ci-quality")
         assert all(member in block for member in expected)
 
+    def test_ci_quality_inventory_matches_makefile_exactly(self) -> None:
+        """The guide's documented ci-quality inventory equals the Makefile prereqs."""
+        assert _guide_inventory_members("make.ci-quality") == _makefile_prereqs("ci-quality")
+
     def test_core_exclusion_manifest_is_literal_and_used(self) -> None:
         """The ordinary and coverage selectors exclude the manifest by exact path."""
         makefile = MAKEFILE.read_text(encoding="utf-8")
@@ -769,6 +790,17 @@ class TestWorkflowInventory:
         assert "pxcli --version" in block
         assert "pxcli-mcp --help" in block
         assert "needs: [package]" in block or "needs" in block
+
+    def test_guide_documents_repository_policy_job(self) -> None:
+        """The repository-policy job must document the full ci-quality inventory."""
+        block = _guide_card_block("ci.ci.repository-policy")
+        normalised = _normalise(block)
+        assert "make ci-quality" in block
+        assert "uvx --from semgrep==1.171.0 semgrep --version" in normalised
+        assert "uvx --from actionlint-py==1.7.12.24 actionlint --version" in normalised
+        assert "warm" in normalised
+        assert "no repository secrets" in block
+        assert "30 min" in block
 
     def test_guide_documents_network_guard_default_on(self) -> None:
         """The fail-closed network guard must be documented as default-on."""
