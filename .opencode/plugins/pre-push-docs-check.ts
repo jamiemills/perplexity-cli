@@ -5,10 +5,10 @@
  * CLI --help text and README.md are consistent with any code changes
  * made during the session.
  *
- * On the first push attempt, the plugin blocks execution and returns
- * an instruction to check documentation.  The agent is expected to
- * review and update if needed, then retry the push, which passes
- * through unblocked.
+ * On the first recognised push attempt, the plugin blocks execution and
+ * returns an instruction to check documentation.  The next recognised
+ * attempt is allowed and resets the reminder.  The plugin does not observe
+ * whether a review occurred or whether an allowed push succeeded.
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
@@ -39,7 +39,8 @@ Check the following:
    - Features list, command reference, options tables, and usage
      examples must be consistent with the current CLI surface.
 
-If either needs updating, make the changes and then retry the push.`;
+If either needs updating, make the changes and then retry the push.
+If review confirms the documentation is already accurate, retry unchanged.`;
 
 // ---------------------------------------------------------------------------
 // Plugin
@@ -47,10 +48,9 @@ If either needs updating, make the changes and then retry the push.`;
 
 export const PrePushDocsCheckPlugin: Plugin = ({ client }) => {
   /**
-   * Tracks whether the docs-check reminder has been issued for the
-   * current push cycle.  Reset after a push is allowed through so
-   * that subsequent pushes (after further code changes) also trigger
-   * a check.
+   * Tracks whether the reminder has been issued in this plugin instance.
+   * The next recognised attempt acknowledges and resets the reminder; this
+   * state does not demonstrate a documentation review or successful push.
    */
   let pushPending = false;
 
@@ -63,28 +63,28 @@ export const PrePushDocsCheckPlugin: Plugin = ({ client }) => {
       if (!isGitPush(command)) return;
 
       if (pushPending) {
-        // The agent has already been reminded and is retrying.
-        // Allow this push through and reset for the next cycle.
+        // A recognised attempt follows the reminder.
+        // Allow it and reset so the following attempt is reminded again.
         pushPending = false;
 
         await client.app.log({
           body: {
             service: "pre-push-docs-check",
             level: "info",
-            message: "Docs check completed; allowing git push.",
+            message: "Reminder acknowledged; allowing this git push attempt and resetting the reminder.",
           },
         });
         return;
       }
 
-      // First push attempt in this cycle -- block and remind.
+      // First recognised attempt after reset -- block and remind.
       pushPending = true;
 
       await client.app.log({
         body: {
           service: "pre-push-docs-check",
           level: "warn",
-          message: "Intercepted git push; requesting documentation review.",
+          message: "Blocked first recognised git push attempt; requesting documentation review.",
         },
       });
 

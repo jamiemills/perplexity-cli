@@ -1,8 +1,9 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  // Agents have full edit rights to all files except the locked gates
-  // config.  The quality-gate plugin enforces that scripts/ and
-  // Makefile can only be tightened, never loosened or bypassed.
+  // Edit permission allows all paths except the locked gates config; it does
+  // not describe permissions for other tools.  The quality-gate plugin checks
+  // selected bypass additions and gate-reference removals in scripts/ and
+  // Makefile, rather than proving that every change tightens quality gates.
   //
   // HUMAN OVERRIDE: To change gate thresholds, temporarily remove
   // the deny rule below, edit quality/gates.conf, and restore.
@@ -18,8 +19,8 @@
   // -----------------------------------------------------------------------
   // Plugins — loaded from .opencode/plugins/
   //
-  // quality-gate:   blocks edits that loosen gate thresholds or add
-  //                 bypass patterns to scripts/ and Makefile.
+  // quality-gate:   checks selected bypass additions, severity reductions,
+  //                 and gate-reference removals in scripts/ and Makefile.
   // pxcli-quality:  real-time feedback: conventions injection, per-file
   //                 ruff/radon/bandit/ty checks, idle-time semgrep/pyright.
   // pre-push-docs:  reminds to update CLI help text and README before push.
