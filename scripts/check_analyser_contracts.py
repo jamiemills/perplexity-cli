@@ -19,7 +19,9 @@ Exit codes: 0 = all contracts honoured, 1 = unexpected exit detected,
 from __future__ import annotations
 
 import argparse
+import ast
 import json
+import re
 import subprocess  # nosec B404  # owner: quality-infrastructure; reason: invoke Make with discrete validated argv and no shell
 import sys
 import time
@@ -38,9 +40,12 @@ _EXIT_SCHEMA_FAIL = 2
 _EXIT_USAGE = 3
 
 _REQUIRED_ANALYSER_KEYS = frozenset({"id", "target", "phase", "status", "description", "states"})
+_VALID_ANALYSER_KEYS = _REQUIRED_ANALYSER_KEYS | {"test_node_ids"}
 _VALID_STATUSES = frozenset({"active", "pending", "retired"})
 _REQUIRED_STATES = frozenset({"clean"})
 _VALID_STATE_KEYS = frozenset({"exit_min", "exit_max", "signal"})
+_SAFE_NAME = re.compile(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?")
+_EXPLICIT_TARGET = re.compile(r"^([^\s:#=]+(?:\s+[^\s:#=]+)*)\s*:")
 
 
 # ---------------------------------------------------------------------------
@@ -202,18 +207,25 @@ def _parse_all_analysers(
 
 
 def _validate_required_keys(entry: dict[str, object], idx: int) -> list[str]:
-    """Check that all required top-level keys are present."""
+    """Check required and unknown analyser keys."""
     prefix = f"analysers[{idx}]"
     missing = _REQUIRED_ANALYSER_KEYS - set(entry.keys())
+    unknown = set(entry.keys()) - _VALID_ANALYSER_KEYS
+    errors: list[str] = []
     if missing:
-        return [f"{prefix}: missing required keys: {', '.join(sorted(missing))}"]
-    return []
+        errors.append(f"{prefix}: missing required keys: {', '.join(sorted(missing))}")
+    if unknown:
+        errors.append(f"{prefix}: unknown keys: {', '.join(sorted(unknown))}")
+    return errors
 
 
 def _check_field_id(entry: dict[str, object], prefix: str, errors: list[str]) -> None:
     """Validate the 'id' field."""
-    if not isinstance(entry.get("id"), str) or not entry.get("id"):
+    analyser_id = entry.get("id")
+    if not isinstance(analyser_id, str) or not analyser_id:
         errors.append(f"{prefix}: 'id' must be a non-empty string")
+    elif not _is_safe_name(analyser_id):
+        errors.append(f"{prefix}: 'id' contains unsafe characters")
 
 
 def _check_field_target(entry: dict[str, object], prefix: str, errors: list[str]) -> None:
@@ -227,7 +239,12 @@ def _check_field_target(entry: dict[str, object], prefix: str, errors: list[str]
 
 def _is_safe_make_target(target: str) -> bool:
     """Return whether Make will interpret the argument as one target name."""
-    return not target.startswith("-") and "=" not in target and target.isprintable()
+    return _is_safe_name(target)
+
+
+def _is_safe_name(name: str) -> bool:
+    """Return whether a registry name uses the supported conservative grammar."""
+    return _SAFE_NAME.fullmatch(name) is not None
 
 
 def _check_field_phase(entry: dict[str, object], prefix: str, errors: list[str]) -> None:
@@ -404,6 +421,9 @@ def _parse_states(
     states: dict[str, StateContract] = {}
 
     for state_name, state_data in raw.items():
+        if not _is_safe_name(state_name):
+            errors.append(f"{prefix}.{state_name}: state name contains unsafe characters")
+            continue
         sc, sc_errors = _validate_single_state(state_name, state_data, prefix)
         if sc is not None:
             states[state_name] = sc
@@ -413,13 +433,22 @@ def _parse_states(
 
 
 def _check_duplicate_ids(contracts: list[AnalyserContract], errors: list[str]) -> None:
-    """Check for duplicate analyser IDs."""
+    """Check for duplicate analyser IDs and Make targets."""
+    _check_duplicate_values(contracts, "id", "analyser ID", errors)
+    _check_duplicate_values(contracts, "target", "analyser target", errors)
+
+
+def _check_duplicate_values(
+    contracts: list[AnalyserContract], attribute: str, label: str, errors: list[str]
+) -> None:
+    """Append errors for duplicate values of one contract attribute."""
     seen: dict[str, int] = {}
-    for c in contracts:
-        seen[c.id] = seen.get(c.id, 0) + 1
-    for aid, count in seen.items():
+    for contract in contracts:
+        value = getattr(contract, attribute)
+        seen[value] = seen.get(value, 0) + 1
+    for value, count in seen.items():
         if count > 1:
-            errors.append(f"Duplicate analyser ID '{aid}' appears {count} times")
+            errors.append(f"Duplicate {label} '{value}' appears {count} times")
 
 
 # ---------------------------------------------------------------------------
@@ -465,12 +494,186 @@ def _check_overlapping_states(contract: AnalyserContract) -> list[str]:
     return []
 
 
-def validate_contracts(contracts: list[AnalyserContract]) -> list[str]:
-    """Validate contracts beyond schema: required states, sensible phase mapping."""
+def _read_make_targets(repository_root: Path) -> tuple[set[str], set[str], list[str]]:
+    """Return explicit and phony targets declared by the repository Makefile."""
+    makefile = repository_root / "Makefile"
+    try:
+        lines = _logical_make_lines(makefile.read_text(encoding="utf-8").splitlines())
+    except OSError as exc:
+        return set(), set(), [f"Cannot read Makefile: {exc}"]
+    explicit: set[str] = set()
+    for line in lines:
+        match = _EXPLICIT_TARGET.match(line)
+        if match is not None:
+            explicit.update(match.group(1).split())
+    return explicit, _read_phony_targets(lines), []
+
+
+def _read_phony_targets(lines: list[str]) -> set[str]:
+    """Return targets from normalised logical .PHONY declarations."""
+    phony: set[str] = set()
+    for line in lines:
+        if line.startswith(".PHONY:"):
+            phony.update(line.removeprefix(".PHONY:").split())
+    return phony
+
+
+def _logical_make_lines(lines: list[str]) -> list[str]:
+    """Join continuations and remove unescaped Make comments."""
+    logical: list[str] = []
+    current = ""
+    for raw_line in lines:
+        line = _strip_make_comment(raw_line).rstrip()
+        current += line.removesuffix("\\").strip() + " "
+        if not line.endswith("\\"):
+            logical.append(current.strip())
+            current = ""
+    if current.strip():
+        logical.append(current.strip())
+    return logical
+
+
+def _strip_make_comment(line: str) -> str:
+    """Remove the first unescaped Make comment from one physical line."""
+    escaped = False
+    for index, character in enumerate(line):
+        if character == "#" and not escaped:
+            return line[:index]
+        escaped = character == "\\" and not escaped
+        if character != "\\":
+            escaped = False
+    return line
+
+
+def _check_make_targets(contracts: list[AnalyserContract], repository_root: Path) -> list[str]:
+    """Check that every contract names an explicit phony Make target."""
+    explicit, phony, errors = _read_make_targets(repository_root)
+    for contract in contracts:
+        if contract.target not in explicit:
+            errors.append(
+                f"analyser '{contract.id}': Make target '{contract.target}' is not explicit"
+            )
+        elif contract.target not in phony:
+            errors.append(f"analyser '{contract.id}': Make target '{contract.target}' is not phony")
+    return errors
+
+
+def _split_test_reference(node_id: str) -> tuple[str, tuple[str, ...], str | None]:
+    """Split a test reference into path, statically resolvable nodes, and an error."""
+    path, separator, remainder = node_id.partition("::")
+    if not separator:
+        return path, (), None
+    base_nodes, bracket, opaque_suffix = remainder.partition("[")
+    if bracket and (not opaque_suffix or not opaque_suffix.endswith("]")):
+        return path, (), "has an invalid opaque parameter suffix"
+    nodes = tuple(base_nodes.split("::"))
+    if len(nodes) not in {1, 2} or not all(node.isidentifier() for node in nodes):
+        return path, (), "must reference a function or class method"
+    return path, nodes, None
+
+
+def _resolve_test_path(path_text: str, repository_root: Path) -> tuple[Path | None, str | None]:
+    """Resolve a repository-relative test path without allowing escape."""
+    if not path_text or "\\" in path_text:
+        return None, "has an invalid test path"
+    root = repository_root.resolve()
+    path = (root / path_text).resolve()
+    if Path(path_text).is_absolute() or not path.is_relative_to(root):
+        return None, "escapes the repository root"
+    if path.suffix != ".py":
+        return None, "must reference a Python test file"
+    if not path.is_file():
+        return None, "references a missing test file"
+    return path, None
+
+
+def _load_test_tree(path: Path) -> tuple[ast.Module | None, str | None]:
+    """Parse a test module for static node validation."""
+    try:
+        return ast.parse(path.read_text(encoding="utf-8"), filename=str(path)), None
+    except (OSError, SyntaxError) as exc:
+        return None, f"cannot parse test file: {exc}"
+
+
+def _contains_test_nodes(tree: ast.Module, nodes: tuple[str, ...]) -> bool:
+    """Return whether a module contains the requested top-level function or method."""
+    top_level = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    if len(nodes) == 1:
+        return nodes[0] in top_level
+    classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
+    class_node = classes.get(nodes[0])
+    if class_node is None:
+        return False
+    methods = {
+        node.name
+        for node in class_node.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    return nodes[1] in methods
+
+
+def _check_base_nodes(path: Path, nodes: tuple[str, ...]) -> str | None:
+    """Return an error when requested nodes cannot be resolved in a test module."""
+    if not nodes:
+        return None
+    tree, parse_error = _load_test_tree(path)
+    if parse_error is not None or tree is None:
+        return parse_error
+    if not _contains_test_nodes(tree, nodes):
+        return "references a missing statically resolvable base node"
+    return None
+
+
+def _check_test_reference(node_id: str, repository_root: Path) -> str | None:
+    """Return an error when a test evidence reference cannot be resolved safely."""
+    path_text, nodes, split_error = _split_test_reference(node_id)
+    if split_error is not None:
+        return split_error
+    path, path_error = _resolve_test_path(path_text, repository_root)
+    if path_error is not None or path is None:
+        return path_error
+    return _check_base_nodes(path, nodes)
+
+
+def _check_test_references(contracts: list[AnalyserContract], repository_root: Path) -> list[str]:
+    """Check test evidence references for uniqueness, safety, and static existence."""
     errors: list[str] = []
-    for c in contracts:
-        errors.extend(_check_required_states(c))
-        errors.extend(_check_overlapping_states(c))
+    seen: set[str] = set()
+    for contract in contracts:
+        for node_id in contract.test_node_ids:
+            if node_id in seen:
+                errors.append(f"analyser '{contract.id}': duplicate test reference '{node_id}'")
+            seen.add(node_id)
+            reference_error = _check_test_reference(node_id, repository_root)
+            if reference_error is not None:
+                errors.append(
+                    f"analyser '{contract.id}': test reference '{node_id}' {reference_error}"
+                )
+    return errors
+
+
+def validate_contracts(
+    contracts: list[AnalyserContract], repository_root: Path = _PROJECT_ROOT
+) -> list[str]:
+    """Validate process contracts and their repository-owned references.
+
+    Args:
+        contracts: Parsed analyser contracts.
+        repository_root: Root containing the referenced Makefile and tests.
+
+    Returns:
+        Human-readable validation errors.
+    """
+    errors: list[str] = []
+    for contract in contracts:
+        errors.extend(_check_required_states(contract))
+        errors.extend(_check_overlapping_states(contract))
+    errors.extend(_check_make_targets(contracts, repository_root))
+    errors.extend(_check_test_references(contracts, repository_root))
     return errors
 
 
@@ -597,6 +800,7 @@ class CliOptions:
     """Immutable analyser-contract command-line options."""
 
     contracts: Path
+    repository_root: Path
     validate: bool
     run: bool
     pending_ok: bool
@@ -804,7 +1008,7 @@ def _build_report(
     report = RunReport(skipped_pending=skipped)
 
     for c in selected:
-        result = run_analyser(c, _PROJECT_ROOT, timeout_s=args.timeout)
+        result = run_analyser(c, args.repository_root, timeout_s=args.timeout)
         report.results.append(result)
 
     return report
@@ -821,11 +1025,18 @@ def _parse_args(argv: list[str]) -> CliOptions:
         help=f"Path to analyser-contracts.toml (default: {_DEFAULT_CONTRACTS})",
     )
     parser.add_argument(
+        "--repository-root",
+        type=Path,
+        default=_PROJECT_ROOT,
+        help="Root containing the Makefile and referenced tests.",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--validate",
         action="store_true",
         help="Only validate the TOML schema; do not run analysers.",
     )
-    parser.add_argument(
+    mode.add_argument(
         "--run",
         action="store_true",
         help="Run non-pending analysers and verify exit codes.",
@@ -854,16 +1065,20 @@ def _parse_args(argv: list[str]) -> CliOptions:
     )
     parsed = parser.parse_args(argv)
     contracts: object = parsed.contracts
+    repository_root: object = parsed.repository_root
     validate: object = parsed.validate
     run: object = parsed.run
     pending_ok: object = parsed.pending_ok
     json_output: object = parsed.json
     only: object = parsed.only
     timeout: object = parsed.timeout
-    if not isinstance(contracts, Path) or not isinstance(timeout, int):
-        parser.error("invalid contracts path or timeout")
+    if not isinstance(contracts, Path) or not isinstance(repository_root, Path):
+        parser.error("invalid contracts path or repository root")
+    if not isinstance(timeout, int) or timeout <= 0:
+        parser.error("timeout must be a positive integer")
     return CliOptions(
         contracts=contracts,
+        repository_root=repository_root,
         validate=validate is True,
         run=run is True,
         pending_ok=pending_ok is True,
@@ -871,11 +1086,6 @@ def _parse_args(argv: list[str]) -> CliOptions:
         only=only if isinstance(only, str) else None,
         timeout=timeout,
     )
-
-
-def _should_validate(args: CliOptions) -> bool:
-    """Return True if schema validation should be performed."""
-    return args.validate or not args.run
 
 
 def _should_run(args: CliOptions) -> bool:
@@ -894,9 +1104,7 @@ def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
 
     contracts, schema_errors = load_contracts(args.contracts)
-
-    if _should_validate(args):
-        schema_errors.extend(validate_contracts(contracts))
+    schema_errors.extend(validate_contracts(contracts, args.repository_root))
 
     if schema_errors:
         _output_and_exit(RunReport(schema_errors=schema_errors), args)

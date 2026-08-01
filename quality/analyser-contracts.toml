@@ -1,8 +1,11 @@
 # =============================================================================
 # quality/analyser-contracts.toml — stable inventory of quality analysers.
 #
-# Each analyser declares its canonical Make target, the phases it belongs to,
-# and the expected process-exit behaviour for every known outcome state.
+# This schema-v1 file is a curated process-outcome registry, not an exhaustive
+# inventory of repository quality wiring. Each analyser declares its canonical
+# Make target and expected process-exit behaviour for known outcome states.
+# `phase` is documentation grouping, `status` controls contract-runner
+# selection only, and `test_node_ids` are ownership/evidence references.
 #
 # Contracts are used by scripts/check_analyser_contracts.py to verify that
 # analysers behave as expected (exit codes, signals) when invoked through
@@ -59,6 +62,24 @@ phase = 1
 status = "active"
 description = "Type checking via pyright"
 test_node_ids = []
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
+id = "typecheck-scripts"
+target = "typecheck-scripts"
+phase = 1
+status = "active"
+description = "Strict Pyright type checking for repository quality scripts"
+test_node_ids = [
+    "tests/test_quality_pipeline_configuration.py::test_ci_static_checks_quality_script_types_and_security",
+]
 
 [analysers.states.clean]
 exit_min = 0
@@ -225,14 +246,14 @@ id = "coupling"
 target = "coupling-check"
 phase = 2
 status = "active"
-description = "Advisory coupling and stability metrics"
+description = "Blocking coupling budget and import-graph health checks"
 test_node_ids = ["tests/test_coupling_metrics.py"]
 
 [analysers.states.clean]
 exit_min = 0
 exit_max = 0
 
-[analysers.states.graph-error]
+[analysers.states.findings-or-graph-error]
 exit_min = 1
 exit_max = 1
 
@@ -289,7 +310,7 @@ id = "gitleaks"
 target = "gitleaks-ci"
 phase = 3
 status = "pending"
-description = "Secret detection via gitleaks (pending integration)"
+description = "Required CI secret scan; pending only in the contract runner"
 test_node_ids = [
     "tests/test_gitleaks.py",
     "tests/test_gitleaks_integration.py",
@@ -316,7 +337,7 @@ id = "module-coverage"
 target = "module-coverage"
 phase = 4
 status = "pending"
-description = "Per-module coverage enforcement (pending integration)"
+description = "Per-module coverage threshold gate; pending only in the contract runner"
 test_node_ids = ["tests/test_module_coverage.py"]
 
 [analysers.states.clean]
@@ -332,7 +353,7 @@ id = "mutation"
 target = "mutate"
 phase = 4
 status = "pending"
-description = "Mutation testing via mutmut (pending integration)"
+description = "Full-tree Mutmut execution; pending in the contract runner because it is long-running"
 test_node_ids = [
     "tests/test_mutate_diff_files.py",
     "tests/test_mutation_policy.py",
@@ -392,11 +413,27 @@ exit_min = 1
 exit_max = 1
 
 [[analysers]]
+id = "suppression-reasons"
+target = "suppression-reasons"
+phase = 5
+status = "active"
+description = "Owner and reason enforcement for new inline suppressions"
+test_node_ids = ["tests/test_suppression_reasons.py"]
+
+[analysers.states.clean]
+exit_min = 0
+exit_max = 0
+
+[analysers.states.findings]
+exit_min = 1
+exit_max = 1
+
+[[analysers]]
 id = "ruff-architecture"
 target = "ruff-architecture"
 phase = 5
 status = "active"
-description = "Ruff-complexity ratchet (blocks new complexity/parameter findings)"
+description = "Ruff complexity, parameter, magic-value, and unused-argument hard gate"
 test_node_ids = [
     "tests/test_quality_ratchets.py::test_ratchet_gate_passes[check_ruff_architecture.py]",
 ]
@@ -414,7 +451,7 @@ id = "typecheck-strict-ratchet"
 target = "typecheck-strict-ratchet"
 phase = 5
 status = "active"
-description = "Pyright-strict ratchet (blocks new Any/unknown diagnostics)"
+description = "Strict Pyright source type-check hard gate"
 test_node_ids = []
 
 [analysers.states.clean]

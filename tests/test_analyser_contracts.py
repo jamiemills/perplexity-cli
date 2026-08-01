@@ -10,6 +10,8 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
+import pytest
+
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _FIXTURES = _PROJECT_ROOT / "tests" / "fixtures" / "analyser_contracts"
 
@@ -19,6 +21,45 @@ def _load_check_module():
     sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
     mod = import_module("check_analyser_contracts")
     return mod
+
+
+def _write_contract(tmp_path: Path, analyser_body: str) -> Path:
+    """Write one schema-v1 analyser contract for a focused parser test."""
+    path = tmp_path / "contracts.toml"
+    path.write_text(f"[schema]\nversion = 1\n\n[[analysers]]\n{analyser_body}", encoding="utf-8")
+    return path
+
+
+def _valid_analyser_body(extra: str = "") -> str:
+    """Return a minimal valid analyser TOML body with optional extra metadata."""
+    return (
+        'id = "sample"\n'
+        'target = "sample"\n'
+        "phase = 1\n"
+        'status = "active"\n'
+        'description = "Sample"\n'
+        f"{extra}"
+        "[analysers.states.clean]\n"
+        "exit_min = 0\n"
+        "exit_max = 0\n"
+    )
+
+
+def _write_repository(tmp_path: Path, targets: tuple[str, ...] = ("sample",)) -> Path:
+    """Create a minimal repository with explicit phony targets and test nodes."""
+    declarations = " ".join(targets)
+    recipes = "\n".join(f"{target}:\n\t@true" for target in targets)
+    (tmp_path / "Makefile").write_text(f".PHONY: {declarations}\n{recipes}\n", encoding="utf-8")
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_sample.py").write_text(
+        "def test_function():\n    pass\n\n"
+        "class TestGroup:\n"
+        "    def test_method(self):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+    return tmp_path
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +122,32 @@ def test_empty_states_treated_as_missing():
     _contracts, errors = mod.load_contracts(_FIXTURES / "empty_states.toml")
     assert len(errors) > 0, "Expected errors for empty states"
     assert any("states" in err.lower() or "missing required" in err.lower() for err in errors)
+
+
+def test_unknown_analyser_key_rejected(tmp_path: Path) -> None:
+    """Unknown analyser metadata cannot silently extend schema v1."""
+    mod = _load_check_module()
+    path = _write_contract(tmp_path, _valid_analyser_body('wiring = "ci"\n'))
+    _contracts, errors = mod.load_contracts(path)
+    assert any("unknown keys: wiring" in error for error in errors)
+
+
+def test_unknown_state_key_rejected(tmp_path: Path) -> None:
+    """Unknown state metadata cannot silently extend schema v1."""
+    mod = _load_check_module()
+    body = _valid_analyser_body().replace("exit_max = 0", "exit_max = 0\nmeaning = 'pass'")
+    _contracts, errors = mod.load_contracts(_write_contract(tmp_path, body))
+    assert any("unknown keys: meaning" in error for error in errors)
+
+
+@pytest.mark.parametrize("field", ['id = "../sample"', 'target = "sample target"'])
+def test_unsafe_names_rejected(tmp_path: Path, field: str) -> None:
+    """Analyser IDs and targets use a conservative Make-safe name grammar."""
+    mod = _load_check_module()
+    key = field.split(" =", maxsplit=1)[0]
+    body = _valid_analyser_body().replace(f'{key} = "sample"', field)
+    _contracts, errors = mod.load_contracts(_write_contract(tmp_path, body))
+    assert any("unsafe" in error for error in errors)
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +309,119 @@ def test_duplicate_ids_detected(monkeypatch):
     assert any("dup" in err for err in errors)
 
 
+def test_duplicate_targets_detected() -> None:
+    """Two curated contracts cannot claim the same canonical Make target."""
+    mod = _load_check_module()
+    state = {"clean": mod.StateContract(name="clean", exit_min=0, exit_max=0)}
+    contracts = [
+        mod.AnalyserContract("one", "shared", 1, "active", "One", state),
+        mod.AnalyserContract("two", "shared", 1, "active", "Two", state),
+    ]
+    errors: list[str] = []
+    mod._check_duplicate_ids(contracts, errors)
+    assert any("Duplicate analyser target 'shared'" in error for error in errors)
+
+
+# ---------------------------------------------------------------------------
+# Repository reference validation
+# ---------------------------------------------------------------------------
+
+
+def _repository_contract(mod, target: str = "sample", refs: tuple[str, ...] = ()):
+    """Build a valid contract for repository-reference tests."""
+    return mod.AnalyserContract(
+        id=target,
+        target=target,
+        phase=1,
+        status="active",
+        description="Sample",
+        states={"clean": mod.StateContract("clean", 0, 0)},
+        test_node_ids=refs,
+    )
+
+
+def test_explicit_phony_make_target_required(tmp_path: Path) -> None:
+    """Missing, implicit, and non-phony Make targets are rejected."""
+    mod = _load_check_module()
+    (tmp_path / "Makefile").write_text(
+        "sample:\n\t@true\n%.generated:\n\t@true\n", encoding="utf-8"
+    )
+    contracts = [
+        _repository_contract(mod),
+        _repository_contract(mod, "missing"),
+        _repository_contract(mod, "thing.generated"),
+    ]
+    errors = mod.validate_contracts(contracts, tmp_path)
+    assert any("'sample' is not phony" in error for error in errors)
+    assert any("'missing' is not explicit" in error for error in errors)
+    assert any("'thing.generated' is not explicit" in error for error in errors)
+
+
+def test_continued_phony_declaration_supported(tmp_path: Path) -> None:
+    """Standard continued .PHONY declarations resolve exact targets."""
+    mod = _load_check_module()
+    (tmp_path / "Makefile").write_text(
+        ".PHONY: first \\\n second\nfirst:\n\t@true\nsecond:\n\t@true\n",
+        encoding="utf-8",
+    )
+    contracts = [_repository_contract(mod, "first"), _repository_contract(mod, "second")]
+    assert mod.validate_contracts(contracts, tmp_path) == []
+
+
+def test_phony_parser_ignores_inline_make_comments(tmp_path: Path) -> None:
+    """Comment tokens cannot certify an explicit target as phony."""
+    mod = _load_check_module()
+    (tmp_path / "Makefile").write_text(
+        ".PHONY: real # fake is only a comment\nreal:\n\t@true\nfake:\n\t@true\n",
+        encoding="utf-8",
+    )
+    errors = mod.validate_contracts([_repository_contract(mod, "fake")], tmp_path)
+    assert any("'fake' is not phony" in error for error in errors)
+
+
+def test_supported_test_reference_forms_resolve(tmp_path: Path) -> None:
+    """File, function, method, and opaque parameter references are accepted."""
+    mod = _load_check_module()
+    root = _write_repository(tmp_path)
+    refs = (
+        "tests/test_sample.py",
+        "tests/test_sample.py::test_function",
+        "tests/test_sample.py::TestGroup::test_method",
+        "tests/test_sample.py::test_function[opaque/value::not-collected]",
+    )
+    assert mod.validate_contracts([_repository_contract(mod, refs=refs)], root) == []
+
+
+@pytest.mark.parametrize(
+    ("reference", "message"),
+    [
+        ("../test_escape.py", "escapes the repository root"),
+        ("tests/test_missing.py", "missing test file"),
+        ("tests/test_sample.py::test_absent", "missing statically resolvable base node"),
+        ("tests/test_sample.py::TestGroup::test_absent", "missing statically resolvable base node"),
+    ],
+)
+def test_invalid_test_references_rejected(tmp_path: Path, reference: str, message: str) -> None:
+    """Escaped, missing, and statically absent test references are rejected."""
+    mod = _load_check_module()
+    root = _write_repository(tmp_path)
+    errors = mod.validate_contracts([_repository_contract(mod, refs=(reference,))], root)
+    assert any(message in error for error in errors)
+
+
+def test_duplicate_test_references_rejected(tmp_path: Path) -> None:
+    """An evidence node may be owned only once in the curated registry."""
+    mod = _load_check_module()
+    root = _write_repository(tmp_path, ("one", "two"))
+    reference = "tests/test_sample.py::test_function"
+    contracts = [
+        _repository_contract(mod, "one", (reference,)),
+        _repository_contract(mod, "two", (reference,)),
+    ]
+    errors = mod.validate_contracts(contracts, root)
+    assert any("duplicate test reference" in error for error in errors)
+
+
 # ---------------------------------------------------------------------------
 # RunReport aggregation tests
 # ---------------------------------------------------------------------------
@@ -347,3 +527,61 @@ def test_run_report_carries_warnings():
     report = mod.RunReport(warnings=["coverage gap: foo"])
     assert report.warnings == ["coverage gap: foo"]
     assert report.all_contracts_honoured is True
+
+
+def test_validate_mode_never_runs_analyser(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A valid --validate invocation performs no analyser subprocess work."""
+    mod = _load_check_module()
+    root = _write_repository(tmp_path)
+    contracts_path = _write_contract(tmp_path, _valid_analyser_body())
+
+    def fail_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("subprocess.run must not be called by --validate")
+
+    monkeypatch.setattr(mod.subprocess, "run", fail_run)
+    with pytest.raises(SystemExit) as exc_info:
+        mod.main(
+            [
+                "--validate",
+                "--contracts",
+                str(contracts_path),
+                "--repository-root",
+                str(root),
+            ]
+        )
+    assert exc_info.value.code == 0
+
+
+def test_validate_and_run_are_mutually_exclusive() -> None:
+    """Schema-only validation cannot be combined with analyser execution."""
+    mod = _load_check_module()
+    with pytest.raises(SystemExit) as exc_info:
+        mod._parse_args(["--validate", "--run"])
+    assert exc_info.value.code == 2
+
+
+def test_invalid_metadata_prevents_run_before_selection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every run mode validates the complete registry before filtering or execution."""
+    mod = _load_check_module()
+    root = _write_repository(tmp_path)
+    contracts_path = _write_contract(tmp_path, _valid_analyser_body('unknown = "value"\n'))
+
+    def fail_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalid metadata must prevent subprocess execution")
+
+    monkeypatch.setattr(mod.subprocess, "run", fail_run)
+    with pytest.raises(SystemExit) as exc_info:
+        mod.main(
+            [
+                "--run",
+                "--only",
+                "does-not-match",
+                "--contracts",
+                str(contracts_path),
+                "--repository-root",
+                str(root),
+            ]
+        )
+    assert exc_info.value.code == 2
