@@ -1048,11 +1048,19 @@ uv run lefthook install
 
 ### Testing
 
+The documented safe ordinary test command is `make test`; it runs pytest in
+parallel with fail-fast and applies the live-marker exclusions (property,
+hermetic integration, real API, manual, real-user-config, and fuzz) from its
+recipe. Plain `uv run pytest` does NOT apply those exclusions.
+
 ```bash
-uv run pytest                   # safe default test suite
+make test                       # safe ordinary test suite
+make test-coverage              # tests with global + per-module coverage enforcement (>= 85%)
+make test-fuzz                  # fuzz tests (atheris harnesses, linux x86_64 only)
 uv run pytest -m security       # security tests only
-uv run pytest -m fuzz           # fuzz tests (atheris harnesses)
 ```
+
+For the full quality-gate reference, see [`QUALITY_GATES.md`](QUALITY_GATES.md).
 
 ### Makefile
 
@@ -1067,15 +1075,17 @@ make ci                         # credential-free CI aggregate: ci-static,
                                 #   sonar-reports, ci-property, ci-package, smoke-test
 make ci-trusted                 # make ci plus authenticated Safety
 make ci-static                  # format-check, lint, typecheck-all, bandit,
-                                #   vulture, complexity
+                                #   vulture, complexity, actionlint
 make check                      # all configured static checks (no tests); which
                                 #   analysers run is controlled by CHECK_* toggles
                                 #   in quality/gates.conf
 make lint                       # ruff check only
 make security                   # bandit + vulture
 make semgrep                    # custom + reviewed immutable community snapshots
-make ratchets                   # baseline ratchets: block new/grown file-size,
-                                #   suppressions, complexity, strict-Any, structural findings
+make ratchets                   # six members: four baseline ratchets (file-size,
+                                #   suppressions, suppression-reasons, semgrep-architecture)
+                                #   and two whole-tree hard gates (ruff-architecture,
+                                #   typecheck-strict-ratchet)
 make test                       # pytest (no coverage, fail-fast)
 make test-coverage              # pytest with per-module coverage enforcement (>=85%)
 make build                      # build wheel and sdist
@@ -1086,7 +1096,9 @@ Quality ratchets capture existing structural debt as accepted baselines under
 failure modes cannot spread while the debt is paid down incrementally. The
 latest community Semgrep packs run separately as a scheduled advisory;
 blocking scans use the reviewed community rule files whose hashes are
-recorded in `quality/semgrep-snapshot.json`.
+recorded in `quality/semgrep-snapshot.json`. See
+[`QUALITY_GATES.md`](QUALITY_GATES.md) for the authoritative catalogue of
+gates, where each runs, and how to replicate them.
 
 ### Releasing
 
@@ -1104,7 +1116,8 @@ The tracked release path is `make release V=<version>`, followed by the tag-driv
 
 ### Compatibility
 
-Supported Python versions: 3.12+.  CI tests against 3.12.
+Supported Python versions: 3.12+. CI tests against 3.12, 3.13, and 3.14 on
+Ubuntu, with compatibility and wheel-smoke lanes on macOS.
 
 ## Project governance
 

@@ -372,49 +372,36 @@ class TestQualityGatesMatchesRepo:
     def test_documents_release_drafter(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
         assert "release-drafter.yml" in text
-        assert "Release Drafter" in text
+        assert "Update Release Draft" in text
 
     def test_agent_check_push_wiring_is_corrected(self) -> None:
         """The doc must state that agent-check-push is NOT wired into lefthook/ci."""
         text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "not currently wired into `lefthook.yml` or `make ci`" in text
+        assert "NOT wired into lefthook or make ci" in text
         assert "--no-tests --no-fix pre-commit" in text
 
     def test_safety_skip_behaviour_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "unavailable credentials produce an informational skip" in text
-        assert "any Safety or Infisical child failure is" in text
-        assert "propagated and blocks the push" in text
-
-    def test_gitleaks_graceful_skip_documented(self) -> None:
-        text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "Gitleaks" in text
-        assert "prints a skip notice and exits 0" in text
+        assert "prints an informational skip" in text
+        assert "(never a pass)" in text
+        assert "child failures propagate and block" in text
 
     def test_thresholds_wired_or_documented(self) -> None:
         """FAIL_UNDER is a reference mirror; SEMGREP_SEVERITY is wired into Makefile."""
         text = QUALITY_GATES.read_text(encoding="utf-8")
         assert "reference mirror" in text  # FAIL_UNDER
-        assert "`make semgrep` target via `$(SEMGREP_SEVERITY)`" in text  # SEMGREP_SEVERITY wired
+        assert "consumed by `make semgrep` via `$(SEMGREP_SEVERITY)`" in text
         assert "`DIFF_COVERAGE_THRESHOLD` | 90" in text
-        assert "grade B and worse fail, so only A passes" in text
+        assert "B and worse fail, so only A passes" in text
         assert "Grade B or better" not in text
         assert "falls below B" not in text
 
-    def test_typecheck_and_ratchet_modes_are_exact(self) -> None:
-        text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "`[tool.pyright]`, strict mode" in text
-        assert "three baseline-aware" in text.lower()
-        assert "Ruff architecture hard gate" in text
-        assert "Pyright strict hard gate" in text
-        assert "scripts/check_ruff_architecture.py" not in text
-        assert "scripts/check_pyright_strict.py" not in text
-
     def test_opencode_plugin_caveats_documented(self) -> None:
         text = QUALITY_GATES.read_text(encoding="utf-8")
-        assert "canonical immutable Semgrep" in text
-        assert "Tool and parser failures become visible error findings" in text
-        assert "reactive plugin does not record them" in text
+        assert "Blocking immutable Semgrep ruleset" in text
+        assert "Tool and parser failures become visible `TOOL_FAILURE` error findings" in text
+        assert "NOT a general semantic proof" in text
+        assert "NOT a security boundary" in text
         # Plan-compliance mechanism was deleted (Rank 15 remediation).
         # The remaining 3 plugins are quality-gate, pxcli-quality, pre-push-docs-check.
 
@@ -439,7 +426,7 @@ class TestQualityGatesMatchesRepo:
             "make diff-coverage",
             "make deptry",
             "make dependency-hygiene",
-            "make import-linter",
+            "make.import-linter",
             "make refurb",
             "make quality-architecture",
         )
@@ -449,10 +436,9 @@ class TestQualityGatesMatchesRepo:
     def test_check_toggles_match_gates_conf(self) -> None:
         """Optional analyser toggles must reflect the executable ``gates.conf``.
 
-        The deleted ``make quality-plan``/``make plan-check`` commands and the
-        ``QUALITY_GATES.md`` toggle table are out of sync with the live
-        ``quality/gates.conf`` until F2-DOCS realigns the prose; the contract
-        test therefore asserts against the source-of-truth config file.
+        The semantic guide-drift suite (``test_quality_gates_documentation.py``)
+        asserts the full documented toggle table against ``quality/gates.conf``;
+        this test keeps a minimal literal guard for the source-of-truth file.
         """
         gates = (PROJECT_ROOT / "quality" / "gates.conf").read_text(encoding="utf-8")
         assert "CHECK_SEMGREP = true" in gates

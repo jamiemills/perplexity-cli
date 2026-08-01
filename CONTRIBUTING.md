@@ -15,10 +15,15 @@ source .venv/bin/activate
 - Default safe suite:
 
 ```bash
-uv run pytest
+make test
 ```
 
-  - This stays hermetic in CI and local default runs because `pyproject.toml` excludes `integration`, `real_api`, `manual`, `real_user_config`, and `fuzz` by default.
+  - `make test` is the documented safe ordinary test command. Its recipe runs
+    pytest in parallel with fail-fast and applies the marker exclusions
+    (`property`, `hermetic_integration`, `real_api`, `manual`,
+    `real_user_config`, and `fuzz`) from the Makefile — **not** from
+    `pyproject.toml` `addopts`, which only registers markers and strictness.
+    The hermetic integration marker is `hermetic_integration`.
 
 - Security-focused tests:
 
@@ -64,7 +69,12 @@ Prerequisites for the manual/browser and live lanes:
 - Existing Perplexity credentials in `~/.config/perplexity-cli/config.json` for the live API and attachment lanes.
 - Network access to the Perplexity API and S3 for the attachment E2E lane.
 
-Optional live lanes are opt-in only; keep using the default test command for hermetic CI and local verification.
+Optional live lanes are opt-in only; keep using `make test` for hermetic CI and
+local verification.
+
+For the authoritative catalogue of quality gates (pre-commit and pre-push
+stages, CI jobs, ratchets, scheduled and release controls), see
+[`QUALITY_GATES.md`](QUALITY_GATES.md).
 
 ## Code Quality
 

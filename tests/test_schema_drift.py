@@ -1,13 +1,27 @@
 """Schema-drift guard test.
 
-Prevents the drift pattern documented in ``.claude/thermo-nuclear-review.md``
-section 1b: hand-written per-command result-schema dicts maintained in
-parallel to the Pydantic result models.  Command output schemas should be
-derived from the models via ``model_json_schema()``.
+Why this ratchet exists
+-----------------------
 
-This is a ratchet test: it records the *current* hand-written schema debt as a
-known baseline and fails if the set grows.  Shrinking the set (deleting a
-hand-written schema in favour of model derivation) is always allowed.
+Command-output envelopes (``--json`` mode) advertise a JSON shape to
+downstream consumers. That shape is declared in two places that can drift
+apart:
+
+1. the Pydantic result models that produce the real runtime output, and
+2. hand-written per-command result-schema dicts used for documentation and
+   validation.
+
+Hand-written dicts are the drift hazard: they duplicate the model structure by
+hand, so a model change that is not mirrored into the dict silently breaks the
+advertised contract. The accepted solution is to derive command output schemas
+from the Pydantic models via ``model_json_schema()`` so there is exactly one
+source of truth.
+
+This test is therefore an accepted-debt RATCHET rather than a zero-debt
+invariant. It records the *current* hand-written schema debt as a known
+baseline and fails if the set grows. Shrinking the set (deleting a hand-written
+schema in favour of model derivation) is always allowed and updates the
+baseline.
 """
 
 from __future__ import annotations
@@ -68,7 +82,7 @@ def test_no_new_handwritten_schema_dicts() -> None:
     assert not new, (
         "New hand-written schema dict(s) detected — derive command output "
         "schemas from Pydantic models via model_json_schema() instead "
-        "(see .claude/thermo-nuclear-review.md §1b):\n  " + "\n  ".join(sorted(new))
+        "(see the module docstring for the ratchet rationale):\n  " + "\n  ".join(sorted(new))
     )
 
 

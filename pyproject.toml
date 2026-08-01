@@ -148,6 +148,7 @@ strict_config = true
 strict_xfail = true
 markers = [
     "hermetic_integration: marks tests as hermetic integration tests (loopback only, no real network)",
+    "integration: marks tests that exercise protocol/auth or real-service integration paths (may use network)",
     "security: marks tests as security tests",
     "slow: marks tests as slow-running",
     "real_api: marks tests that call the real Perplexity API (skipped in CI)",
@@ -176,7 +177,7 @@ min_confidence = 80
 [tool.mutmut]
 paths_to_mutate = ["src/perplexity_cli/"]
 tests_dir = ["tests/"]
-pytest_add_cli_args = ["-m", "not property and not real_api and not manual and not fuzz and not hermetic_integration", "--ignore=tests/test_cyclomatic_complexity.py", "--ignore=tests/test_test_isolation.py", "--ignore=tests/test_vulture_dead_code.py", "--ignore=tests/test_semgrep_clean_code.py", "--ignore=tests/test_coupling_metrics.py", "--ignore=tests/test_safety_scan.py", "--ignore=tests/test_mutate_diff_files.py", "--ignore=tests/test_quality_ratchets.py", "--ignore=tests/test_schema_drift.py", "--ignore=tests/test_repository_hygiene.py", "--ignore=tests/test_help_doc_drift.py", "--ignore=tests/test_module_coverage.py", "--ignore=tests/test_quality_pipeline_configuration.py", "--ignore=tests/test_workflow_configuration.py", "--ignore=tests/test_agent_check_edge_cases.py", "--ignore=tests/test_architecture.py", "--ignore=tests/test_architecture_model.py", "--ignore=tests/test_coverage_policy.py", "--ignore=tests/test_differential_context.py", "--ignore=tests/test_dynamic_imports.py", "--ignore=tests/test_import_graph.py", "--ignore=tests/test_semgrep_wrapper.py", "--ignore=tests/test_make_policy.py", "--ignore=tests/test_workflow_policy.py", "--ignore=tests/test_analyser_contracts.py", "--ignore=tests/test_mutation_policy.py", "--ignore=tests/test_suppressions.py"]
+pytest_add_cli_args = ["-m", "not property and not real_api and not manual and not fuzz and not hermetic_integration", "--ignore=tests/test_cyclomatic_complexity.py", "--ignore=tests/test_test_isolation.py", "--ignore=tests/test_vulture_dead_code.py", "--ignore=tests/test_semgrep_clean_code.py", "--ignore=tests/test_coupling_metrics.py", "--ignore=tests/test_safety_scan.py", "--ignore=tests/test_mutate_diff_files.py", "--ignore=tests/test_quality_ratchets.py", "--ignore=tests/test_schema_drift.py", "--ignore=tests/test_repository_hygiene.py", "--ignore=tests/test_help_doc_drift.py", "--ignore=tests/test_quality_gates_documentation.py", "--ignore=tests/test_module_coverage.py", "--ignore=tests/test_quality_pipeline_configuration.py", "--ignore=tests/test_workflow_configuration.py", "--ignore=tests/test_agent_check_edge_cases.py", "--ignore=tests/test_architecture.py", "--ignore=tests/test_architecture_model.py", "--ignore=tests/test_coverage_policy.py", "--ignore=tests/test_differential_context.py", "--ignore=tests/test_dynamic_imports.py", "--ignore=tests/test_import_graph.py", "--ignore=tests/test_semgrep_wrapper.py", "--ignore=tests/test_make_policy.py", "--ignore=tests/test_workflow_policy.py", "--ignore=tests/test_analyser_contracts.py", "--ignore=tests/test_mutation_policy.py", "--ignore=tests/test_suppressions.py"]
 do_not_mutate = []
 
 [tool.pyright]
