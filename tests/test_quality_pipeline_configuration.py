@@ -197,8 +197,44 @@ def test_ci_targets_are_split() -> None:
 
 
 def test_analyser_contract_tests_target_exists() -> None:
-    """The analyser contract tests target must be a canonical make goal."""
-    assert "\nanalyser-contract-tests:" in MAKEFILE
+    """The CI contract-test target must validate production metadata first."""
+    assert "\nanalyser-contract-validate:" in MAKEFILE
+    assert "scripts/check_analyser_contracts.py --validate" in MAKEFILE
+    assert "\nanalyser-contract-tests: analyser-contract-validate" in MAKEFILE
+
+
+def test_property_targets_share_source_scope_and_policy() -> None:
+    """Every property lane must use one source declaration and policy gate."""
+    assert "override PROPERTY_TEST_FILES := tests/test_property.py" in MAKEFILE
+    for target in ("test-property", "test-property-push", "test-property-ci"):
+        start = MAKEFILE.index(f"\n{target}:") + 1
+        end = MAKEFILE.find("\n\n", start)
+        target_body = MAKEFILE[start:end]
+        assert "test-property-policy" in target_body
+        assert "$(PROPERTY_TEST_FILES)" in target_body
+
+
+def test_full_mutation_report_is_generated_under_build() -> None:
+    """Scheduled full-policy evidence must not overwrite a tracked report."""
+    target = MAKEFILE[MAKEFILE.index("mutate-full-policy:") : MAKEFILE.index("mutate-estimate:")]
+    assert "--report-path build/reports/mutation-report.json" in target
+    assert "quality/evidence/mutation-report.json" not in target
+
+
+def test_property_source_scope_cannot_be_overridden() -> None:
+    """Command-line Make assignments cannot replace canonical property sources."""
+    result = subprocess.run(
+        [MAKE_BIN, "-n", "test-property", "PROPERTY_TEST_FILES=tests/test_property_policy.py"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    property_command = next(
+        line for line in result.stdout.splitlines() if "--hypothesis-profile=dev" in line
+    )
+    assert "tests/test_property.py" in property_command
+    assert "tests/test_property_policy.py" not in property_command
 
 
 def test_opencode_audit_target_exists() -> None:
@@ -238,5 +274,6 @@ def test_mutmut_ignores_repository_infrastructure_tests() -> None:
         "--ignore=tests/test_module_coverage.py",
         "--ignore=tests/test_quality_pipeline_configuration.py",
         "--ignore=tests/test_workflow_configuration.py",
+        "--ignore=tests/test_quality_gates_documentation.py",
     }
     assert required <= arguments

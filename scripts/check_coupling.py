@@ -1,9 +1,9 @@
-"""Coupling and stability advisory report for architecture health.
+"""Coupling and stability metrics for architecture health.
 
 Uses the shared import graph adapter (scripts/import_graph.py) to
-calculate Robert C. Martin's package-level metrics.  Reports advisory
-findings — it does not fail based on flagged counts, but DOES fail on
-graph build errors, parse errors, or config errors.
+calculate Robert C. Martin's package-level metrics. Findings are advisory
+by default; ``--blocking`` fails when the configured flagged-module budget
+is exceeded. Graph, parse, read, and configuration errors always fail.
 
 Formulas
 --------
@@ -26,7 +26,7 @@ Usage
 Exit codes
 ----------
     0 — success (or advisory findings exist)
-    1 — graph build / import resolution error
+    1 — graph error or blocking budget exceeded
     2 — syntax error in a source file
     3 — file read error
     4 — invalid config / argument error

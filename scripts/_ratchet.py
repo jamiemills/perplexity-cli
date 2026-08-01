@@ -3,9 +3,9 @@
 A ratchet gate captures the *current* findings as a JSON baseline and then
 fails on growth: new findings or increased counts are regressions, while
 shrinking is always allowed (and becomes the new baseline via
-``--update-baseline``).  This lets the repo record existing debt from
-``.claude/thermo-nuclear-review.md`` as accepted, while blocking future work
-from reintroducing or worsening the same classes of issue.
+``--update-baseline``).  This lets the repository record existing reviewed
+debt as accepted, while blocking future work from reintroducing or
+worsening the same classes of issue.
 
 Two flavours are supported:
 

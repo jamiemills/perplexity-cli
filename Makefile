@@ -1,5 +1,6 @@
 # =============================================================================
-# Makefile -- single source of truth for all lint, test, and build commands.
+# Makefile -- canonical reusable lint, test, and build commands.
+# Git-aware and event-aware orchestration remains in Lefthook and workflows.
 # =============================================================================
 
 include quality/gates.conf
@@ -8,6 +9,7 @@ include quality/gates.conf
 SHELL := /bin/bash
 PYTHON_VERSION ?= 3.12
 PROPERTY_PROFILE ?= ci
+override PROPERTY_TEST_FILES := tests/test_property.py
 SEMGREP_VERSION := 1.171.0
 ACTIONLINT_PY_VERSION := 1.7.12.24
 SEMGREP := uvx --from semgrep==$(SEMGREP_VERSION) semgrep
@@ -65,7 +67,7 @@ configure-opencode:
 	@npm --prefix .opencode ci
 	@$(MAKE) opencode-check
 	@echo ""
-	@echo "Verifying plugin and agent wiring..."
+	@echo "Verifying plugin and configuration files..."
 	@ok=true; \
 	for f in quality-gate.ts pxcli-quality.ts pre-push-docs-check.ts; do \
 		if [ ! -f .opencode/plugins/$$f ]; then \
@@ -81,10 +83,10 @@ configure-opencode:
 		exit 1; \
 	fi
 	@echo ""
-	@echo "OpenCode wiring verified."
+	@echo "OpenCode files verified."
 	@echo ""
 
-opencode-check:  ## Type-check OpenCode plugins and validate resolved config when available
+opencode-check:  ## Lint, test, type-check OpenCode plugins and validate config
 	@npm --prefix .opencode run check
 	@if command -v opencode >/dev/null 2>&1; then \
 		opencode debug config >/dev/null; \
@@ -156,7 +158,7 @@ bandit:  ## Run bandit security linter
 vulture:  ## Run vulture dead-code detector
 	uv run vulture src/ vulture_whitelist.py --min-confidence $(MIN_CONFIDENCE)
 
-gitleaks:  ## Run gitleaks secret detection (pre-push: skips when not installed)
+gitleaks:  ## Run required gitleaks secret detection
 	scripts/gitleaks_check.sh
 
 gitleaks-ci:  ## Run gitleaks in CI (fails if not installed)
@@ -241,7 +243,7 @@ coupling-report:  ## Generate advisory coupling report with trend support
 metrics-track:  ## Track CC and MI trends over recent git revisions
 	uv run python scripts/track_metrics.py
 
-arch-check:  ## Check architecture layer boundaries (hard gate, no baseline)
+arch-check:  ## Check architecture layer boundaries (baseline-aware)
 	uv run python scripts/check_architecture.py
 
 arch-check-dynamic:  ## Check dynamic import architecture enforcement
@@ -276,7 +278,7 @@ mutate:  ## Run mutation testing on the full source tree
 mutate-full-policy:  ## Run full mutation testing then enforce the canonical policy
 	uv run mutmut run
 	uv run python scripts/mutation_policy.py \
-		--report-path quality/evidence/mutation-report.json
+		--report-path build/reports/mutation-report.json
 
 mutate-estimate:  ## Estimate how long a full mutation run would take
 	uv run mutmut print-time-estimates
@@ -314,7 +316,7 @@ mutate-browse:  ## Browse mutation results in interactive TUI
 # Testing
 # ---------------------------------------------------------------------------
 
-.PHONY: test test-coverage-report module-coverage test-coverage test-fuzz test-integration test-property test-property-push test-property-ci
+.PHONY: test test-coverage-report module-coverage test-coverage test-fuzz test-integration test-property-policy test-property test-property-push test-property-ci
 
 test:  ## Run tests without coverage (fail-fast, parallel)
 	uv run pytest tests/ -q --tb=line -x -n auto -m "not property and not hermetic_integration and not real_api and not manual and not real_user_config and not fuzz"
@@ -336,14 +338,17 @@ test-fuzz:  ## Run fuzz tests
 test-integration:  ## Run hermetic integration tests (loopback only)
 	uv run pytest tests/ -q --tb=short -m hermetic_integration
 
-test-property:  ## Run property-based tests (dev profile, 10 examples)
-	uv run pytest tests/test_property.py -v --tb=short -m property --hypothesis-profile=dev
+test-property-policy:  ## Validate the exact property-test manifest
+	uv run pytest tests/test_property_policy.py -q
 
-test-property-push:  ## Run property-based tests (push profile, 50 examples)
-	uv run pytest tests/test_property.py -v --tb=short -m property --hypothesis-profile=push
+test-property: test-property-policy  ## Run property-based tests (dev profile, 10 examples)
+	uv run pytest $(PROPERTY_TEST_FILES) -v --tb=short -m property --hypothesis-profile=dev
 
-test-property-ci:  ## Run property-based tests (CI profile, 1000 examples)
-	uv run pytest tests/test_property.py -v --tb=short -m property --hypothesis-profile=ci
+test-property-push: test-property-policy  ## Run property-based tests (push profile, 50 examples)
+	uv run pytest $(PROPERTY_TEST_FILES) -v --tb=short -m property --hypothesis-profile=push
+
+test-property-ci: test-property-policy  ## Run property-based tests (CI profile, 1000 examples)
+	uv run pytest $(PROPERTY_TEST_FILES) -v --tb=short -m property --hypothesis-profile=ci
 
 # ---------------------------------------------------------------------------
 # Diff coverage
@@ -495,7 +500,7 @@ endif
 
 CHECK_PREREQS += module-coverage
 
-check: $(CHECK_PREREQS)  ## Run all static checks
+check: $(CHECK_PREREQS)  ## Run configured checks plus existing module coverage
 
 agent-check:
 	uv run python scripts/agent_check.py pre-commit
@@ -506,9 +511,12 @@ agent-check-no-tests:
 agent-check-push:
 	uv run python scripts/agent_check.py pre-push
 
-.PHONY: check ci ci-static ci-test-coverage ci-test-compat ci-fuzz-status ci-property ci-package ci-trusted analyser-contract-tests
+.PHONY: check ci ci-static ci-test-coverage ci-test-compat ci-fuzz-status ci-property ci-package ci-trusted analyser-contract-validate analyser-contract-tests
 
-analyser-contract-tests:  ## Run analyser contract validation tests
+analyser-contract-validate:  ## Validate the production analyser contract registry
+	uv run python scripts/check_analyser_contracts.py --validate
+
+analyser-contract-tests: analyser-contract-validate  ## Validate and test analyser contracts
 	uv run pytest tests/test_analyser_contracts.py -q
 
 ci-static: format-check lint typecheck-all bandit vulture complexity actionlint ## CI static analysis lane
@@ -531,9 +539,11 @@ ci-trusted: ci safety-gate  ## Full CI plus authenticated Safety for trusted cod
 # Quality gates
 # ---------------------------------------------------------------------------
 
-ratchets: file-size suppression-ratchet suppression-reasons ruff-architecture typecheck-strict-ratchet semgrep-architecture  ## Run all quality gates
+.PHONY: ratchets file-size suppression-ratchet suppression-reasons ruff-architecture typecheck-strict-ratchet semgrep-architecture
 
-file-size:  ## Hard gate: block oversized source files
+ratchets: file-size suppression-ratchet suppression-reasons ruff-architecture typecheck-strict-ratchet semgrep-architecture  ## Run four ratchets and two hard gates
+
+file-size:  ## Ratchet: block new or grown oversized source files
 	@uv run python scripts/check_file_size.py --max-lines $(FILE_SIZE_CAP); \
 	if [ $$? -ne 0 ]; then \
 		echo "File-size gate FAILED."; \
@@ -618,7 +628,7 @@ refurb:  ## Run Refurb readability advisory checks
 
 .PHONY: quality-architecture
 
-quality-architecture: import-linter arch-check coupling-report  ## Run all architecture checks
+quality-architecture: import-linter arch-check coupling-report  ## Run import/architecture gates and advisory coupling report
 
 # ---------------------------------------------------------------------------
 # Workflow validation

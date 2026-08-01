@@ -1,15 +1,15 @@
-"""Run all analysers in parallel and produce a unified report.
+"""Run an agent-oriented analyser subset and produce a unified report.
 
 Designed for coding agents: instead of discovering failures one-by-one
-through sequential hooks, this script runs every analyser simultaneously,
+through sequential hooks, this script runs selected analysers concurrently,
 captures all output, and prints a single aggregated report.  The agent
 then addresses all issues in one pass.
 
 Usage
 -----
-    python scripts/agent_check.py pre-commit             # all pre-commit analysers
+    python scripts/agent_check.py pre-commit             # agent pre-commit subset
     python scripts/agent_check.py pre-commit --files f1.py f2.py  # scoped
-    python scripts/agent_check.py pre-push               # all pre-push analysers
+    python scripts/agent_check.py pre-push               # agent pre-push subset
     python scripts/agent_check.py --json pre-commit      # machine-readable output
     python scripts/agent_check.py --no-fix pre-commit    # read-only checks
 """
@@ -134,7 +134,7 @@ PRE_COMMIT_TESTS: tuple[Analyser, ...] = (
     Analyser("test", ["uv", "run", "pytest", "tests/", "-n", "auto", "-v", "--tb=long"]),
 )
 
-# Pre-push analysers: all independent, all parallel.
+# Agent pre-push subset: all independent and run in parallel.
 PRE_PUSH_ALL: tuple[Analyser, ...] = (
     Analyser("test-coverage", ["make", "test-coverage"]),
     Analyser("safety", [], command_builder=_build_safety_command),
