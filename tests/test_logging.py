@@ -187,3 +187,17 @@ class TestEnableStructuredLogging:
             if isinstance(h, DynamicStderrHandler):
                 assert isinstance(h.formatter, JSONLogFormatter)
                 assert h.formatter.trace_id == "abc-123"
+
+
+def test_logging_contracts_module_re_exports_protocols() -> None:
+    """The logging contracts shim re-exports the facade protocols identically."""
+    from perplexity_cli.utils.logging import LoggerFactory, RedactionAgent
+    from perplexity_cli.utils.logging.contracts import (
+        LoggerFactory as ContractsLoggerFactory,
+    )
+    from perplexity_cli.utils.logging.contracts import (
+        RedactionAgent as ContractsRedactionAgent,
+    )
+
+    assert ContractsLoggerFactory is LoggerFactory
+    assert ContractsRedactionAgent is RedactionAgent

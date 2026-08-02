@@ -114,3 +114,17 @@ def test_handle_network_error_real_body(capsys) -> None:
         handle_network_error(error, logger, debug_mode="debug")
     captured = capsys.readouterr()
     assert "Details:" in captured.err
+
+
+def test_contracts_module_re_exports_classifiers() -> None:
+    """The contracts shim re-exports the facade protocols identically."""
+    from perplexity_cli.utils.http_errors import HttpErrorClassifier, HttpStatusClassifier
+    from perplexity_cli.utils.http_errors.contracts import (
+        HttpErrorClassifier as ContractsClassifier,
+    )
+    from perplexity_cli.utils.http_errors.contracts import (
+        HttpStatusClassifier as ContractsStatusClassifier,
+    )
+
+    assert ContractsClassifier is HttpErrorClassifier
+    assert ContractsStatusClassifier is HttpStatusClassifier
