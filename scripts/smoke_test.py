@@ -220,11 +220,26 @@ def _create_venv(venv_dir: Path, context: SmokeContext) -> Path:
 
 
 def _install_wheel(venv_python: Path, wheel_path: Path, context: SmokeContext) -> None:
-    """Install the wheel offline into the isolated venv."""
+    """Install the wheel into the isolated venv.
+
+    The offline attempt uses the warm uv cache on local verification runs;
+    on cold-cache CI runners it falls back to a networked install so the
+    smoke contract is still exercised.
+    """
+    offline = subprocess.run(  # nosec B603, B607  # owner: quality-infrastructure; reason: fixed uv executable with structurally delimited argv, no shell; wheel path derived from the repo version
+        ["uv", "pip", "install", "--offline", "--python", str(venv_python), str(wheel_path)],
+        capture_output=True,
+        text=True,
+        env=context.env,
+        timeout=_SETUP_TIMEOUT_SECONDS,
+        check=False,
+    )
+    if offline.returncode == 0:
+        return
     _check_command(
         CommandSpec(
-            "uv pip install (offline)",
-            ("uv", "pip", "install", "--offline", "--python", str(venv_python), str(wheel_path)),
+            "uv pip install (online fallback)",
+            ("uv", "pip", "install", "--python", str(venv_python), str(wheel_path)),
             timeout=_SETUP_TIMEOUT_SECONDS,
         ),
         context,

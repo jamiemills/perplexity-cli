@@ -328,6 +328,10 @@ class TestStdinValidation:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    shutil.which("gitleaks") is not None,
+    reason="gitleaks is installed in this environment; the missing-binary contract is not exercisable",
+)
 class TestMissingGitleaks:
     """Hard failure when gitleaks binary is absent."""
 

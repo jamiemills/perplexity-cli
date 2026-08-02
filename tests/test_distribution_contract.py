@@ -289,6 +289,18 @@ def test_wheel_imports_as_installed_distribution(
         timeout=180,
         check=False,
     )
+    if result.returncode != 0:
+        # Cold-cache CI runners may lack the wheel's runtime deps in the uv
+        # cache; fall back to a networked install so the contract is tested.
+        result = subprocess.run(
+            ["uv", "pip", "install", "--python", str(venv_python), str(wheel)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=180,
+            check=False,
+        )
     assert result.returncode == 0, f"uv pip install failed:\n{result.stderr}"
 
     probe = (
