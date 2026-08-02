@@ -36,6 +36,7 @@
     "scripts/semgrep_policy.py:351:nosemgrep:boolean-flag-argument",
     "scripts/smoke_test.py:174:nosec",
     "scripts/smoke_test.py:229:nosec",
+    "scripts/smoke_test.py:240:nosec",
     "scripts/smoke_test.py:28:nosec",
     "scripts/track_metrics.py:132:nosec",
     "scripts/track_metrics.py:164:nosec",

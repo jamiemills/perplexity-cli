@@ -292,12 +292,13 @@ def test_wheel_imports_as_installed_distribution(
     if result.returncode != 0:
         # Cold-cache CI runners may lack the wheel's runtime deps in the uv
         # cache; fall back to a networked install so the contract is tested.
+        online_env = {key: value for key, value in env.items() if key != "UV_OFFLINE"}
         result = subprocess.run(
             ["uv", "pip", "install", "--python", str(venv_python), str(wheel)],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
-            env=env,
+            env=online_env,
             timeout=180,
             check=False,
         )

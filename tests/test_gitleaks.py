@@ -383,9 +383,12 @@ class TestExitCodes:
         assert result.returncode in {0, 10}
 
     def test_range_mode_exit_code_zero_or_ten(self) -> None:
-        base = subprocess.check_output(
-            ["git", "rev-parse", "HEAD~2"], text=True, cwd=PROJECT_ROOT
-        ).strip()
+        try:
+            base = subprocess.check_output(
+                ["git", "rev-parse", "HEAD~2"], text=True, cwd=PROJECT_ROOT
+            ).strip()
+        except subprocess.CalledProcessError:
+            pytest.skip("shallow checkout: range mode requires at least 2 commits of history")
         head = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], text=True, cwd=PROJECT_ROOT
         ).strip()

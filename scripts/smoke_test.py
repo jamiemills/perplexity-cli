@@ -236,14 +236,18 @@ def _install_wheel(venv_python: Path, wheel_path: Path, context: SmokeContext) -
     )
     if offline.returncode == 0:
         return
-    _check_command(
-        CommandSpec(
-            "uv pip install (online fallback)",
-            ("uv", "pip", "install", "--python", str(venv_python), str(wheel_path)),
-            timeout=_SETUP_TIMEOUT_SECONDS,
-        ),
-        context,
+    online_env = {key: value for key, value in context.env.items() if key != "UV_OFFLINE"}
+    online = subprocess.run(  # nosec B603, B607  # owner: quality-infrastructure; reason: fixed uv executable with structurally delimited argv, no shell
+        ["uv", "pip", "install", "--python", str(venv_python), str(wheel_path)],
+        capture_output=True,
+        text=True,
+        env=online_env,
+        timeout=_SETUP_TIMEOUT_SECONDS,
+        check=False,
     )
+    if online.returncode != 0:
+        msg = f"uv pip install (offline and online fallback) failed:\n{online.stderr}"
+        raise SmokeFailure(msg)
 
 
 def _materialise_default_urls(venv_python: Path, context: SmokeContext) -> None:
