@@ -207,7 +207,7 @@ class GhClient:
         url = f"repos/{repo}/contents/{path}?ref={head_sha}"
         stdout = self._run_gh(["api", url, "--jq", ".content"])
         try:
-            return base64.b64decode(stdout, validate=True).decode("utf-8")
+            return base64.b64decode(stdout, validate=False).decode("utf-8")
         except ValueError as exc:
             message = f"gh api returned non-decodable content for PR {number}"
             raise GhError(message, stdout) from exc

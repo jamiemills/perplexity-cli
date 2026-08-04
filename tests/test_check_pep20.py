@@ -324,6 +324,21 @@ class TestGhClient:
         client = self._client("", content='print("hi")\n')
         assert client.fetch_head_file("owner/repo", 1, "a.py", "head123") == 'print("hi")\n'
 
+    def test_fetch_head_file_decodes_line_wrapped_base64(self) -> None:
+        """gh wraps base64 at 76 chars; validate=False must ignore newlines."""
+        long_content = 'x = "seventy"  # ' + "a" * 80 + "\n"
+        wrapped = "\n".join(
+            base64.b64encode(long_content.encode("utf-8")).decode("ascii")[index : index + 76]
+            for index in range(0, len(base64.b64encode(long_content.encode("utf-8"))), 76)
+        )
+        client = self._client("", content=None)
+
+        def run_gh(args: list[str], timeout: int = 60) -> str:
+            return wrapped
+
+        client._run_gh = run_gh  # type: ignore[method-assign]  # owner: test-infrastructure; reason: inject wrapped base64
+        assert client.fetch_head_file("owner/repo", 1, "a.py", "head123") == long_content
+
     def test_gh_error_on_nonzero(self) -> None:
         client = GhClient()
 

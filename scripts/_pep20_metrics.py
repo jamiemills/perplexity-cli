@@ -6,7 +6,7 @@ itself; it only extracts metrics, classifications and line-indexed
 occurrences.
 
 Complexity is counted with the zen rule: one plus every ``if``, ``for``,
-``while``, ``try``, ``with``, ``assert``, every ``except`` handler, every
+``while``, ``try``, ``with``, ``assert``, every ``except`` clause, every
 boolean operator branch and every comprehension.  Because it includes the
 ``try:`` keyword, this number differs from radon's (the repository's
 canonical ``make complexity`` gate) by the count of ``try`` blocks.
@@ -251,15 +251,15 @@ def _has_return(body: list[ast.stmt]) -> bool:
     return any(isinstance(node, ast.Return) for node in _iter_body_nodes(body))
 
 
-def _has_comment(handler: ast.ExceptHandler, source: str) -> bool:
-    """True when the handler's source segment contains a comment."""
-    segment = ast.get_source_segment(source, handler)
+def _has_comment(clause: ast.ExceptHandler, source: str) -> bool:
+    """True when the clause's source segment contains a comment."""
+    segment = ast.get_source_segment(source, clause)
     return "#" in segment if segment else False
 
 
 def _body_is_pass(body: list[ast.stmt]) -> bool:
     """True when a body is empty or consists solely of a pass statement."""
-    return len(body) == 0 or (len(body) == 1 and isinstance(body[0], ast.Pass))
+    return not body or (len(body) == 1 and isinstance(body[0], ast.Pass))
 
 
 def _first_kind(checks: tuple[tuple[str, bool], ...], default: str) -> str:
@@ -270,39 +270,39 @@ def _first_kind(checks: tuple[tuple[str, bool], ...], default: str) -> str:
     return default
 
 
-def _classify_body(body: list[ast.stmt], handler: ast.ExceptHandler, source: str) -> str:
-    """Classify a non-bare handler body into its kind."""
+def _classify_body(body: list[ast.stmt], clause: ast.ExceptHandler, source: str) -> str:
+    """Classify a non-bare clause body into its kind."""
     return _first_kind(
         (
             ("logged", _has_logger_call(body)),
             ("raise_from", _has_raise_from(body)),
             ("raise", _has_raise(body)),
             ("return", _has_return(body)),
-            ("commented", _has_comment(handler, source)),
+            ("commented", _has_comment(clause, source)),
             ("pass", _body_is_pass(body)),
         ),
         default="silent",
     )
 
 
-def _classify_kind(handler: ast.ExceptHandler, source: str) -> str:
-    """Classify an except handler's type and body into a kind string."""
-    if handler.type is None:
+def _classify_kind(clause: ast.ExceptHandler, source: str) -> str:
+    """Classify an except clause's type and body into a kind string."""
+    if clause.type is None:
         return "bare"
-    if _is_broad_exception(handler.type):
+    if _is_broad_exception(clause.type):
         return "broad"
-    return _classify_body(handler.body, handler, source)
+    return _classify_body(clause.body, clause, source)
 
 
-def except_metrics(handler: ast.ExceptHandler, source: str) -> ExceptMetrics:
-    """Classify one except handler into a deterministic kind.
+def except_metrics(clause: ast.ExceptHandler, source: str) -> ExceptMetrics:
+    """Classify one except clause into a deterministic kind.
 
     Kinds are ``bare``, ``broad``, ``logged``, ``raise_from``, ``raise``,
-    ``return``, ``commented``, ``pass`` and ``silent``.  A handler that merely
+    ``return``, ``commented``, ``pass`` and ``silent``.  A clause that merely
     carries a comment is ``commented`` (explicitly silenced) and takes
     priority over the ``pass`` or ``silent`` classifications.
     """
-    return ExceptMetrics(kind=_classify_kind(handler, source), line=handler.lineno)
+    return ExceptMetrics(kind=_classify_kind(clause, source), line=clause.lineno)
 
 
 def normalised_body_hash(func: _FunctionNode) -> str | None:
@@ -550,7 +550,7 @@ class _Collector(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
-        """Record an except handler and a loop-level guessing continue."""
+        """Record an except clause and a loop-level guessing continue."""
         self.excepts.append(node)
         if self._loop_depth > 0 and _has_continue(node.body):
             self.guess_continue_lines.append(node.lineno)
@@ -604,8 +604,8 @@ def _build_function_metrics(nodes: list[_FunctionNode]) -> tuple[FunctionMetrics
 def _build_except_metrics(
     handlers: list[ast.ExceptHandler], source: str
 ) -> tuple[ExceptMetrics, ...]:
-    """Build the metrics tuple for every except handler in a module."""
-    return tuple(except_metrics(handler, source) for handler in handlers)
+    """Build the metrics tuple for every except clause in a module."""
+    return tuple(except_metrics(clause, source) for clause in handlers)
 
 
 def _count_kind(items: tuple[ExceptMetrics, ...], kind: str) -> int:
