@@ -55,24 +55,17 @@ def _split_hunks(patch_text: str) -> list[tuple[re.Match[str], list[str]]]:
     return sections
 
 
-def _new_line_count(body: list[str]) -> int:
-    """Return the number of added (``+``-prefixed) lines in a hunk body."""
-    return sum(1 for line in body if line.startswith("+"))
-
-
 def parse_diff_hunks(patch_text: str) -> list[Hunk]:
     """Parse a unified diff patch into added-line ranges.
 
     Each hunk header ``@@ -a,b +c,d @@`` yields one Hunk whose start and
     length come from the header's new-side range; an omitted count means one.
-    The hunk body is walked to validate the diff structure, but the header's
-    stated count remains authoritative.
     """
     hunks: list[Hunk] = []
     for match, body in _split_hunks(patch_text):
         start = int(match[3])
         length = int(match[4] or "1")
-        _new_line_count(body)
+        del body
         hunks.append(Hunk(start_line=start, length=length))
     return hunks
 

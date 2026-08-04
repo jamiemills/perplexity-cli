@@ -251,6 +251,7 @@ coupling-report:  ## Generate advisory coupling report with trend support
 metrics-track:  ## Track CC and MI trends over recent git revisions
 	uv run python scripts/track_metrics.py
 
+PEP20_ARGS ?=
 pep20:  ## Run the PEP 20 adherence report (advisory; manual only, not wired into gates)
 	@uv run python scripts/check_pep20.py $(PEP20_ARGS)
 

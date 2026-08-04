@@ -13,7 +13,9 @@ canonical ``make complexity`` gate).  Detectors never inspect the AST
 directly: every signal they need is a pre-computed field on
 ``ModuleSignals``.  Aphorism 1 flags every undocumented function because
 the current signal contract exposes no per-function name, so the public
-(``not name.startswith("_")``) filter cannot be applied.
+(``not name.startswith("_")``) filter cannot be applied; its beauty proxy is
+also deliberately limited to docstring presence (line length, compound
+statements and tab mixing are reported under aphorism 6 instead).
 """
 
 from __future__ import annotations

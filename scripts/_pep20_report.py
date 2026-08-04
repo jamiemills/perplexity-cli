@@ -40,6 +40,8 @@ _VERDICT_KEYS = {
     Verdict.NOT_ASSESSABLE: "not_assessable",
 }
 
+_ADVISORY = frozenset({AphorismId.AMBIGUITY, AphorismId.ONE_WAY, AphorismId.NOW})
+
 
 @dataclass(frozen=True, slots=True)
 class Report:
@@ -123,7 +125,12 @@ def _finding_location(finding: Finding) -> str:
 def _summary_row(report: Report, aphorism_id: AphorismId) -> str:
     """Render one summary table row for an aphorism."""
     verdict = _effective_verdict(report, aphorism_id)
-    verdict_text = f"{verdict.value} (rubric)" if aphorism_id in NON_MECHANICAL else verdict.value
+    if aphorism_id in NON_MECHANICAL:
+        verdict_text = f"{verdict.value} (rubric)"
+    elif aphorism_id in _ADVISORY:
+        verdict_text = f"{verdict.value} (advisory)"
+    else:
+        verdict_text = verdict.value
     finding_count = (
         0 if aphorism_id in NON_MECHANICAL else len(report.findings.get(aphorism_id, []))
     )
@@ -160,9 +167,10 @@ def _aphorism_sections(report: Report) -> str:
     for aphorism_id in sorted(AphorismId):
         if aphorism_id in NON_MECHANICAL:
             continue
+        label = " (advisory)" if aphorism_id in _ADVISORY else ""
         heading = (
             f"### {int(aphorism_id)}. {APHORISMS[aphorism_id]} — "
-            f"{_effective_verdict(report, aphorism_id).value}"
+            f"{_effective_verdict(report, aphorism_id).value}{label}"
         )
         lines = [heading]
         lines.extend(_finding_lines(report, aphorism_id))
