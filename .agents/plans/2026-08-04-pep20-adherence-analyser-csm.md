@@ -355,6 +355,9 @@ No overlapping write ownership: each task writes only its own new files (T007 ad
 | 2026-08-04 | 0 | VERIFY | T008 | make pep20/lint/typecheck-scripts/bandit/deptry all exit 0; my suite 54 passed; PR spot-check pypa/hatch#2355 line-scopes 13+12 findings to added lines; byte-deterministic. `make test` NOT fully green in this environment: pre-existing gitleaks flake under -n auto (user-authorized --no-verify), semgrep family resource contention under -n auto (passes serially 72/72), attachment integration order-dependence (fails identically at base commit 36eaddd: 2931 passed/2 failed vs my branch 2984 passed/2 failed) | REVIEW |
 | 2026-08-04 | 0 | REVIEW | — | Independent review completed (below); findings all resolved | CHECKPOINT |
 | 2026-08-04 | 0 | CHECKPOINT | — | Batch 3 committed (--no-verify); plan updated | COMPLETE |
+| 2026-08-04 | 0 | REVIEW | — | Independent reviewer: GO on functionality/security/conformance/54 tests; NO-GO on one BLOCKER (Makefile edit accidentally deleted coupling-check/coupling-report recipes) + 2 minors (advisory labels missing; aph 1 proxy scope) + 2 nits | REPAIR |
+| 2026-08-04 | 0 | REPAIR | — | BLOCKER reverted (coupling recipes restored, commit 78d20eb); minors fixed (advisory labels in report, aph-1 proxy-scope docstring); nits fixed (drop unused _new_line_count, define PEP20_ARGS ?=); re-verified gates + 54 tests | VERIFY |
+| 2026-08-04 | 0 | VERIFY | — | Post-repair: ruff/pyright(0)/radon(no B)/bandit(0)/54 tests green; advisory labels render; make pep20 + coupling-check both resolve; committed 60259ba | COMPLETE |
 
 ## Completion Review
 - Status: COMPLETE (2026-08-04)
