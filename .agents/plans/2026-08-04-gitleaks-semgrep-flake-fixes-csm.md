@@ -8,12 +8,12 @@
 ## Control
 - Plan ID: gitleaks-semgrep-flake-fixes
 - Status: ready
-- Current CSM state: NOT_STARTED
+- Current CSM state: DISPATCH (G2)
 - Cycle: 0
 - Commits: allowed
-- Last checkpoint: 2026-08-04 — plan drafted after confirmed root-cause research (shared semgrep scan-dir race; hidden git stderr in gitleaks provisioning)
-- Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
-- Active tasks: none
+- Last checkpoint: 2026-08-04 — G1 done: T001 (gitleaks _run_provisioning + refactor, 20 passed) and T002 (semgrep tmp_path_factory isolation, 69/69 under -n 4, flake gate green)
+- Next transition: T003 unit tests + sustained verification
+- Active tasks: T003
 - Blockers: none
 
 ## Goal
@@ -157,7 +157,7 @@ Critical path: (T001 or T002) -> T003.
 Parallel groups: G1 = {T001, T002} — two disjoint files, fully independent. G2 = {T003}. No overlapping write ownership.
 
 ## Numbered Plan
-1. [pending] Add `_run_provisioning` helper and refactor the flaky gitleaks test
+1. [completed] Add `_run_provisioning` helper and refactor the flaky gitleaks test
    - Task ID: T001
    - Depends on: none
    - Parallel group: G1
@@ -172,7 +172,7 @@ Parallel groups: G1 = {T001, T002} — two disjoint files, fully independent. G2
    - Repair attempts: 0
    - Recovery note: partial work = helper missing or test still using `subprocess.run`; grep + pytest identify it; resume by completing the helper and call-site swaps.
 
-2. [pending] Isolate the semgrep-policy scan directory per worker
+2. [completed] Isolate the semgrep-policy scan directory per worker
    - Task ID: T002
    - Depends on: none
    - Parallel group: G1
@@ -236,6 +236,11 @@ Parallel groups: G1 = {T001, T002} — two disjoint files, fully independent. G2
 | 2026-08-04 | 0 | CRITIQUE | — | Primary-led hostile self-review (small, low-risk test-only plan); findings recorded above | REMEDIATE |
 | 2026-08-04 | 0 | REMEDIATE | — | Findings reconciled: retry design justified, tmp_path_factory verified, scope contained | VERIFY |
 | 2026-08-04 | 0 | VERIFY | — | Primary agent approved: AC1-AC6 map to T001-T003; commands match repo; gitleaks retry is bounded+diagnosable | SAVED |
+| 2026-08-04 | 0 | RECOVER | — | Working tree clean (NORMS.md only); plan at e6c12ca; 3 tasks pending; targets confirmed (SCAN_ROOT :39/:173-176; flaky test :230-259) | VALIDATE |
+| 2026-08-04 | 0 | VALIDATE | — | Semgrep flake reproduced at baseline: test_clean_target_exits_zero fails under -n 4 (rc 2, scanned []); gitleaks call sites enumerated | DISPATCH (G1) |
+| 2026-08-04 | 0 | DISPATCH | T001,T002 | Both implemented by primary agent (disjoint test files): _run_provisioning helper + flaky-test refactor; SCAN_ROOT removed, scan_dir -> tmp_path_factory.mktemp | INTEGRATE |
+| 2026-08-04 | 0 | VERIFY | T001,T002 | ruff clean/formatted; gitleaks 20 passed; semgrep 69/69 under -n 4 (was ~100% failing); grep confirms no fixed shared path (mktemp prefix string remains, intended) | CHECKPOINT |
+| 2026-08-04 | 0 | CHECKPOINT | — | G1 committed; plan updated | SELECT (T003) |
 
 ## Completion Review
 (filled by csm-build when all criteria are verified)

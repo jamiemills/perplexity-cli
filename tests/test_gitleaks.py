@@ -10,9 +10,14 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PROJECT_ROOT / "scripts" / "gitleaks_check.sh"
@@ -74,6 +79,42 @@ def _assert_missing_mode_error(result: subprocess.CompletedProcess[str]) -> None
     combined = f"{result.stdout}\n{result.stderr}"
     assert result.returncode == 3
     assert "usage:" in combined or "unknown mode" in combined or "ERROR" in combined
+
+
+def _run_provisioning(
+    command: Sequence[str],
+    *,
+    cwd: Path | None = None,
+    reset_dir: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a git provisioning command, retrying once on transient failure.
+
+    The single retry after a short sleep absorbs the intermittent non-zero
+    exits seen when parallel xdist workers saturate the machine.  When
+    *reset_dir* is set it is wiped and recreated before every attempt so a
+    partially-created repository is never committed on top of.  Captured
+    stdout and stderr are surfaced in the failure message rather than
+    swallowed by ``check=True``.
+
+    Raises:
+        AssertionError: The command failed on every attempt.
+    """
+    last_error = ""
+    for _attempt in range(2):
+        if reset_dir is not None:
+            shutil.rmtree(reset_dir, ignore_errors=True)
+            reset_dir.mkdir()
+        result = subprocess.run(
+            [*command],
+            capture_output=True,
+            text=True,
+            cwd=str(cwd) if cwd is not None else None,
+        )
+        if result.returncode == 0:
+            return result
+        last_error = f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        time.sleep(0.5)
+    raise AssertionError(f"git provisioning failed:\n{last_error}")
 
 
 # ---------------------------------------------------------------------------
@@ -230,33 +271,17 @@ class TestOidHandling:
     def test_new_ref_remote_zeros_triggers_new_branch_path(self, tmp_path: Path) -> None:
         """A new ref (remote=all-zeros) triggers new-branch detection."""
         repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(
-            ["bash", str(FIXTURES / "clean-repo-setup.sh"), str(repo)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
         remote = tmp_path / "origin.git"
-        subprocess.run(
-            ["git", "clone", "--bare", str(repo), str(remote)],
-            check=True,
-            capture_output=True,
-            text=True,
+        _run_provisioning(
+            ["bash", str(FIXTURES / "clean-repo-setup.sh"), str(repo)],
+            reset_dir=repo,
         )
-        subprocess.run(
-            ["git", "remote", "add", "origin", str(remote)],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=repo,
-        )
+        _run_provisioning(["git", "clone", "--bare", str(repo), str(remote)], reset_dir=remote)
+        _run_provisioning(["git", "remote", "add", "origin", str(remote)], cwd=repo)
         (repo / "new-feature.txt").write_text("clean feature\n")
-        subprocess.run(["git", "add", "new-feature.txt"], check=True, cwd=repo)
-        subprocess.run(["git", "commit", "-m", "new feature"], check=True, cwd=repo)
-        head_sha = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], text=True, cwd=repo
-        ).strip()
+        _run_provisioning(["git", "add", "new-feature.txt"], cwd=repo)
+        _run_provisioning(["git", "commit", "-m", "new feature"], cwd=repo)
+        head_sha = _run_provisioning(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip()
         stdin_new = (
             f"refs/heads/new-feature {head_sha} refs/heads/new-feature "
             "0000000000000000000000000000000000000000\n"

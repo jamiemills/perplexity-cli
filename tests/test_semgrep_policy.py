@@ -36,7 +36,6 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = PROJECT_ROOT / "quality" / "semgrep-policy.toml"
 SEMGREP_VERSION = "1.171.0"
-SCAN_ROOT = PROJECT_ROOT / "build" / "semgrep-policy-scan"
 SCAN_TIMEOUT = 120
 
 # Configs are exactly the SEMGREP_CONFIGS the Makefile passes to ``make semgrep``.
@@ -168,12 +167,16 @@ def semgrep_available() -> None:
 
 
 @pytest.fixture(scope="session")
-def scan_dir() -> Path:
-    """Create a throwaway scan directory under build/ and clean it up."""
-    shutil.rmtree(SCAN_ROOT, ignore_errors=True)
-    SCAN_ROOT.mkdir(parents=True, exist_ok=True)
-    yield SCAN_ROOT
-    shutil.rmtree(SCAN_ROOT, ignore_errors=True)
+def scan_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create a unique per-worker scan directory and clean it up.
+
+    The directory is per-worker (``tmp_path_factory`` resolves to a distinct
+    base root under xdist), so parallel workers can never delete each other's
+    scan target the way a single fixed ``build/`` path could.
+    """
+    scan_path = tmp_path_factory.mktemp("semgrep-policy-scan")
+    yield scan_path
+    shutil.rmtree(scan_path, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")
