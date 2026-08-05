@@ -7,7 +7,7 @@
 
 ## Control
 - Plan ID: pep20-adherence-analyser
-- Status: in_progress
+- Status: complete
 - Current CSM state: COMPLETE
 - Cycle: 0
 - Commits: allowed
