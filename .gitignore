@@ -70,3 +70,6 @@ crash-*
 
 # Vitest coverage output
 .opencode/coverage/
+
+# csm-scan regenerable report
+NORMS.md

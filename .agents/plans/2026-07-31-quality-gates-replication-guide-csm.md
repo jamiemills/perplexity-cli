@@ -358,7 +358,7 @@ After `CHECKPOINT`, transition to `SELECT` while tasks remain, `COMPLETE` when e
    - Acceptance evidence: Exact Make diff identifying only two metadata edges, one report-path change, source-variable consolidation, and comment corrections; thresholds/toggles and all unrelated target recipes/prerequisites unchanged.
    - Recovery note: This is the sole Makefile integration task. Resume by checking for the three markers `analyser-contract-validate`, `PROPERTY_TEST_FILES`, and `build/reports/mutation-report.json`, then run their focused structural tests before broader checks.
 
-7. [pending] Rewrite the quality guide and align supporting human documentation
+7. [completed] Rewrite the quality guide and align supporting human documentation
    - Task ID: T007
    - Depends on: T002, T003, T004, T005, T006
    - Parallel group: none
