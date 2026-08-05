@@ -1090,6 +1090,7 @@ make ratchets                   # six members: four baseline ratchets (file-size
                                 #   typecheck-strict-ratchet)
 make test                       # pytest (no coverage, fail-fast)
 make test-coverage              # pytest with per-module coverage enforcement (>=85%)
+make pep20                      # PEP 20 (Zen of Python) adherence report (advisory, manual-only)
 make build                      # build wheel and sdist
 ```
 
@@ -1101,6 +1102,30 @@ blocking scans use the reviewed community rule files whose hashes are
 recorded in `quality/semgrep-snapshot.json`. See
 [`QUALITY_GATES.md`](QUALITY_GATES.md) for the authoritative catalogue of
 gates, where each runs, and how to replicate them.
+
+#### PEP 20 adherence analyser
+
+`make pep20` runs a deterministic, offline analyser
+(`scripts/check_pep20.py`) that scores a Python repository against the
+nineteen Zen of Python aphorisms and prints a per-aphorism verdict
+(Strong / Moderate / Weak / Not-assessable) with `file:line` evidence. It is
+an advisory developer tool, not a gate: it is never wired into CI or the git
+hooks, and findings never change its exit code.
+
+```bash
+make pep20                                    # report on src/ (default root)
+make pep20 PEP20_ARGS="--root src/perplexity_cli"   # custom root
+make pep20 PEP20_ARGS="--json"                # machine-readable JSON
+make pep20 PEP20_ARGS="--pr 123 --repo owner/repo"  # assess a pull request
+                                               # (read-only gh API; line-scoped)
+make pep20 PEP20_ARGS="--output build/reports/pep20.md"  # write to a file
+```
+
+Three aphorisms (9, 14, 16) are human-judgement calls and are reported as
+Not-assessable with rubric prose; the mechanical aphorisms are assessed via
+deterministic proxies (complexity, nesting, error handling, docstrings, and
+so on). PR mode is read-only by default; `--post-comment` is an explicit
+opt-in that posts the report as a review comment.
 
 ### Releasing
 
