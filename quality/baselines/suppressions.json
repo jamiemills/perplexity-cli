@@ -1,7 +1,7 @@
 {
   "fingerprints": [
-    "scripts/_pep20_report.py:57:noqa:PLR0913",
-    "scripts/_pep20_scoping.py:125:nosec",
+    "scripts/_pep20_report.py:59:noqa:PLR0913",
+    "scripts/_pep20_scoping.py:118:nosec",
     "scripts/_pep20_scoping.py:17:nosec",
     "scripts/agent_check.py:199:nosec",
     "scripts/agent_check.py:22:nosec",

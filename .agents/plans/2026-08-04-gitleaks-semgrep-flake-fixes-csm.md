@@ -8,12 +8,12 @@
 ## Control
 - Plan ID: gitleaks-semgrep-flake-fixes
 - Status: ready
-- Current CSM state: DISPATCH (G2)
+- Current CSM state: COMPLETE
 - Cycle: 0
 - Commits: allowed
 - Last checkpoint: 2026-08-04 — G1 done: T001 (gitleaks _run_provisioning + refactor, 20 passed) and T002 (semgrep tmp_path_factory isolation, 69/69 under -n 4, flake gate green)
 - Next transition: T003 unit tests + sustained verification
-- Active tasks: T003
+- Active tasks: none
 - Blockers: none
 
 ## Goal
@@ -187,7 +187,7 @@ Parallel groups: G1 = {T001, T002} — two disjoint files, fully independent. G2
    - Repair attempts: 0
    - Recovery note: partial work = fixture still uses SCAN_ROOT; grep catches it; resume by completing the fixture rewrite.
 
-3. [pending] Add retry-helper unit tests and run sustained parallel verification
+3. [completed] Add retry-helper unit tests and run sustained parallel verification
    - Task ID: T003
    - Depends on: T001, T002
    - Parallel group: G2
@@ -241,6 +241,21 @@ Parallel groups: G1 = {T001, T002} — two disjoint files, fully independent. G2
 | 2026-08-04 | 0 | DISPATCH | T001,T002 | Both implemented by primary agent (disjoint test files): _run_provisioning helper + flaky-test refactor; SCAN_ROOT removed, scan_dir -> tmp_path_factory.mktemp | INTEGRATE |
 | 2026-08-04 | 0 | VERIFY | T001,T002 | ruff clean/formatted; gitleaks 20 passed; semgrep 69/69 under -n 4 (was ~100% failing); grep confirms no fixed shared path (mktemp prefix string remains, intended) | CHECKPOINT |
 | 2026-08-04 | 0 | CHECKPOINT | — | G1 committed; plan updated | SELECT (T003) |
+| 2026-08-04 | 0 | DISPATCH | T003 | TestRunProvisioning unit tests added (retry-once + stderr surfacing); 2 passed | VERIFY |
+| 2026-08-04 | 0 | VERIFY | T003 | Sustained gates: gitleaks -n 4 5x = 22 passed each; semgrep -n 4 5x = 69 passed each (was ~100% failing); serial combined 91 passed. Stale suppression baseline (line drift from prior plan review edits) refreshed: diff = exactly 2 line-number updates, 94 identities preserved | REPAIR |
+| 2026-08-04 | 0 | REPAIR | — | Suppressions baseline refreshed (57->59 noqa, 125->118 nosec; same justified suppressions, no new ones); ratchet green | VERIFY |
+| 2026-08-04 | 0 | VERIFY | — | Full `make test`: 2989 passed, 2 skipped, exit 0 (previously failed on gitleaks/semgrep/attachments intermittently) | CHECKPOINT |
+| 2026-08-04 | 0 | CHECKPOINT | — | All acceptance criteria met; final batch committed | COMPLETE |
 
 ## Completion Review
-(filled by csm-build when all criteria are verified)
+- Status: COMPLETE (2026-08-04)
+- AC1: PASS — `uv run pytest tests/test_semgrep_policy.py -n 4 -q` green on 5 consecutive runs (69 passed each); was ~100% failing before the fix.
+- AC2: PASS — `uv run pytest tests/test_gitleaks.py -n 4 -q` green on 5 consecutive runs (22 passed each).
+- AC3: PASS — `TestRunProvisioning` unit tests: retry-once behaviour and stderr surfacing both proven (2 passed).
+- AC4: PASS (intent) — the fixed `SCAN_ROOT` constant is removed; `scan_dir` now uses `tmp_path_factory.mktemp("semgrep-policy-scan")` (the only remaining string match is the unique per-worker prefix, which is the intended isolation).
+- AC5: PASS — serial combined run 91 passed, 2 skipped.
+- AC6: PASS — full `make test`: 2989 passed, 2 skipped, exit 0 (was intermittently failing on gitleaks + semgrep + attachments).
+- Extra repair: a stale suppression baseline from the previous PEP20 plan's post-refresh review edits was detected by the ratchet; refreshed so the only diff is two line-number updates (57->59 noqa, 125->118 nosec) of the same justified suppressions — 94 identities preserved, no new suppressions.
+- Deliverables: `_run_provisioning` helper + flaky-test refactor in tests/test_gitleaks.py; per-worker scan-dir isolation in tests/test_semgrep_policy.py; 2 new unit tests; suppressions.json line-drift repair.
+- Commits: 4db812a (batch 1: gitleaks + semgrep fixes + plan), final batch (T003 + baseline + plan), both `--no-verify` per user authorization.
+- Residual: the attachments-integration order-dependence did not recur in the final `make test` (it passed); if it reappears it is a separate pre-existing issue outside this plan's scope.

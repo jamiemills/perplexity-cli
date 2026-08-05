@@ -117,6 +117,26 @@ def _run_provisioning(
     raise AssertionError(f"git provisioning failed:\n{last_error}")
 
 
+class TestRunProvisioning:
+    """Retry-once and stderr-surfacing behaviour of the provisioning helper."""
+
+    def test_run_provisioning_retries_on_transient_failure(self, tmp_path: Path) -> None:
+        """A command failing once then succeeding is retried and succeeds."""
+        flag = tmp_path / "flag"
+        command = ["bash", "-c", f"test -e {flag} || (touch {flag}; exit 1)"]
+        result = _run_provisioning(command)
+        assert result.returncode == 0
+        assert flag.exists()
+
+    def test_run_provisioning_surfaces_stderr(self) -> None:
+        """A command failing twice raises with captured stdout and stderr."""
+        with pytest.raises(AssertionError) as excinfo:
+            _run_provisioning(["git", "config", "--get", "definitely.not.a.real.key"])
+        message = str(excinfo.value)
+        assert "stdout:" in message
+        assert "stderr:" in message
+
+
 # ---------------------------------------------------------------------------
 # Mode selection
 # ---------------------------------------------------------------------------
