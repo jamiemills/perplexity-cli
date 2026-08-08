@@ -9,9 +9,9 @@
 - Plan ID: pxcli-google-login-token
 - Status: ready
 - Current CSM state: NOT_STARTED
-- Cycle: 0
+- Cycle: 1 (variant: Cloudflare egress)
 - Commits: allowed (credential-bearing files must remain gitignored; only docs/plan/scripts are committed)
-- Last checkpoint: 2026-08-06 — plan drafted, critiqued (2 blockers + 6 majors), remediated, verified
+- Last checkpoint: 2026-08-06 — cycle 1: Cloudflare-variant explored; Worker reverse-proxy DISPROVEN via Cloudflare docs; T001 revised to a Cloudflare WARP egress spike; VNC/Browser Run/proxy remain fallbacks
 - Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
 - Active tasks: none
 - Blockers: none
@@ -20,6 +20,7 @@
 Establish a working Perplexity CLI (`pxcli`) auth token by performing a Google sign-in to perplexity.ai in an automated browser session inside the `chromium-vnc` Docker container, with the sign-in approved by the user on their phone, and persist the resulting token into pxcli's encrypted token store. The login email lives in a git-ignored `.env` file. The user cannot interact with the browser directly, so the plan drives it via CDP and stops at explicit approval gates.
 
 Deliverables:
+0. Cloudflare-variant spike: prove whether changing the browser's EGRESS IP via Cloudflare WARP lets the automated browser pass Perplexity's Turnstile (the Cloudflare Worker reverse-proxy idea is DISPROVEN by research and is NOT pursued).
 1. A proven browser login to perplexity.ai via Google (email `jamie.mills@gmail.com` from `.env`, phone-approval gate).
 2. A valid pxcli token persisted via `pxcli auth login` (or the documented direct-injection fallback), verified with `pxcli auth status --verify`.
 3. Credentials confined to a git-ignored `.env`; no secrets in git, logs, or commits.
@@ -53,6 +54,7 @@ Exclusions:
 - csm-browse skill: launches an isolated Chromium in the `chromium-vnc` container (CDP on container ports 9224-9234, public on `172.17.0.2:<port>`), driven via `browse.mjs` verbs; VNC on host `localhost:5900` is observational only. Skill rule: never target the primary shared browser (port 9222).
 - PROVEN BLOCKER (planning R&D): the csm-browse isolated browser is launched with `--disable-webgl --disable-gpu --disable-accelerated-2d-canvas --disable-dev-shm-usage --hide-scrollbars` (full flag list incl. `--ozone-platform-hint=auto --no-sandbox --password-store=basic --enable-software-rasterization --remote-debugging-address=0.0.0.0`; `~/.config/opencode/skills/csm-browse/lib/constants.mjs:30-42`). Navigating to `https://www.perplexity.ai` from it shows a Cloudflare "Just a moment..." Turnstile challenge (`cf-turnstile-response` hidden input, value empty) that does NOT auto-resolve after ~90s, reloads, and offers no interactive element. Browser probe reports `webgl:false`. Host `curl` to perplexity.ai also returns HTTP 403. Conclusion: the webgl-disabled automated browser cannot pass Cloudflare.
 - Google sign-in flow (knowledge + csm-browse verbs): a "Continue with Google" button triggers an accounts.google.com OAuth redirect; with 2-Step Verification the account can approve via a phone prompt (e.g. YouTube app) — exactly the approval the user described. The automation can type the email and click Next; the user approves on their phone; the browser then redirects back to perplexity.ai and the session appears.
+- CLOUDFLARE VARIANT RESEARCH (verified against Cloudflare docs): the Turnstile widget connects DIRECTLY from the browser to `challenges.cloudflare.com` — a Worker reverse-proxy only changes the IP the origin sees, NOT the challenge path; `api.js` must not be proxied ("Proxying or caching this file will cause Turnstile to fail"); and Perplexity's sitekey is hostname-bound to `perplexity.ai` so a `workers.dev` host fails hostname management. VERDICT: a Cloudflare Worker reverse-proxy CANNOT pass Perplexity's Turnstile and is not pursued. The only Cloudflare mechanism that changes what Turnstile judges is CLOUDFLARE WARP (client re-routes the browser's egress, incl. the challenge path, via Cloudflare's consumer network) — free, no account needed for consumer mode; ranked moderate (WARP IPs are shared infra IPs and the browser is still automated, so a cheap spike decides it). Cloudflare Browser Run (headless browser on Cloudflare's network) is the paid alternative; Tunnel/Access do not reach external sites.
 
 ## Assumptions And Decisions
 | ID | Statement | Type | Evidence or rationale | Status |
@@ -63,7 +65,7 @@ Exclusions:
 | A4 | `save_cookies` must be enabled before login so Cloudflare `cf*` cookies persist for later CLI use | Decision | cookies dropped unless `save_cookies` true (token_manager.py:120-127) | Accepted |
 | A5 | Email stored as `PERPLEXITY_GOOGLE_EMAIL` in the existing gitignored `.env`; automation sources it; never logged | Decision | `.gitignore:41-42`; no password handled (phone approval) | Accepted |
 | A6 | The logged-in perplexity tab must be the first page target when `pxcli auth login` runs (it navigates the first page target) | Evidence | oauth_handler.py:101-118,331 | Accepted |
-| A7 | If the container IP is Cloudflare-flagged such that no browser passes, the automated path is infeasible and the plan stops at the T001 gate for user direction | Decision | Host curl 403 suggests IP-level suspicion is possible | Accepted |
+| A7 | The block is an IP/ASN-reputation soft-block (Hetzner AS24940), so the decisive lever is the browser's EGRESS IP, not its fingerprint — tested via a Cloudflare WARP spike; Worker reverse-proxy is disproven | Evidence | Turnstile server-side refusal on 77.42.45.177 regardless of fingerprint; Cloudflare docs (widget connects from browser IP; api.js must not be proxied; hostname binding) | Confirmed |
 | A8 | Browser driving uses csm-browse verbs where possible; a webgl-enabled session (if required) is launched via a small helper replicating the csm-browse environment, on a port pool beyond 9224 | Decision | csm-browse flags are fixed in the skill; helper keeps the skill untouched | Accepted |
 
 ## R&D Record
@@ -74,6 +76,7 @@ Exclusions:
 | R3 | Does pxcli support `.env`? | grep dotenv/load_dotenv in src + pyproject | Read-only | No dotenv dependency; env must be exported by the driving shell | Automation sources `.env` itself; keep it gitignored |
 | R4 | Can a webgl-enabled chromium in the container pass Cloudflare? | Ad-hoc chromium launch in container (attempted) | Disposable /tmp profile; no credentials | Inconclusive: chromium environment plumbing (XDG/HOME/user) wasn't replicated; devtools not reliably reachable | T001 must replicate the full csm-browse env (env vars, user 1000, DISPLAY :0) with modified flags; document as spike |
 | R5 | What does Google sign-in + phone approval look like to the automation? | Knowledge of accounts.google.com OAuth + csm-browse verbs | n/a | type email -> Next -> phone prompt -> auto-redirect back to perplexity.ai -> session created | T003 automation stops at the approval gate; T004 polls for completion |
+| R6 | Can the Cloudflare account bypass the block (Worker proxy / WARP / Browser Run)? | Cloudflare docs (developers.cloudflare.com), Turnstile internals, pricing | Read-only fetches; no account/deploy | Worker reverse-proxy DISPROVEN (widget connects from browser IP; api.js must not be proxied; sitekey hostname-bound). WARP changes browser egress (the challenge path) — the only Cloudflare mechanism that can help; free consumer mode; moderate likelihood. Browser Run = paid alternative. Tunnel/Access not applicable | Revised T001 = WARP egress spike; Worker proxy not pursued |
 
 ## Discovered Requirements
 - The driving shell must source `.env` (`set -a; . ./.env; set +a`) and pass the email to the `type` verb as an argument from `PERPLEXITY_GOOGLE_EMAIL`; never echo it.
@@ -92,7 +95,7 @@ Exclusions:
 ## Design
 Stage-by-stage operational flow, each stage a gate:
 
-1. **T001 Feasibility spike (make-or-break).** Stand up a webgl-enabled headful Chromium inside `chromium-vnc` replicating the csm-browse environment (user 1000, `DISPLAY=:0`, session HOME/XDG dirs, socat to host) but WITHOUT the fingerprint-revealing flags (`--disable-webgl`, `--disable-gpu`, `--disable-accelerated-2d-canvas`) and WITH software GL. Verify `webgl` is present (probe). Navigate to `https://www.perplexity.ai` and poll the `cf-turnstile-response` / page title for up to ~60s. Record PASS (login page reachable) or BLOCK. On BLOCK, STOP and report to the user for direction (the automated path is infeasible from this IP; recommend the user log in via their own host browser and import the token).
+1. **T001 Egress spike (make-or-break, Cloudflare-variant).** The block is IP/ASN-reputation (Hetzner AS24940), not fingerprint — so the decisive test is changing the browser's EGRESS IP via **Cloudflare WARP** (free consumer mode; no account needed; Docker container egress NATs through the host, so WARP on the host covers the browser too). Install/connect WARP on the host, confirm the egress IP changed (e.g. `curl ipinfo.io`), then retry the automated browser (csm-browse or the webgl-enabled driver) against `https://www.perplexity.ai` and poll `cf-turnstile-response` / title up to ~60s. Record PASS (login page reachable) or BLOCK. On BLOCK, STOP and report for direction: options are (a) Cloudflare Browser Run (paid headless browser on Cloudflare's network), (b) the VNC human-in-the-loop path (primary browser, manual solve + Google sign-in), or (c) a residential/mobile proxy the user provides.
 
 2. **T002 Credentials.** Append `PERPLEXITY_GOOGLE_EMAIL=jamie.mills@gmail.com` to `.env`; confirm `.env` is gitignored and untracked; add a tiny gitignored loader snippet in the driving commands (no new committed file required — the shell sources `.env` inline).
 
@@ -116,23 +119,23 @@ T004 (complete login)     [G4]  depends: T003 (user approval)
 T005 (pxcli token)        [G5]  depends: T004
 T006 (cleanup + evidence) [G6]  depends: T005
 ```
-Critical path: T001 -> T002 -> T003 -> (user approval) -> T004 -> T005 -> T006. Largely sequential by nature (each stage depends on the previous); no safe parallel implementation groups except none. T002 is trivial and could run before T001, but sequencing it after the spike gate avoids touching credentials until feasibility is proven.
+Critical path: T001 -> T002 -> T003 -> (user approval) -> T004 -> T005 -> T006. Largely sequential by nature (each stage depends on the previous); no safe parallel implementation groups except none. T002 is trivial and could run before T001, but sequencing it after the spike gate avoids touching credentials until feasibility is proven. NOTE: T001 now tests EGRESS (Cloudflare WARP), not the browser fingerprint — deep research proved the block is IP/ASN-based and the webgl-fingerprint spike is superseded.
 
 ## Numbered Plan
-1. [pending] Feasibility spike: prove a webgl-enabled browser can reach the perplexity login page past Cloudflare
+1. [pending] Egress spike (Cloudflare WARP): prove a changed egress IP lets the automated browser reach the perplexity login page past Cloudflare
    - Task ID: T001
    - Depends on: none
    - Parallel group: G1
-   - Risk: high (external service; determines the whole approach)
-   - Owned scope: a disposable webgl-enabled chromium session inside the `chromium-vnc` container (port 9231+), a host socat forward, /tmp scratch — NO repo files
-   - Not in scope: any credential use, any modification of csm-browse skill or pxcli
-   - Spike candidate: (this task IS the spike) — Question: "Does a webgl-enabled chromium replicating the csm-browse environment pass the perplexity.ai Cloudflare challenge?" Isolation: session HOME/XDG under a /tmp profile in the container; network GET only; no credentials; terminate processes at the end.
-   - Actions: (1) Write a gitignored inline driver under /tmp using `chrome-remote-interface` (already in the csm-browse skill's node_modules — set `NODE_PATH` to the skill's `node_modules`); (2) launch chromium inside the container as user 1000 with `DISPLAY=:0`, session HOME/XDG dirs, and the FULL flag set: `--no-sandbox --no-first-run --password-store=basic --disable-dev-shm-usage --ozone-platform-hint=auto --enable-software-rasterization --use-gl=swiftshader --enable-unsafe-swiftshader --remote-debugging-address=0.0.0.0 --remote-debugging-port=9231` and NO `--disable-webgl`/`--disable-gpu`/`--disable-accelerated-2d-canvas`/`--hide-scrollbars`; (3) probe webgl (should be present via swiftshader); (4) first navigate to a NEUTRAL control site (e.g. https://example.com) to prove the browser env itself works before judging Cloudflare; (5) then navigate to https://www.perplexity.ai and poll title/`cf-turnstile-response` up to 60s. Record PASS (login page / Sign-in reachable) or BLOCK (challenge persists), and capture the validated launch recipe as the task deliverable for reuse by T003.
-   - Acceptance signal: a recorded probe result — either (a) the page title leaves "Just a moment..." / the sign-in button is present (PASS), or (b) the Turnstile response stays empty for 60s (BLOCK), each with exact DOM evidence, PLUS the validated launch recipe (exact command + driver) reproduced for T003.
-   - Validation: webgl context present on the control site and on perplexity; host reaches `http://172.17.0.2:9231/json/version` (chromium bound 0.0.0.0); `text`/`html` of final state captured; no credentials touched.
-   - Acceptance evidence: recorded PASS/BLOCK verdict, DOM evidence, and the reusable launch recipe; no credentials.
+   - Risk: high (external service; determines the whole approach; installs a free VPN client on the host)
+   - Owned scope: installing/connecting Cloudflare WARP (`warp-cli`) on the HOST (the container's bridge egress NATs through the host), a disposable browser session inside the container, /tmp scratch — NO repo files
+   - Not in scope: any credential use, any modification of csm-browse skill or pxcli, the disproven Worker-proxy approach, the container's primary browser (9222)
+   - Spike candidate: (this task IS the spike) — Question: "With Cloudflare WARP egress (non-Hetzner IP), does an automated browser pass the perplexity.ai Cloudflare Turnstile?" Isolation: WARP consumer mode (free, no account), disposable /tmp profiles, network GET only, no credentials, disconnect WARP + terminate browser processes at the end.
+   - Actions: (1) Install/start WARP on the host (free Linux `warp-cli`; if consumer mode needs an account/registration, note it and STOP for the user to approve account creation); (2) confirm the egress IP changed from 77.42.45.177 (e.g. `curl -s ipinfo.io/ip`); (3) drive the automated browser (csm-browse session, or the webgl-enabled inline driver from the previous cycle if a challenge needs a stronger fingerprint) to `https://www.perplexity.ai`; (4) poll `cf-turnstile-response` / title up to ~60s. Record PASS (login page / Sign-in reachable) or BLOCK (challenge persists even on WARP egress). Capture the validated browser launch recipe for reuse by T003.
+   - Acceptance signal: a recorded probe result — (a) PASS: title leaves "Just a moment..." / sign-in button present, or (b) BLOCK: Turnstile response stays empty for 60s — each with exact DOM evidence and the egress IP observed, PLUS the reusable launch recipe.
+   - Validation: egress IP confirmed non-Hetzner while connected; host/container browser reaches perplexity; `text`/`html` of final state; no credentials touched.
+   - Acceptance evidence: recorded PASS/BLOCK verdict, DOM evidence, egress-IP before/after, and the reusable launch recipe; no credentials.
    - Repair attempts: 0
-   - Recovery note: if the browser launch fails (env plumbing), replicate the exact csm-browse env (HOME/XDG_CONFIG_HOME/XDG_CACHE_HOME/XDG_RUNTIME_DIR set to session dirs, user 1000, `DISPLAY=:0`) — `ensure-browser.mjs` is the reference. If the verdict is BLOCK, STOP; do not proceed to T002.
+   - Recovery note: if `warp-cli` requires registration/account, STOP and ask the user to register (their Cloudflare account) — consumer WARP may need a login. If the verdict is BLOCK even on WARP, STOP; do not proceed to T002 without user direction (options: Browser Run, VNC human-in-the-loop, residential proxy).
 
 2. [pending] Store the Google email in the git-ignored `.env`
    - Task ID: T002
@@ -157,7 +160,7 @@ Critical path: T001 -> T002 -> T003 -> (user approval) -> T004 -> T005 -> T006. 
    - Owned scope: the browser session only
    - Not in scope: completing sign-in, any password handling
    - Spike candidate: none
-   - Actions: In the webgl-enabled browser, `open https://www.perplexity.ai`; wait for the login surface; discover the "Sign in" and "Continue with Google" selectors at runtime (`text`/`html` — do not hardcode); click "Sign in"; click "Continue with Google"; on the accounts.google.com page, set the email field value (from `PERPLEXITY_GOOGLE_EMAIL`, sourced from `.env`) via a leak-safe `eval` that reads a page-scoped JS value (the `type` verb echoes typed text to stdout — do NOT use it for the email; if `eval`-injection is not viable, accept and explicitly exclude that one command's output from all logs/evidence); click "Next". Then STOP and report to the user: sign-in initiated; approve on your phone (Google prompt / YouTube). Do NOT continue to T004 until the user confirms approval.
+   - Actions: In the automated browser that T001 validated (csm-browse session or the webgl-enabled inline driver, depending on which passed the WARP egress spike), `open https://www.perplexity.ai`; wait for the login surface; discover the "Sign in" and "Continue with Google" selectors at runtime (`text`/`html` — do not hardcode); click "Sign in"; click "Continue with Google"; on the accounts.google.com page, set the email field value (from `PERPLEXITY_GOOGLE_EMAIL`, sourced from `.env`) via a leak-safe `eval` that reads a page-scoped JS value (the `type` verb echoes typed text to stdout — do NOT use it for the email; if `eval`-injection is not viable, accept and explicitly exclude that one command's output from all logs/evidence); click "Next". Then STOP and report to the user: sign-in initiated; approve on your phone (Google prompt / YouTube). Do NOT continue to T004 until the user confirms approval.
    - Acceptance signal: the accounts.google.com page reaches a state where Google is awaiting the approval (e.g. a "Use your phone to sign in" / verification prompt is displayed), captured via `text`.
    - Validation: confirm the email field was filled (length/domain check via eval, never echoing the address); do NOT screenshot while the email field is filled (a screenshot would contain the email) — screenshot before typing or skip; capture the approval-pending page text.
    - Acceptance evidence: the approval-pending page text; the browser session remains open.
@@ -216,7 +219,7 @@ Critical path: T001 -> T002 -> T003 -> (user approval) -> T004 -> T005 -> T006. 
 - There is no repository-wide gate to run for this operational plan beyond T006's hygiene check, since it changes no source/analysers.
 
 ## Risks And Recovery
-- R1 (high): Cloudflare blocks ALL automated browsers from the container IP (the webgl-disabled browser is PROVEN blocked; the webgl-enabled one is the T001 spike). If T001 = BLOCK: STOP, report evidence, and the user chooses a fallback (e.g. log in from their own host browser and import the token via the same T005 path, or solve the challenge in a way they can interact with).
+- R1 (high): the Cloudflare block is an IP/ASN soft-block (Hetzner AS24940); the Worker reverse-proxy idea is DISPROVEN (widget connects from the browser IP; api.js must not be proxied; sitekey hostname-bound) and is NOT pursued. T001 = Cloudflare WARP egress spike. If T001 = BLOCK even on WARP (WARP IPs are shared infra IPs; the browser is still automated): STOP and the user chooses — Cloudflare Browser Run (paid), VNC human-in-the-loop (primary browser, manual solve + Google sign-in, then `pxcli auth login --port 9222`), or a residential/mobile proxy.
 - R2 (high): Google rejects the sign-in from the container IP/browser ("unusual traffic" / "This browser or app may not be secure"). Mitigation: the plan stops at the T003 gate and reports; the user decides (approve from a trusted device / use their own browser).
 - R3 (medium): `pxcli auth login` CDP bridging fails (host-localhost constraint, ws-URL advertises the container IP). Mitigation: documented direct-injection fallback (T005) using the CLI's own TokenManager so encryption matches.
 - R4 (medium): token extraction without `save_cookies` loses Cloudflare cookies -> later CLI calls may hit Cloudflare. Mitigation: enable save_cookies before T005 (A4).
@@ -245,6 +248,9 @@ Critical path: T001 -> T002 -> T003 -> (user approval) -> T004 -> T005 -> T006. 
 | 2026-08-06 | 0 | CRITIQUE | — | Independent critique: 2 blockers (no webgl-browser driver; host socat absent) + 6 majors (ws-URL premise, cookie shape, credential leaks, flag list, T004 deadlock, .env integrity) | REMEDIATE |
 | 2026-08-06 | 0 | REMEDIATE | — | All 8 findings resolved in-plan: explicit CDP driver (chrome-remote-interface), host Python forwarder replaces socat, ws-URL pre-check, dict cookie transform + env token handoff, leak-safe probes, full flag list, 15-min approval budget + fixed sid, .env integrity checks | VERIFY |
 | 2026-08-06 | 0 | VERIFY | — | Primary agent approved: AC1-AC6 map to T001-T006; gates + acceptance signals runnable; credential safety (gitignored .env, leak-safe verbs, host-bound encryption) enforced; T001 BLOCK-gate + fallback documented | SAVED |
+| 2026-08-06 | 1 | RESEARCH | — | Cloudflare-account variant explored by research subagent: Worker reverse-proxy DISPROVEN (Turnstile widget connects from the browser IP; api.js must not be proxied; sitekey hostname-bound to perplexity.ai — verified against developers.cloudflare.com); Cloudflare WARP identified as the only Cloudflare mechanism that changes the browser's egress (the challenge path); Browser Run = paid alternative; Tunnel/Access not applicable | DRAFT |
+| 2026-08-06 | 1 | DRAFT/REMEDIATE | — | Plan revised for the variant: T001 rewritten as a Cloudflare WARP egress spike (free consumer mode, no account needed, host-level install covers the container bridge); A7/R6/R1 updated with the evidence; Worker-proxy marked not-pursued; VNC/Browser Run/residential-proxy remain the BLOCK fallbacks | VERIFY |
+| 2026-08-06 | 1 | VERIFY | — | Primary agent approved the variant update: T001 acceptance signal now proves egress change (IP before/after) + Turnstile result; fallback gate is explicit; no credentials touched during spike | SAVED |
 
 ## Completion Review
 (filled by csm-build when all criteria are verified)
