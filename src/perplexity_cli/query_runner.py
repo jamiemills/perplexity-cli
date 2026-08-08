@@ -540,8 +540,10 @@ def _handle_query_error(fn: Callable[[], None], output_format: OutputFormat) -> 
     try:
         fn()
     except KeyboardInterrupt:
+        # Not silent: delegated to the dedicated interrupt handler.
         _handle_keyboard_interrupt(output_format, logger)
     except BrokenPipeError:
+        # Not silent: delegated to the broken-pipe handler.
         _handle_broken_pipe()
     except Exception as exc:  # catch-all CLI error handler
         _handle_query_exception(exc, output_format)

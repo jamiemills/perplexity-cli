@@ -48,18 +48,19 @@ def _ctx_to_dict() -> dict[str, object]:
     return {}
 
 
+def _ctx_flag(key: str) -> bool:
+    """Read a boolean flag from the Click context."""
+    return bool(_ctx_to_dict().get(key, False))
+
+
 def _get_include_schema() -> SchemaInclusion:
     """Read include_schema flag from Click context."""
-    ctx_dict = _ctx_to_dict()
-    val: object = ctx_dict.get("schema", False)
-    return "with_schema" if bool(val) else "no_schema"
+    return "with_schema" if _ctx_flag("schema") else "no_schema"
 
 
 def _get_json_mode_from_ctx() -> OutputFormat:
     """Read json_mode flag from Click context."""
-    ctx_dict = _ctx_to_dict()
-    val: object = ctx_dict.get("json", False)
-    return "json" if bool(val) else "human"
+    return "json" if _ctx_flag("json") else "human"
 
 
 def _describe_file_permissions(path: Path | None, expected: int) -> str:
@@ -233,6 +234,7 @@ def _output_token_modified_time(token_path: Any, token_age_days: object) -> None
         modified_time = datetime.fromtimestamp(int(stat_result.st_mtime))
         click.echo(f"Token last modified: {modified_time.strftime('%Y-%m-%d %H:%M:%S')}")
     except (OSError, AttributeError):
+        # Not silent: reports the modification time as unavailable to the user.
         click.echo("Token last modified: unavailable")
 
 

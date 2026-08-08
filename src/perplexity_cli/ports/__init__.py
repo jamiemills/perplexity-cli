@@ -17,6 +17,16 @@ from perplexity_cli.contracts.query import Answer, QueryInput
 from perplexity_cli.models.model_config import ModelConfigEntry
 from perplexity_cli.utils.attachment_models import FileAttachment
 
+__all__ = [
+    "AttachmentUploader",
+    "AuthTokenStore",
+    "ConfigStore",
+    "ModelCatalog",
+    "QueryGateway",
+    "ThreadRecordPort",
+    "ThreadRepository",
+]
+
 
 @runtime_checkable
 class QueryGateway(Protocol):

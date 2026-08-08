@@ -191,8 +191,10 @@ def _execute_auth(
             options.schema_inclusion,
         )
     except (TimeoutError, AuthenticationError) as e:
+        # Not silent: delegated to the auth timeout handler.
         _handle_auth_timeout_error(e, options.output_format, port, base_url)
     except (OSError, ConfigurationError) as e:
+        # Not silent: delegated to the OS/config error handler.
         _handle_auth_os_config_error(e, options.output_format, options.debug_level)
 
 
@@ -241,6 +243,7 @@ def run_logout_command(*, json_mode: bool | None = None) -> None:
         tm.clear_token()
         _logout_emit(resolved_json, include_schema, credential_state="present")
     except OSError as e:
+        # Not silent: surfaced via handle_error / user-facing output below.
         if resolved_json == "json":
             handle_error(e, "pxcli auth logout", output_format="json")
         logger = get_logger()

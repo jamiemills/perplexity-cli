@@ -55,6 +55,7 @@ class DynamicStderrHandler(logging.StreamHandler[TextIO]):
         except RecursionError:
             raise
         except (OSError, TypeError, ValueError):
+            # Not silent: falls back to the handler's own error reporting.
             self.handleError(record)
 
     def flush(self) -> None:

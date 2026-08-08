@@ -91,6 +91,7 @@ def run_configure_command(style: str, *, output_format: OutputFormat | None = No
         click.echo("\nStyle preview:")
         click.echo(f"  {style}")
     except (ValueError, OSError) as e:
+        # Not silent: delegated to the style error handler.
         msg = "Invalid style" if isinstance(e, ValueError) else "Failed to save style"
         _handle_style_error(e, output_format, "pxcli style set", msg)
 
@@ -123,6 +124,7 @@ def run_view_style_command(*, output_format: OutputFormat | None = None) -> None
             return
         _output_view_style(style)
     except OSError as e:
+        # Not silent: delegated to the style error handler.
         _handle_style_error(e, output_format, "pxcli style show", "Error reading style")
 
 
@@ -157,6 +159,7 @@ def run_clear_style_command(*, output_format: OutputFormat | None = None) -> Non
     try:
         _execute_clear_style(sm, output_format)
     except OSError as e:
+        # Not silent: delegated to the style error handler.
         _handle_style_error(e, output_format, "pxcli style clear", "Error clearing style")
 
 
@@ -241,6 +244,7 @@ def run_set_config_command(
         state: Literal["enabled", "disabled"] = "enabled" if bool_value else "disabled"
         _output_config_change(key, state, output_format, logger)
     except ConfigurationError as e:
+        # Not silent: delegated to the set-config error handler.
         _handle_set_config_error(e, output_format, logger)
 
 

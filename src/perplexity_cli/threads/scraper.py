@@ -705,6 +705,7 @@ class ThreadScraper:
             try:
                 raise_http_status_error(response)
             except PerplexityHTTPStatusError as e:
+                # Not silent: delegated to the HTTP error handler.
                 _handle_http_error(e)
 
         try:

@@ -55,6 +55,7 @@ def raise_http_status_error(response: Any, *, method: str = "POST") -> None:
         body = response.content
         text = body.decode("utf-8") if isinstance(body, bytes) else str(body)
     except (AttributeError, TypeError, ValueError):
+        # Intentionally best-effort: an undecodable error body yields empty text.
         text = ""
 
     simple_response = SimpleResponse(

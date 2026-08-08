@@ -289,6 +289,7 @@ def _validate_export_dates(
     try:
         _try_parse_dates(from_date, to_date)
     except ValueError as e:
+        # Not silent: emits a JSON/CLI error and message to the user.
         _emit_json_error(e, output_format)
         click.echo(f"[ERROR] Invalid date format: {e}", err=True)
         click.echo("Please use YYYY-MM-DD format (e.g., 2025-12-23)", err=True)
@@ -614,8 +615,10 @@ def run_export_threads_command(
         ValueError,
         RateLimitError,
     ) as e:
+        # Not silent: delegated to the known-error handler.
         _handle_known_error(e, prepared.output_mode.json_mode, prepared.logger)
     except PerplexityHTTPStatusError as e:
+        # Not silent: delegated to the HTTP status error handler.
         _handle_http_status_error(e, prepared.output_mode.json_mode, typed_ctx_obj, prepared.logger)
     except Exception as e:  # catch-all CLI error handler
         _handle_unexpected_error(
