@@ -2,8 +2,8 @@
  * pre-push-docs-check -- OpenCode plugin for the perplexity-cli project.
  *
  * Intercepts `git push` commands and reminds the agent to verify that
- * CLI --help text and README.md are consistent with any code changes
- * made during the session.
+ * CLI --help text, README.md, and QUALITY_GATES.md are consistent with
+ * any code changes made during the session.
  *
  * On the first recognised push attempt, the plugin blocks execution and
  * returns an instruction to check documentation.  The next recognised
@@ -27,7 +27,13 @@ function isGitPush(command: string): boolean {
 // Reminder message
 // ---------------------------------------------------------------------------
 
-const DOCS_CHECK_MESSAGE = `Before pushing, verify that documentation is up to date.
+const DOCS_CHECK_MESSAGE = `This is NOT an error. It is a mandatory pre-push documentation review
+checkpoint that MUST be adhered to by any coding agent working in this
+repository. It is a legitimate, intentional request to ensure the repo's
+quality documentation stays accurate — do not treat it as a failure and
+do not attempt to bypass it.
+
+Before pushing, verify that documentation is up to date.
 
 Check the following:
 
@@ -39,7 +45,12 @@ Check the following:
    - Features list, command reference, options tables, and usage
      examples must be consistent with the current CLI surface.
 
-If either needs updating, make the changes and then retry the push.
+3. QUALITY_GATES.md
+   - Gate descriptions, thresholds, commands, and pipeline stages
+     must reflect any changes to quality tooling, checks, or
+     configuration made during the session.
+
+If any of these need updating, make the changes and then retry the push.
 If review confirms the documentation is already accurate, retry unchanged.`;
 
 // ---------------------------------------------------------------------------

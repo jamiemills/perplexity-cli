@@ -23,12 +23,16 @@
   //                 and gate-reference removals in scripts/ and Makefile.
   // pxcli-quality:  real-time feedback: conventions injection, per-file
   //                 ruff/radon/bandit/ty checks, idle-time semgrep/pyright.
-  // pre-push-docs:  reminds to update CLI help text and README before push.
+  // pre-push-docs:  reminds to update CLI help text, README and
+  //                 QUALITY_GATES.md before push.
+  // post-push-ci:   reports GitHub CI run status for the pushed commit
+  //                 after a successful push (advisory, never blocks).
   // -----------------------------------------------------------------------
   "plugin": [
     ".opencode/plugins/quality-gate.ts",
     ".opencode/plugins/pxcli-quality.ts",
-    ".opencode/plugins/pre-push-docs-check.ts"
+    ".opencode/plugins/pre-push-docs-check.ts",
+    ".opencode/plugins/post-push-ci-check.ts"
   ],
 
   // Agents are auto-discovered from .opencode/agents/ and configured by

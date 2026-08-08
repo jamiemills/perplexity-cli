@@ -825,12 +825,12 @@ class TestWorkflowInventory:
 
 
 class TestPluginsAndNpm:
-    """The guide must document the three plugin paths and check/audit split."""
+    """The guide must document the four plugin paths and check/audit split."""
 
-    def test_guide_documents_three_plugin_paths(self) -> None:
-        """All three registered plugin paths appear in the guide, and no others."""
+    def test_guide_documents_four_plugin_paths(self) -> None:
+        """All four registered plugin paths appear in the guide, and no others."""
         config_paths = _plugin_paths(OPCODE_CONFIG.read_text(encoding="utf-8"))
-        assert len(config_paths) == 3
+        assert len(config_paths) == 4
         missing = [path for path in config_paths if path not in GUIDE_TEXT]
         assert missing == []
         extra = _plugin_filenames(GUIDE_TEXT) - _plugin_filenames(

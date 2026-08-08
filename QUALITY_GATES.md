@@ -365,7 +365,7 @@ Node-to-card references:
 
 | Lifecycle node | Cards |
 |---|---|
-| OpenCode session | `session.quality-gate`, `session.pxcli-quality`, `session.pre-push-docs-check` |
+| OpenCode session | `session.quality-gate`, `session.pxcli-quality`, `session.pre-push-docs-check`, `session.post-push-ci-check` |
 | Pre-commit stage 1 | `hook.pre-commit.reject-partial-staging` |
 | Pre-commit stage 2 | `hook.pre-commit.lint-and-validate` (22 parallel jobs) |
 | Pre-commit stage 3 | `hook.pre-commit.fix-formatting` (4 piped fixers, `stage_fixed`) |
@@ -478,7 +478,7 @@ what concurrency, and how it fails. Replication detail lives in the cards.
 
 ### 6.1 OpenCode session
 
-Inside an OpenCode session, exactly three first-party plugins are registered
+Inside an OpenCode session, exactly four first-party plugins are registered
 in `opencode.jsonc` and loaded from `.opencode/plugins/`. They are **session
 controls**: advisory and interception only. They are NOT repository lifecycle
 gates and NOT security boundaries. They MUST NOT be treated as a substitute for
@@ -489,6 +489,7 @@ the hooks or CI.
 | `quality-gate` | `session.quality-gate` | `tool.execute.before` (write/edit/apply_patch on `scripts/` and `Makefile`); `event: session.idle` (idle coupling check when `git status` shows protected changes) |
 | `pxcli-quality` | `session.pxcli-quality` | `experimental.chat.system.transform`; `tool.execute.after` (write/edit only); `event: session.idle` |
 | `pre-push-docs-check` | `session.pre-push-docs-check` | `tool.execute.before` (bash `git push` regex) |
+| `post-push-ci-check` | `session.post-push-ci-check` | `tool.execute.after` (bash `git push` regex) |
 
 - `OPENCODE_DISABLE_QUALITY_GATE=1` disables the whole `quality-gate` plugin.
 - Restart OpenCode after changing any plugin, agent, or configuration file.
@@ -651,6 +652,7 @@ remote publishing/mutation step.
 | `session.quality-gate` | OpenCode quality-gate plugin | session | session | `.opencode/plugins/quality-gate.ts` | Blocks selected bypass additions / gate-reference removals; idle coupling warning |
 | `session.pxcli-quality` | OpenCode pxcli-quality plugin | session | session | `.opencode/plugins/pxcli-quality.ts` | Appends findings to tool output; idle semgrep/pyright log |
 | `session.pre-push-docs-check` | OpenCode pre-push docs reminder | session | session | `.opencode/plugins/pre-push-docs-check.ts` | Blocks first `git push`, allows second |
+| `session.post-push-ci-check` | OpenCode post-push CI status check | session | session | `.opencode/plugins/post-push-ci-check.ts` | Appends CI run status for the pushed commit to tool output; advisory only |
 | `hook.pre-commit.reject-partial-staging` | Partial-staging guard | atomic | pre-commit 1 | `lefthook.yml` | Fails the commit when staged files also have unstaged edits |
 | `hook.pre-commit.lint-and-validate` | Read-only linters & validators | composite | pre-commit 2 | `lefthook.yml` | Fails the commit if any of 22 parallel jobs fail |
 | `hook.pre-commit.fix-formatting` | Auto-fixers (fix then format) | composite | pre-commit 3 | `lefthook.yml` | Fails the commit if a fixer errors; re-stages fixed files |
@@ -1520,7 +1522,7 @@ documents how to reproduce it and what it means.
 
 #### `make.configure-opencode`: Reproducibly install and validate OpenCode plugins/config
 
-- **Purpose:** `npm ci`, run the full `opencode-check`, and verify the three
+- **Purpose:** `npm ci`, run the full `opencode-check`, and verify the four
   plugin files plus `opencode.jsonc` exist.
 - **Authoritative source:** `Makefile` `configure-opencode`.
 - **Canonical invocation:** `make configure-opencode`.
@@ -1531,7 +1533,7 @@ documents how to reproduce it and what it means.
   or any registered plugin/config file is missing.
 - **Skip semantics:** none (idempotent).
 - **Inputs and configuration:** `.opencode/package.json` +
-  `package-lock.json`; the three plugin filenames.
+  `package-lock.json`; the four plugin filenames.
 - **Ordering and concurrency:** sequential.
 - **Outputs and evidence:** `.opencode/node_modules/`; verification output.
 - **Requirements:** npm/node; network on first install.
