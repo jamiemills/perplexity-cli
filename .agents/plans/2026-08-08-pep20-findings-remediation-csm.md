@@ -7,8 +7,8 @@
 
 ## Control
 - Plan ID: pep20-findings-remediation
-- Status: ready
-- Current CSM state: NOT_STARTED
+- Status: complete
+- Current CSM state: COMPLETE
 - Cycle: 0
 - Commits: allowed
 - Last checkpoint: 2026-08-08 — plan drafted from a live `scripts/check_pep20.py` run (findings extracted verbatim)
@@ -69,6 +69,7 @@ Exclusions:
 - Intentional-silence markers must satisfy `scripts/check_suppression_reasons.py` if a `# noqa` is used (needs `owner:`/`reason:`); prefer an explanatory comment over `# noqa` where possible.
 - De-dup must preserve exact behaviour and signatures; prefer extracting a shared helper over rewriting call sites.
 - All changes must keep radon A-grade (CC ≤ 5) and pyright strict clean.
+- Inserting comment lines shifts existing suppression line numbers → after editing, run `scripts/check_suppressions.py --update-baseline` to refresh the ratchet baseline (discovered during build; only line numbers change, no new suppressions).
 
 ## Design
 Three independent remediation tasks over `src/`, each validated by the full gate suite:
@@ -85,7 +86,7 @@ T003 (de-dup)      [G2]  depends: none (but run after T001/T002 to keep diffs se
 T001 and T002 touch disjoint files (init files vs runner/util bodies) and can run in parallel. T003 touches overlapping util files, so run it after T001/T002 to avoid merge friction. Critical path: (T001|T002) -> T003 -> full-suite validation.
 
 ## Numbered Plan
-1. [pending] Declare `__all__` in the 5 package `__init__.py` (aphorism 19)
+1. [completed] Declare `__all__` in the 5 package `__init__.py` (aphorism 19)
    - Task ID: T001
    - Depends on: none
    - Parallel group: G1
@@ -100,7 +101,7 @@ T001 and T002 touch disjoint files (init files vs runner/util bodies) and can ru
    - Repair attempts: 0
    - Recovery note: if a star-import or public import breaks, adjust `__all__` to include the missing name; re-run suite.
 
-2. [pending] Log or explicitly silence the unlogged `except` blocks (aphorisms 10/11)
+2. [completed] Log or explicitly silence the unlogged `except` blocks (aphorisms 10/11)
    - Task ID: T002
    - Depends on: none
    - Parallel group: G1
@@ -115,7 +116,7 @@ T001 and T002 touch disjoint files (init files vs runner/util bodies) and can ru
    - Repair attempts: 0
    - Recovery note: if a logged site changes behaviour/tests, revert that site to a comment-marker instead of logging.
 
-3. [pending] De-duplicate the safe duplicate-logic clusters (aphorism 13)
+3. [completed] De-duplicate the safe duplicate-logic clusters (aphorism 13)
    - Task ID: T003
    - Depends on: T001, T002 (run after to keep diffs separable)
    - Parallel group: G2
@@ -157,6 +158,17 @@ T001 and T002 touch disjoint files (init files vs runner/util bodies) and can ru
 | 2026-08-08 | 0 | DRAFT | — | 3-task plan (namespaces / errors / conservative de-dup) | CRITIQUE |
 | 2026-08-08 | 0 | CRITIQUE | — | Primary-led: scoped de-dup, logging level, proxy-noise exclusion | VERIFY |
 | 2026-08-08 | 0 | VERIFY | — | Acceptance criteria map to T001-T003; gates named; recovery per task | SAVED |
+| 2026-08-08 | 1 | RECOVER/DISPATCH | T001,T002,T003 | Implemented: __all__ x5 (#19 Strong); documenting comments on 16 except sites (#10/#11 Strong); status ctx-reader de-dup (#13 reduced) | VERIFY |
+| 2026-08-08 | 1 | VERIFY | — | Discovered: comment insertion shifted 2 nosemgrep line numbers -> refreshed suppression baseline (327->328,148->149 only). Full suite 2989 passed; lint/typecheck-all/complexity/ratchets ok; analyser Overall 8 Strong/5 Weak (was 5/8) | CHECKPOINT |
+| 2026-08-08 | 1 | REVIEW | — | Independent review CLEAN (2 harmless nits) | CHECKPOINT |
+| 2026-08-08 | 1 | CHECKPOINT | — | Committed d8a0e89 (source+baseline); all ACs pass | COMPLETE |
 
 ## Completion Review
-(filled by csm-build when all criteria are verified)
+- Status: COMPLETE (2026-08-08). Independent review: CLEAN (no blockers/majors/minors; 2 harmless nits).
+- AC1 (#19 -> Strong): PASS — 5 `__init__.py` now declare `__all__`; analyser #19 shows 0 findings.
+- AC2 (#10/#11 reduced, no new silent swallows): PASS — 16 except blocks documented; #10/#11 now Strong.
+- AC3 (#13 reduced, no behaviour change): PASS (partial) — status.py ctx readers de-duped via `_ctx_flag`; remaining clusters accepted as advisory (out of scope).
+- AC4 (gates green): PASS — `make test` 2989 passed; lint / typecheck-all / complexity / ratchets all ok.
+- AC5 (no behaviour change): PASS — existing suite passes unmodified; review confirmed comments/de-dup behaviour-preserving.
+- Discovered requirement applied: comment insertion shifted 2 nosemgrep line numbers -> suppression baseline refreshed (only those 2 lines changed).
+- Commits: d8a0e89 (source+baseline), plus this plan commit.
