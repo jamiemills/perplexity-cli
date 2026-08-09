@@ -1,7 +1,9 @@
 """Shared test fixtures for the perplexity-cli test suite."""
 
+import logging
 import os
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 if os.environ.get("MUTANT_UNDER_TEST"):
@@ -116,6 +118,42 @@ def _clear_config_caches():
     yield
     clear_urls_cache()
     clear_feature_config_cache()
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _wire_query_runner_seams() -> Iterator[None]:
+    """Import the composition root so query_runner seams are always bound.
+
+    query_runner's collaborators (get_logger, TokenManager, and friends)
+    are injected by cli.py at import time. Without this fixture, tests
+    that call run_query_command directly depend on whichever xdist
+    worker happened to import cli.py first — a nondeterministic ordering
+    dependency that surfaces as ``TypeError: 'NoneType' object is not
+    callable`` on unlucky schedules.
+    """
+    import perplexity_cli.cli  # noqa: F401
+
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_perplexity_logger() -> Iterator[None]:
+    """Restore the perplexity_cli logger state around every test.
+
+    setup_logging() mutates the shared logger's level and handlers.
+    Without restoration, a DEBUG-level stderr handler leaks into later
+    tests on the same worker: it writes debug lines into their captured
+    stderr and triggers feature-config materialisation (config.json) at
+    unexpected times, which breaks directory-attachment expectations.
+    """
+    logger = logging.getLogger("perplexity_cli")
+    previous_level = logger.level
+    previous_handlers = list(logger.handlers)
+    previous_propagate = logger.propagate
+    yield
+    logger.setLevel(previous_level)
+    logger.handlers = previous_handlers
+    logger.propagate = previous_propagate
 
 
 @pytest.fixture(autouse=True)
