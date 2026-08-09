@@ -131,7 +131,7 @@ def _wire_query_runner_seams() -> Iterator[None]:
     dependency that surfaces as ``TypeError: 'NoneType' object is not
     callable`` on unlucky schedules.
     """
-    import perplexity_cli.cli  # noqa: F401
+    import perplexity_cli.cli  # noqa: F401  # owner: quality-infrastructure; reason: import wires the query_runner composition-root seams as a side effect
 
     yield
 
