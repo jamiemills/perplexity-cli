@@ -7,13 +7,13 @@
 
 ## Control
 - Plan ID: full-tree-mutation-debt-closure
-- Status: ready
-- Current CSM state: NOT_STARTED
+- Status: in_progress
+- Current CSM state: CHECKPOINT
 - Cycle: 0
 - Commits: allowed
-- Last checkpoint: 2026-08-15 - final plan independently verified READY against `eed5f81`; current 10-file mutation-test wave remains uncommitted and protected.
-- Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
-- Active tasks: none
+- Last checkpoint: 2026-08-15 - final independent reviews marked T001 and T002 READY; T001 enters its protected test-wave commit checkpoint before T002 policy files.
+- Next transition: CHECKPOINT finalises T001 commit evidence, then finalises the separate T002 policy checkpoint
+- Active tasks: T002
 - Blockers: none
 
 ## Goal
@@ -97,6 +97,19 @@ Exclusions:
 | R009 | Can remote evidence be required without push authority? | User decision plus workflow inspection | Read-only | Local proof completes; remote dispatch is optional and separately authorised | T022 is local-only; RF001 is optional |
 
 ## Discovered Requirements
+- `NORMS.md` is authentic csm-scan output dated 2026-08-04 (11 days old at execution). Apply absolute imports, snake_case naming, strict typing, architecture-layer boundaries, loopback-only test networking, repository marker exclusions, and conventional/task-prefixed commits to every dispatch.
+- T001's protected intake revision is the parent `eed5f81` of the plan-only HEAD `04b8f0e`; the live plan journal is an expected controller edit, not an out-of-scope user change.
+- Suppression identity includes source line. Moving an already approved suppression requires a no-growth baseline refresh after owner/reason validation; it is not permission to add or broaden a suppression.
+- Mutation evidence tests must include the real `mutants/src/...` layout and exact locked CLI (`results --all True`); hand-authored grammar fixtures alone are insufficient.
+- Test review ledgers require an independently derived candidate inventory and reviewer identity distinct from the implementer; a fixed row count is not completeness evidence.
+- Changed test functions/helpers are held to CC <=5 even though repository-wide Radon excludes tests; task static validation must enforce this explicitly.
+- Preserving the current direct-script Make contract requires one annotated E402 suppression after repository-root bootstrap; this reviewed quality-infrastructure exception is tracked separately from mutation exclusions.
+- Repository Semgrep, not Ruff, is authoritative for boolean-parameter policy in scripts; T002 now uses semantic declaration kinds and callable invariants rather than boolean parameters.
+- Tool-error reports must serialise duplicate actionable/unsafe evidence as unique detail examples while preserving occurrence counts and duplicate keys in evidence.
+- Structural exclusion eligibility must resolve exact supported `Protocol` and `abstractmethod` imports/aliases; suffix-like names are ineligible.
+- T003 must add `tests/test_mutation_evidence.py` and `tests/test_mutation_test_review_ledger.py` to Mutmut's meta-test ignore set before any canonical run.
+- Structural exclusion alias tracking must conservatively invalidate any binding inside preceding compound statements while excluding nested function/class/comprehension scopes.
+- Generated dictionary validation must bind each key to its owning dictionary stem; a globally equal but swapped key multiset is invalid.
 - A future csm-build must begin by recording `HEAD`, branch, staged/unstaged status, and hashes of the ten current test files before editing.
 - Do not use `.mutmut-cache` as Mutmut 3 evidence. `mutants/`, its `*.meta`, and `mutmut-stats.json` are the generated state.
 - Canonical full runs must use an immutable committed SHA exported into a newly verified `/tmp/opencode` sandbox. They must not copy a live dirty worktree.
@@ -218,22 +231,23 @@ Planning dependency spine: T002 -> T003 -> T004 -> T005 -> T006, followed by sev
 Parallel tasks share no owned source or test files inside the same group. Mutation commands may run concurrently only in distinct sandboxes with bounded CPU; final full runs are serial.
 
 ## Numbered Plan
-1. [pending] Preserve, organise, and checkpoint the current mutation-test wave
+1. [completed] Preserve, organise, and checkpoint the current mutation-test wave
    - Task ID: T001
    - Depends on: none
    - Parallel group: G1
    - Risk: standard
-   - Owned scope: the ten explicitly named intake test files; new capability-specific split files; `quality/remediation/mutation-test-review.json`; `tests/test_mutation_test_review_ledger.py`; primary plan journal updates
+   - Owned scope: the ten explicitly named intake test files; new capability-specific split files; `quality/remediation/mutation-test-review.json`; `quality/remediation/mutation-test-node-map.json`; `quality/remediation/mutation-test-independent-review.json`; `tests/test_mutation_test_review_ledger.py`; primary plan journal updates
    - Not in scope: production code, mutation policy, adding more survivor tests, changing test semantics merely to reduce line count
    - Spike candidate: Prove that moving tests preserves node IDs/markers needed by Mutmut where practical; run collect-only before and after in an isolated copy if node stability is uncertain.
    - Actions: In RECOVER require intake HEAD `eed5f81`, empty index, no untracked/out-of-scope changes, and exact hashes of all ten paths; create a mode-0700 `/tmp/opencode` recovery package containing full-index binary patch, file copies, hashes, status and revisions; block on mismatch without staging/resetting. Classify every added private-helper and exact-wording assertion in the durable review ledger as retain/rewrite/move/remove with public-boundary attempt, exactness reason, mutant/behaviour, evidence and independent reviewer. Split files above 1,000 lines. Stage only an enumerated pathspec; review staged diff; run the complete pre-commit hook as a preflight; review hook-adjusted staged blobs; commit normally with hooks enabled; verify committed paths/blobs/patch equal the reviewed post-preflight index.
    - Acceptance signal: `UV_OFFLINE=1 npm_config_offline=true uv run pytest tests/test_mutation_test_review_ledger.py -q && UV_OFFLINE=1 npm_config_offline=true make ci-conventional` exits 0.
    - Validation: Collect-only node/marker comparison; changed-file focused tests; Ruff format/check; suppression reasons; no ledger row unresolved; no changed test file >1,000 lines; post-hook staged diff and final commit patch/blob manifests match exactly.
    - Acceptance evidence: Intake/recovery patch hashes, explicit path list, review ledger, pre/post-hook staged patch hashes/blob IDs, collected nodes/markers, focused count/runtime, full gate, independent verdict, commit SHA/tree.
-   - Repair attempts: 0
+   - Completed evidence: protected intake patch `032f27e...`; 521-to-521 node/marker bijection; 108 specific reviewed candidates; durable independent-review artifact; every changed test/helper CC<=5 and file <=1,000 lines; 521 behavioural, 14 ledger, and 627 combined focused tests pass; full conventional gate passes; final independent verdict READY. Commit SHA/tree is recorded by the checkpoint journal after hooks.
+   - Repair attempts: 2
    - Recovery note: Any hash, concurrent-edit, hook, staged-path, or committed-blob mismatch preserves status/unstaged/staged patches under the recovery package and transitions BLOCKED. Never reset, checkout, amend, or overwrite unmatched user edits; use a separately reviewed forward correction after a committed mismatch.
 
-2. [pending] Make mutation reports complete, scoped, provenance-bound, and no-tests aware
+2. [in_progress] Make mutation reports complete, scoped, provenance-bound, and no-tests aware
    - Task ID: T002
    - Depends on: none
    - Parallel group: G1
@@ -245,7 +259,7 @@ Parallel tasks share no owned source or test files inside the same group. Mutati
    - Acceptance signal: `UV_OFFLINE=1 uv run pytest tests/test_mutation_policy.py tests/test_mutation_evidence.py -q` passes strict numeric key, original/trampoline/alias rejection, generated-dictionary disagreement, nested/async/dunder/class/package-init normalisation, completeness/duplicate, skipped/no-tests/interrupted/unknown, selected/full and schema cases.
    - Validation: Ruff format/lint and strict Pyright pass; locked real-generated fixtures cover Mutmut 3.5 grammar; schema fixtures reconcile sums and reject extra/missing provenance.
    - Acceptance evidence: Schema diff, exit-code matrix, fixture matrix, exact Mutmut CLI result, test output, independent policy review.
-   - Repair attempts: 0
+   - Repair attempts: 4
    - Recovery note: Keep parser/report commits separate. If schema and producer diverge, recover from the last passing fixture matrix before wiring execution.
 
 3. [pending] Add a fresh canonical mutation runner and repair Make targets
@@ -625,6 +639,29 @@ Rollback and forward recovery:
 | 2026-08-15 | 0 | REMEDIATE | - | Added append-only manifest amendments, complete target ownership, post-repair timeout proof, strict generated-key grammar, actual-file environment verification, deadline reserves and blanket exclusion authority | VERIFY |
 | 2026-08-15 | 0 | VERIFY | - | Primary gate checked goal coverage, 22 runnable acceptance signals, 105-module ownership, dependencies, recovery, safety and user decisions; final independent verifier returned READY | SAVED |
 | 2026-08-15 | 0 | SAVED | - | Plan saved with all implementation tasks pending; no implementation started | STOP |
+| 2026-08-15 | 0 | NOT_STARTED -> RECOVER | T001, T002 | User explicitly invoked csm-build; execution begins from committed plan `04b8f0e` | VALIDATE |
+| 2026-08-15 | 0 | RECOVER -> VALIDATE | T001, T002 | Protected patch hash matches planning evidence; index clean; no untracked/Mutmut/BDD artefacts; authentic current NORMS loaded; plan journal is the only expected controller edit | SELECT |
+| 2026-08-15 | 0 | VALIDATE -> SELECT | T001, T002 | Ruff/format/Pyright pass; 556 focused tests pass in 8.71s; T001 split candidates confirmed at 1,127 and 1,036 lines | DISPATCH |
+| 2026-08-15 | 0 | SELECT -> DISPATCH | T001, T002 | Independent write scopes frozen; external T001 recovery package and original file copies verified | INTEGRATE |
+| 2026-08-15 | 0 | DISPATCH -> INTEGRATE | T001, T002 | Both implementations returned focused green evidence; T001 full gate exposed T002 nosec ratchet entries at mutation_policy.py:9,483 | VERIFY |
+| 2026-08-15 | 0 | INTEGRATE -> VERIFY | T001, T002 | Actual diffs inspected; split tests and 90-row ledger present; policy/schema/evidence contracts integrated; suppression comments repaired with owner/reason | REVIEW |
+| 2026-08-15 | 0 | VERIFY -> REPAIR | T002 | Focused 569 pass; full CI stopped at quality ratchet because two existing nosec identities moved lines without count growth | VERIFY |
+| 2026-08-15 | 0 | REPAIR -> VERIFY | T002 | Suppression baseline refreshed with no count growth (94 identities); ratchet and reason enforcement pass | REVIEW |
+| 2026-08-15 | 0 | VERIFY -> REVIEW | T001, T002 | 569 focused tests and full ci-conventional pass; independent correctness, security/test-quality and integration reviews dispatched | REPAIR or CHECKPOINT |
+| 2026-08-15 | 0 | REVIEW -> REPAIR | T001, T002 | Valid findings: T001 ledger self-attestation/omissions, CC violations, prose/security/cancellation weaknesses; T002 wrong real path prefix and CLI args, broken direct script, weak provenance/arithmetic/exclusion validation | VERIFY |
+| 2026-08-15 | 0 | REPAIR -> INTEGRATE | T001, T002 | T001 reports 108 reviewed candidates/521-node bijection/CC<=5; T002 reports 84 tests, real layout reconciliation, direct CLI and fail-closed evidence repairs | VERIFY |
+| 2026-08-15 | 0 | INTEGRATE -> VERIFY | T001, T002 | Primary added omitted fixtures, made evidence tests checkout-portable, verified direct CLI import pattern, and reconciled suppression baseline at 95 identities | REVIEW |
+| 2026-08-15 | 0 | VERIFY -> REPAIR | T002 | 615 focused pass; full CI stopped after 3,123 passes on boolean-flag-argument findings at mutation_evidence.py:407/421 and mutation_policy.py:479; fresh-eyes diagnosis required after attempt 2 | VERIFY |
+| 2026-08-15 | 0 | REPAIR -> VERIFY | T002 | Fresh-eyes diagnosis applied: declaration-kind value replaces protocol flag; callable invariant replaces boolean condition parameter; Semgrep/84 T002/10 evidence tests pass | REVIEW |
+| 2026-08-15 | 0 | VERIFY -> REVIEW | T001, T002 | 615 focused and full conventional CI pass after fresh-eyes repair; post-repair independent reviews dispatched | REPAIR or CHECKPOINT |
+| 2026-08-15 | 0 | REVIEW -> REPAIR | T001, T002 | Valid findings: duplicate evidence crashes report publication; suffix matching spoofs exclusions; OAuth waiter not proven queued; one redaction value and one full render string remain brittle | VERIFY |
+| 2026-08-15 | 0 | REPAIR -> INTEGRATE | T001, T002 | T001: 108 specific rows, durable independent artifact, 521 behavioural pass; T002: 92 focused pass, duplicate reports serialise, exact alias/shadow checks and count invariants enforced | VERIFY |
+| 2026-08-15 | 0 | INTEGRATE -> VERIFY | T001, T002 | Primary inspected final artifacts; 92 T002/14 T001 evidence tests and Semgrep pass; suppression line movement reconciled at 95 identities | REVIEW |
+| 2026-08-15 | 0 | VERIFY -> REVIEW | T001, T002 | Final candidate passes 627 focused tests and full conventional CI; final independent acceptance review dispatched | CHECKPOINT or REPAIR |
+| 2026-08-15 | 0 | REVIEW -> REPAIR | T002 | T001 READY; T002 rejected because compound imports can hide alias shadowing and globally reconciled dictionaries can swap ownership | VERIFY |
+| 2026-08-15 | 0 | REPAIR -> VERIFY | T002 | Compound import shadow and swapped dictionary regressions added; 94 T002 tests, Pyright and zero-finding Semgrep pass | REVIEW |
+| 2026-08-15 | 0 | VERIFY -> REVIEW | T002 | 94 T002 tests and full conventional CI pass after final structural repairs; narrow final review dispatched | CHECKPOINT or REPAIR |
+| 2026-08-15 | 0 | REVIEW -> CHECKPOINT | T001 | Final independent verdict READY; protected test wave, 108-row review, durable review artifact and 521-node map selected for isolated checkpoint commit | CHECKPOINT T002 |
 
 ## Completion Review
 Filled by csm-build only after all acceptance criteria have observed evidence.

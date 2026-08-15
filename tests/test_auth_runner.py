@@ -5,6 +5,16 @@ from unittest.mock import Mock, patch
 import pytest
 
 from perplexity_cli.cli import auth_login, auth_logout, auth_status
+from perplexity_cli.runners.auth import (
+    _AuthOutputOptions,
+    _handle_auth_os_config_error,
+    _handle_auth_success,
+    _handle_auth_timeout_error,
+    _print_auth_troubleshooting,
+    _resolve_auth_output_options,
+    _resolve_ctx_flags,
+    _resolve_logout_ctx,
+)
 
 
 class TestAuthLogin:
@@ -284,3 +294,132 @@ class TestAuthRunnerMutationKillers:
 
         captured = capsys.readouterr()
         assert "ERROR" not in captured.err
+
+    def test_resolve_ctx_flags_maps_all_output_flags(self):
+        """Authentication flags map independently to JSON, schema and debug."""
+        assert _resolve_ctx_flags(None) == (False, False, False)
+        assert _resolve_ctx_flags({}) == (False, False, False)
+        assert _resolve_ctx_flags({"json": True, "schema": True, "debug": True}) == (
+            True,
+            True,
+            True,
+        )
+        assert _resolve_ctx_flags("invalid") == (False, False, False)
+
+    def test_resolve_auth_output_options_maps_typed_values(self):
+        """Typed authentication output options preserve all boolean flags."""
+        assert _resolve_auth_output_options((False, False, False)) == _AuthOutputOptions(
+            "human", "no_schema", "normal"
+        )
+        assert _resolve_auth_output_options((True, True, True)) == _AuthOutputOptions(
+            "json", "with_schema", "debug"
+        )
+
+    def test_print_auth_troubleshooting_includes_all_steps(self, capsys):
+        """Troubleshooting output includes actionable connection values."""
+        _print_auth_troubleshooting(9222, "https://www.perplexity.ai")
+
+        output = capsys.readouterr().err
+        assert (
+            "--remote-debugging-port=9222" in output,
+            "https://www.perplexity.ai" in output,
+        ) == (
+            True,
+            True,
+        )
+
+    def test_auth_timeout_json_routes_to_error_handler(self):
+        """JSON timeout errors use the shared JSON error handler."""
+        error = TimeoutError("timed out")
+        with patch("perplexity_cli.runners.auth.handle_error", side_effect=SystemExit(1)) as handle:
+            with pytest.raises(SystemExit):
+                _handle_auth_timeout_error(error, "json", 9222, "https://perplexity.ai")
+
+        handle.assert_called_once_with(error, "pxcli auth login", output_format="json")
+
+    def test_auth_os_config_json_routes_to_error_handler(self):
+        """JSON OS/configuration errors use the shared JSON error handler."""
+        error = OSError("permission denied")
+        with patch("perplexity_cli.runners.auth.handle_error", side_effect=SystemExit(1)) as handle:
+            with pytest.raises(SystemExit):
+                _handle_auth_os_config_error(error, "json", "debug")
+
+        handle.assert_called_once_with(error, "pxcli auth login", output_format="json")
+
+    def test_auth_os_config_human_passes_debug_mode(self):
+        """Human OS/configuration errors preserve the requested debug mode."""
+        error = OSError("permission denied")
+        with patch("perplexity_cli.runners.auth.handle_unexpected_cli_error") as handle:
+            _handle_auth_os_config_error(error, "human", "debug")
+
+        handle.assert_called_once()
+        assert handle.call_args.kwargs["debug_mode"] == "debug"
+        assert handle.call_args.kwargs["message_tuple"][2] is False
+
+    def test_handle_auth_success_saves_token_and_emits_json_schema(self):
+        """Successful JSON authentication saves credentials and forwards schema mode."""
+        mock_manager = Mock()
+        mock_manager.token_path = "/tmp/token.json"
+        with (
+            patch("perplexity_cli.runners.auth.TokenManager", return_value=mock_manager),
+            patch("perplexity_cli.runners.auth.write_envelope") as write,
+        ):
+            _handle_auth_success("token", {"cookie": "value"}, "json", "with_schema")
+
+        mock_manager.save_token.assert_called_once_with("token", cookies={"cookie": "value"})
+        write.assert_called_once()
+        assert write.call_args.kwargs["include_schema"] == "with_schema"
+
+    def test_resolve_logout_ctx_uses_context_schema_and_json(self):
+        """Logout resolves omitted flags from the current Click context."""
+        with patch(
+            "perplexity_cli.runners.auth._ctx_to_dict",
+            return_value={"json": True, "schema": True},
+        ):
+            assert _resolve_logout_ctx(None) == ("json", "with_schema")
+
+    def test_auth_success_logs_only_redacted_token_path(self):
+        """Credential persistence logs the redacted path, never credential values."""
+        manager = Mock(token_path="/secret/token.json")
+        logger = Mock()
+        with (
+            patch("perplexity_cli.runners.auth.TokenManager", return_value=manager),
+            patch("perplexity_cli.runners.auth.get_logger", return_value=logger),
+            patch("perplexity_cli.runners.auth.redact_path", return_value="<redacted>"),
+            patch("perplexity_cli.runners.auth.get_save_cookies_enabled", return_value=True),
+        ):
+            _handle_auth_success("sensitive-token", {"session": "secret"}, "human", "no_schema")
+
+        manager.save_token.assert_called_once_with("sensitive-token", cookies={"session": "secret"})
+        logger.info.assert_called_once_with("Token and cookies saved to %s", "<redacted>")
+
+    def test_auth_json_timeout_preserves_json_error_routing(self):
+        """Authentication timeouts retain JSON mode through the execution layer."""
+        error = TimeoutError("timed out")
+        with (
+            patch("perplexity_cli.runners.auth.authenticate_sync", side_effect=error),
+            patch("perplexity_cli.runners.auth.handle_error", side_effect=SystemExit(1)) as handle,
+            pytest.raises(SystemExit),
+        ):
+            from perplexity_cli.runners.auth import run_auth_command
+
+            run_auth_command({"json": True}, port=9222)
+
+        handle.assert_called_once_with(error, "pxcli auth login", output_format="json")
+
+    def test_logout_json_os_error_uses_json_error_handler(self):
+        """Credential deletion failures are emitted as JSON in JSON mode."""
+        manager = Mock()
+        manager.token_exists.return_value = True
+        error = OSError("disk failure")
+        manager.clear_token.side_effect = error
+        with (
+            patch("perplexity_cli.runners.auth.TokenManager", return_value=manager),
+            patch("perplexity_cli.runners.auth.handle_error", side_effect=SystemExit(1)) as handle,
+            pytest.raises(SystemExit),
+        ):
+            from perplexity_cli.runners.auth import run_logout_command
+
+            run_logout_command(json_mode=True)
+
+        handle.assert_called_once_with(error, "pxcli auth logout", output_format="json")

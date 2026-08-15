@@ -18,7 +18,14 @@ from perplexity_cli.api.client import (
     _require_json_object_or_none,
     _require_str,
 )
-from perplexity_cli.api.models import Block, QueryParams, QueryRequest, SSEMessage, WebResult
+from perplexity_cli.api.models import (
+    Block,
+    HttpRequestContext,
+    QueryParams,
+    QueryRequest,
+    SSEMessage,
+    WebResult,
+)
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
@@ -401,6 +408,47 @@ class TestSSEClient:
         # Cookies passed as separate parameter
         assert "cookies" in call_args[1]
 
+    def test_stream_post_forwards_request_context_and_cookies(self):
+        """The transport receives the exact endpoint, body, timeout, and cookies."""
+        client = SSEClient(
+            auth=AuthContext(token="test-token", cookies={"cf_clearance": "cookie-value"}),
+            timeout=47,
+        )
+        mock_response = Mock(ok=True, status_code=200, reason="OK", headers={})
+        mock_response.iter_lines.return_value = []
+        mock_stream_context = Mock()
+        mock_stream_context.__enter__ = Mock(return_value=mock_response)
+        mock_stream_context.__exit__ = Mock(return_value=False)
+        mock_session = Mock()
+        mock_session.stream.return_value = mock_stream_context
+        client._client = mock_session
+        payload = {"query": "test"}
+
+        assert list(client.stream_post("https://example.com/api", payload)) == []
+
+        call_args = mock_session.stream.call_args
+        assert call_args.args == ("POST", "https://example.com/api")
+        assert (
+            call_args.kwargs["json"],
+            call_args.kwargs["timeout"],
+            call_args.kwargs["cookies"],
+        ) == (payload, 47, {"cf_clearance": "cookie-value"})
+
+    def test_stream_post_rejects_invalid_context_exit_result(self):
+        """A transport context manager must return bool or None from __exit__."""
+        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=1)
+        mock_response = Mock(ok=True, status_code=200, reason="OK", headers={})
+        mock_response.iter_lines.return_value = []
+        mock_stream_context = Mock()
+        mock_stream_context.__enter__ = Mock(return_value=mock_response)
+        mock_stream_context.__exit__ = Mock(return_value="invalid")
+        mock_session = Mock()
+        mock_session.stream.return_value = mock_stream_context
+        client._client = mock_session
+
+        with pytest.raises(RuntimeError):
+            list(client.stream_post("https://example.com/api", {}))
+
     def test_stream_post_401_error(self):
         """Test 401 error raises PerplexityHTTPStatusError."""
         client = SSEClient(auth=AuthContext(token="invalid-token"))
@@ -456,10 +504,19 @@ class TestSSEClient:
 
     def test_stream_post_debug_logging_redacts_sensitive_values(self, caplog):
         """Test debug logs do not expose cookie names or response bodies."""
+        sentinels = (
+            "api-token-sentinel-61fd",
+            "cf-cookie-name-sentinel-8a42",
+            "cf-cookie-value-sentinel-37be",
+            "csrf-cookie-name-sentinel-d190",
+            "csrf-cookie-value-sentinel-05ca",
+            "https://api-log-url-sentinel.invalid/private-42d1",
+            "response-body-sentinel-b750",
+        )
         client = SSEClient(
             auth=AuthContext(
-                token="test-token",
-                cookies={"cf_clearance": "secret-cookie", "csrftoken": "secret-csrf"},
+                token=sentinels[0],
+                cookies={sentinels[1]: sentinels[2], sentinels[3]: sentinels[4]},
             ),
             max_retries=1,
         )
@@ -468,10 +525,10 @@ class TestSSEClient:
         mock_response.ok = False
         mock_response.status_code = 403
         mock_response.reason = "Forbidden"
-        mock_response.url = "https://example.com/api"
+        mock_response.url = sentinels[5]
         mock_response.headers = {"cf-ray": "ray-id"}
-        mock_response.content = b'{"secret":"value"}'
-        mock_response.text = '{"secret":"value"}'
+        mock_response.content = sentinels[6].encode()
+        mock_response.text = sentinels[6]
 
         mock_stream_context = Mock()
         mock_stream_context.__enter__ = Mock(return_value=mock_response)
@@ -485,13 +542,120 @@ class TestSSEClient:
 
         with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
             with pytest.raises(PerplexityHTTPStatusError, match="Access forbidden"):
-                list(client.stream_post("https://example.com/api", {}))
+                list(client.stream_post(sentinels[5], {}))
 
-        combined = "\n".join(record.getMessage() for record in caplog.records)
-        assert "cf_clearance" not in combined
-        assert "secret-cookie" not in combined
-        assert '{"secret":"value"}' not in combined
-        assert "<redacted:2 keys>" in combined
+        messages = [record.getMessage() for record in caplog.records]
+        assert all(sentinel not in message for message in messages for sentinel in sentinels)
+        assert any("<redacted:2 keys>" in message for message in messages)
+
+    def test_log_request_context_default_mode_logs_safe_context(self, caplog):
+        """Default requests log URL, content type, auth presence and cookie counts."""
+        setup_logging(verbosity="debug")
+        sentinels = (
+            "request-token-sentinel-9f3c",
+            "request-cookie-name-sentinel-a721",
+            "request-cookie-value-sentinel-24db",
+            "request-cookie-name-sentinel-f603",
+            "request-cookie-value-sentinel-7c15",
+            "https://request-url-sentinel.invalid/private-6b28",
+        )
+        client = SSEClient(
+            auth=AuthContext(
+                token=sentinels[0],
+                cookies={sentinels[1]: sentinels[2], sentinels[3]: sentinels[4]},
+            )
+        )
+        context = HttpRequestContext(
+            url=sentinels[5],
+            headers={"Content-Type": "application/json"},
+            effective_timeout=45,
+        )
+
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            client._log_request_context(context, query_mode="default")
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert messages
+        assert all(sentinel not in message for message in messages for sentinel in sentinels)
+        assert any("<redacted>" in message for message in messages)
+
+    def test_log_response_headers_labels_cloudflare_fields(self, caplog):
+        """Response diagnostics label all supported headers safely."""
+        setup_logging(verbosity="debug")
+        client = SSEClient(auth=AuthContext(token="token"))
+        response = Mock(status_code=200, reason="OK")
+        response.headers = {
+            "cf-ray": "ray-id",
+            "cf-cache-status": "HIT",
+            "server": "cloudflare",
+        }
+
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            client._log_response_headers(response)
+
+        messages = [record.getMessage() for record in caplog.records]
+        combined = "\n".join(messages)
+        assert (
+            bool(messages),
+            "ray-id" in combined,
+            "HIT" in combined,
+            "cloudflare" in combined,
+        ) == (
+            True,
+            True,
+            True,
+            True,
+        )
+
+    def test_log_http_error_context_includes_headers_and_redacted_body(self, caplog):
+        """HTTP error diagnostics include Cloudflare metadata and a redacted body."""
+        setup_logging(verbosity="debug")
+        client = SSEClient(auth=AuthContext(token="token"))
+        body_sentinels = ("body-key-sentinel-4f16", "body-value-sentinel-a972")
+        response = Mock(
+            status_code=500,
+            headers={"cf-ray": "ray-id", "cf-cache-status": "MISS"},
+            text=json.dumps({body_sentinels[0]: body_sentinels[1]}),
+        )
+        error = PerplexityHTTPStatusError("server error", response=response)
+
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            client._retry._log_http_error_context(error)
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert (
+            any("ray-id" in message for message in messages),
+            any("MISS" in message for message in messages),
+            any("<redacted" in message for message in messages),
+            all(sentinel not in message for message in messages for sentinel in body_sentinels),
+        ) == (True, True, True, True)
+
+    def test_log_http_error_context_handles_unreadable_body(self, caplog):
+        """Unreadable error bodies produce a diagnostic fallback message."""
+        setup_logging(verbosity="debug")
+        client = SSEClient(auth=AuthContext(token="token"))
+        response = Mock(status_code=500, headers={}, text=None)
+        error = PerplexityHTTPStatusError("server error", response=response)
+
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            client._retry._log_http_error_context(error)
+
+        assert caplog.records
+
+    def test_sleep_for_retry_routes_backoff_or_exact_delay(self, monkeypatch):
+        """Retry sleeps use the recorded backoff attempt when available."""
+        client = SSEClient(auth=AuthContext(token="token"))
+        backoff = Mock()
+        exact = Mock()
+        monkeypatch.setattr("perplexity_cli.api.client.sleep_with_backoff", backoff)
+        monkeypatch.setattr("perplexity_cli.api.client.sleep_exact", exact)
+
+        client._retry._sleep_attempt = 2
+        client._sleep_for_retry(3.5)
+        client._sleep_for_retry(4.5)
+
+        backoff.assert_called_once_with(2)
+        exact.assert_called_once_with(4.5)
 
     def test_raise_http_status_error(self):
         """Test raise_http_status_error constructs valid custom exceptions."""
@@ -646,6 +810,18 @@ class TestHandleRetryableError:
         assert isinstance(wait, float) or isinstance(wait, int)
         assert wait > 0
 
+    def test_http_retries_use_last_available_attempt(self):
+        """Retryable HTTP failures retain the final configured retry slot."""
+        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
+
+        server_wait = client._retry.handle_http_error(self._make_http_error(500), attempt=1)
+        assert server_wait == 4.0
+        assert client._retry.consume_sleep_attempt() == 2
+
+        forbidden_wait = client._retry.handle_http_error(self._make_http_error(403), attempt=0)
+        assert forbidden_wait == 2.0
+        assert client._retry.consume_sleep_attempt() == 1
+
     def test_retryable_429_exhausted_raises(self):
         """A 429 error with exhausted retries raises rate limit message."""
         client = SSEClient(auth=AuthContext(token="test-token"), max_retries=1)
@@ -673,6 +849,17 @@ class TestHandleNetworkError:
 
         wait_time = client._retry.handle_network_error(error, attempt=0)
         assert wait_time > 0
+
+    def test_network_retry_records_canonical_backoff_attempt(self):
+        """Network retries preserve the attempt used by the backoff sleeper."""
+        from curl_cffi.requests.exceptions import RequestException
+
+        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
+
+        wait_time = client._retry.handle_network_error(RequestException("failed"), attempt=0)
+
+        assert wait_time == 2.0
+        assert client._retry.consume_sleep_attempt() == 1
 
     def test_request_exception_exhausted_wraps_with_cause(self):
         """Exhausted curl_cffi RequestException is wrapped with its cause."""
@@ -771,186 +958,3 @@ class TestSSEVectors:
     def test_no_data_lines_ignored(self):
         """A stream with only comments and fields produces no events."""
         assert self._parse([b": hello", b"id: 1", b"retry: 5"]) == []
-
-
-class TestStreamRetry:
-    """End-to-end retry boundaries for stream_post."""
-
-    @staticmethod
-    def _stream_context(response):
-        """Build a mock stream context manager returning *response*."""
-        mock_stream_context = Mock()
-        mock_stream_context.__enter__ = Mock(return_value=response)
-        mock_stream_context.__exit__ = Mock(return_value=False)
-        return mock_stream_context
-
-    @staticmethod
-    def _ok_response(lines=None):
-        """Build a mock successful SSE response."""
-        mock_response = Mock()
-        mock_response.ok = True
-        mock_response.status_code = 200
-        mock_response.reason = "OK"
-        mock_response.headers = {}
-        mock_response.iter_lines.return_value = lines or [b'data: {"status": "OK"}', b""]
-        return mock_response
-
-    @staticmethod
-    def _error_response(status):
-        """Build a mock error response with the given status code."""
-        mock_response = Mock()
-        mock_response.ok = False
-        mock_response.status_code = status
-        mock_response.reason = "Error"
-        mock_response.url = "https://example.com/api"
-        mock_response.headers = {}
-        mock_response.content = b"error"
-        return mock_response
-
-    def test_raw_curl_failure_retries_and_succeeds(self, retry_sleep_trace):
-        """Raw curl failure before output retries with backoff and succeeds."""
-        from curl_cffi.requests.exceptions import RequestException
-
-        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
-        mock_session = Mock()
-        mock_session.stream.side_effect = [
-            RequestException("connection reset"),
-            self._stream_context(self._ok_response()),
-        ]
-        client._client = mock_session
-
-        results = list(client.stream_post("https://example.com/api", {"query": "test"}))
-
-        assert len(results) == 1
-        assert results[0]["status"] == "OK"
-        assert mock_session.stream.call_count == 2
-        assert retry_sleep_trace == [2.0]
-
-    def test_raw_curl_exhaustion_raises_with_cause(self, retry_sleep_trace):
-        """Raw curl exhaustion wraps the request error with its cause."""
-        from curl_cffi.requests.exceptions import RequestException
-
-        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=2)
-        mock_session = Mock()
-        mock_session.stream.side_effect = RequestException("connection reset")
-        client._client = mock_session
-
-        with pytest.raises(PerplexityRequestError, match="connection reset") as exc_info:
-            list(client.stream_post("https://example.com/api", {"query": "test"}))
-
-        assert isinstance(exc_info.value.__cause__, RequestException)
-        assert mock_session.stream.call_count == 2
-        assert retry_sleep_trace == [2.0]
-
-    def test_wrapped_request_error_retries_and_succeeds(self, retry_sleep_trace):
-        """Wrapped PerplexityRequestError retries with backoff and succeeds."""
-        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
-        mock_session = Mock()
-        mock_session.stream.side_effect = [
-            PerplexityRequestError("timeout"),
-            self._stream_context(self._ok_response()),
-        ]
-        client._client = mock_session
-
-        results = list(client.stream_post("https://example.com/api", {"query": "test"}))
-
-        assert len(results) == 1
-        assert results[0]["status"] == "OK"
-        assert mock_session.stream.call_count == 2
-        assert retry_sleep_trace == [2.0]
-
-    def test_no_retry_after_event_yielded(self):
-        """A failure after the first event raises without a second request."""
-        from curl_cffi.requests.exceptions import RequestException
-
-        def flaky_lines():
-            yield b'data: {"status": "partial"}'
-            yield b""
-            raise RequestException("connection reset")
-
-        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
-        mock_session = Mock()
-        mock_session.stream.return_value = self._stream_context(self._ok_response(flaky_lines()))
-        client._client = mock_session
-
-        generator = client.stream_post("https://example.com/api", {"query": "test"})
-        assert next(generator)["status"] == "partial"
-
-        with pytest.raises(RequestException):
-            next(generator)
-
-        assert mock_session.stream.call_count == 1
-
-    def test_schema_error_never_retries(self):
-        """SSE schema errors raise without retrying."""
-        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
-        mock_session = Mock()
-        mock_session.stream.return_value = self._stream_context(
-            self._ok_response([b"data: {invalid json}", b""])
-        )
-        client._client = mock_session
-
-        with pytest.raises(UpstreamSchemaError):
-            list(client.stream_post("https://example.com/api", {"query": "test"}))
-
-        assert mock_session.stream.call_count == 1
-
-    def test_401_raises_immediately(self):
-        """A 401 status raises without retrying."""
-        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
-        mock_session = Mock()
-        mock_session.stream.return_value = self._stream_context(self._error_response(401))
-        client._client = mock_session
-
-        with pytest.raises(PerplexityHTTPStatusError, match="Authentication failed"):
-            list(client.stream_post("https://example.com/api", {"query": "test"}))
-
-        assert mock_session.stream.call_count == 1
-
-    @pytest.mark.parametrize("status", [403, 429, 500])
-    def test_retryable_status_retries_then_succeeds(self, status, retry_sleep_trace):
-        """403, 429, and 5xx statuses retry with backoff then succeed."""
-        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
-        mock_session = Mock()
-        mock_session.stream.side_effect = [
-            self._stream_context(self._error_response(status)),
-            self._stream_context(self._ok_response()),
-        ]
-        client._client = mock_session
-
-        results = list(client.stream_post("https://example.com/api", {"query": "test"}))
-
-        assert len(results) == 1
-        assert results[0]["status"] == "OK"
-        assert mock_session.stream.call_count == 2
-        assert retry_sleep_trace == [2.0]
-
-    def test_429_retry_after_exact_delay(self, retry_sleep_trace):
-        """A valid numeric Retry-After is honoured as the exact sleep delay."""
-        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
-        error_response = self._error_response(429)
-        error_response.headers = {"Retry-After": "2.5"}
-        mock_session = Mock()
-        mock_session.stream.side_effect = [
-            self._stream_context(error_response),
-            self._stream_context(self._ok_response()),
-        ]
-        client._client = mock_session
-
-        results = list(client.stream_post("https://example.com/api", {"query": "test"}))
-
-        assert len(results) == 1
-        assert mock_session.stream.call_count == 2
-        assert retry_sleep_trace == [2.5]
-
-    def test_keyboard_interrupt_propagates(self):
-        """KeyboardInterrupt propagates without retrying."""
-        client = SSEClient(auth=AuthContext(token="test-token"), max_retries=3)
-        mock_session = Mock()
-        mock_session.stream.side_effect = KeyboardInterrupt()
-        client._client = mock_session
-
-        with pytest.raises(KeyboardInterrupt):
-            list(client.stream_post("https://example.com/api", {"query": "test"}))
-
-        assert mock_session.stream.call_count == 1

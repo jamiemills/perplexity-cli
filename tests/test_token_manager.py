@@ -10,11 +10,17 @@ import sys
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
-from perplexity_cli.auth.token_manager import TOKEN_AGE_WARNING_DAYS, TokenManager
+from perplexity_cli.auth.token_manager import (
+    TOKEN_AGE_WARNING_DAYS,
+    TokenManager,
+    _extract_created_at,
+    _extract_token_string,
+    _extract_version,
+)
 from perplexity_cli.utils.encryption import encrypt_token
 from perplexity_cli.utils.exceptions import AuthenticationError
 
@@ -59,6 +65,32 @@ class TestSaveTokenOSError:
         with patch("builtins.open", side_effect=OSError("disk full")):
             with pytest.raises(OSError, match="Failed to save or set permissions"):
                 token_manager.save_token("tok")
+
+
+class TestTokenRecordHelpers:
+    """Tests for token record field extraction helpers."""
+
+    def test_extract_created_at_only_accepts_strings(self):
+        """Creation timestamps reject missing and non-string values."""
+        assert _extract_created_at({"created_at": "2026-01-01"}) == "2026-01-01"
+        assert _extract_created_at({"created_at": 123}) is None
+        assert _extract_created_at({}) is None
+
+    @pytest.mark.parametrize("value", [None, "", 123, []])
+    def test_extract_token_string_rejects_invalid_values(self, value):
+        """Encrypted token data must be a non-empty string."""
+        with pytest.raises(AuthenticationError, match="missing encrypted token data"):
+            _extract_token_string({"token": value})
+
+    def test_extract_token_string_returns_non_empty_string(self):
+        """Valid encrypted token data passes through unchanged."""
+        assert _extract_token_string({"token": "encrypted"}) == "encrypted"
+
+    def test_extract_version_uses_v2_default_and_v1_fallback(self):
+        """Missing or malformed versions use the documented compatibility defaults."""
+        assert _extract_version({}) == 2
+        assert _extract_version({"version": 1}) == 1
+        assert _extract_version({"version": "2"}) == 1
 
 
 class TestSaveTokenAtomicPreservation:
@@ -124,6 +156,37 @@ class TestSaveTokenAtomicPreservation:
         combined = "\n".join(record.getMessage() for record in caplog.records)
         assert secret not in combined
 
+    def test_atomic_write_receives_secure_mode_and_encrypted_record(
+        self, token_manager, temp_token_file
+    ):
+        """Token persistence delegates one encrypted record with mode 0600."""
+        with (
+            patch("perplexity_cli.auth.token_manager.encrypt_token", return_value="ciphertext"),
+            patch("perplexity_cli.auth.token_manager.atomic_write_json") as atomic_write,
+        ):
+            token_manager.save_token("plaintext")
+
+        path, record = atomic_write.call_args.args
+        assert path == temp_token_file
+        assert record["token"] == "ciphertext"
+        assert record["encrypted"] is True
+        assert atomic_write.call_args.kwargs == {"mode": 0o600}
+
+    def test_encryption_failure_preserves_existing_token(self, token_manager, temp_token_file):
+        """Failure before the atomic write cannot replace a valid token."""
+        token_manager.save_token("original-token")
+        original_bytes = temp_token_file.read_bytes()
+
+        with patch(
+            "perplexity_cli.auth.token_manager.encrypt_token",
+            side_effect=RuntimeError("key unavailable"),
+        ):
+            with pytest.raises(RuntimeError, match="key unavailable"):
+                token_manager.save_token("replacement-token")
+
+        assert temp_token_file.read_bytes() == original_bytes
+        assert _temp_files(temp_token_file.parent) == []
+
 
 class TestPrepareTokenData:
     """Tests for _prepare_token_data with cookie encryption toggling."""
@@ -145,6 +208,20 @@ class TestPrepareTokenData:
         )
         data = token_manager._prepare_token_data("enc_tok", {"a": "b"})
         assert "cookies" not in data
+
+    def test_token_record_contains_format_and_timestamp(self, token_manager, monkeypatch):
+        """Prepared records contain the v2 encrypted marker and creation time."""
+        monkeypatch.setattr(
+            "perplexity_cli.auth.token_manager.datetime",
+            Mock(now=Mock(return_value=datetime(2026, 1, 2, 3, 4, 5))),
+        )
+
+        data = token_manager._prepare_token_data("enc_tok", None)
+
+        assert data["version"] == 2
+        assert data["encrypted"] is True
+        assert data["token"] == "enc_tok"
+        assert data["created_at"] == "2026-01-02T03:04:05"
 
 
 class TestReadAndValidateTokenFile:
@@ -177,6 +254,20 @@ class TestCheckTokenAge:
         # Should not raise; just logs
         token_manager._check_token_age(old_date)
 
+    def test_old_token_warning_contains_age(self, token_manager, caplog, monkeypatch):
+        """Old-token warnings include the computed age in days."""
+        expected_age = TOKEN_AGE_WARNING_DAYS + 5
+        current_time = datetime(2026, 8, 15, 12, 0, 0)
+        datetime_mock = Mock(wraps=datetime)
+        datetime_mock.now.return_value = current_time
+        monkeypatch.setattr("perplexity_cli.auth.token_manager.datetime", datetime_mock)
+        old_date = (current_time - timedelta(days=expected_age)).isoformat()
+
+        with caplog.at_level(logging.WARNING, logger="perplexity_cli"):
+            token_manager._check_token_age(old_date)
+
+        assert any(str(expected_age) in record.getMessage() for record in caplog.records)
+
     def test_invalid_date_string_handled(self, token_manager):
         """Invalid date strings are silently handled."""
         token_manager._check_token_age("not-a-date")
@@ -203,6 +294,10 @@ class TestDecryptCookies:
         """v2 format with empty/falsy cookies value returns None."""
         result = token_manager._decrypt_cookies({"token": "x", "cookies": ""}, version=2)
         assert result is None
+
+    def test_v2_non_string_encrypted_cookies_returns_none(self, token_manager):
+        """Malformed non-string cookie payloads are ignored before decryption."""
+        assert token_manager._decrypt_cookies({"cookies": 123}, version=2) is None
 
     def test_valid_cookies_decrypted(self, token_manager):
         """Valid encrypted cookies are decrypted and returned."""
@@ -262,6 +357,21 @@ class TestLogCookieDetails:
         """Non-Cloudflare cookies are logged without Cloudflare details."""
         token_manager._log_cookie_details({"session": "abc"})
 
+    def test_cloudflare_cookie_log_redacts_names_and_values(self, token_manager, caplog):
+        """Cloudflare cookie diagnostics expose only a redacted key count."""
+        sentinels = (
+            "cf_cookie_name_sentinel_70d1",
+            "cf_cookie_value_sentinel_129b",
+            "session_cookie_name_sentinel_ea46",
+            "session_cookie_value_sentinel_5fc8",
+        )
+        cookies = {sentinels[0]: sentinels[1], sentinels[2]: sentinels[3]}
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            token_manager._log_cookie_details(cookies)
+        messages = [record.getMessage() for record in caplog.records]
+        assert all(sentinel not in message for message in messages for sentinel in sentinels)
+        assert messages
+
 
 class TestLoadTokenRoundTrip:
     """Tests for load_token covering the main success path."""
@@ -299,6 +409,24 @@ class TestLoadTokenRoundTrip:
         token_manager.clear_token()
         assert not temp_token_file.exists()
 
+    def test_load_verifies_exact_security_contract_before_reading(
+        self, token_manager, temp_token_file
+    ):
+        """Loading verifies the token path with mode 0600 and the active logger."""
+        token_manager.save_token("tok")
+
+        with patch(
+            "perplexity_cli.auth.token_manager.verify_secure_permissions"
+        ) as verify_permissions:
+            assert token_manager.load_token()[0] == "tok"
+
+        verify_permissions.assert_called_once_with(
+            temp_token_file,
+            expected_permissions=0o600,
+            file_type="token",
+            logger=token_manager.logger,
+        )
+
 
 class TestClearTokenOSError:
     """Tests for OSError handling during token deletion."""
@@ -312,3 +440,8 @@ class TestClearTokenOSError:
         with patch.object(Path, "unlink", side_effect=OSError("permission denied")):
             with pytest.raises(OSError, match="Failed to delete token file"):
                 token_manager.clear_token()
+
+    def test_clear_token_without_file_is_noop(self, token_manager):
+        """Clearing an absent token does not touch the filesystem."""
+        token_manager.clear_token()
+        assert token_manager.token_exists() is False

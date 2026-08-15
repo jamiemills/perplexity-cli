@@ -15,11 +15,16 @@ import pytest
 from perplexity_cli.threads.exporter import ThreadRecord
 from perplexity_cli.threads.scraper import (
     ThreadScraper,
+    _convert_cache_thread_dicts,
+    _extract_cache_thread_dicts,
     _extract_total_threads,
+    _get_cache_str_field,
     _handle_http_error,
     _has_more_pages,
+    _is_response_protocol,
     _parse_single_thread,
     _report_progress,
+    _require_response,
 )
 from perplexity_cli.utils.exceptions import (
     AuthenticationError,
@@ -83,6 +88,83 @@ class TestTryCacheOnly:
         assert result is not None
         assert len(result) == 1
         assert result[0].title == "T1"
+
+
+class TestResponseProtocol:
+    """Tests for the defensive upstream response contract."""
+
+    @staticmethod
+    def _response(*, ok: object, status_code: object = 200, json_method=None) -> Mock:
+        """Build a minimal response-shaped mock."""
+        response = Mock()
+        response.ok = ok
+        response.status_code = status_code
+        response.json = (list) if json_method is None else json_method
+        return response
+
+    def test_success_response_requires_boolean_ok_and_callable_json(self):
+        """Successful responses are accepted without requiring a status code."""
+        response = self._response(ok=True, status_code="not-used")
+        assert _is_response_protocol(response) is True
+        assert _require_response(response) is response
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            _response.__func__(ok="yes"),
+            _response.__func__(ok=True, json_method=[]),
+            _response.__func__(ok=False, status_code="500"),
+        ],
+    )
+    def test_invalid_response_shapes_are_rejected(self, response):
+        """Malformed response members are rejected before use."""
+        assert _is_response_protocol(response) is False
+        with pytest.raises(UpstreamSchemaError, match="Malformed HTTP response"):
+            _require_response(response)
+
+    def test_non_ok_response_requires_integer_status_code(self):
+        """Failed responses are accepted when their status code is an integer."""
+        response = self._response(ok=False, status_code=503)
+        assert _is_response_protocol(response) is True
+
+
+class TestCacheRecordValidation:
+    """Tests for cached thread record shape and conversion."""
+
+    def test_extract_cache_thread_dicts_copies_mapping_entries(self):
+        """Validated cache mappings are copied into independent dictionaries."""
+        source = {"title": "T", "url": "u", "created_at": "d", "extra": 1}
+        result = _extract_cache_thread_dicts([source])
+
+        assert result == [source]
+        assert result[0] is not source
+
+    def test_extract_cache_thread_dicts_rejects_non_mapping_entry(self):
+        """Non-mapping cache entries fail with the cache-record contract error."""
+        with pytest.raises(UpstreamSchemaError, match="Malformed cached thread records"):
+            _extract_cache_thread_dicts(["not-a-record"])
+
+    @pytest.mark.parametrize("field", ["title", "url", "created_at"])
+    def test_get_cache_str_field_requires_string(self, field):
+        """Each required cached field rejects missing and non-string values."""
+        with pytest.raises(UpstreamSchemaError, match=f"missing {field}"):
+            _get_cache_str_field({}, field)
+        with pytest.raises(UpstreamSchemaError, match=f"missing {field}"):
+            _get_cache_str_field({field: 1}, field)
+
+    def test_convert_cache_thread_dicts_preserves_all_thread_fields(self):
+        """Cache dictionaries convert to ThreadRecord instances in order."""
+        records = _convert_cache_thread_dicts(
+            [
+                {"title": "First", "url": "u1", "created_at": "d1"},
+                {"title": "Second", "url": "u2", "created_at": "d2"},
+            ]
+        )
+
+        assert records == [
+            ThreadRecord(title="First", url="u1", created_at="d1"),
+            ThreadRecord(title="Second", url="u2", created_at="d2"),
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +402,68 @@ class TestExecuteApiPost:
         ):
             with pytest.raises(UpstreamSchemaError, match="Malformed thread list"):
                 await scraper._execute_api_post(client, {}, {}, {})
+
+    @pytest.mark.asyncio
+    async def test_forwards_request_context_and_response(self):
+        """Execution forwards headers, cookies, body, and the returned response unchanged."""
+        scraper = _make_scraper()
+        client = AsyncMock()
+        response = Mock()
+        parsed = [{"title": "T"}]
+
+        with (
+            patch.object(scraper, "_acquire_rate_limit", new_callable=AsyncMock),
+            patch.object(
+                scraper, "_post_thread_list_request", new_callable=AsyncMock, return_value=response
+            ) as post,
+            patch.object(scraper, "_handle_thread_list_response", return_value=parsed) as handle,
+        ):
+            result = await scraper._execute_api_post(
+                client, {"X-Test": "header"}, {"session": "cookie"}, {"offset": 7}
+            )
+
+        assert result == parsed
+        post.assert_awaited_once_with(
+            client, {"X-Test": "header"}, {"session": "cookie"}, {"offset": 7}
+        )
+        handle.assert_called_once_with(response)
+
+    @pytest.mark.asyncio
+    async def test_post_uses_versioned_endpoint_and_copied_payload(self):
+        """The thread request uses the configured endpoint and complete request context."""
+        scraper = _make_scraper()
+        scraper.api_url = "https://example.com/threads"
+        scraper.api_version = "v-test"
+        response = Mock(ok=True, json=Mock())
+        client = AsyncMock()
+        client.post.return_value = response
+        request_body = {"limit": 100, "offset": 0}
+
+        with patch(
+            "perplexity_cli.threads.scraper.to_curl_cffi_cookies", return_value="curl-cookies"
+        ):
+            result = await scraper._post_thread_list_request(
+                client, {"Content-Type": "application/json"}, {"session": "token"}, request_body
+            )
+
+        assert result is response
+        client.post.assert_awaited_once_with(
+            "https://example.com/threads?version=v-test&source=default",
+            headers={"Content-Type": "application/json"},
+            cookies="curl-cookies",
+            json={"limit": 100, "offset": 0},
+        )
+
+    def test_other_http_error_preserves_response_and_cause(self):
+        """Unhandled statuses retain the original response and exception chain."""
+        response = SimpleResponse(status_code=503)
+        error = PerplexityHTTPStatusError("unavailable", response=response)
+
+        with pytest.raises(PerplexityHTTPStatusError) as exc_info:
+            _handle_http_error(error)
+
+        assert exc_info.value.response is response
+        assert exc_info.value.__cause__ is error
 
 
 # ---------------------------------------------------------------------------
@@ -567,8 +711,12 @@ class TestFetchAllThreadsFromApi:
             return resp
 
         async def fake_post(*_args: object, **kwargs: object) -> Mock:
-            requested_offsets.append(kwargs["json"]["offset"])  # type: ignore[index]
-            if kwargs["json"]["offset"] == 0:  # type: ignore[index]
+            payload = kwargs["json"]
+            assert isinstance(payload, dict)
+            offset = payload["offset"]
+            assert isinstance(offset, int)
+            requested_offsets.append(offset)
+            if offset == 0:
                 return build_response(page1)
             return build_response(page2)
 
@@ -620,3 +768,25 @@ class TestFetchAllThreadsFromApi:
                 await scraper._fetch_all_threads_from_api("tok")
 
         assert mock_session.post.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_first_page_request_uses_complete_pagination_schema(self):
+        """The first request sends every required pagination key and value."""
+        scraper = _make_scraper()
+        response = Mock(ok=True)
+        response.json.return_value = []
+        session = AsyncMock()
+        session.post.return_value = response
+        context = AsyncMock()
+        context.__aenter__.return_value = session
+        context.__aexit__.return_value = False
+
+        with patch("perplexity_cli.utils.session_factory.AsyncSession", return_value=context):
+            assert await scraper._fetch_all_threads_from_api("tok") == []
+
+        assert session.post.await_args.kwargs["json"] == {
+            "limit": 100,
+            "ascending": False,
+            "offset": 0,
+            "search_term": "",
+        }

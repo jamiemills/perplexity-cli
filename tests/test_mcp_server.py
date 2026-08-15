@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
+from perplexity_cli import mcp_server
 from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.mcp_server import (
     ServerConfig,
@@ -19,6 +21,7 @@ from perplexity_cli.mcp_server import (
     _perplexity_deep_info,
     _perplexity_quick_info,
     _render_answer,
+    _request_answer,
     _search_mode_for_query_mode,
     _server_meta,
     create_mcp_server,
@@ -49,17 +52,47 @@ def test_parse_args_streamable_http(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.port == 9000
 
 
+def test_parse_args_forwards_all_http_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "pxcli-mcp",
+            "--transport",
+            "streamable-http",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "9100",
+            "--mount-path",
+            "/agent",
+        ],
+    )
+
+    assert _parse_args() == ServerConfig(
+        transport="streamable-http",
+        host="0.0.0.0",
+        port=9100,
+        mount_path="/agent",
+    )
+
+
 # ---------------------------------------------------------------------------
 # _normalise_output_format
 # ---------------------------------------------------------------------------
 
 
 def test_normalise_output_format_aliases() -> None:
-    assert _normalise_output_format("json") == "json"
-    assert _normalise_output_format("markdown") == "markdown"
-    assert _normalise_output_format("md") == "markdown"
-    assert _normalise_output_format("plain") == "plain"
-    assert _normalise_output_format("text") == "plain"
+    assert {
+        value: _normalise_output_format(value)
+        for value in ("json", "markdown", "md", "plain", "text")
+    } == {
+        "json": "json",
+        "markdown": "markdown",
+        "md": "markdown",
+        "plain": "plain",
+        "text": "plain",
+    }
 
 
 def test_normalise_output_format_case_insensitive_and_whitespace() -> None:
@@ -72,14 +105,21 @@ def test_normalise_output_format_rejects_invalid() -> None:
         _normalise_output_format("xml")
 
 
+def test_invalid_user_inputs_raise_validation_errors() -> None:
+    with pytest.raises(ValueError):
+        _normalise_output_format("xml")
+    with pytest.raises(ValueError):
+        run_mcp_query(" ", "quick", "plain")
+
+
 # ---------------------------------------------------------------------------
 # _search_mode_for_query_mode
 # ---------------------------------------------------------------------------
 
 
 def test_search_mode_mapping() -> None:
-    assert _search_mode_for_query_mode("quick") == "standard"  # type: ignore[arg-type]
-    assert _search_mode_for_query_mode("deep") == "multi_step"  # type: ignore[arg-type]
+    assert _search_mode_for_query_mode("quick") == "standard"  # type: ignore[arg-type]  # owner: test-infrastructure; reason: exercise the public string values accepted by the MCP query-mode boundary
+    assert _search_mode_for_query_mode("deep") == "multi_step"  # type: ignore[arg-type]  # owner: test-infrastructure; reason: exercise the public string values accepted by the MCP query-mode boundary
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +158,7 @@ def test_friendly_error_generic() -> None:
 def test_server_meta_returns_dict() -> None:
     meta = _server_meta()
     assert isinstance(meta, dict)
-    assert "anthropic/maxResultSizeChars" in meta
+    assert meta["anthropic/maxResultSizeChars"] == 120000
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +190,17 @@ def test_create_mcp_server_defaults() -> None:
     server = create_mcp_server()
     assert server.settings.host == "127.0.0.1"
     assert server.settings.port == 8000
+
+
+def test_create_mcp_server_forwards_custom_http_configuration() -> None:
+    """Custom host, port and mount path reach the FastMCP settings."""
+    server = create_mcp_server(
+        ServerConfig(transport="streamable-http", host="0.0.0.0", port=9001, mount_path="/api/mcp")
+    )
+
+    assert server.settings.host == "0.0.0.0"
+    assert server.settings.port == 9001
+    assert server.settings.streamable_http_path == "/api/mcp"
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +245,54 @@ def test_run_mcp_query_plain_format(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "Plain text." in result.rendered_response
 
 
+def test_run_mcp_query_builds_complete_structured_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MCP results preserve mode, answer, rendering and reference counts."""
+    answer = Answer(
+        text="Research answer",
+        references=[WebResult(name="Source", url="https://source.test", snippet="Excerpt")],
+    )
+    request = Mock(return_value=answer)
+    render = Mock(return_value="rendered")
+    monkeypatch.setattr("perplexity_cli.mcp_server._request_answer", request)
+    monkeypatch.setattr("perplexity_cli.mcp_server._render_answer", render)
+
+    result = run_mcp_query("  Research this  ", "deep", "md")
+
+    request.assert_called_once_with("Research this", "deep")
+    render.assert_called_once_with(answer, "markdown")
+    assert result.model_dump() == {
+        "mode": "deep",
+        "output_format": "markdown",
+        "answer": "Research answer",
+        "rendered_response": "rendered",
+        "reference_count": 1,
+        "references": [{"title": "Source", "url": "https://source.test", "snippet": "Excerpt"}],
+    }
+
+
+def test_request_answer_passes_auth_and_search_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deep mode requests use the multi-step upstream search mode."""
+    monkeypatch.setattr(
+        "perplexity_cli.mcp_server._load_authentication",
+        lambda: ("token", {"cf": "cookie"}),
+    )
+    api = Mock()
+    api.get_complete_answer.return_value = Answer(text="answer", references=[])
+    api_context = MagicMock()
+    api_context.__enter__.return_value = api
+    api_context.__exit__.return_value = False
+    factory = Mock(return_value=api_context)
+    monkeypatch.setattr("perplexity_cli.mcp_server.PerplexityAPI", factory)
+
+    result = _request_answer("question", "deep")
+
+    assert result.text == "answer"
+    factory.assert_called_once_with("token", {"cf": "cookie"})
+    api.get_complete_answer.assert_called_once_with(
+        "question", search_implementation_mode="multi_step"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Direct helper function tests
 # ---------------------------------------------------------------------------
@@ -221,6 +320,19 @@ def test_format_json_response() -> None:
     assert '"title": "R"' in result
 
 
+def test_format_json_response_has_complete_schema() -> None:
+    answer = Answer(
+        text="Hello",
+        references=[WebResult(name="R", url="http://x.com", snippet=None)],
+    )
+    expected = {
+        "answer": "Hello",
+        "references": [{"title": "R", "url": "http://x.com", "snippet": None}],
+    }
+
+    assert json.loads(_format_json_response(answer)) == expected
+
+
 def test_render_answer_json() -> None:
     answer = Answer(text="Hi", references=[])
     result = _render_answer(answer, "json")
@@ -233,6 +345,19 @@ def test_render_answer_markdown() -> None:
     assert "Hi" in result
 
 
+def test_render_answer_dispatches_json_and_text_formats(monkeypatch: pytest.MonkeyPatch) -> None:
+    answer = Answer(text="Hi", references=[])
+    json_renderer = Mock(return_value="json result")
+    text_renderer = Mock(return_value="text result")
+    monkeypatch.setattr("perplexity_cli.mcp_server._format_json_response", json_renderer)
+    monkeypatch.setattr("perplexity_cli.mcp_server._format_text_response", text_renderer)
+
+    assert _render_answer(answer, "json") == "json result"
+    assert _render_answer(answer, "markdown") == "text result"
+    json_renderer.assert_called_once_with(answer)
+    text_renderer.assert_called_once_with(answer, "markdown")
+
+
 def test_load_authentication_returns_tuple(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "perplexity_cli.mcp_server.load_token_optional",
@@ -240,6 +365,18 @@ def test_load_authentication_returns_tuple(monkeypatch: pytest.MonkeyPatch) -> N
     )
     result = _load_authentication()
     assert result == ("fake-token", None)
+
+
+def test_load_authentication_uses_token_manager_and_module_logger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = object()
+    loader = Mock(return_value=("token", {"session": "cookie"}))
+    monkeypatch.setattr("perplexity_cli.mcp_server.TokenManager", Mock(return_value=manager))
+    monkeypatch.setattr("perplexity_cli.mcp_server.load_token_optional", loader)
+
+    assert _load_authentication() == ("token", {"session": "cookie"})
+    loader.assert_called_once_with(manager, mcp_server._LOGGER)
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +429,18 @@ async def test_deep_info_reports_progress_via_ctx(monkeypatch: pytest.MonkeyPatc
     assert result.answer == "deep result"
     mock_ctx.info.assert_called_once()
     assert mock_ctx.report_progress.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_quick_info_without_context_skips_progress(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tool calls without an MCP context still return the query result."""
+    run_query = Mock(return_value="result")
+    monkeypatch.setattr("perplexity_cli.mcp_server.run_mcp_query", run_query)
+
+    result = await _perplexity_quick_info("question", "plain", None)
+
+    assert result == "result"
+    run_query.assert_called_once_with("question", "quick", "plain")
 
 
 # ---------------------------------------------------------------------------

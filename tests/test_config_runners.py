@@ -1,11 +1,18 @@
 """Tests for configuration and style command runners."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
 from perplexity_cli.runners.config import (
+    _collect_env_overrides,
+    _get_include_schema,
+    _get_json_mode_from_ctx,
+    _output_config_change,
+    _output_config_text,
+    _read_ctx_bool,
     run_clear_style_command,
     run_configure_command,
     run_show_config_command,
@@ -404,3 +411,97 @@ class TestConfigRunnerMutationKillers:
         assert envelope["result"]["save_cookies"] is True
         assert envelope["result"]["debug_mode"] is False
         assert envelope["result"]["config_path"] == "/tmp/config.json"
+
+    def test_read_ctx_bool_supports_dict_and_object_contexts(self):
+        """Context booleans work for both Click dictionaries and objects."""
+        assert _read_ctx_bool({"schema": True}, "schema") is True
+        assert _read_ctx_bool({}, "schema") is False
+        context = SimpleNamespace(schema=True)
+        assert _read_ctx_bool(context, "schema") is True
+        assert _read_ctx_bool(context, "missing") is False
+
+    def test_context_output_modes_read_click_context(self, monkeypatch):
+        """JSON and schema output modes are resolved from context flags."""
+        monkeypatch.setattr(
+            "perplexity_cli.runners.config._get_ctx_obj_dict",
+            lambda: {"json": True, "schema": True},
+        )
+        assert _get_json_mode_from_ctx() == "json"
+        assert _get_include_schema() == "with_schema"
+
+    def test_collect_env_overrides_preserves_configured_order(self, monkeypatch):
+        """Environment overrides are returned in the stable key order."""
+        monkeypatch.setenv("PERPLEXITY_DEBUG_MODE", "false")
+        monkeypatch.setenv("PERPLEXITY_SAVE_COOKIES", "true")
+
+        assert _collect_env_overrides() == [
+            "PERPLEXITY_SAVE_COOKIES=true",
+            "PERPLEXITY_DEBUG_MODE=false",
+        ]
+        assert _collect_env_overrides(prefix="  ") == [
+            "  PERPLEXITY_SAVE_COOKIES=true",
+            "  PERPLEXITY_DEBUG_MODE=false",
+        ]
+
+    def test_output_config_text_includes_toggles_overrides_and_guidance(self, capsys):
+        """Human config output contains values and actionable commands."""
+        config = Mock(save_cookies=True, debug_mode=False)
+        _output_config_text(config, "/tmp/config.json", ["  PERPLEXITY_SAVE_COOKIES=true"])
+
+        output = capsys.readouterr().out
+        semantic_fragments = (
+            "/tmp/config.json",
+            "save_cookies",
+            "debug_mode",
+            "PERPLEXITY_SAVE_COOKIES=true",
+            "pxcli config set save_cookies",
+            "pxcli config set debug_mode",
+        )
+        assert all(fragment in output for fragment in semantic_fragments)
+
+    def test_output_config_change_json_forwards_schema(self):
+        """JSON configuration changes forward the schema inclusion flag."""
+        logger = Mock()
+        with (
+            patch("perplexity_cli.runners.config._get_include_schema", return_value="with_schema"),
+            patch("perplexity_cli.runners.config.write_envelope") as write,
+        ):
+            _output_config_change("debug_mode", "enabled", "json", logger)
+
+        write.assert_called_once()
+        assert write.call_args.kwargs["include_schema"] == "with_schema"
+        logger.info.assert_not_called()
+
+    def test_configure_json_error_preserves_exception_and_command(self):
+        """Style validation failures retain their JSON error contract."""
+        error = ValueError("invalid style")
+        manager = Mock()
+        manager.save_style.side_effect = error
+        with (
+            patch("perplexity_cli.runners.config.StyleManager", return_value=manager),
+            patch(
+                "perplexity_cli.runners.config.handle_error", side_effect=SystemExit(1)
+            ) as handle,
+            pytest.raises(SystemExit),
+        ):
+            run_configure_command("bad", output_format="json")
+
+        handle.assert_called_once_with(error, "pxcli style set", output_format="json")
+
+    def test_set_config_context_json_error_preserves_output_mode(self):
+        """Context-derived JSON mode reaches configuration error handling."""
+        from perplexity_cli.runners.config import run_set_config_command
+        from perplexity_cli.utils.exceptions import ConfigurationError
+
+        error = ConfigurationError("invalid key")
+        with (
+            patch("perplexity_cli.runners.config._get_json_mode_from_ctx", return_value="json"),
+            patch("perplexity_cli.runners.config.set_feature", side_effect=error),
+            patch(
+                "perplexity_cli.runners.config.handle_error", side_effect=SystemExit(1)
+            ) as handle,
+            pytest.raises(SystemExit),
+        ):
+            run_set_config_command("unknown", "true")
+
+        handle.assert_called_once_with(error, "pxcli config set", output_format="json")

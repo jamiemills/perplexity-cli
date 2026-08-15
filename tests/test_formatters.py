@@ -1,8 +1,10 @@
 """Tests for output formatters."""
 
 import json
+from unittest.mock import Mock
 
 import pytest
+from rich.text import Text
 
 from perplexity_cli.api.models import Answer, WebResult
 from perplexity_cli.formatting import get_formatter, list_formatters
@@ -82,6 +84,10 @@ class TestPlainTextFormatter:
         result = formatter.format_answer("Start\n\n\n\n\nEnd")
         assert result == "Start\n\n\nEnd"
 
+    def test_removes_bold_and_italic_markers(self):
+        """Plain output removes both supported Markdown emphasis forms."""
+        assert PlainTextFormatter().format_answer("**Bold** and *italic*") == "Bold and italic"
+
 
 class TestMarkdownFormatter:
     """Test MarkdownFormatter."""
@@ -117,6 +123,23 @@ class TestMarkdownFormatter:
         assert "Answer text" in result
         assert "## References" in result
 
+    def test_format_references_preserves_numbering_and_escapes_fields(self):
+        """Reference rendering is stable Markdown with escaped user fields."""
+        formatter = MarkdownFormatter()
+        refs = [
+            WebResult(
+                name="A [source]",
+                url="https://example.test/path",
+                snippet="use *care*",
+            )
+        ]
+
+        result = formatter.format_references(refs)
+        assert "References" in result
+        assert "1." in result
+        assert "A \\[source\\]" in result
+        assert "use \\*care\\*" in result
+
 
 class TestRichFormatter:
     """Test RichFormatter."""
@@ -132,8 +155,28 @@ class TestRichFormatter:
         formatter = RichFormatter()
         refs = [WebResult(name="Test", url="https://test.com", snippet="test")]
         result = formatter.format_references(refs)
-        assert "Test" in result
-        assert result.count("https://test.com") >= 1
+        assert ("Test" in result, "https://test.com" in result) == (True, True)
+
+    def test_format_references_empty(self):
+        """An empty reference list produces no table."""
+        formatter = RichFormatter()
+        assert formatter.format_references([]) == ""
+
+    def test_format_references_numbers_multiple_rows(self):
+        """Multiple references render numbered rows with both sources."""
+        formatter = RichFormatter()
+        refs = [
+            WebResult(name="First", url="https://first.test", snippet="one"),
+            WebResult(name="Second", url="https://second.test", snippet="two"),
+        ]
+
+        result = formatter.format_references(refs)
+        plain_result = Text.from_ansi(result).plain
+        rows = [line for line in plain_result.splitlines() if ".test" in line]
+        assert [("First" in row, "Second" in row) for row in rows] == [
+            (True, False),
+            (False, True),
+        ]
 
     def test_format_complete(self):
         """Test complete Rich formatted output."""
@@ -144,12 +187,85 @@ class TestRichFormatter:
         assert "Answer text" in result
         assert "Test" in result or result.count("https://test.com") >= 1
 
+    def test_format_complete_strips_references_and_citations(self):
+        """The complete formatter omits the reference section when requested."""
+        formatter = RichFormatter()
+        answer = Answer(
+            text="Answer text[1]",
+            references=[WebResult(name="Test", url="https://test.com", snippet="test")],
+        )
+
+        result = formatter.format_complete(answer, strip_references=True)
+
+        assert "Answer text" in result
+        assert "[1]" not in result
+        assert "References" not in result
+        assert "https://test.com" not in result
+
+    def test_render_complete_prints_reference_separator_and_table(self, capsys):
+        """Direct rendering prints the styled separator and references."""
+        formatter = RichFormatter()
+        answer = Answer(
+            text="Answer text",
+            references=[WebResult(name="Test", url="https://test.com", snippet="test")],
+        )
+
+        formatter.render_complete(answer)
+        output = capsys.readouterr().out
+
+        assert "Answer text" in output
+        assert "References" in output
+        assert "Test" in output
+        assert "https://test.com" in output
+
+    def test_header_styles_cover_all_levels(self):
+        """Supported heading levels preserve their content through public formatting."""
+        formatter = RichFormatter()
+
+        result = formatter.format_answer("# One\n## Two\n### Three\n###### Six")
+
+        for heading in ("One", "Two", "Three", "Six"):
+            assert heading in result
+
     def test_code_block_handling(self):
         """Test that code blocks are detected and handled."""
         formatter = RichFormatter()
         text_with_code = '```python\nprint("hello")\n```'
         result = formatter.format_answer(text_with_code)
         assert "print" in result
+
+    def test_code_block_fallback_preserves_invalid_language_block(self, monkeypatch):
+        """Invalid syntax languages retain their fenced block through public formatting."""
+        formatter = RichFormatter()
+
+        def raise_value_error(*args, **kwargs):
+            raise ValueError("unknown language")
+
+        monkeypatch.setattr("perplexity_cli.formatting.rich.Syntax", raise_value_error)
+
+        result = formatter.format_answer("```unknown\nvalue = 1\n```")
+
+        assert "unknown" in result
+        assert "value = 1" in result
+
+    def test_answer_text_processes_multiple_code_blocks(self, monkeypatch):
+        """Multiple fenced blocks preserve prose before and after each block."""
+        formatter = RichFormatter()
+        render_code_block = Mock(
+            side_effect=lambda language, code: f"<{language}>{code}</{language}>"
+        )
+        monkeypatch.setattr(formatter, "_render_code_block", render_code_block)
+        text = "Before\n```python\nprint(1)\n```\nMiddle\n```text\nplain\n```\nAfter"
+
+        result = formatter.format_answer(text)
+
+        semantic_parts = ("Before", "print(1)", "Middle", "plain", "After")
+        positions = [result.index(part) for part in semantic_parts]
+        assert positions == sorted(positions)
+        assert render_code_block.call_args_list == [
+            (("python", "print(1)"),),
+            (("text", "plain"),),
+        ]
 
 
 class TestFormatterRegistry:
@@ -549,6 +665,20 @@ class TestJSONFormatter:
         assert "result" in parsed
         assert "answer" in parsed["result"]
         assert "references" in parsed["result"]
+
+    def test_format_complete_preserves_unicode_schema(self):
+        """Machine output preserves its schema and Unicode values."""
+        formatter = JSONFormatter()
+        answer = Answer(text="Café", references=[])
+        expected = {
+            "ok": True,
+            "command": "pxcli query",
+            "result": {"answer": "Café", "references": []},
+            "meta": None,
+            "next_actions": [],
+        }
+
+        assert json.loads(formatter.format_complete(answer)) == expected
 
     def test_json_formatter_in_registry(self):
         """Test that JSON formatter is registered."""

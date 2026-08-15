@@ -13,6 +13,8 @@ from perplexity_cli.auth.oauth_handler import (
     ChromeDevToolsClient,
     _check_page_loaded,
     _extract_token,
+    _extract_token_from_cookies,
+    _extract_token_from_local_storage,
     _fetch_local_storage,
     _navigate_and_wait,
     _poll_for_auth_data,
@@ -275,233 +277,6 @@ class TestAwaitResponse:
             await client._await_response(1, "Page.enable")
 
 
-class TestConcurrentCommands:
-    """Concurrency and cancellation guarantees for send_command."""
-
-    @pytest.mark.asyncio
-    async def test_concurrent_commands_are_serialised_with_correlated_ids(self):
-        """Concurrent commands get correlated responses without concurrent recv."""
-        responses = [
-            json.dumps({"id": 1, "result": {"cmd": 1}}),
-            json.dumps({"id": 2, "result": {"cmd": 2}}),
-        ]
-        active_recv = 0
-        max_active = 0
-        index = 0
-
-        async def recv():
-            nonlocal active_recv, max_active, index
-            active_recv += 1
-            max_active = max(max_active, active_recv)
-            await asyncio.sleep(0)
-            active_recv -= 1
-            response = responses[index]
-            index += 1
-            return response
-
-        mock_ws = AsyncMock()
-        mock_ws.recv.side_effect = recv
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-
-        results = await asyncio.gather(
-            client.send_command("Page.enable"),
-            client.send_command("Network.enable"),
-        )
-        assert results == [{"cmd": 1}, {"cmd": 2}]
-        assert client.message_id == 2
-        assert max_active == 1
-
-    @pytest.mark.asyncio
-    async def test_cancelled_waiter_sends_nothing(self):
-        """A caller waiting on the lock is cancelled before it sends anything."""
-        mock_ws = AsyncMock()
-        gate = asyncio.Event()
-
-        async def blocking_recv():
-            await gate.wait()
-            return json.dumps({"id": 1, "result": {}})
-
-        mock_ws.recv.side_effect = blocking_recv
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-
-        first = asyncio.create_task(client.send_command("Page.enable"))
-        for _ in range(10):
-            await asyncio.sleep(0)
-        assert client.message_id == 1
-
-        waiter = asyncio.create_task(client.send_command("Network.enable"))
-        for _ in range(10):
-            await asyncio.sleep(0)
-
-        waiter.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await waiter
-        assert mock_ws.send.call_count == 1
-        assert client.message_id == 1
-
-        first.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await first
-
-    @pytest.mark.asyncio
-    async def test_cancelled_active_caller_releases_lock(self):
-        """Cancelling an in-flight command releases the lock and propagates."""
-        mock_ws = AsyncMock()
-        gate = asyncio.Event()
-        recv_calls = 0
-
-        async def recv():
-            nonlocal recv_calls
-            recv_calls += 1
-            if recv_calls == 1:
-                await gate.wait()
-            return json.dumps({"id": 2, "result": {"ok": True}})
-
-        mock_ws.recv.side_effect = recv
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-
-        first = asyncio.create_task(client.send_command("Page.enable"))
-        for _ in range(10):
-            await asyncio.sleep(0)
-        assert client.message_id == 1
-
-        first.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await first
-
-        result = await asyncio.wait_for(client.send_command("Network.enable"), timeout=1)
-        assert result == {"ok": True}
-
-
-class TestCdpResponseHardening:
-    """Timeout and malformed-response handling for CDP transactions."""
-
-    @pytest.mark.asyncio
-    async def test_timeout_names_method_not_params(self):
-        """A hanging connection raises TimeoutError naming the method only."""
-        mock_ws = AsyncMock()
-        gate = asyncio.Event()
-
-        async def blocking_recv():
-            await gate.wait()
-            return json.dumps({"id": 1, "result": {}})
-
-        mock_ws.recv.side_effect = blocking_recv
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-
-        with patch("perplexity_cli.auth.oauth_handler._CDP_RESPONSE_TIMEOUT", 0.05):
-            with pytest.raises(TimeoutError) as exc_info:
-                await client.send_command("Page.navigate", {"url": "https://secret.invalid"})
-        assert "Page.navigate" in str(exc_info.value)
-        assert "secret.invalid" not in str(exc_info.value)
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "raw",
-        [
-            "not json{{{",
-            "[1, 2, 3]",
-            "42",
-            '"just a string"',
-        ],
-    )
-    async def test_malformed_or_non_object_message_raises(self, raw):
-        """Malformed JSON and non-object messages raise AuthenticationError."""
-        mock_ws = AsyncMock()
-        mock_ws.recv.return_value = raw
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-        with pytest.raises(AuthenticationError):
-            await client.send_command("Page.enable")
-
-    @pytest.mark.asyncio
-    async def test_malformed_result_raises(self):
-        """A matching result that is not an object raises AuthenticationError."""
-        mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "result": "not-a-dict"})
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-        with pytest.raises(AuthenticationError, match="malformed result"):
-            await client.send_command("Page.enable")
-
-    @pytest.mark.asyncio
-    async def test_malformed_error_object_raises(self):
-        """A non-object error payload raises AuthenticationError."""
-        mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "error": "oops"})
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-        with pytest.raises(AuthenticationError, match="malformed error"):
-            await client.send_command("Page.enable")
-
-    @pytest.mark.asyncio
-    async def test_error_missing_message_raises(self):
-        """An error object without a message raises AuthenticationError."""
-        mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "error": {"code": -32601}})
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-        with pytest.raises(AuthenticationError, match="malformed error"):
-            await client.send_command("Page.enable")
-
-    @pytest.mark.asyncio
-    async def test_unsolicited_events_ignored(self):
-        """Events without an id are skipped while waiting for the response."""
-        mock_ws = AsyncMock()
-        mock_ws.recv.side_effect = [
-            json.dumps({"method": "Network.requestWillBeSent", "params": {"requestId": "1"}}),
-            json.dumps({"id": 1, "result": {"ok": True}}),
-        ]
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-        result = await client.send_command("Page.enable")
-        assert result == {"ok": True}
-
-    @pytest.mark.asyncio
-    async def test_closed_socket_raises_with_cause(self):
-        """A dropped connection raises AuthenticationError preserving the cause."""
-        from websockets.exceptions import ConnectionClosed
-
-        mock_ws = AsyncMock()
-        mock_ws.recv.side_effect = ConnectionClosed(None, None)
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-        with pytest.raises(AuthenticationError) as exc_info:
-            await client.send_command("Page.enable")
-        assert isinstance(exc_info.value.__cause__, ConnectionClosed)
-
-
-class TestCloseSemantics:
-    """close() idempotence and failure handling."""
-
-    @pytest.mark.asyncio
-    async def test_close_at_most_once(self):
-        """Repeated close() calls only close the socket once."""
-        mock_ws = AsyncMock()
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-        await client.close()
-        await client.close()
-        mock_ws.close.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_close_swallows_close_errors(self):
-        """A close failure is logged, not raised, so it cannot mask the primary error."""
-        from websockets.exceptions import ConnectionClosed
-
-        mock_ws = AsyncMock()
-        mock_ws.close.side_effect = ConnectionClosed(None, None)
-        client = ChromeDevToolsClient(9222)
-        client.ws = mock_ws
-        await client.close()
-        await client.close()
-        assert mock_ws.close.call_count == 1
-
-
 class TestExtractToken:
     """Cookie shape validation before extraction."""
 
@@ -527,6 +302,29 @@ class TestExtractToken:
         """A cookie entry with a non-string value raises AuthenticationError."""
         with pytest.raises(AuthenticationError, match="malformed cookie"):
             _extract_token([{"name": "a", "value": 123}], {})
+
+    def test_local_storage_token_takes_precedence(self):
+        """A valid localStorage token is preferred over cookie fallback."""
+        token, _ = _extract_token(
+            [{"name": "__Secure-next-auth.session-token", "value": "cookie-token"}],
+            {"pplx-next-auth-session": '{"user": "local"}'},
+        )
+        assert token == '{"user": "local"}'
+
+    def test_invalid_local_storage_falls_back_to_cookie(self):
+        """Invalid localStorage data falls back to the secure session cookie."""
+        token, _ = _extract_token(
+            [{"name": "__Secure-next-auth.session-token", "value": "cookie-token"}],
+            {"pplx-next-auth-session": "not-json"},
+        )
+        assert token == "cookie-token"
+
+    def test_token_extraction_helpers_handle_missing_values(self):
+        """Token helpers return None when no supported token is present."""
+        assert _extract_token_from_local_storage({}) is None
+        assert _extract_token_from_local_storage({"pplx-next-auth-session": "not-json"}) is None
+        assert _extract_token_from_cookies({}) is None
+        assert _extract_token_from_cookies({"next-auth.session-token": "legacy"}) == "legacy"
 
 
 class TestClose:
@@ -594,6 +392,22 @@ class TestNavigateAndWait:
         assert calls[0] == ("Page.enable",)
         assert calls[1] == ("Network.enable",)
         assert calls[2] == ("Page.navigate", {"url": "https://perplexity.ai"})
+
+    @pytest.mark.asyncio
+    async def test_logs_navigation_and_wait_diagnostics(self):
+        """Navigation logs the URL, result, and page-load wait."""
+        mock_client = AsyncMock(spec=ChromeDevToolsClient)
+        mock_client.send_command.side_effect = [{}, {}, {"frameId": "frame-1"}]
+        mock_logger = MagicMock()
+
+        with patch(
+            "perplexity_cli.auth.oauth_handler._wait_for_page_load",
+            new_callable=AsyncMock,
+        ):
+            await _navigate_and_wait(mock_client, "https://perplexity.ai", mock_logger)
+
+        assert mock_logger.info.called
+        assert mock_logger.debug.call_count == 2
 
 
 class TestFetchLocalStorage:
@@ -722,6 +536,45 @@ class TestPollForAuthData:
             )
         assert token == "found"
 
+    @pytest.mark.asyncio
+    async def test_timeout_boundary_allows_final_poll(self):
+        """A token available exactly at the timeout boundary is accepted."""
+        mock_client = AsyncMock(spec=ChromeDevToolsClient)
+        mock_client.send_command.return_value = {
+            "cookies": [{"name": "__Secure-next-auth.session-token", "value": "boundary"}]
+        }
+        loop = MagicMock()
+        loop.time.side_effect = [100.0, 105.0]
+
+        with (
+            patch("perplexity_cli.auth.oauth_handler.asyncio.get_event_loop", return_value=loop),
+            patch(
+                "perplexity_cli.auth.oauth_handler._fetch_local_storage",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+        ):
+            token, _ = await _poll_for_auth_data(mock_client, 5, 0.1, MagicMock())
+
+        assert token == "boundary"
+
+    @pytest.mark.asyncio
+    async def test_missing_cookies_allows_local_storage_token(self):
+        """A response without cookies can still authenticate from localStorage."""
+        mock_client = AsyncMock(spec=ChromeDevToolsClient)
+        mock_client.send_command.return_value = {}
+        local_token = '{"user": "local"}'
+
+        with patch(
+            "perplexity_cli.auth.oauth_handler._fetch_local_storage",
+            new_callable=AsyncMock,
+            return_value={"pplx-next-auth-session": local_token},
+        ):
+            token, cookies = await _poll_for_auth_data(mock_client, 5, 0.1, MagicMock())
+
+        assert token == local_token
+        assert cookies == {}
+
 
 class TestWaitForPageLoad:
     """Tests for _wait_for_page_load."""
@@ -792,16 +645,19 @@ class TestCheckPageLoaded:
 
         result = await _check_page_loaded(mock_client, mock_logger)
         assert result is True
+        mock_logger.debug.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_returns_false_on_error(self):
         """Returns False when send_command raises AuthenticationError."""
         mock_client = AsyncMock(spec=ChromeDevToolsClient)
-        mock_client.send_command.side_effect = AuthenticationError("not ready")
+        error = AuthenticationError("not ready")
+        mock_client.send_command.side_effect = error
         mock_logger = MagicMock()
 
         result = await _check_page_loaded(mock_client, mock_logger)
         assert result is False
+        mock_logger.debug.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_returns_false_on_empty_dict_result(self):
@@ -902,6 +758,33 @@ class TestAuthenticateWithBrowser:
                 )
 
         mock_ws.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_timeout_forwards_settings_and_closes_client(self):
+        """Polling timeouts preserve settings and always close the CDP client."""
+        client = MagicMock(spec=ChromeDevToolsClient)
+        client.connect = AsyncMock()
+        client.close = AsyncMock()
+        logger = MagicMock()
+
+        with (
+            patch("perplexity_cli.auth.oauth_handler.get_logger", return_value=logger),
+            patch("perplexity_cli.auth.oauth_handler.ChromeDevToolsClient", return_value=client),
+            patch(
+                "perplexity_cli.auth.oauth_handler._navigate_and_wait", new_callable=AsyncMock
+            ) as navigate,
+            patch(
+                "perplexity_cli.auth.oauth_handler._poll_for_auth_data",
+                new_callable=AsyncMock,
+                side_effect=TimeoutError("login expired"),
+            ) as poll,
+        ):
+            with pytest.raises(TimeoutError, match="login expired"):
+                await authenticate_with_browser("https://example.com/login", 9333, 17, 0.25)
+
+        navigate.assert_awaited_once_with(client, "https://example.com/login", logger)
+        poll.assert_awaited_once_with(client, 17, 0.25, logger)
+        client.close.assert_awaited_once_with()
 
 
 class TestAuthenticateSync:

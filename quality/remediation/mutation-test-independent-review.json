@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "evidence_type": "durable-independent-review-process-evidence",
+  "evidence_scope": "T001 mutation-test review ledger and prior independent findings",
+  "authorship_note": "This artifact is durable process evidence recording the stated review session and outcome; it does not claim or prove cryptographic authorship.",
+  "reviewer_identity": "t001-independent-review-2",
+  "reviewer_session_provenance": "ses_ff8cac7a3ffeZWFL6T50n3YXxX",
+  "implementation_reviewer_identity": "t001-implementation-review",
+  "candidate_inventory_sha256": "e528967b7e4bb3577a18f442d2d7bd3da1670df686a938375a69f52471fc47f2",
+  "reviewed_dispositions_sha256": "2ea563065c46af8c5f46ca50678835e16621e0623234423d8d470f779ac3fb2b",
+  "reviewed_dispositions_digest_definition": "SHA-256 of ledger reviews encoded as canonical JSON with sorted keys and compact separators, followed by one LF byte",
+  "candidate_review_identity_sha256": "f88598565b39ce837fca4d2e2e55bb6d5391984a32ffd387cdcfd39446bc5c4d",
+  "candidate_review_identity_digest_definition": "SHA-256 of the ordered candidate identity strings encoded as canonical JSON with sorted keys and compact separators, followed by one LF byte",
+  "candidate_count": 108,
+  "review_count": 108,
+  "exact_candidate_review_identity_correspondence": true,
+  "prior_independent_findings": [
+    {
+      "id": "T001-IR2-F001",
+      "file": "tests/test_oauth_cdp.py",
+      "test_identity": "tests/test_oauth_cdp.py::TestConcurrentCommands::test_cancelled_waiter_sends_nothing",
+      "finding": "The cancellation assertion depended on a scheduler yield and did not prove that the second command had queued on the command lock.",
+      "verdict": "resolved",
+      "resolved_evidence": "The injected _ObservedLock exposes waiter_queued, and the test waits for that event before cancellation while retaining the one-send and unchanged-message-id assertions."
+    },
+    {
+      "id": "T001-IR2-F002",
+      "file": "tests/test_api_client.py",
+      "test_identity": "tests/test_api_client.py::TestSSEClient::test_stream_post_debug_logging_redacts_sensitive_values",
+      "finding": "Response-body redaction evidence reused generic body content and did not uniquely demonstrate absence of the supplied response body from every log record.",
+      "verdict": "resolved",
+      "resolved_evidence": "The public stream test supplies a unique response-body sentinel and checks every supplied token, cookie name, cookie value, URL, and body sentinel against every captured log message."
+    },
+    {
+      "id": "T001-IR2-F003",
+      "file": "tests/test_api_client.py",
+      "test_identity": "tests/test_api_client.py::TestSSEClient::test_log_http_error_context_includes_headers_and_redacted_body",
+      "finding": "The isolated HTTP error diagnostic did not independently identify both response-body keys and values when proving complete body redaction.",
+      "verdict": "resolved",
+      "resolved_evidence": "The response body now contains distinct key and value sentinels, and both are asserted absent from every captured log message while metadata and a redaction marker remain observable."
+    },
+    {
+      "id": "T001-IR2-F004",
+      "file": "tests/test_formatters.py",
+      "test_identity": "tests/test_formatters.py::TestRichFormatter::test_answer_text_processes_multiple_code_blocks",
+      "finding": "The multiple-code-block assertion froze generated layout rather than directly proving semantic content order.",
+      "verdict": "resolved",
+      "resolved_evidence": "The test compares positions of prose and code content in semantic order and separately verifies the two language/code renderer calls without asserting full rendered layout."
+    }
+  ],
+  "unresolved_findings": []
+}

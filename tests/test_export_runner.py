@@ -6,17 +6,24 @@ import json
 import logging
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 from perplexity_cli.config.models import RateLimitConfig
 from perplexity_cli.runners.export import (
+    ExportDateRange,
+    ExportResult,
+    OutputMode,
+    _emit_json_error,
     _handle_cache_clear,
     _handle_http_status_error,
     _handle_known_error,
     _handle_no_threads,
     _handle_unexpected_error,
+    _output_export_results,
+    _output_json,
+    _resolve_ctx_flags,
     _scrape_threads,
     _setup_rate_limiter,
     _validate_export_dates,
@@ -679,3 +686,181 @@ class TestExportRunnerMutationKillers:
                 result = _setup_rate_limiter(_LOGGER)
         assert result is not None
         assert "Rate limiting enabled: 5 requests per 30.0 seconds" in caplog.text
+
+    def test_resolve_ctx_flags_maps_json_and_schema(self):
+        """Export output mode reflects both context flags independently."""
+        assert [
+            _resolve_ctx_flags(context)
+            for context in (
+                None,
+                {},
+                {"json": True},
+                {"schema": True},
+                {"json": True, "schema": True},
+            )
+        ] == [
+            OutputMode("human", "no_schema"),
+            OutputMode("human", "no_schema"),
+            OutputMode("json", "no_schema"),
+            OutputMode("human", "with_schema"),
+            OutputMode("json", "with_schema"),
+        ]
+
+    def test_output_json_serialises_threads_and_date_range(self, monkeypatch):
+        """JSON output contains the complete thread and date-range payload."""
+        result = ExportResult(
+            threads=[_THREAD_1],
+            output_path=Path("exports/threads.csv"),
+            date_range=ExportDateRange(from_date="2025-01-01", to_date="2025-12-31"),
+        )
+        captured: list[dict[str, object]] = []
+        monkeypatch.setattr(
+            "perplexity_cli.runners.export.write_envelope",
+            lambda envelope, include_schema: captured.append(envelope),
+        )
+
+        _output_json(result, include_schema="with_schema")
+
+        assert captured[0].model_dump() == {
+            "ok": True,
+            "command": "pxcli threads export",
+            "result": {
+                "total": 1,
+                "threads": [
+                    {
+                        "title": "Thread 1",
+                        "created_at": "2025-01-01",
+                        "url": "https://perplexity.ai/t/1",
+                    }
+                ],
+                "output_path": str(Path("exports/threads.csv").resolve()),
+                "date_range": {"from": "2025-01-01", "to": "2025-12-31"},
+            },
+            "meta": None,
+            "next_actions": [],
+        }
+
+    def test_output_export_results_json_without_path_skips_csv(self, monkeypatch):
+        """JSON-only mode emits JSON without invoking the CSV writer."""
+        result = ExportResult(
+            threads=[_THREAD_1],
+            output_path=None,
+            date_range=ExportDateRange(from_date=None, to_date=None),
+        )
+        output_json = Mock()
+        write_csv = Mock()
+        monkeypatch.setattr("perplexity_cli.runners.export._output_json", output_json)
+        monkeypatch.setattr("perplexity_cli.runners.export.write_threads_csv", write_csv)
+
+        _output_export_results(result, OutputMode("json", "no_schema"), _LOGGER)
+
+        output_json.assert_called_once_with(result, "no_schema")
+        write_csv.assert_not_called()
+
+    def test_output_export_results_json_with_path_writes_csv_then_json(self, tmp_path, monkeypatch):
+        """JSON mode with an explicit path writes CSV and reports its resolved path."""
+        requested_path = tmp_path / "threads.csv"
+        written_path = tmp_path / "written.csv"
+        result = ExportResult(
+            threads=[_THREAD_1],
+            output_path=requested_path,
+            date_range=ExportDateRange(from_date=None, to_date=None),
+        )
+        output_json = Mock()
+        write_csv = Mock(return_value=written_path)
+        monkeypatch.setattr("perplexity_cli.runners.export._output_json", output_json)
+        monkeypatch.setattr("perplexity_cli.runners.export.write_threads_csv", write_csv)
+
+        _output_export_results(result, OutputMode("json", "with_schema"), _LOGGER)
+
+        write_csv.assert_called_once_with(result.threads, requested_path)
+        output_json.assert_called_once()
+        written_result = output_json.call_args.args[0]
+        assert written_result.output_path == written_path
+        assert output_json.call_args.args[1] == "with_schema"
+
+    def test_http_status_error_passes_debug_mode_to_handler(self):
+        """HTTP error handling preserves the debug flag and context label."""
+        error = PerplexityHTTPStatusError("server error")
+        with patch("perplexity_cli.runners.export.handle_http_error") as handle:
+            _handle_http_status_error(error, "human", {"debug": True}, _LOGGER)
+
+        handle.assert_called_once_with(
+            error,
+            _LOGGER,
+            debug_mode="debug",
+            context="during thread export",
+        )
+
+    def test_unexpected_error_passes_normal_mode_to_handler(self):
+        """Unexpected error handling defaults to normal mode without debug."""
+        error = RuntimeError("boom")
+        with patch("perplexity_cli.runners.export.handle_unexpected_cli_error") as handle:
+            _handle_unexpected_error(error, "human", None, _LOGGER)
+
+        handle.assert_called_once()
+        assert handle.call_args.args == (error, _LOGGER)
+        assert handle.call_args.kwargs["debug_mode"] == "normal"
+        assert handle.call_args.kwargs["message_tuple"][2] is False
+
+    def test_emit_json_error_preserves_original_exception(self):
+        """JSON export errors pass the original exception to the envelope handler."""
+        error = ValueError("invalid export")
+        with patch(
+            "perplexity_cli.runners.export.handle_error", side_effect=SystemExit(1)
+        ) as handle:
+            with pytest.raises(SystemExit):
+                _emit_json_error(error, "json")
+
+        handle.assert_called_once_with(error, "pxcli threads export", output_format="json")
+
+    def test_output_json_forwards_schema_inclusion(self):
+        """Export JSON forwards the requested schema inclusion unchanged."""
+        result = ExportResult(
+            threads=[_THREAD_1],
+            output_path=None,
+            date_range=ExportDateRange(from_date=None, to_date=None),
+        )
+        with patch("perplexity_cli.runners.export.write_envelope") as write:
+            _output_json(result, include_schema="with_schema")
+
+        write.assert_called_once()
+        assert write.call_args.kwargs["include_schema"] == "with_schema"
+
+    def test_export_preparation_validates_to_date(self):
+        """The command passes the upper date bound into preparation validation."""
+        scraper = FakeThreadScraper(threads=[_THREAD_1])
+        with (
+            _export_dependencies(
+                FakeTokenManager(load_token_result=("token", {})),
+                FakeCacheManager(),
+                scraper,
+                RateLimitConfig(enabled=False),
+            ),
+            patch("perplexity_cli.runners.export._validate_export_dates") as validate,
+            patch("perplexity_cli.runners.export._output_export_results"),
+        ):
+            run_export_threads_command({}, None, "2025-12-31", None, False, False)
+
+        validate.assert_called_once_with(None, "2025-12-31", "human")
+
+    def test_export_json_known_error_preserves_output_mode(self):
+        """Known scrape failures retain JSON mode through top-level routing."""
+        error = ValueError("bad thread data")
+        scraper = FakeThreadScraper(scrape_error=error)
+        with (
+            _export_dependencies(
+                FakeTokenManager(load_token_result=("token", {})),
+                FakeCacheManager(),
+                scraper,
+                RateLimitConfig(enabled=False),
+            ),
+            patch(
+                "perplexity_cli.runners.export._handle_known_error",
+                side_effect=SystemExit(1),
+            ) as handle,
+            pytest.raises(SystemExit),
+        ):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+
+        assert handle.call_args.args[:2] == (error, "json")
