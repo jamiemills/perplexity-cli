@@ -1,114 +1,363 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "quality/schemas/mutation-report.json",
-  "title": "Mutation Testing Report",
-  "description": "Machine-readable mutation testing report emitted by scripts/mutation_policy.py after classifying mutmut 3.x result output. The wrapper runs `mutmut results --all`, parses the text output, classifies each mutant, and emits this report before returning a classified exit code.",
+  "title": "Canonical Mutation Evidence Report",
+  "description": "Complete, scoped and provenance-bound Mutmut 3.5 evidence.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
+    "schema_version",
     "tool",
     "version",
+    "scope",
+    "provenance",
+    "environment",
+    "run_outcome",
     "total_mutants",
+    "evidence",
     "categories",
     "status",
-    "survivors"
+    "findings",
+    "unsafe_results"
   ],
-  "additionalProperties": false,
   "properties": {
-    "tool": {
-      "type": "string",
-      "const": "mutmut",
-      "description": "Name of the mutation testing tool whose results were classified."
+    "schema_version": {"const": 2},
+    "tool": {"const": "mutmut"},
+    "version": {"type": "string", "minLength": 1},
+    "scope": {"$ref": "#/$defs/scope"},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "environment": {"$ref": "#/$defs/environment"},
+    "run_outcome": {
+      "enum": ["completed", "interrupted", "timed-out", "failed", "not-applicable"]
     },
-    "version": {
-      "type": "string",
-      "description": "Detected mutmut version string, or 'unknown' when the tool could not be invoked.",
-      "minLength": 1
+    "total_mutants": {"type": "integer", "minimum": 0},
+    "evidence": {"$ref": "#/$defs/evidence"},
+    "categories": {"$ref": "#/$defs/categories"},
+    "status": {"enum": ["clean", "findings", "tool-error", "not-applicable"]},
+    "findings": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/finding"}
     },
-    "total_mutants": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Total number of mutants observed in the mutmut results output."
+    "unsafe_results": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/unsafeResult"}
+    },
+    "error": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "clean"}}},
+      "then": {
+        "properties": {
+          "run_outcome": {"const": "completed"},
+          "provenance": {"properties": {"evidence_current": {"const": true}}},
+          "evidence": {
+            "properties": {
+              "selected_count": {"minimum": 1},
+              "complete": {"const": true},
+              "missing_results": {"maxItems": 0},
+              "extra_results": {"maxItems": 0},
+              "duplicate_generated": {"maxItems": 0},
+              "duplicate_results": {"maxItems": 0},
+              "dictionary_disagreements": {"maxItems": 0},
+              "structural_exclusion_disagreements": {"maxItems": 0}
+            }
+          },
+          "categories": {"$ref": "#/$defs/cleanCategories"},
+          "findings": {"maxItems": 0},
+          "unsafe_results": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "tool-error"}}},
+      "then": {"required": ["error"]},
+      "else": {"not": {"required": ["error"]}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "findings"}}},
+      "then": {
+        "properties": {
+          "run_outcome": {"const": "completed"},
+          "provenance": {"properties": {"evidence_current": {"const": true}}},
+          "evidence": {
+            "properties": {
+              "selected_count": {"minimum": 1},
+              "complete": {"const": true},
+              "missing_results": {"maxItems": 0},
+              "extra_results": {"maxItems": 0},
+              "duplicate_generated": {"maxItems": 0},
+              "duplicate_results": {"maxItems": 0},
+              "dictionary_disagreements": {"maxItems": 0},
+              "structural_exclusion_disagreements": {"maxItems": 0}
+            }
+          },
+          "categories": {"$ref": "#/$defs/findingsCategories"},
+          "findings": {"minItems": 1},
+          "unsafe_results": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "not-applicable"}}},
+      "then": {
+        "properties": {
+          "run_outcome": {"const": "not-applicable"},
+          "total_mutants": {"const": 0},
+          "evidence": {
+            "properties": {
+              "selected_count": {"const": 0},
+              "result_count": {"const": 0},
+              "checked_count": {"const": 0},
+              "complete": {"const": false}
+            }
+          },
+          "findings": {"maxItems": 0},
+          "unsafe_results": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"scope": {"properties": {"kind": {"const": "full"}}}}},
+      "then": {"properties": {"scope": {"properties": {"patterns": {"maxItems": 0}}}}}
+    },
+    {
+      "if": {"properties": {"scope": {"properties": {"kind": {"const": "selected"}}}}},
+      "then": {"properties": {"scope": {"properties": {"patterns": {"minItems": 1}}}}}
+    },
+    {
+      "if": {"properties": {"status": {"not": {"const": "tool-error"}}}},
+      "then": {
+        "properties": {
+          "version": {"const": "3.5.0"},
+          "provenance": {"$ref": "#/$defs/authoritativeProvenance"},
+          "environment": {"$ref": "#/$defs/authoritativeEnvironment"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^(unknown|[0-9a-f]{64})$"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^(unknown|[0-9a-f]{40})$"
+    },
+    "stringList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "patterns"],
+      "properties": {
+        "kind": {"enum": ["full", "selected"]},
+        "patterns": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_revision", "source_tree", "input_fingerprint", "evidence_current"],
+      "properties": {
+        "source_revision": {"$ref": "#/$defs/revision"},
+        "source_tree": {"$ref": "#/$defs/revision"},
+        "input_fingerprint": {"$ref": "#/$defs/digest"},
+        "evidence_current": {"type": "boolean"}
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "python_implementation",
+        "python_version",
+        "python_cache_tag",
+        "platform",
+        "uv_version",
+        "installed_distributions_digest",
+        "mutmut_distribution_digest",
+        "mutmut_record_digest",
+        "locked_wheel_filename",
+        "locked_wheel_sha256"
+      ],
+      "properties": {
+        "python_implementation": {"type": "string", "minLength": 1},
+        "python_version": {"type": "string", "minLength": 1},
+        "python_cache_tag": {"type": "string", "minLength": 1},
+        "platform": {"type": "string", "minLength": 1},
+        "uv_version": {"type": "string", "minLength": 1},
+        "installed_distributions_digest": {"$ref": "#/$defs/digest"},
+        "mutmut_distribution_digest": {"$ref": "#/$defs/digest"},
+        "mutmut_record_digest": {"$ref": "#/$defs/digest"},
+        "locked_wheel_filename": {
+          "enum": ["unknown", "mutmut-3.5.0-py3-none-any.whl"]
+        },
+        "locked_wheel_sha256": {
+          "enum": ["unknown", "f19f2dd2e977eb9dc17255d8cb11e24fbfc3191620fba3108cac25779c9d78c9"]
+        }
+      }
+    },
+    "authoritativeProvenance": {
+      "allOf": [
+        {"$ref": "#/$defs/provenance"},
+        {
+          "properties": {
+            "source_revision": {"pattern": "^[0-9a-f]{40}$"},
+            "source_tree": {"pattern": "^[0-9a-f]{40}$"},
+            "input_fingerprint": {"pattern": "^[0-9a-f]{64}$"},
+            "evidence_current": {"const": true}
+          }
+        }
+      ]
+    },
+    "authoritativeEnvironment": {
+      "allOf": [
+        {"$ref": "#/$defs/environment"},
+        {
+          "properties": {
+            "python_implementation": {"not": {"enum": ["unknown", "tbd", "none", "n/a"]}},
+            "python_version": {"not": {"enum": ["unknown", "tbd", "none", "n/a"]}},
+            "python_cache_tag": {"not": {"enum": ["unknown", "tbd", "none", "n/a"]}},
+            "platform": {"not": {"enum": ["unknown", "tbd", "none", "n/a"]}},
+            "uv_version": {"not": {"enum": ["unknown", "tbd", "none", "n/a"]}},
+            "installed_distributions_digest": {"pattern": "^[0-9a-f]{64}$"},
+            "mutmut_distribution_digest": {"pattern": "^[0-9a-f]{64}$"},
+            "mutmut_record_digest": {"pattern": "^[0-9a-f]{64}$"},
+            "locked_wheel_filename": {"const": "mutmut-3.5.0-py3-none-any.whl"},
+            "locked_wheel_sha256": {"const": "f19f2dd2e977eb9dc17255d8cb11e24fbfc3191620fba3108cac25779c9d78c9"}
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generated_count",
+        "selected_count",
+        "result_count",
+        "checked_count",
+        "missing_results",
+        "extra_results",
+        "duplicate_generated",
+        "duplicate_results",
+        "dictionary_disagreements",
+        "structural_exclusion_disagreements",
+        "complete",
+        "generated_digest",
+        "result_digest"
+      ],
+      "properties": {
+        "generated_count": {"type": "integer", "minimum": 0},
+        "selected_count": {"type": "integer", "minimum": 0},
+        "result_count": {"type": "integer", "minimum": 0},
+        "checked_count": {"type": "integer", "minimum": 0},
+        "missing_results": {"allOf": [{"$ref": "#/$defs/stringList"}, {"uniqueItems": true}]},
+        "extra_results": {"allOf": [{"$ref": "#/$defs/stringList"}, {"uniqueItems": true}]},
+        "duplicate_generated": {"allOf": [{"$ref": "#/$defs/stringList"}, {"uniqueItems": true}]},
+        "duplicate_results": {"allOf": [{"$ref": "#/$defs/stringList"}, {"uniqueItems": true}]},
+        "dictionary_disagreements": {"allOf": [{"$ref": "#/$defs/stringList"}, {"uniqueItems": true}]},
+        "structural_exclusion_disagreements": {"allOf": [{"$ref": "#/$defs/stringList"}, {"uniqueItems": true}]},
+        "complete": {"type": "boolean"},
+        "generated_digest": {"$ref": "#/$defs/digest"},
+        "result_digest": {"$ref": "#/$defs/digest"}
+      }
     },
     "categories": {
       "type": "object",
-      "description": "Per-category counts of mutant outcomes.",
+      "additionalProperties": false,
       "required": [
         "killed",
         "survived",
         "timeout",
         "suspicious",
+        "no_tests",
         "skipped",
-        "not_checked"
+        "not_checked",
+        "interrupted",
+        "segfault",
+        "caught_by_type_check",
+        "unknown"
       ],
-      "additionalProperties": false,
       "properties": {
-        "killed": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Mutants detected by the test suite (good outcome)."
-        },
-        "survived": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Mutants not detected by the test suite (actionable)."
-        },
-        "timeout": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Mutants whose test run timed out (actionable)."
-        },
-        "suspicious": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Mutants with a suspicious outcome (actionable)."
-        },
-        "skipped": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Mutants explicitly skipped (informational)."
-        },
-        "not_checked": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Mutants never checked (informational)."
-        }
+        "killed": {"type": "integer", "minimum": 0},
+        "survived": {"type": "integer", "minimum": 0},
+        "timeout": {"type": "integer", "minimum": 0},
+        "suspicious": {"type": "integer", "minimum": 0},
+        "no_tests": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0},
+        "not_checked": {"type": "integer", "minimum": 0},
+        "interrupted": {"type": "integer", "minimum": 0},
+        "segfault": {"type": "integer", "minimum": 0},
+        "caught_by_type_check": {"type": "integer", "minimum": 0},
+        "unknown": {"type": "integer", "minimum": 0}
       }
     },
-    "status": {
-      "type": "string",
-      "enum": ["clean", "findings", "tool-error"],
-      "description": "Aggregate policy status. 'clean' = no actionable mutants; 'findings' = at least one survived/timeout/suspicious mutant; 'tool-error' = mutmut was unavailable or its output was unparseable."
-    },
-    "survivors": {
-      "type": "array",
-      "description": "Actionable mutant entries (categories survived, timeout, suspicious). Empty unless status is 'findings'.",
-      "items": {
-        "type": "object",
-        "required": ["key", "status", "category"],
-        "additionalProperties": false,
-        "properties": {
-          "key": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Fully-qualified mutant key reported by mutmut."
-          },
-          "status": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The raw mutmut status string (e.g. 'survived', 'timeout', 'suspicious')."
-          },
-          "category": {
-            "type": "string",
-            "enum": ["survived", "timeout", "suspicious"],
-            "description": "The normalised policy category for this actionable mutant."
+    "cleanCategories": {
+      "allOf": [
+        {"$ref": "#/$defs/categories"},
+        {
+          "properties": {
+            "survived": {"const": 0},
+            "timeout": {"const": 0},
+            "suspicious": {"const": 0},
+            "no_tests": {"const": 0},
+            "skipped": {"const": 0},
+            "not_checked": {"const": 0},
+            "interrupted": {"const": 0},
+            "segfault": {"const": 0},
+            "unknown": {"const": 0}
           }
         }
+      ]
+    },
+    "findingsCategories": {
+      "allOf": [
+        {"$ref": "#/$defs/categories"},
+        {
+          "properties": {
+            "skipped": {"const": 0},
+            "not_checked": {"const": 0},
+            "interrupted": {"const": 0},
+            "segfault": {"const": 0},
+            "unknown": {"const": 0}
+          },
+          "anyOf": [
+            {"properties": {"survived": {"minimum": 1}}},
+            {"properties": {"timeout": {"minimum": 1}}},
+            {"properties": {"suspicious": {"minimum": 1}}},
+            {"properties": {"no_tests": {"minimum": 1}}}
+          ]
+        }
+      ]
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "status", "category"],
+      "properties": {
+        "key": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "minLength": 1},
+        "category": {"enum": ["survived", "timeout", "suspicious", "no_tests"]}
       }
     },
-    "error": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Diagnostic message populated only when status is 'tool-error'."
+    "unsafeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "status", "category"],
+      "properties": {
+        "key": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "minLength": 1},
+        "category": {
+          "enum": ["skipped", "not_checked", "interrupted", "segfault", "unknown"]
+        }
+      }
     }
   }
 }

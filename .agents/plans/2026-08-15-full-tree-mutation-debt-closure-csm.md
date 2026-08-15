@@ -11,9 +11,9 @@
 - Current CSM state: CHECKPOINT
 - Cycle: 0
 - Commits: allowed
-- Last checkpoint: 2026-08-15 - final independent reviews marked T001 and T002 READY; T001 enters its protected test-wave commit checkpoint before T002 policy files.
-- Next transition: CHECKPOINT finalises T001 commit evidence, then finalises the separate T002 policy checkpoint
-- Active tasks: T002
+- Last checkpoint: 2026-08-15 - T001 committed as `3dd4e3a` with exact reviewed patch hash `0f661aa1...` and tree `934dd78e...`; T002 final review is READY and enters its isolated policy checkpoint.
+- Next transition: CHECKPOINT -> SELECT T003 after T002 policy/schema commit verification
+- Active tasks: none
 - Blockers: none
 
 ## Goal
@@ -247,7 +247,7 @@ Parallel tasks share no owned source or test files inside the same group. Mutati
    - Repair attempts: 2
    - Recovery note: Any hash, concurrent-edit, hook, staged-path, or committed-blob mismatch preserves status/unstaged/staged patches under the recovery package and transitions BLOCKED. Never reset, checkout, amend, or overwrite unmatched user edits; use a separately reviewed forward correction after a committed mismatch.
 
-2. [in_progress] Make mutation reports complete, scoped, provenance-bound, and no-tests aware
+2. [completed] Make mutation reports complete, scoped, provenance-bound, and no-tests aware
    - Task ID: T002
    - Depends on: none
    - Parallel group: G1
@@ -259,6 +259,7 @@ Parallel tasks share no owned source or test files inside the same group. Mutati
    - Acceptance signal: `UV_OFFLINE=1 uv run pytest tests/test_mutation_policy.py tests/test_mutation_evidence.py -q` passes strict numeric key, original/trampoline/alias rejection, generated-dictionary disagreement, nested/async/dunder/class/package-init normalisation, completeness/duplicate, skipped/no-tests/interrupted/unknown, selected/full and schema cases.
    - Validation: Ruff format/lint and strict Pyright pass; locked real-generated fixtures cover Mutmut 3.5 grammar; schema fixtures reconcile sums and reject extra/missing provenance.
    - Acceptance evidence: Schema diff, exit-code matrix, fixture matrix, exact Mutmut CLI result, test output, independent policy review.
+   - Completed evidence: schema v2 and semantic validator; exact locked CLI/direct-script contracts; strict real-layout/generated-dictionary enumeration; scope/provenance/environment/completeness/status/no-tests/duplicate/exclusion evidence; exact alias/shadow and per-dictionary ownership checks; 94 focused tests, Ruff, Pyright, Semgrep, suppression ratchets and full conventional gate pass; final independent verdict READY. Commit SHA/tree is recorded by the next checkpoint journal entry.
    - Repair attempts: 4
    - Recovery note: Keep parser/report commits separate. If schema and producer diverge, recover from the last passing fixture matrix before wiring execution.
 
@@ -662,6 +663,8 @@ Rollback and forward recovery:
 | 2026-08-15 | 0 | REPAIR -> VERIFY | T002 | Compound import shadow and swapped dictionary regressions added; 94 T002 tests, Pyright and zero-finding Semgrep pass | REVIEW |
 | 2026-08-15 | 0 | VERIFY -> REVIEW | T002 | 94 T002 tests and full conventional CI pass after final structural repairs; narrow final review dispatched | CHECKPOINT or REPAIR |
 | 2026-08-15 | 0 | REVIEW -> CHECKPOINT | T001 | Final independent verdict READY; protected test wave, 108-row review, durable review artifact and 521-node map selected for isolated checkpoint commit | CHECKPOINT T002 |
+| 2026-08-15 | 0 | CHECKPOINT | T001 | Commit `3dd4e3a4b7feec7df87d7fd55cf74d4476872767`, tree `934dd78e0dafa60fbbde808b29a00046728d1a8d`; committed patch hash equals reviewed post-hook hash `0f661aa111d71ccec2abad8da5667eb4fb8a3aa73e58fdb7a517c775b499495c` | CHECKPOINT T002 |
+| 2026-08-15 | 0 | REVIEW -> CHECKPOINT | T002 | Final narrow review READY; 94 focused tests and full conventional gate pass; isolated policy/schema/evidence checkpoint selected | SELECT T003 |
 
 ## Completion Review
 Filled by csm-build only after all acceptance criteria have observed evidence.
