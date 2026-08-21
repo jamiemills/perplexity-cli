@@ -7,13 +7,14 @@
 
 ## Control
 - Plan ID: full-tree-mutation-debt-closure
-- Status: in_progress
-- Current CSM state: CHECKPOINT
-- Cycle: 0
+- Status: paused
+- Superseded for execution by `.agents/plans/2026-08-21-mutation-closure-resume-csm.md` (T001/T002 completed here; T003 carry-over absorbed there). Retained as the detailed source for wave composition T007-T021, the tier table, and cycle 0-1 evidence.
+- Current CSM state: DISPATCH
+- Cycle: 1
 - Commits: allowed
-- Last checkpoint: 2026-08-15 - T001 committed as `3dd4e3a` with exact reviewed patch hash `0f661aa1...` and tree `934dd78e...`; T002 final review is READY and enters its isolated policy checkpoint.
-- Next transition: CHECKPOINT -> SELECT T003 after T002 policy/schema commit verification
-- Active tasks: none
+- Last checkpoint: 2026-08-15 - SELECT confirmed T003 is the sole dependency-ready task and added review-discovered meta-test exclusions to its ownership.
+- Next transition: DISPATCH R&D probes -> DISPATCH T003 implementation with verified Mutmut/Make contracts
+- Active tasks: T003
 - Blockers: none
 
 ## Goal
@@ -263,15 +264,15 @@ Parallel tasks share no owned source or test files inside the same group. Mutati
    - Repair attempts: 4
    - Recovery note: Keep parser/report commits separate. If schema and producer diverge, recover from the last passing fixture matrix before wiring execution.
 
-3. [pending] Add a fresh canonical mutation runner and repair Make targets
+3. [in_progress] Add a fresh canonical mutation runner and repair Make targets
    - Task ID: T003
    - Depends on: T002
    - Parallel group: G2
    - Risk: high - stale or partial evidence could falsely pass quality gates
-   - Owned scope: new `scripts/run_mutation.py`, `Makefile` mutation/manifest/tier targets, `scripts/discover_mutate_diff_files.py` only if exact mapping requires it, new `tests/test_run_mutation.py`, focused Make/discovery tests
+   - Owned scope: new `scripts/run_mutation.py`, `Makefile` mutation/manifest/tier targets, `pyproject.toml` Mutmut meta-test ignores, `scripts/discover_mutate_diff_files.py` only if exact mapping requires it, new `tests/test_run_mutation.py`, focused Make/discovery/configuration-policy tests
    - Not in scope: CI workflows, survivor remediation, deleting/renaming/reusing any existing `mutants` path, cache restore, package installation inside run sandboxes
    - Spike candidate: In an isolated copy, prove module/package/`__init__.py` pattern matching and the locked `mutmut results --all` invocation; prove raw survivor runs exit independently of policy.
-   - Actions: Implement typed orchestration; refuse any pre-existing `mutants` path via `lexists`; require full/selected/manifest scope; verify the pre-provisioned interpreter by hashing actual installed files against Mutmut `RECORD` plus lock/wheel/environment identity; derive allowable run time from outer deadline after reserving 120 seconds for report finalisation and 600/300 seconds for publication; cap requested full/selected runs at 19,800/2,100 seconds; control the process group; always emit non-clean report after controlled failure. Implement and contract-test every required Make target: `mutation-baseline`, `mutation-manifest-check`, `mutation-triage-check`, `mutation-task-static`, `mutation-task-tests`, `mutate-key`, `mutate-task-policy`, `mutation-wave-policy`, `mutation-final-policy`, plus canonical full/module/selected/diff/mutate adapters.
+   - Actions: Implement typed orchestration; refuse any pre-existing `mutants` path via `lexists`; require full/selected/manifest scope; verify the pre-provisioned interpreter by hashing actual installed files against Mutmut `RECORD` plus lock/wheel/environment identity; derive allowable run time from outer deadline after reserving 120 seconds for report finalisation and 600/300 seconds for publication; cap requested full/selected runs at 19,800/2,100 seconds; control the process group; always emit non-clean report after controlled failure. Implement and contract-test every required Make target: `mutation-baseline`, `mutation-manifest-check`, `mutation-triage-check`, `mutation-task-static`, `mutation-task-tests`, `mutate-key`, `mutate-task-policy`, `mutation-wave-policy`, `mutation-final-policy`, plus canonical full/module/selected/diff/mutate adapters. Add `tests/test_mutation_evidence.py` and `tests/test_mutation_test_review_ledger.py` to Mutmut's meta-test ignore set and configuration-policy assertions before any canonical run.
    - Acceptance signal: `UV_OFFLINE=1 npm_config_offline=true uv run pytest tests/test_mutation_policy.py tests/test_mutation_evidence.py tests/test_run_mutation.py tests/test_mutate_diff_files.py tests/test_make_policy.py -q` passes path-refusal, actual installed-file tampering/RECORD/wheel identity, outer-deadline reserve, timeout/process-group/report, all Make target, pattern, discovery and outcome matrices.
    - Validation: Ruff/format/Pyright pass; no `shell=True`; existing file/dir/symlink/broken-symlink sentinels remain unchanged; no cleanup flag exists; exact module/package patterns have no prefix spill; every required Make target has argument, report and exit-code contract tests.
    - Acceptance evidence: Command/exit matrix, generated path-safety proof, selected key matching examples, report-on-failure fixture, independent security review.
@@ -665,6 +666,9 @@ Rollback and forward recovery:
 | 2026-08-15 | 0 | REVIEW -> CHECKPOINT | T001 | Final independent verdict READY; protected test wave, 108-row review, durable review artifact and 521-node map selected for isolated checkpoint commit | CHECKPOINT T002 |
 | 2026-08-15 | 0 | CHECKPOINT | T001 | Commit `3dd4e3a4b7feec7df87d7fd55cf74d4476872767`, tree `934dd78e0dafa60fbbde808b29a00046728d1a8d`; committed patch hash equals reviewed post-hook hash `0f661aa111d71ccec2abad8da5667eb4fb8a3aa73e58fdb7a517c775b499495c` | CHECKPOINT T002 |
 | 2026-08-15 | 0 | REVIEW -> CHECKPOINT | T002 | Final narrow review READY; 94 focused tests and full conventional gate pass; isolated policy/schema/evidence checkpoint selected | SELECT T003 |
+| 2026-08-15 | 0 | CHECKPOINT | T002 | Commit `40fb64babc9ce176011dc18391b54a455cedd2ee`, tree `fd36067c9ef995778d313d619323f215f9240382`; committed patch hash equals reviewed post-hook hash `d81134ce98a25223ceaf24ef210ec142eb08f2b8a878313e7758ca04cf689329` | SELECT T003 |
+| 2026-08-15 | 1 | CHECKPOINT -> SELECT | T003 | T001/T002 committed and worktree clean; canonical runner is dependency-ready; review-discovered meta-test ignores added to T003 ownership and acceptance | DISPATCH |
+| 2026-08-15 | 1 | SELECT -> DISPATCH | T003 | Acceptance signal present; isolated R&D probes selected for exact Mutmut patterns, installed-file identity, deadlines/process groups and current Make-policy contracts | DISPATCH implementation |
 
 ## Completion Review
 Filled by csm-build only after all acceptance criteria have observed evidence.
