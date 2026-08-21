@@ -75,7 +75,7 @@ STATUS_TO_CATEGORY = {
     "caught by type check": "caught_by_type_check",
 }
 
-_MUTMUT_PREFIX = ("uv", "run", "mutmut")
+MUTMUT_PREFIX = ("uv", "run", "mutmut")
 _MUTMUT_TIMEOUT_S = 120
 _LINE_PATTERN = re.compile(r"^    (?P<key>.+): (?P<status>.+)$")
 _VERSION_PATTERN = re.compile(r"^mutmut, version (?P<version>\S+)\s*$")
@@ -814,7 +814,7 @@ def _exit_code_for_status(status: AggregateStatus) -> int:
 
 
 def _run_mutmut(args: tuple[str, ...]) -> str:
-    command = [*_MUTMUT_PREFIX, *args]
+    command = [*MUTMUT_PREFIX, *args]
     logger.info("Running: %s", " ".join(command))
     try:
         result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: command arguments are restricted to the pinned mutmut helper contract and shell use is disabled

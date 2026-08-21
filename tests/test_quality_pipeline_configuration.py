@@ -216,8 +216,9 @@ def test_property_targets_share_source_scope_and_policy() -> None:
 
 def test_full_mutation_report_is_generated_under_build() -> None:
     """Scheduled full-policy evidence must not overwrite a tracked report."""
+    assert "MUTATION_REPORT ?= build/reports/mutation-report.json" in MAKEFILE
     target = MAKEFILE[MAKEFILE.index("mutate-full-policy:") : MAKEFILE.index("mutate-estimate:")]
-    assert "--report-path build/reports/mutation-report.json" in target
+    assert "--report-path $(MUTATION_REPORT)" in target
     assert "quality/evidence/mutation-report.json" not in target
 
 
@@ -275,6 +276,8 @@ def test_mutmut_ignores_repository_infrastructure_tests() -> None:
         "--ignore=tests/test_quality_pipeline_configuration.py",
         "--ignore=tests/test_workflow_configuration.py",
         "--ignore=tests/test_quality_gates_documentation.py",
+        "--ignore=tests/test_mutation_evidence.py",
+        "--ignore=tests/test_mutation_test_review_ledger.py",
     }
     assert required <= arguments
 

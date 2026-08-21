@@ -279,44 +279,69 @@ pip-audit:  ## Scan dependencies for known vulnerabilities
 dependency-hygiene: deptry  ## Run all dependency hygiene checks
 
 # ---------------------------------------------------------------------------
-# Mutation testing
+# Mutation testing (canonical fresh-run adapters; raw mutmut is never a gate)
 # ---------------------------------------------------------------------------
 
-.PHONY: mutate mutate-results mutate-module mutate-diff mutate-estimate mutate-browse mutate-full-policy
+.PHONY: mutate mutate-results mutate-module mutate-diff mutate-estimate mutate-browse mutate-full-policy mutate-selected
 
-mutate:  ## Run mutation testing on the full source tree
-	uv run mutmut run
+MUTATION_REPORT ?= build/reports/mutation-report.json
+MUTATION_FULL_TIMEOUT ?= 19800
+MUTATION_SELECTED_TIMEOUT ?= 2100
 
-mutate-full-policy:  ## Run full mutation testing then enforce the canonical policy
-	uv run mutmut run
-	uv run python scripts/mutation_policy.py \
-		--report-path build/reports/mutation-report.json
+mutate: mutate-full-policy  ## Run canonical full-tree mutation testing with policy enforcement
+
+mutate-full-policy:  ## Fresh full mutation run classified by the fail-closed canonical policy
+	uv run python scripts/run_mutation.py \
+		--scope full \
+		--report-path $(MUTATION_REPORT) \
+		--timeout-seconds $(MUTATION_FULL_TIMEOUT)
+
+mutate-selected:  ## Run explicit mutant-name patterns through the canonical policy
+ifndef PATTERNS
+	$(error PATTERNS is not set. Usage: make mutate-selected PATTERNS='perplexity_cli.api.client.x*')
+endif
+	@case ' $(PATTERNS) ' in *[!A-Za-z0-9_./\ -]*) echo "PATTERNS contains invalid characters" >&2; exit 2;; esac
+	uv run python scripts/run_mutation.py \
+		--scope selected \
+		$(foreach pattern,$(PATTERNS),--pattern '$(pattern)') \
+		--report-path $(MUTATION_REPORT) \
+		--timeout-seconds $(MUTATION_SELECTED_TIMEOUT)
 
 mutate-estimate:  ## Estimate how long a full mutation run would take
 	uv run mutmut print-time-estimates
 
-mutate-module:  ## Run mutation testing on a specific module
+mutate-module:  ## Mutate one dotted module through a boundary-safe pattern
 ifndef MODULE
-	$(error MODULE is not set. Usage: make mutate-module MODULE=api)
+	$(error MODULE is not set. Usage: make mutate-module MODULE=api.client)
 endif
-	uv run mutmut run src/perplexity_cli/$(MODULE)/
+	@case '$(MODULE)' in *[!A-Za-z0-9_.-]*) echo "MODULE contains invalid characters" >&2; exit 2;; esac
+	uv run python scripts/run_mutation.py \
+		--scope selected \
+		--pattern 'perplexity_cli.$(MODULE).x*' \
+		--report-path $(MUTATION_REPORT) \
+		--timeout-seconds $(MUTATION_SELECTED_TIMEOUT)
 
-mutate-diff:  ## Run mutation testing on files changed between BASE_SHA and TESTED_SHA
-	@mapfile -t files < <(uv run python scripts/discover_mutate_diff_files.py --base-sha $(BASE_SHA) --tested-sha $(TESTED_SHA)); \
-	if [ "$${#files[@]}" -eq 0 ]; then \
-		echo "No source files changed -- skipping mutation tests."; \
-		exit 0; \
-	fi; \
-	echo "Mutating $${#files[@]} changed file(s):"; \
-	printf '  %s\n' "$${files[@]}"; \
-	patterns=(); \
-	for f in "$${files[@]}"; do \
-		p="$${f#src/}"; \
-		p="$${p%.py}"; \
-		p="$${p//\//.}"; \
-		patterns+=("$${p}*"); \
-	done; \
-	uv run mutmut run "$${patterns[@]}"
+mutate-diff:  ## Mutate production sources changed between BASE_SHA and TESTED_SHA
+	@set -e; \
+	case '$(BASE_SHA)|$(TESTED_SHA)' in *[!A-Za-z0-9_|./-]*) echo "BASE_SHA/TESTED_SHA contain invalid characters" >&2; exit 2;; esac; \
+	discovery=$$(mktemp); \
+	trap 'rm -f "$$discovery"' EXIT INT TERM; \
+	status=0; \
+	uv run python scripts/discover_mutate_diff_files.py \
+			--base-sha '$(BASE_SHA)' --tested-sha '$(TESTED_SHA)' --manifest \
+			> "$$discovery" || status=$$?; \
+	case $$status in \
+		0) uv run python scripts/run_mutation.py --scope selected \
+				--manifest-path "$$discovery" \
+				--report-path $(MUTATION_REPORT) \
+				--timeout-seconds $(MUTATION_SELECTED_TIMEOUT);; \
+		1) uv run python scripts/run_mutation.py --scope selected \
+				--manifest-path "$$discovery" \
+				--report-path $(MUTATION_REPORT) \
+				--timeout-seconds $(MUTATION_SELECTED_TIMEOUT) \
+				--allow-empty-diff;; \
+		*) echo "Mutation discovery failed with status $$status" >&2; exit $$status;; \
+	esac
 
 mutate-results:  ## Show mutation testing results from last run
 	uv run mutmut results
@@ -372,7 +397,7 @@ test-property-ci: test-property-policy  ## Run property-based tests (CI profile,
 
 .PHONY: diff-coverage
 
-BASE_SHA ?= origin/main
+BASE_SHA ?= origin/master
 TESTED_SHA ?= HEAD
 
 diff-coverage:  ## Check coverage on changed lines (BASE_SHA, TESTED_SHA accepted)

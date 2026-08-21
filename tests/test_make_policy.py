@@ -300,5 +300,50 @@ class TestRealMakeOutput:
             assert name in targets
 
 
+# ---------------------------------------------------------------------------
+# Canonical mutation adapter contracts (repository Makefile)
+# ---------------------------------------------------------------------------
+
+
+class TestMutationAdapterContracts:
+    """Every mutation lane routes through the canonical runner."""
+
+    _makefile = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
+
+    def test_all_execution_targets_use_the_canonical_runner(self) -> None:
+        for target in (
+            "mutate-full-policy:",
+            "mutate-selected:",
+            "mutate-module:",
+            "mutate-diff:",
+        ):
+            start = self._makefile.index(f"\n{target}")
+            end = self._makefile.find("\n\n", start)
+            recipe = self._makefile[start:end]
+            assert "scripts/run_mutation.py" in recipe, target
+
+    def test_no_raw_mutmut_run_recipe_remains(self) -> None:
+        assert "\tuv run mutmut run" not in self._makefile
+
+    def test_mutate_alias_enforces_full_policy(self) -> None:
+        line = next(line for line in self._makefile.splitlines() if line.startswith("mutate:"))
+        assert line.startswith("mutate: mutate-full-policy")
+
+    def test_module_pattern_is_boundary_safe(self) -> None:
+        assert "--pattern 'perplexity_cli.$(MODULE).x*'" in self._makefile
+
+    def test_diff_adapter_propagates_discovery_failure(
+        self,
+    ) -> None:
+        start = self._makefile.index("\nmutate-diff:")
+        end = self._makefile.find("\n\n", start)
+        recipe = self._makefile[start:end]
+        assert "exit $$status" in recipe
+        assert "--allow-empty-diff" in recipe
+
+    def test_base_sha_default_matches_remote_head_branch(self) -> None:
+        assert "BASE_SHA ?= origin/master" in self._makefile
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

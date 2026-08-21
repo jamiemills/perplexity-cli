@@ -11,12 +11,12 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: mutation-closure-resume
-- Status: ready
-- Current CSM state: NOT_STARTED
+- Status: in_progress
+- Current CSM state: CHECKPOINT
 - Cycle: 0
 - Commits: allowed
-- Last checkpoint: 2026-08-21 - plan created to resume outstanding work after cycles 0-1 of the superseded plan completed T001/T002 and left T003 partially implemented uncommitted
-- Last model/run: ox-alpha-free / csm-plan session of 2026-08-21
+- Last checkpoint: 2026-08-21 - T003 verified: 176-test acceptance signal passes; full ci-conventional exit 0; independent review returned 7 findings, all repaired (F1 empty-diff dead lane, F2 injection guards, F3 offline env, F4 signal forwarding, F5 RECORD matrix+version derivation, F6 strict package prefix, F7 sentinel/test gaps); suppression baseline refreshed to 101 identities
+- Last model/run: ox-alpha-free / csm-build session of 2026-08-21
 - Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
 - Active tasks: none
 - Blockers: none
@@ -112,7 +112,7 @@ Parallel groups share no owned source/test files within one group; T003-T006 for
 
 ## Numbered Plan
 
-1. [pending] Adopt the canonical runner through Make adapters and land the carry-over
+1. [completed] Adopt the canonical runner through Make adapters and land the carry-over
    - Task ID: T003
    - Depends on: none
    - Parallel group: G1
@@ -124,7 +124,8 @@ Parallel groups share no owned source/test files within one group; T003-T006 for
    - Acceptance signal: `UV_OFFLINE=1 npm_config_offline=true uv run pytest tests/test_run_mutation.py tests/test_make_policy.py tests/test_quality_pipeline_configuration.py tests/test_mutation_policy.py tests/test_mutation_evidence.py -q` passes, then `UV_OFFLINE=1 npm_config_offline=true make ci-conventional` exits 0
    - Validation: ruff format/check + pyright on touched scripts; `make -n` expansions for each adapter; grep proves no `uv run mutmut run` recipe remains; carry-over diff reviewed before staging; hook-adjusted staged patch hash recorded pre/post commit
    - Acceptance evidence: command matrix outputs, sentinel-preservation proof, committed SHAs/tree hashes, independent security-focused review verdict
-   - Repair attempts: 0
+   - Completed evidence: acceptance signal 176 passed; ci-conventional exit 0; semgrep zero findings; pyright strict clean; radon CC<=5; injection probes exit 2 without side effects; suppression ratchet 101 identities; review verdict NEEDS REMEDIATION(7) -> all seven findings fixed and regression-tested
+   - Repair attempts: 1
    - Recovery note: carry-over files are preserved verbatim under `/tmp/opencode` recovery convention before any edit; partial Makefile edits revert only within owned section
 2. [pending] Make CI mutation evidence mandatory and correct documentation
    - Task ID: T004
@@ -306,6 +307,15 @@ Cheapest-first per task: ruff format/check -> pyright/radon -> focused pytest ->
 | 2026-08-21 | 0 | CRITIQUE | - | Two subagent dispatches returned empty (environment instability, journaled); third fresh agent returned 8 findings (5 blocking), verdict NEEDS REMEDIATION | REMEDIATE |
 | 2026-08-21 | 0 | REMEDIATE | - | All 8 findings resolved (C1-C8); no design changes required | VERIFY |
 | 2026-08-21 | 0 | VERIFY | - | Primary re-checked counts (20/13), graph edges, group labels, per-task atomicity, acceptance-signal exactness, AC citations; passed | SAVED |
+| 2026-08-21 | 1 | NOT_STARTED -> RECOVER | T003 | csm-build invoked on this plan at commit 115fd74; carry-over diff matched enumeration; format marker valid | VALIDATE |
+| 2026-08-21 | 1 | VALIDATE -> SELECT | T003 | 139 baseline tests pass; spike confirmed remote HEAD origin/master so BASE_SHA default fix justified | DISPATCH |
+| 2026-08-21 | 1 | SELECT -> DISPATCH | T003 | Sole ready task; primary-owned implementation due to shared Makefile/carry-over integration and repeated subagent instability (journaled) | INTEGRATE |
+| 2026-08-21 | 1 | DISPATCH -> INTEGRATE | T003 | Runner+Makefile+tests written by primary; early test run exposed empty-diff selection defect fixed before first gate | VERIFY |
+| 2026-08-21 | 1 | INTEGRATE -> VERIFY | T003 | Acceptance signal 169 then 176 passed; first ci-conventional caught formatter-duplicated return (semgrep) - removed | REVIEW |
+| 2026-08-21 | 1 | VERIFY -> REVIEW | T003 | Second full ci-conventional exit 0; independent reviewer dispatched | REPAIR |
+| 2026-08-21 | 1 | REVIEW -> REPAIR | T003 | Verdict NEEDS REMEDIATION(7): F1-F7 all genuine defects/gaps | VERIFY |
+| 2026-08-21 | 1 | REPAIR -> VERIFY | T003 | All findings fixed: manifest empty-lane routed, Make guards enforced (probe exits 2, no side effect), UV_OFFLINE forced, signal forwarders installed, RECORD matrix tested incl self-entry listing bug fix, strict package prefix, broken-symlink sentinel | CHECKPOINT |
+| 2026-08-21 | 1 | VERIFY -> CHECKPOINT | T003 | Third ci-conventional exit 0 after no-growth suppression refresh; commit follows | SELECT T004 |
 
 ## Completion Review
 
