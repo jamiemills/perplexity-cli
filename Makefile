@@ -282,7 +282,7 @@ dependency-hygiene: deptry  ## Run all dependency hygiene checks
 # Mutation testing (canonical fresh-run adapters; raw mutmut is never a gate)
 # ---------------------------------------------------------------------------
 
-.PHONY: mutate mutate-results mutate-module mutate-diff mutate-estimate mutate-browse mutate-full-policy mutate-selected
+.PHONY: mutate mutate-results mutate-module mutate-diff mutate-estimate mutate-browse mutate-full-policy mutate-selected mutation-baseline mutation-manifest-check
 
 MUTATION_REPORT ?= build/reports/mutation-report.json
 MUTATION_FULL_TIMEOUT ?= 19800
@@ -310,6 +310,26 @@ endif
 		--report-path $(MUTATION_REPORT) \
 		--timeout-seconds $(MUTATION_SELECTED_TIMEOUT) \
 		$(MUTATION_DEADLINE_ARGS)
+mutation-baseline:  ## Record the authoritative baseline for one immutable candidate
+ifndef CANDIDATE_SHA
+	$(error CANDIDATE_SHA is not set. Usage: make mutation-baseline CANDIDATE_SHA=<40-hex>)
+endif
+	@case '$(CANDIDATE_SHA)' in *[!0-9a-f]*) echo "CANDIDATE_SHA must be lowercase 40-hex" >&2; exit 2;; esac; \
+	case $$(printf %s '$(CANDIDATE_SHA)' | wc -c) in 40) ;; *) echo "CANDIDATE_SHA must be 40 characters" >&2; exit 2;; esac; \
+	test "$$(git rev-parse HEAD)" = '$(CANDIDATE_SHA)' || { echo "CANDIDATE_SHA does not match HEAD" >&2; exit 2; }; \
+	test ! -e build/reports/mutation-baseline/$(CANDIDATE_SHA) || { echo "baseline already exists" >&2; exit 2; }
+	$(MAKE) mutate-full-policy MUTATION_REPORT=build/reports/mutation-baseline/$(CANDIDATE_SHA)/mutation-report.json
+	uv run python scripts/mutation_manifest.py build \
+		--mutants-dir mutants \
+		--output-dir build/reports/mutation-baseline/$(CANDIDATE_SHA)
+
+mutation-manifest-check:  ## Verify recorded baseline manifests against the live tree
+ifndef BASELINE_SHA
+	$(error BASELINE_SHA is not set. Usage: make mutation-manifest-check BASELINE_SHA=<40-hex>)
+endif
+	@case '$(BASELINE_SHA)' in *[!0-9a-f]*) echo "BASELINE_SHA must be lowercase 40-hex" >&2; exit 2;; esac
+	uv run python scripts/mutation_manifest.py check \
+		--manifest-dir quality/baselines/mutation-baseline/$(BASELINE_SHA)
 
 mutate-estimate:  ## Estimate how long a full mutation run would take
 	uv run mutmut print-time-estimates

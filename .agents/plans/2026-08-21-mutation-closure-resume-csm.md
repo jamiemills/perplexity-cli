@@ -142,7 +142,7 @@ Parallel groups share no owned source/test files within one group; T003-T006 for
    - Completed evidence: 70 workflow/doc tests + full ci-conventional exit 0; both lanes pass MUTATION_DEADLINE_EPOCH (350/42-min budgets); scheduled artifact now if-no-files-found:error; summary exposes scope/completeness/no_tests; QUALITY_GATES stale claims corrected (.mutmut-cache, origin/master, canonical exit semantics); independent review NEEDS REMEDIATION(1) -> fixed plus polish (garbled doubles, 350-min headroom, tab cosmetic)
    - Repair attempts: 1
    - Recovery note: workflows revert cleanly via owned-file checkout; never hand-edit runners to appease CI
-3. [pending] Produce the authoritative full-tree baseline and freeze the burn-down ledger
+3. [in_progress] Produce the authoritative full-tree baseline and freeze the burn-down ledger
    - Task ID: T005
    - Depends on: T004
    - Parallel group: G3
@@ -155,6 +155,7 @@ Parallel groups share no owned source/test files within one group; T003-T006 for
    - Validation: keyset union equals independently enumerated total; digests stable across two manifest regenerations
    - Acceptance evidence: baseline report path/hashes, ledger coverage matrix, independent review
    - Repair attempts: 0
+   - Progress: schemas, `scripts/mutation_manifest.py` (build/verify CLI), `mutation-baseline` + `mutation-manifest-check` Make targets, and 8 contract tests are implemented and green (ruff/pyright/radon clean); REMAINING: execute `make mutation-baseline CANDIDATE_SHA=$(git rev-parse HEAD)` (multi-hour fresh full run) then record digests as acceptance evidence
    - Recovery note: baseline restarts from new candidate on any mismatch; never patch ledgers in place
 4. [pending] Classify every actionable candidate and enable per-task verification tiers
    - Task ID: T006
@@ -322,6 +323,9 @@ Cheapest-first per task: ruff format/check -> pyright/radon -> focused pytest ->
 | 2026-08-21 | 2 | INTEGRATE -> VERIFY | T004 | 87 workflow/doc/policy tests pass; first ci-conventional exit 0 | REVIEW |
 | 2026-08-21 | 2 | VERIFY -> REVIEW | T004 | Independent review NEEDS REMEDIATION(1): doc contradicts error-artifact; plus garbled text, headroom, tab polish | REPAIR |
 | 2026-08-21 | 2 | REPAIR -> CHECKPOINT | T004 | All four findings fixed; 70 suite tests and final ci-conventional exit 0; commit follows | SELECT T005 |
+| 2026-08-21 | 3 | SELECT -> DISPATCH | T005 | Code-first strategy: manifest module+targets+tests before the hours-long run; primary-owned due to environment instability | INTEGRATE |
+| 2026-08-21 | 3 | INTEGRATE -> VERIFY | T005 | mutation_manifest.py static-clean (pyright strict, radon A, ruff); 8/8 contract tests pass incl root-init, swapped dictionaries, drift detection, CLI round trip | VERIFY |
+| 2026-08-21 | 3 | VERIFY (partial) | T005 | Static+unit verification complete; baseline full run deferred to dedicated execution window (session stability); resume at make mutation-baseline | PAUSED-STEP |
 
 ## Completion Review
 
