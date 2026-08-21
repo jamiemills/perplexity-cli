@@ -127,7 +127,7 @@ Parallel groups share no owned source/test files within one group; T003-T006 for
    - Completed evidence: acceptance signal 176 passed; ci-conventional exit 0; semgrep zero findings; pyright strict clean; radon CC<=5; injection probes exit 2 without side effects; suppression ratchet 101 identities; review verdict NEEDS REMEDIATION(7) -> all seven findings fixed and regression-tested
    - Repair attempts: 1
    - Recovery note: carry-over files are preserved verbatim under `/tmp/opencode` recovery convention before any edit; partial Makefile edits revert only within owned section
-2. [pending] Make CI mutation evidence mandatory and correct documentation
+2. [completed] Make CI mutation evidence mandatory and correct documentation
    - Task ID: T004
    - Depends on: T003
    - Parallel group: G2
@@ -139,7 +139,8 @@ Parallel groups share no owned source/test files within one group; T003-T006 for
    - Acceptance signal: `UV_OFFLINE=1 npm_config_offline=true uv run pytest tests/test_workflow_configuration.py tests/test_quality_gates_documentation.py -q && UV_OFFLINE=1 npm_config_offline=true make ci-conventional`
    - Validation: actionlint, workflow YAML parse, SHA-pinned actions preserved, read-only permissions preserved
    - Acceptance evidence: test output, rendered workflow diffs, doc-test pass
-   - Repair attempts: 0
+   - Completed evidence: 70 workflow/doc tests + full ci-conventional exit 0; both lanes pass MUTATION_DEADLINE_EPOCH (350/42-min budgets); scheduled artifact now if-no-files-found:error; summary exposes scope/completeness/no_tests; QUALITY_GATES stale claims corrected (.mutmut-cache, origin/master, canonical exit semantics); independent review NEEDS REMEDIATION(1) -> fixed plus polish (garbled doubles, 350-min headroom, tab cosmetic)
+   - Repair attempts: 1
    - Recovery note: workflows revert cleanly via owned-file checkout; never hand-edit runners to appease CI
 3. [pending] Produce the authoritative full-tree baseline and freeze the burn-down ledger
    - Task ID: T005
@@ -316,6 +317,11 @@ Cheapest-first per task: ruff format/check -> pyright/radon -> focused pytest ->
 | 2026-08-21 | 1 | REVIEW -> REPAIR | T003 | Verdict NEEDS REMEDIATION(7): F1-F7 all genuine defects/gaps | VERIFY |
 | 2026-08-21 | 1 | REPAIR -> VERIFY | T003 | All findings fixed: manifest empty-lane routed, Make guards enforced (probe exits 2, no side effect), UV_OFFLINE forced, signal forwarders installed, RECORD matrix tested incl self-entry listing bug fix, strict package prefix, broken-symlink sentinel | CHECKPOINT |
 | 2026-08-21 | 1 | VERIFY -> CHECKPOINT | T003 | Third ci-conventional exit 0 after no-growth suppression refresh; commit follows | SELECT T004 |
+| 2026-08-21 | 2 | CHECKPOINT -> SELECT | T004 | T003 committed 6bf4593; T004 sole ready | DISPATCH |
+| 2026-08-21 | 2 | SELECT -> DISPATCH | T004 | Primary-owned implementation (workflow/docs text edits with policy-test oracle); deadline passthrough added to Make, epochs wired in both lanes, artifacts mandatory, docs corrected | INTEGRATE |
+| 2026-08-21 | 2 | INTEGRATE -> VERIFY | T004 | 87 workflow/doc/policy tests pass; first ci-conventional exit 0 | REVIEW |
+| 2026-08-21 | 2 | VERIFY -> REVIEW | T004 | Independent review NEEDS REMEDIATION(1): doc contradicts error-artifact; plus garbled text, headroom, tab polish | REPAIR |
+| 2026-08-21 | 2 | REPAIR -> CHECKPOINT | T004 | All four findings fixed; 70 suite tests and final ci-conventional exit 0; commit follows | SELECT T005 |
 
 ## Completion Review
 

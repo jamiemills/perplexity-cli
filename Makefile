@@ -287,6 +287,8 @@ dependency-hygiene: deptry  ## Run all dependency hygiene checks
 MUTATION_REPORT ?= build/reports/mutation-report.json
 MUTATION_FULL_TIMEOUT ?= 19800
 MUTATION_SELECTED_TIMEOUT ?= 2100
+MUTATION_DEADLINE_EPOCH ?=
+MUTATION_DEADLINE_ARGS = $(if $(MUTATION_DEADLINE_EPOCH),--outer-deadline-epoch $(MUTATION_DEADLINE_EPOCH),)
 
 mutate: mutate-full-policy  ## Run canonical full-tree mutation testing with policy enforcement
 
@@ -294,7 +296,8 @@ mutate-full-policy:  ## Fresh full mutation run classified by the fail-closed ca
 	uv run python scripts/run_mutation.py \
 		--scope full \
 		--report-path $(MUTATION_REPORT) \
-		--timeout-seconds $(MUTATION_FULL_TIMEOUT)
+		--timeout-seconds $(MUTATION_FULL_TIMEOUT) \
+		$(MUTATION_DEADLINE_ARGS)
 
 mutate-selected:  ## Run explicit mutant-name patterns through the canonical policy
 ifndef PATTERNS
@@ -305,7 +308,8 @@ endif
 		--scope selected \
 		$(foreach pattern,$(PATTERNS),--pattern '$(pattern)') \
 		--report-path $(MUTATION_REPORT) \
-		--timeout-seconds $(MUTATION_SELECTED_TIMEOUT)
+		--timeout-seconds $(MUTATION_SELECTED_TIMEOUT) \
+		$(MUTATION_DEADLINE_ARGS)
 
 mutate-estimate:  ## Estimate how long a full mutation run would take
 	uv run mutmut print-time-estimates
@@ -319,7 +323,8 @@ endif
 		--scope selected \
 		--pattern 'perplexity_cli.$(MODULE).x*' \
 		--report-path $(MUTATION_REPORT) \
-		--timeout-seconds $(MUTATION_SELECTED_TIMEOUT)
+		--timeout-seconds $(MUTATION_SELECTED_TIMEOUT) \
+		$(MUTATION_DEADLINE_ARGS)
 
 mutate-diff:  ## Mutate production sources changed between BASE_SHA and TESTED_SHA
 	@set -e; \
@@ -334,11 +339,13 @@ mutate-diff:  ## Mutate production sources changed between BASE_SHA and TESTED_S
 		0) uv run python scripts/run_mutation.py --scope selected \
 				--manifest-path "$$discovery" \
 				--report-path $(MUTATION_REPORT) \
-				--timeout-seconds $(MUTATION_SELECTED_TIMEOUT);; \
+				--timeout-seconds $(MUTATION_SELECTED_TIMEOUT) \
+		$(MUTATION_DEADLINE_ARGS);; \
 		1) uv run python scripts/run_mutation.py --scope selected \
 				--manifest-path "$$discovery" \
 				--report-path $(MUTATION_REPORT) \
 				--timeout-seconds $(MUTATION_SELECTED_TIMEOUT) \
+		$(MUTATION_DEADLINE_ARGS) \
 				--allow-empty-diff;; \
 		*) echo "Mutation discovery failed with status $$status" >&2; exit $$status;; \
 	esac

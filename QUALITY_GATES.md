@@ -291,7 +291,7 @@ side effects before running anything.
 | Class | Description | Examples | Side effects |
 |---|---|---|---|
 | **read-only-local** | Inspects the working tree without modifying it | `make lint`, `make typecheck`, `make arch-check`, `make ratchets`, `make coupling-report` | None beyond caches/temp files the tool creates (`.ruff_cache`, `__pycache__`) |
-| **writes-ephemeral** | Produces ignored reports, caches, and build outputs | `make test-coverage`, `make sonar-reports`, `make build`, `make semgrep-advisory-report`, `make mutate-full-policy` | `coverage.json`, `coverage.xml`, `.coverage`, `build/reports/*`, `dist/`, `.hypothesis/`, `.mutmut-cache` |
+| **writes-ephemeral** | Produces ignored reports, caches, and build outputs | `make test-coverage`, `make sonar-reports`, `make build`, `make semgrep-advisory-report`, `make mutate-full-policy` | `coverage.json`, `coverage.xml`, `.coverage`, `build/reports/*`, `dist/`, `.hypothesis/`, `mutants/ metadata` |
 | **writes-working-tree** | Rewrites source files (fixers) | `make format-fix`, `ruff check --fix`, `ruff format` via pre-commit stage 3 | Re-writes `src/`, `tests/`, `scripts/` on disk |
 | **writes-index** | Re-stages files after fixing | Lefthook fixer jobs with `stage_fixed: true` | Updates the git index |
 | **mutates-git** | Commits, tags, pushes | `make release`, pre-push hooks on failure | Creates commits/tags; a failed pre-push aborts the push but leaves the working tree intact |
@@ -605,7 +605,7 @@ and each dispatch has a unique group.
 - **Mutation is a blocking producer.** The `make mutate-full-policy` step can
   FAIL the job (findings or tool error exit). The summary and upload steps use
   `if: always()` so reporting still happens, and they tolerate a missing report
-  (`if-no-files-found: warn`).
+  (`if-no-files-found: error`).
 - **Scorecard** producer publishes results and uploads SARIF; the validator
   parses and uploads SARIF to code scanning.
 - **Semgrep advisory** findings are advisory (Semgrep exit 1 does not fail the
@@ -1082,27 +1082,34 @@ the card and all references atomically.
 
 #### `hook.pre-push.mutate-diff`: Diff-scoped mutation testing
 
-- **Purpose:** Run mutmut only over production source files changed relative to
-  the base branch.
+- **Purpose:** Run mutation testing only over production source files changed
+  relative to the base branch, classified by the canonical fail-closed policy.
 - **Authoritative source:** `lefthook.yml` pre-push stage 5; `make mutate-diff`;
-  `scripts/discover_mutate_diff_files.py`.
+  `scripts/discover_mutate_diff_files.py`; `scripts/run_mutation.py`.
 - **Canonical invocation:** `make mutate-diff`
-  (defaults `BASE_SHA ?= origin/main`, `TESTED_SHA ?= HEAD`).
-- **Trigger and scope:** every push; discovery uses the local worktree diff
-  context.
-- **Execution context:** local git repository.
-- **Contextual enforcement:** blocks the push when any diff mutant survives
-  (mutmut exit non-zero). No changed production source files => skip (exit 0).
-- **Skip semantics:** "No source files changed" prints a skip message and exits
-  0 — a genuine not-applicable, not a pass on evidence.
+  (defaults `BASE_SHA ?= origin/master`, `TESTED_SHA ?= HEAD`).
+- **Trigger and scope:** every push; discovery emits a JSON manifest that the
+  canonical runner converts into boundary-safe mutant-name patterns.
+- **Execution context:** local git repository; fresh-run refusal if any prior
+  `mutants/` workspace exists.
+- **Contextual enforcement:** exit 1 blocks the push on survived, timeout,
+  suspicious, or no-tests mutants; incomplete, skipped, stale, interrupted, or
+  malformed evidence exits 2 and also blocks.
+- **Skip semantics:** an empty discovery manifest with `--allow-empty-diff`
+  writes a schema-valid not-applicable report and exits 0 — a genuine
+  not-applicable, never a pass on missing evidence. Discovery failure (exit 2)
+  propagates and blocks.
 - **Ordering and concurrency:** single stage; no stdin.
 - **Inputs and configuration:** `BASE_SHA`/`TESTED_SHA`; `[tool.mutmut]` config
   in `pyproject.toml`.
-- **Outputs and evidence:** terminal output; `.mutmut-cache`.
-- **Requirements:** uv environment; mutmut.
-- **Side effects:** `.mutmut-cache`; runs mutmut mutations in a cache.
-- **Replication checks:** no changed files skips; changed files with survivors
-  block; clean diff passes.
+- **Outputs and evidence:** schema-valid v2 report at
+  `build/reports/mutation-report.json`; fresh `mutants/` workspace.
+- **Requirements:** uv environment; verified Mutmut 3.5.0 installation.
+- **Side effects:** `build/reports/` report; `mutants/` workspace left for
+  inspection.
+- **Replication checks:** empty manifest yields not-applicable report and
+  exit 0; actionable findings exit 1; infrastructure or discovery failure exits
+  2.
 
 #### `hook.pre-push.safety-and-fuzz`: Safety and fuzz
 
@@ -1125,7 +1132,7 @@ the card and all references atomically.
 - **Requirements:** Safety needs credentials for a real scan; atheris only on
   linux x86_64.
 - **Side effects:** Safety stages a copy of inputs in a temp dir; fuzz writes
-  `.mutmut-cache`/harness temp state.
+  `mutants/ metadata`/harness temp state.
 - **Replication checks:** credentialed scan blocks on findings; missing
   credentials skip informationally; fuzz harness failure blocks.
 
@@ -2173,9 +2180,9 @@ documents how to reproduce it and what it means.
   `pytest_add_cli_args` with `--ignore` infrastructure exclusions,
   `do_not_mutate`).
 - **Ordering and concurrency:** none.
-- **Outputs and evidence:** `.mutmut-cache`, `mutants/` metadata.
+- **Outputs and evidence:** `mutants/` metadata.
 - **Requirements:** uv environment; mutmut.
-- **Side effects:** writes `.mutmut-cache`, `mutants/`.
+- **Side effects:** writes `mutants/`.
 - **Replication checks:** clean run => 0; surviving mutants => 1.
 
 #### `make.mutate-full-policy`: Full mutation then canonical policy
@@ -2204,7 +2211,7 @@ documents how to reproduce it and what it means.
   `quality/schemas/mutation-report.json`; uploaded as a 30-day workflow
   artefact; `mutants/` metadata uploaded separately.
 - **Requirements:** uv environment; mutmut.
-- **Side effects:** writes `.mutmut-cache`, `mutants/`, `build/reports/`.
+- **Side effects:** writes `mutants/`, `build/reports/`.
 - **Replication checks:** all-killed => 0; survivor => 1; unparseable => 2 +
   tool-error report.
 
@@ -2238,9 +2245,9 @@ documents how to reproduce it and what it means.
 - **Skip semantics:** errors when `MODULE` unset.
 - **Inputs and configuration:** `MODULE`.
 - **Ordering and concurrency:** none.
-- **Outputs and evidence:** `.mutmut-cache`.
+- **Outputs and evidence:** `mutants/ metadata`.
 - **Requirements:** uv environment.
-- **Side effects:** writes `.mutmut-cache`.
+- **Side effects:** writes `mutants/ metadata`.
 - **Replication checks:** survivor => 1; missing `MODULE` => error.
 
 #### `make.mutate-diff`: Diff-scoped mutation (pre-push/PR)
@@ -2248,7 +2255,7 @@ documents how to reproduce it and what it means.
 - **Purpose:** mutate only production source files changed vs a base.
 - **Authoritative source:** `Makefile` `mutate-diff`;
   `scripts/discover_mutate_diff_files.py`; `[tool.mutmut]`.
-- **Canonical invocation:** `make mutate-diff` (defaults `BASE_SHA ?= origin/main`,
+- **Canonical invocation:** `make mutate-diff` (defaults `BASE_SHA ?= origin/master`,
   `TESTED_SHA ?= HEAD`; CI passes base/head SHAs).
 - **Trigger and scope:** pre-push stage 5; CI `mutation-diff` (PR only);
   on-demand.
@@ -2259,9 +2266,9 @@ documents how to reproduce it and what it means.
   tests" and exit 0 (not-applicable, not a pass on evidence).
 - **Inputs and configuration:** `BASE_SHA`, `TESTED_SHA`.
 - **Ordering and concurrency:** none.
-- **Outputs and evidence:** `.mutmut-cache`.
+- **Outputs and evidence:** `mutants/ metadata`.
 - **Requirements:** uv environment; git.
-- **Side effects:** writes `.mutmut-cache`.
+- **Side effects:** writes `mutants/ metadata`.
 - **Replication checks:** no diff => 0 skip; survivors => 1; clean => 0.
 
 #### `make.mutate-results`: Show last mutation results
@@ -2274,7 +2281,7 @@ documents how to reproduce it and what it means.
   (developer) trust boundary.
 - **Contextual enforcement:** informational.
 - **Skip semantics:** none.
-- **Inputs and configuration:** `.mutmut-cache`.
+- **Inputs and configuration:** `mutants/ metadata`.
 - **Ordering and concurrency:** none.
 - **Outputs and evidence:** terminal table.
 - **Requirements:** uv environment.
@@ -2291,7 +2298,7 @@ documents how to reproduce it and what it means.
   (developer) trust boundary.
 - **Contextual enforcement:** informational.
 - **Skip semantics:** none.
-- **Inputs and configuration:** `.mutmut-cache`.
+- **Inputs and configuration:** `mutants/ metadata`.
 - **Ordering and concurrency:** interactive.
 - **Outputs and evidence:** terminal TUI.
 - **Requirements:** uv environment.
@@ -2529,7 +2536,7 @@ documents how to reproduce it and what it means.
 
 - **Purpose:** require `DIFF_COVERAGE_THRESHOLD` coverage on changed lines.
 - **Authoritative source:** `Makefile` `diff-coverage`; `DIFF_COVERAGE_THRESHOLD`.
-- **Canonical invocation:** `make diff-coverage` (defaults `BASE_SHA ?= origin/main`,
+- **Canonical invocation:** `make diff-coverage` (defaults `BASE_SHA ?= origin/master`,
   `TESTED_SHA ?= HEAD`; CI passes PR base/head SHAs).
 - **Trigger and scope:** CI `diff-coverage` (PR only); on-demand.
 - **Execution context:** Local developer workstation; repository checkout; untrusted-local
@@ -3732,9 +3739,9 @@ full inventory.
   skip and exits 0 (not-applicable).
 - **Inputs and configuration:** PR base/head SHAs; `[tool.mutmut]`.
 - **Ordering and concurrency:** independent job.
-- **Outputs and evidence:** `.mutmut-cache`.
+- **Outputs and evidence:** `mutants/ metadata`.
 - **Requirements:** uv environment; mutmut.
-- **Side effects:** `.mutmut-cache`.
+- **Side effects:** `mutants/ metadata`.
 - **Replication checks:** as `make.mutate-diff`.
 
 ### Scheduled and supporting workflow cards
@@ -3757,12 +3764,12 @@ full inventory.
 - **Inputs and configuration:** as `make.mutate-full-policy`;
   `quality/schemas/mutation-report.json`.
 - **Outputs and evidence:** `build/reports/mutation-report.json` + `mutants/`
-  metadata uploaded with 30-day retention (`if-no-files-found: warn`); job
+  metadata uploaded with 30-day retention (`if-no-files-found: error`)
   summary with the policy verdict.
 - **Requirements:** uv environment; mutmut; 6-hour ceiling.
-- **Side effects:** writes `.mutmut-cache`, `mutants/`, `build/reports/`.
+- **Side effects:** writes `mutants/`, `build/reports/`.
 - **Replication checks:** clean/findings/tool-error exit mapping; summary and
-  upload always run; missing report tolerated.
+  upload always run; missing report fails the upload step.
 
 #### `automation.scorecard.scorecard`: Scorecard (producer)
 

@@ -289,7 +289,8 @@ def test_no_continue_on_error_on_scheduled() -> None:
 def test_mutation_workflow_runs_full_policy() -> None:
     """Scheduled mutation must retain the full policy wrapper command."""
     mutation = _workflow_texts()["mutation-scheduled.yml"]
-    assert "run: make mutate-full-policy" in mutation
+    assert "make mutate-full-policy" in mutation
+    assert "MUTATION_DEADLINE_EPOCH" in mutation
 
 
 def test_mutation_workflow_uses_generated_report_path() -> None:
@@ -297,6 +298,46 @@ def test_mutation_workflow_uses_generated_report_path() -> None:
     mutation = _workflow_texts()["mutation-scheduled.yml"]
     assert mutation.count("build/reports/mutation-report.json") == 3
     assert "quality/evidence/mutation-report.json" not in mutation
+
+
+def test_mutation_lanes_pass_outer_deadline_epochs() -> None:
+    """Both mutation lanes must bound runtime with an explicit outer deadline."""
+    scheduled = _workflow_texts()["mutation-scheduled.yml"]
+    ci = _workflow_texts()["ci.yml"]
+    assert "MUTATION_DEADLINE_EPOCH=${{ steps.mutation-deadline.outputs.epoch }}" in scheduled
+    assert "MUTATION_DEADLINE_EPOCH=${{ steps.mutation-deadline.outputs.epoch }}" in ci
+    assert "350 * 60" in scheduled
+    assert "42 * 60" in ci
+
+
+def test_mutation_reports_are_mandatory_artifacts() -> None:
+    """Missing mutation reports must fail artifact upload, never warn."""
+    for name, artifact_name in (
+        ("mutation-scheduled.yml", "mutation-report-"),
+        ("ci.yml", "mutation-diff-report-"),
+    ):
+        workflow = _load_workflow(name)
+        mutation_job = (
+            workflow["jobs"]["mutation"]
+            if "mutation" in workflow["jobs"]
+            else workflow["jobs"]["mutation-diff"]
+        )
+        job_steps = mutation_job["steps"]
+        uploads = [
+            step
+            for step in job_steps
+            if isinstance(step, dict) and step.get("name") == "Upload mutation report"
+        ]
+        assert uploads, name
+        assert uploads[0]["with"]["if-no-files-found"] == "error", name
+        assert artifact_name in uploads[0]["with"]["name"], name
+
+
+def test_scheduled_summary_exposes_v2_evidence_fields() -> None:
+    """The job summary must surface scope, completeness and no-tests."""
+    summary = _workflow_texts()["mutation-scheduled.yml"]
+    for fragment in ("scope.get('kind'", "evidence.get('complete'", "categories.get('no_tests'"):
+        assert fragment in summary
 
 
 def test_mutation_summary_and_report_upload_always_run() -> None:

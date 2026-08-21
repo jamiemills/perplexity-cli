@@ -32,8 +32,14 @@ jobs:
       - name: Sync dependencies
         run: uv sync --all-extras --locked --group dev
 
-      - name: Run full mutation testing with policy wrapper
-        run: make mutate-full-policy
+      - name: Record job deadline
+        id: mutation-deadline
+        run: echo "epoch=$(( $(date +%s) + 350 * 60 ))" >> "$GITHUB_OUTPUT"
+
+      - name: Run canonical full mutation testing with fail-closed policy
+        run: >-
+          make mutate-full-policy
+          MUTATION_DEADLINE_EPOCH=${{ steps.mutation-deadline.outputs.epoch }}
 
       - name: Job summary
         if: always()
@@ -53,8 +59,13 @@ jobs:
               print(f"_Failed to read mutation report: {exc}_")
           else:
               categories = report.get("categories", {})
+              evidence = report.get("evidence", {})
+              scope = report.get("scope", {})
               print(f"- Status: **{report.get('status', 'unknown')}**")
+              print(f"- Scope: {scope.get('kind', 'unknown')}")
+              print(f"- Complete evidence: **{evidence.get('complete', False)}**")
               print(f"- Total mutants: {report.get('total_mutants', 'N/A')}")
+              print(f"- No tests: {categories.get('no_tests', 0)}")
               print(f"- Killed: {categories.get('killed', 0)}")
               print(f"- Survived: {categories.get('survived', 0)}")
               print(f"- Timeout: {categories.get('timeout', 0)}")
@@ -76,7 +87,7 @@ jobs:
         with:
           name: mutation-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/reports/mutation-report.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
 
       - name: Upload mutmut metadata

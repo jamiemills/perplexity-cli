@@ -478,5 +478,22 @@ jobs:
       - name: Sync dependencies
         run: uv sync --all-extras --locked --group dev
 
+      - name: Record job deadline
+        id: mutation-deadline
+        run: echo "epoch=$(( $(date +%s) + 42 * 60 ))" >> "$GITHUB_OUTPUT"
+
       - name: Run mutation diff
-        run: make mutate-diff BASE_SHA=${{ github.event.pull_request.base.sha }} TESTED_SHA=${{ github.event.pull_request.head.sha }}
+        run: >-
+          make mutate-diff
+          BASE_SHA=${{ github.event.pull_request.base.sha }}
+          TESTED_SHA=${{ github.event.pull_request.head.sha }}
+          MUTATION_DEADLINE_EPOCH=${{ steps.mutation-deadline.outputs.epoch }}
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mutation-diff-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/reports/mutation-report.json
+          if-no-files-found: error
+          retention-days: 30
