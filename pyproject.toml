@@ -135,7 +135,12 @@ convention = "google"
 ]
 "tests/fixtures/**/*.py" = ["ALL"]
 "vulture_whitelist.py" = ["B018", "D", "F821"]
-"scripts/**/*.py" = [ "DOC", "FURB", "PERF401", "TRY004", "PTH123", "TRY301","D", "T20", "FBT", "PLC0415", "PLR0911", "PLR0912", "BLE001",
+# Boolean-flag policy: scripts/ enforces FBT via ruff (early net); Semgrep
+# community rule boolean-flag-argument remains as a second aligned net.
+# Drift between the two nets is pinned by tests/test_quality_pipeline_configuration.py.
+# src/ keeps FBT exempt until its 44 positional-bool call sites migrate to keyword-only
+# (tracked review finding F-004 follow-up); tests/ remain exempt by design.
+"scripts/**/*.py" = [ "DOC", "FURB", "PERF401", "TRY004", "PTH123", "TRY301","D", "T20", "PLC0415", "PLR0911", "PLR0912", "BLE001",
     "TRY300",  "DTZ005",  "DTZ006",  "TRY401",  "LOG007",  "G201",    "G004",    "TRY004",  "TRY301",
     "PTH123",  "PTH101",  "PERF401",  "PERF403", "SIM108", "ARG004", "PLE0704", "PLR0133", "PLW2901"]
 

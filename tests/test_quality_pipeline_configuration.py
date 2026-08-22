@@ -351,3 +351,17 @@ def test_package_contract_target_exists() -> None:
     assert "tests/test_packaging.py" in body
     assert "tests/test_distribution_contract.py" in body
     assert "scripts/smoke_test.py" in body
+
+
+def test_boolean_flag_authority_nets_stay_paired() -> None:
+    """Ruff and Semgrep must stay aligned on boolean-flag policy (F-004)."""
+    config = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    scripts_ignores = config["tool"]["ruff"]["lint"]["per-file-ignores"]["scripts/**/*.py"]
+    assert "FBT" not in scripts_ignores, "scripts must keep the early ruff net"
+    semgrep_rules = (PROJECT_ROOT / ".semgrep.yml").read_text(encoding="utf-8")
+    assert "- id: boolean-flag-argument" in semgrep_rules, (
+        "Semgrep second net must remain present in the first-party ruleset"
+    )
+    assert "FBT001" in config["tool"]["ruff"]["lint"]["ignore"], (
+        "src/ exemption stays explicit until F-004 follow-up lands"
+    )

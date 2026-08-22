@@ -218,14 +218,14 @@ def test_ci_has_repository_policy_job() -> None:
     names = [step.get("name", "") for step in steps if isinstance(step, dict)]
     assert "Warm uvx tool cache" in names
     assert "Run ci-quality inventory" in names
-    python_step = next(
+    env_step = next(
         step
         for step in steps
-        if isinstance(step, dict) and "actions/setup-python" in str(step.get("uses", ""))
+        if isinstance(step, dict) and step.get("uses") == "./.github/actions/setup-env"
     )
-    assert python_step["with"]["python-version"] == "3.12"
+    assert "python-version" not in env_step.get("with", {})
     recipe = " ".join(str(step.get("run", "")) for step in steps if isinstance(step, dict))
-    assert "uv sync --all-extras --locked --group dev" in recipe
+    assert "uv sync --all-extras --locked --group dev" not in recipe
     assert "uvx --from semgrep==1.171.0 semgrep --version" in recipe
     assert "uvx --from actionlint-py==1.7.12.24 actionlint --version" in recipe
     assert "make ci-quality" in recipe
@@ -361,3 +361,29 @@ def test_mutation_workflow_uploads_mutmut3_metadata() -> None:
     assert metadata["if"] == "always()"
     assert metadata["with"]["path"] == "mutants/"
     assert ".mutmut-cache" not in _workflow_texts()["mutation-scheduled.yml"]
+
+
+def test_composite_setup_env_is_single_source() -> None:
+    """Workflows must delegate env setup to the composite action only."""
+    action = _load_workflow("../actions/setup-env/action.yml")
+    uses = [
+        step["uses"]
+        for step in action["runs"]["steps"]
+        if isinstance(step, dict) and "uses" in step
+    ]
+    assert sum("astral-sh/setup-uv@" in u for u in uses) == 1
+    assert sum("actions/setup-python@" in u for u in uses) == 1
+
+    for name in ("ci.yml", "mutation-scheduled.yml"):
+        text = (WORKFLOWS / name).read_text()
+        assert "astral-sh/setup-uv" not in text, name
+        assert "./.github/actions/setup-env" in text, name
+
+
+def test_composite_action_pins_upstream_shas() -> None:
+    """Nested upstream actions inside the composite must stay SHA-pinned."""
+    action = _load_workflow("../actions/setup-env/action.yml")
+    for step in action["runs"]["steps"]:
+        if isinstance(step, dict) and "uses" in step:
+            ref = step["uses"].split("@", 1)[1]
+            assert len(ref) >= 40, step["uses"]

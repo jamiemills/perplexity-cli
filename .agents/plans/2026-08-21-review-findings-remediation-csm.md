@@ -11,13 +11,13 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: review-findings-remediation
-- Status: ready
-- Current CSM state: NOT_STARTED
-- Cycle: 0
+- Status: in_progress
+- Current CSM state: CHECKPOINT
+- Cycle: 1
 - Commits: allowed
-- Last checkpoint: 2026-08-21 - plan drafted from review report `.agents/reviews/2026-08-21-perplexity-cli-review.md` (findings F-001..F-006 at pinned SHA a78ec7f)
+- Last checkpoint: 2026-08-21 - G1 verified: T001 cycle broken (pyright src/ = 0/0), T002 content-anchored ratchet with ordinals (97 suite tests, one baseline regeneration), T003 scripts-side FBT + drift-guard test, T004 composite action (0 setup-uv in workflows); full ci-conventional exit 0. Prior: invoked at commit 93a22fa; prior checkpoint: plan drafted from review report `.agents/reviews/2026-08-21-perplexity-cli-review.md` (findings F-001..F-006 at pinned SHA a78ec7f)
 - Last model/run: ox-alpha-free / csm-plan session of 2026-08-21
-- Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
+- Next transition: RECOVER -> SELECT (G1 batch)
 - Active tasks: none
 - Blockers: none
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes of all non-COMPLETE tasks, Discovered Requirements, and the working-tree diff
@@ -102,7 +102,7 @@ Critical path: T002 -> T006 (scheme stability, then relocation-only refresh). Pa
 
 ## Numbered Plan
 
-1. [pending] Break the utils/config import cycle
+1. [completed] Break the utils/config import cycle
    - Task ID: T001
    - Depends on: none
    - Parallel group: G1
@@ -116,7 +116,7 @@ Critical path: T002 -> T006 (scheme stability, then relocation-only refresh). Pa
    - Acceptance evidence: command outputs recorded in journal.
    - Repair attempts: 0
    - Recovery note: single-file revert restores cycle; no data risk.
-2. [pending] Re-key suppression ratchet on content anchors
+2. [completed] Re-key suppression ratchet on content anchors
    - Task ID: T002
    - Depends on: none
    - Parallel group: G1
@@ -130,7 +130,7 @@ Critical path: T002 -> T006 (scheme stability, then relocation-only refresh). Pa
    - Acceptance evidence: test outputs; baseline diff showing identical count (101).
    - Repair attempts: 0
    - Recovery note: revert checker + restore committed baseline; refresh is one command.
-3. [pending] Unify boolean-parameter lint authority
+3. [completed] Unify boolean-parameter lint authority
    - Task ID: T003
    - Depends on: T002 (single baseline regeneration lands first; T003's new annotations ride the new scheme)
    - Parallel group: G1 (sequenced after T002 within the cycle)
@@ -144,7 +144,7 @@ Critical path: T002 -> T006 (scheme stability, then relocation-only refresh). Pa
    - Acceptance evidence: outputs recorded; pyproject diff carries the decision comment.
    - Repair attempts: 0
    - Recovery note: restore ignore entries to revert.
-4. [pending] Introduce setup-env composite action
+4. [completed] Introduce setup-env composite action
    - Task ID: T004
    - Depends on: none
    - Parallel group: G1
@@ -222,6 +222,13 @@ Cheapest-first per task: ruff format/check → pyright → focused pytest → ta
 | 2026-08-21 | 0 | CRITIQUE -> REMEDIATE | - | Independent critic returned NEEDS REMEDIATION(8): 2H/3M/3L, all evidence-checked against live files | REMEDIATE |
 | 2026-08-21 | 0 | REMEDIATE -> VERIFY | - | All eight findings incorporated (A3 ordinals+duplicate test, T006 refresh re-scope, T003 sequencing, A4 drift-guard, precise validations, corrections) | VERIFY |
 | 2026-08-21 | 0 | VERIFY -> SAVED | - | Primary gate: ACs map to tasks, signals runnable, dependencies consistent, anti-scope present | SAVED |
+| 2026-08-21 | 1 | NOT_STARTED -> RECOVER | T001-T004 | Invoked at 93a22fa; format valid; tree clean | SELECT |
+| 2026-08-21 | 1 | SELECT -> DISPATCH | T001,T002,T003,T004 | G1 batch; primary-owned implementation (subagent instability recorded) | INTEGRATE |
+| 2026-08-21 | 1 | INTEGRATE -> VERIFY | T001 | ConfigPaths+ConfigProvider relocated to contracts.py via AST rebuild after two failed partial edits; pyright src/ 0 errors 0 warnings; 136 config tests pass | VERIFY |
+| 2026-08-21 | 1 | INTEGRATE -> VERIFY | T002 | Content-hash identities + occurrence ordinals; 43 test literals migrated mechanically; move-tolerance semantics tests added; duplicate-pair regression covered; baseline regenerated; 97 suppression-suite tests pass | REVIEW |
+| 2026-08-21 | 1 | INTEGRATE -> VERIFY | T003 | FBT un-ignored for scripts/** (already clean), rationale comment, drift-guard test pinning ruff-FBT + .semgrep.yml boolean rule pairing | VERIFY |
+| 2026-08-21 | 1 | INTEGRATE -> VERIFY | T004 | Composite action created; 16+1 preambles replaced (matrix/3.13 variants handled); workflow assertions updated; 2 new composite tests; actionlint green | CHECKPOINT |
+| 2026-08-21 | 1 | VERIFY -> CHECKPOINT | T001-T004 | Gate repairs: formatting, mutation_manifest issues-init (latent), cache-literal test retargeted to ConfigPaths home, coupling baseline refreshed for legitimate metric shift; final ci-conventional exit 0 | SELECT T005 |
 
 ## Completion Review
 

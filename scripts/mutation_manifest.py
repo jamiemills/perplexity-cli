@@ -244,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     args = _parse_args(argv)
     failure: LedgerMismatchError | None = None
+    issues: list[str] = []
     try:
         if args.command == "build":
             return _run_build(args)

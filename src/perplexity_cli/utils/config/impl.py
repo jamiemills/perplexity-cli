@@ -10,52 +10,17 @@ from importlib import (  # nosemgrep: python.lang.compatibility.python37.python3
     resources,
 )
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from perplexity_cli.config.models import FeatureConfig, RateLimitConfig, URLConfig
 from perplexity_cli.utils.config.contracts import (
+    ConfigPaths,
+    ConfigProvider,
     default_feature_config,
     default_rate_limiting,
     is_str_dict,
 )
 from perplexity_cli.utils.exceptions import ConfigurationError
-
-
-class ConfigPaths:
-    """Resolved paths for all user-writable config files."""
-
-    def __init__(self, config_dir: Path) -> None:
-        self.config_dir = config_dir
-
-    @property
-    def token_path(self) -> Path:
-        """Path to the encrypted authentication token file."""
-        return self.config_dir / "token.json"
-
-    @property
-    def style_path(self) -> Path:
-        """Path to the user style preferences file."""
-        return self.config_dir / "style.json"
-
-    @property
-    def urls_path(self) -> Path:
-        """Path to the API endpoint URL overrides file."""
-        return self.config_dir / "urls.json"
-
-    @property
-    def feature_config_path(self) -> Path:
-        """Path to the feature toggle configuration file."""
-        return self.config_dir / "config.json"
-
-    @property
-    def cache_path(self) -> Path:
-        """Path to the encrypted thread cache file."""
-        return self.config_dir / "threads-cache.json"
-
-    @property
-    def log_file_path(self) -> Path:
-        """Path to the CLI log file."""
-        return self.config_dir / "perplexity-cli.log"
 
 
 def get_config_paths() -> ConfigPaths:
@@ -590,10 +555,6 @@ class ConfigProviderImpl:
     get_rate_limiting_config = staticmethod(get_rate_limiting_config)
     get_config_paths = staticmethod(get_config_paths)
     set_feature = staticmethod(set_feature)
-
-
-if TYPE_CHECKING:
-    from perplexity_cli.utils.config import ConfigProvider
 
 
 def get_config_provider() -> ConfigProvider:

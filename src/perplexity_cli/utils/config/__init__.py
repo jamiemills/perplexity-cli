@@ -8,10 +8,9 @@ live in :mod:`perplexity_cli.utils.config.impl`.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
-
 from perplexity_cli.config.models import FeatureConfig, RateLimitConfig, URLConfig
 from perplexity_cli.utils.config.contracts import (
+    ConfigProvider,
     default_feature_config,
     default_rate_limiting,
     is_str_dict,
@@ -37,32 +36,6 @@ from perplexity_cli.utils.config.impl import (
     get_user_settings_endpoint,
     set_feature,
 )
-
-
-@runtime_checkable
-class ConfigProvider(Protocol):
-    """Contract for reading and mutating Perplexity CLI configuration."""
-
-    def get_urls(self) -> URLConfig:
-        """Return the validated URL configuration model."""
-        ...
-
-    def get_feature_config(self) -> FeatureConfig:
-        """Return the validated feature configuration model."""
-        ...
-
-    def get_rate_limiting_config(self) -> RateLimitConfig:
-        """Return the validated rate limiting configuration model."""
-        ...
-
-    def get_config_paths(self) -> ConfigPaths:
-        """Return the resolved config paths for the current environment."""
-        ...
-
-    def set_feature(self, key: str, value: object) -> None:
-        """Set a feature configuration value, persisting it to disk."""
-        ...
-
 
 __all__ = [
     "ConfigPaths",

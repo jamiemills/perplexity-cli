@@ -103,6 +103,21 @@ def _temp_baseline_dir(monkeypatch, tmp_path: Path) -> Path:
     return bd
 
 
+def _hash8(code: str) -> str:
+    """Mirror the ratchet's content anchor digest for test expectations."""
+    import hashlib
+
+    return hashlib.sha256(code.strip()[:200].encode()).hexdigest()[:8]
+
+
+def _diff_current_vs_baseline():
+    current = cs.collect_identities()
+    from _ratchet import load_fingerprints
+
+    bl = load_fingerprints("suppressions.json")
+    return diff_fingerprints(current, bl)
+
+
 # ── Collect-identities unit tests ──────────────────────────────────────────
 
 
@@ -112,27 +127,27 @@ class TestCollectSourceIdentities:
     def test_noqa_bare(self, tmp_path: Path):
         src = _make_src_tree(tmp_path, {"mod.py": "x = 1  # noqa\n"})
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:noqa" in ids
+        assert "src/mod.py:noqa:ad118458" in ids
 
     def test_noqa_with_code(self, tmp_path: Path):
         src = _make_src_tree(tmp_path, {"mod.py": "x = 1  # noqa: F401\n"})
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:noqa:F401" in ids
+        assert "src/mod.py:noqa:9883de79:F401" in ids
 
     def test_no_cover_pragma(self, tmp_path: Path):
         src = _make_src_tree(tmp_path, {"mod.py": "if x:  # pragma: no cover\n"})
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:no-cover" in ids
+        assert "src/mod.py:no-cover:730b65a9" in ids
 
     def test_no_branch_pragma(self, tmp_path: Path):
         src = _make_src_tree(tmp_path, {"mod.py": "if x:  # pragma: no branch\n"})
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:no-branch" in ids
+        assert "src/mod.py:no-branch:9d645892" in ids
 
     def test_no_mutate_pragma(self, tmp_path: Path):
         src = _make_src_tree(tmp_path, {"mod.py": "x = 1  # pragma: no mutate\n"})
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:no-mutate" in ids
+        assert "src/mod.py:no-mutate:d70fe2ca" in ids
 
     def test_no_mutate_pragma_with_detail(self, tmp_path: Path):
         src = _make_src_tree(
@@ -140,18 +155,18 @@ class TestCollectSourceIdentities:
             {"mod.py": "x = 1  # pragma: no mutate: operator-name\n"},
         )
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:no-mutate:operator-name" in ids
+        assert "src/mod.py:no-mutate:d28cbbb2:operator-name" in ids
 
     def test_multiple_suppressions_same_line(self, tmp_path: Path):
         src = _make_src_tree(tmp_path, {"mod.py": "x = 1  # noqa: F401  # type: ignore\n"})
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:noqa:F401" in ids
-        assert "src/mod.py:1:type-ignore" in ids
+        assert "src/mod.py:noqa:43552e33:F401" in ids
+        assert "src/mod.py:type-ignore:43552e33" in ids
 
     def test_type_ignore_with_code(self, tmp_path: Path):
         src = _make_src_tree(tmp_path, {"mod.py": "x = foo()  # type: ignore[arg-type]\n"})
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:type-ignore:arg-type" in ids
+        assert "src/mod.py:type-ignore:2c48c507:arg-type" in ids
 
     def test_pyright_ignore_with_code(self, tmp_path: Path):
         src = _make_src_tree(
@@ -159,17 +174,17 @@ class TestCollectSourceIdentities:
             {"mod.py": "x = y  # pyright: ignore[reportAny]\n"},
         )
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:pyright-ignore:reportAny" in ids
+        assert "src/mod.py:pyright-ignore:352faa45:reportAny" in ids
 
     def test_nosec_bare(self, tmp_path: Path):
         src = _make_src_tree(tmp_path, {"mod.py": "hashlib.md5()  # nosec\n"})
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:nosec" in ids
+        assert "src/mod.py:nosec:3c743ccd" in ids
 
     def test_nosemgrep_with_rule(self, tmp_path: Path):
         src = _make_src_tree(tmp_path, {"mod.py": "x = 1  # nosemgrep: some-rule-id\n"})
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:nosemgrep:some-rule-id" in ids
+        assert "src/mod.py:nosemgrep:14f22c84:some-rule-id" in ids
 
 
 class TestCollectConfigIdentities:
@@ -242,8 +257,8 @@ class TestTokenAwareScanning:
             {"mod.py": "x = 1  # noqa: F401  # type: ignore[arg-type]\n"},
         )
         ids = cs._collect_source_identities(src, tmp_path)
-        assert "src/mod.py:1:noqa:F401" in ids
-        assert "src/mod.py:1:type-ignore:arg-type" in ids
+        assert "src/mod.py:noqa:518ae574:F401" in ids
+        assert "src/mod.py:type-ignore:518ae574:arg-type" in ids
 
 
 # ── Fail-closed tests ───────────────────────────────────────────────────────
@@ -294,43 +309,44 @@ class TestFailClosed:
 class TestMovedSuppressionDetected:
     """Moving a suppression to a different line creates a new identity → fails."""
 
-    def test_moved_noqa_detected(self, tmp_path: Path, monkeypatch) -> None:
-        src = _make_src_tree(tmp_path, {"mod.py": "x = 1  # noqa\n"})
+    def test_moved_noqa_tolerated(self, tmp_path: Path, monkeypatch) -> None:
+        """Pure line movement keeps the content anchor, so no regression."""
+        src = _make_src_tree(tmp_path, {"mod.py": "\n\n\nx = 1  # noqa\n"})
         pyproject = _make_pyproject(tmp_path)
         _patch_check_module(monkeypatch, tmp_path, src, pyproject)
         _temp_baseline_dir(monkeypatch, tmp_path)
 
-        baseline_fps = ["src/mod.py:10:noqa"]
+        baseline_fps = ["src/mod.py:noqa:" + _hash8("x = 1  # noqa")]
         save_fingerprints("suppressions.json", baseline_fps)
 
-        current = cs.collect_identities()
-        from _ratchet import load_fingerprints
+        diff = _diff_current_vs_baseline()
+        assert not diff.is_regression, "Line shift alone must not fail the ratchet"
 
-        bl = load_fingerprints("suppressions.json")
-        diff = diff_fingerprints(current, bl)
-
-        assert diff.is_regression, "Moved suppression must be detected"
-        assert "src/mod.py:1:noqa" in diff.new
-        assert "src/mod.py:10:noqa" in diff.removed
-
-    def test_moved_pragma_no_cover_detected(self, tmp_path: Path, monkeypatch) -> None:
-        src = _make_src_tree(tmp_path, {"mod.py": "x = 1  # pragma: no cover\n"})
+    def test_changed_code_still_detected(self, tmp_path: Path, monkeypatch) -> None:
+        """Editing the anchored statement itself must change identity."""
+        src = _make_src_tree(tmp_path, {"mod.py": "\n\n\ny = 2  # noqa\n"})
         pyproject = _make_pyproject(tmp_path)
         _patch_check_module(monkeypatch, tmp_path, src, pyproject)
         _temp_baseline_dir(monkeypatch, tmp_path)
 
-        baseline_fps = ["src/mod.py:5:no-cover"]
+        baseline_fps = ["src/mod.py:noqa:" + _hash8("x = 1  # noqa")]
         save_fingerprints("suppressions.json", baseline_fps)
 
-        current = cs.collect_identities()
-        from _ratchet import load_fingerprints
+        diff = _diff_current_vs_baseline()
+        assert diff.is_regression, "Changed anchored code must be detected"
+        assert any(h.startswith("src/mod.py:noqa:") for h in diff.new)
 
-        bl = load_fingerprints("suppressions.json")
-        diff = diff_fingerprints(current, bl)
+    def test_moved_pragma_no_cover_tolerated(self, tmp_path: Path, monkeypatch) -> None:
+        src = _make_src_tree(tmp_path, {"mod.py": "# leading comment\nx = 1  # pragma: no cover\n"})
+        pyproject = _make_pyproject(tmp_path)
+        _patch_check_module(monkeypatch, tmp_path, src, pyproject)
+        _temp_baseline_dir(monkeypatch, tmp_path)
 
-        assert diff.is_regression, "Moved pragma must be detected"
-        assert "src/mod.py:1:no-cover" in diff.new
-        assert "src/mod.py:5:no-cover" in diff.removed
+        baseline_fps = ["src/mod.py:no-cover:" + _hash8("x = 1  # pragma: no cover")]
+        save_fingerprints("suppressions.json", baseline_fps)
+
+        diff = _diff_current_vs_baseline()
+        assert not diff.is_regression, "Insertion above pragma must not fail"
 
 
 class TestBroadenedSuppressionDetected:
@@ -343,7 +359,7 @@ class TestBroadenedSuppressionDetected:
         _patch_check_module(monkeypatch, tmp_path, src, pyproject)
         _temp_baseline_dir(monkeypatch, tmp_path)
 
-        baseline_fps = ["src/mod.py:1:noqa:F401"]
+        baseline_fps = ["src/mod.py:noqa:ad118458:F401"]
         save_fingerprints("suppressions.json", baseline_fps)
 
         current = cs.collect_identities()
@@ -353,8 +369,8 @@ class TestBroadenedSuppressionDetected:
         diff = diff_fingerprints(current, bl)
 
         assert diff.is_regression, "Broadened noqa must be detected"
-        assert "src/mod.py:1:noqa" in diff.new
-        assert "src/mod.py:1:noqa:F401" in diff.removed
+        assert "src/mod.py:noqa:ad118458" in diff.new
+        assert "src/mod.py:noqa:ad118458:F401" in diff.removed
 
     def test_type_ignore_broadened(self, tmp_path: Path, monkeypatch) -> None:
         # Baseline: type: ignore[arg-type]  →  Current: type: ignore (bare)
@@ -363,7 +379,7 @@ class TestBroadenedSuppressionDetected:
         _patch_check_module(monkeypatch, tmp_path, src, pyproject)
         _temp_baseline_dir(monkeypatch, tmp_path)
 
-        baseline_fps = ["src/mod.py:1:type-ignore:arg-type"]
+        baseline_fps = ["src/mod.py:type-ignore:8ad4d3a3:arg-type"]
         save_fingerprints("suppressions.json", baseline_fps)
 
         current = cs.collect_identities()
@@ -373,8 +389,8 @@ class TestBroadenedSuppressionDetected:
         diff = diff_fingerprints(current, bl)
 
         assert diff.is_regression, "Broadened type: ignore must be detected"
-        assert "src/mod.py:1:type-ignore" in diff.new
-        assert "src/mod.py:1:type-ignore:arg-type" in diff.removed
+        assert "src/mod.py:type-ignore:8ad4d3a3" in diff.new
+        assert "src/mod.py:type-ignore:8ad4d3a3:arg-type" in diff.removed
 
 
 class TestNewIdentityFails:
@@ -396,7 +412,7 @@ class TestNewIdentityFails:
         diff = diff_fingerprints(current, bl)
 
         assert diff.is_regression, "New suppression must fail"
-        assert "src/mod.py:1:noqa" in diff.new
+        assert "src/mod.py:noqa:ad118458" in diff.new
 
     def test_new_no_cover_fails(self, tmp_path: Path, monkeypatch) -> None:
         src = _make_src_tree(tmp_path, {"mod.py": "if x:  # pragma: no cover\n"})
@@ -414,7 +430,7 @@ class TestNewIdentityFails:
         diff = diff_fingerprints(current, bl)
 
         assert diff.is_regression, "New pragma: no cover must fail"
-        assert "src/mod.py:1:no-cover" in diff.new
+        assert "src/mod.py:no-cover:730b65a9" in diff.new
 
 
 class TestCleanPasses:
@@ -445,7 +461,7 @@ class TestCleanPasses:
         _patch_check_module(monkeypatch, tmp_path, src, pyproject)
         _temp_baseline_dir(monkeypatch, tmp_path)
 
-        baseline_fps = ["src/mod.py:1:noqa"]
+        baseline_fps = ["src/mod.py:noqa:8ff436de"]
         save_fingerprints("suppressions.json", baseline_fps)
 
         current = cs.collect_identities()
@@ -455,7 +471,7 @@ class TestCleanPasses:
         diff = diff_fingerprints(current, bl)
 
         assert not diff.is_regression, "Removing suppressions must pass"
-        assert "src/mod.py:1:noqa" in diff.removed
+        assert "src/mod.py:noqa:8ff436de" in diff.removed
         assert diff.new == []
 
 
@@ -474,8 +490,9 @@ class TestCountOnlyNotSufficient:
         _temp_baseline_dir(monkeypatch, tmp_path)
 
         baseline_fps = [
-            "src/mod.py:1:noqa",
-            "src/mod.py:2:type-ignore",
+            # Swapped pairing: noqa anchored to line 1's code, ignore to line 2's.
+            "src/mod.py:noqa:" + _hash8("x = 1  # type: ignore"),
+            "src/mod.py:type-ignore:" + _hash8("y = 2  # noqa"),
         ]
         save_fingerprints("suppressions.json", baseline_fps)
 
@@ -494,10 +511,10 @@ class TestCountOnlyNotSufficient:
         )
 
         assert diff.is_regression, "Count-only not sufficient: swapped identities must be detected"
-        assert "src/mod.py:2:noqa" in diff.new
-        assert "src/mod.py:1:type-ignore" in diff.new
-        assert "src/mod.py:1:noqa" in diff.removed
-        assert "src/mod.py:2:type-ignore" in diff.removed
+        assert "src/mod.py:noqa:" + _hash8("y = 2  # noqa") in diff.new
+        assert "src/mod.py:type-ignore:" + _hash8("x = 1  # type: ignore") in diff.new
+        assert "src/mod.py:noqa:" + _hash8("x = 1  # type: ignore") in diff.removed
+        assert "src/mod.py:type-ignore:" + _hash8("y = 2  # noqa") in diff.removed
 
     def test_replaced_identities_same_file_total(self, tmp_path: Path, monkeypatch) -> None:
         # Baseline: two
@@ -511,8 +528,8 @@ class TestCountOnlyNotSufficient:
         _temp_baseline_dir(monkeypatch, tmp_path)
 
         baseline_fps = [
-            "src/mod.py:1:noqa",
-            "src/mod.py:2:noqa",
+            "src/mod.py:type-ignore:" + _hash8("x = 1  # noqa"),
+            "src/mod.py:noqa:" + _hash8("y = 2  # type: ignore"),
         ]
         save_fingerprints("suppressions.json", baseline_fps)
 
@@ -529,8 +546,8 @@ class TestCountOnlyNotSufficient:
         assert diff.is_regression, (
             "Count-only not sufficient: replaced identity types must be detected"
         )
-        assert "src/mod.py:1:type-ignore" in diff.new
-        assert "src/mod.py:2:type-ignore" in diff.new
+        assert "src/mod.py:type-ignore:" + _hash8("x = 1  # type: ignore") in diff.new
+        assert "src/mod.py:type-ignore:" + _hash8("y = 2  # type: ignore") in diff.new
 
     def test_config_identity_change_same_count(self, tmp_path: Path, monkeypatch) -> None:
         # Baseline: 1 config identity (omit: tests/*)
@@ -572,7 +589,7 @@ class TestMigration:
         (bd / "suppressions.json").write_text(json.dumps(legacy))
 
         result = cs._load_baseline_identities("suppressions.json")
-        assert "src/mod.py:1:noqa" in result, (
+        assert "src/mod.py:noqa:ad118458" in result, (
             "Migrated baseline must contain fingerprint identities"
         )
 
@@ -628,7 +645,7 @@ class TestMainIntegration:
         _patch_check_module(monkeypatch, tmp_path, src, pyproject)
         _temp_baseline_dir(monkeypatch, tmp_path)
 
-        baseline_fps = ["src/mod.py:1:noqa"]
+        baseline_fps = ["src/mod.py:noqa:c0fa06b1"]
         save_fingerprints("suppressions.json", baseline_fps)
 
         monkeypatch.setattr(sys, "argv", ["check_suppressions.py"])

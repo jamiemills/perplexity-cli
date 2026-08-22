@@ -168,10 +168,15 @@ class TestCacheFilenameIsHyphenated:
 
     def test_implementation_uses_hyphenated_cache_filename(self) -> None:
         """``ConfigPaths.cache_path`` must use the hyphenated filename."""
-        source = (PROJECT_ROOT / "src/perplexity_cli/utils/config/impl.py").read_text(
-            encoding="utf-8"
-        )
-        assert '"threads-cache.json"' in source
+        for rel_path in (
+            "src/perplexity_cli/utils/config/contracts.py",
+            "src/perplexity_cli/utils/config/impl.py",
+        ):
+            source = (PROJECT_ROOT / rel_path).read_text(encoding="utf-8")
+            if "class ConfigPaths" in source:
+                assert '"threads-cache.json"' in source, rel_path
+                return
+        raise AssertionError("ConfigPaths not found in config package")
 
 
 class TestDoctorSecurityHelpMatchesImplementation:

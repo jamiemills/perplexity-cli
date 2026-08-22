@@ -26,6 +26,7 @@ Exit codes: 0 = pass, 1 = regression, 2 = tool/configuration error.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import re
@@ -82,20 +83,51 @@ def _normalise_detail(detail: str | None) -> str | None:
 
 
 def _make_identity(relative_path: str, line: int, stype: str, detail: str | None = None) -> str:
+    """Build one suppression identity (content-anchored via _ANCHOR_CONTEXT)."""
+    anchor = _ANCHOR_CONTEXT.get("text", "")
+    code = _anchored_code_line(anchor, line) if anchor else ""
+    if code:
+        digest = hashlib.sha256(code.encode("utf-8")).hexdigest()[:8]
+        if detail:
+            return f"{relative_path}:{stype}:{digest}:{detail}"
+        return f"{relative_path}:{stype}:{digest}"
     if detail:
         return f"{relative_path}:{line}:{stype}:{detail}"
     return f"{relative_path}:{line}:{stype}"
 
 
-def _extract_comment_identities(rel: str, line_no: int, comment: str) -> list[str]:
-    """Extract all suppression/pragma identities from a single comment token."""
+_ANCHOR_CONTEXT: dict[str, str] = {}
+
+
+def _anchored_code_line(text: str, line_no: int) -> str:
+    """Return the nearest code statement at/after the annotated line.
+
+    Comment-only lines are skipped so annotations sitting above a statement
+    still bind to it.  Returns an empty string when no code follows, which
+    degrades the identity to the historical line-number form.
+    """
+    lines = text.splitlines()
+    index = min(line_no, len(lines)) - 1
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if stripped and not stripped.startswith("#"):
+            return stripped[:200]
+        index += 1
+    return ""
+
+
+def _extract_comment_identities(rel: str, line_no: int, source_text: str) -> list[str]:
+    """Extract all suppression/pragma identities from one annotated line."""
+    comment_lines = source_text.splitlines()
+    raw_comment = comment_lines[line_no - 1] if line_no <= len(comment_lines) else ""
+    # The regexes operate on the comment token; re-derive from the full line.
     identities: list[str] = []
-    for m in _PRAGMA_RE.finditer(comment):
+    for m in _PRAGMA_RE.finditer(raw_comment):
         kind = m.group(1)
         detail = _normalise_detail(m.group(2))
         identities.append(_make_identity(rel, line_no, f"no-{kind}", detail))
     for stype, regex in _SUPPRESSION_TYPES:
-        for m in regex.finditer(comment):
+        for m in regex.finditer(raw_comment):
             try:
                 detail = _normalise_detail(m.group(1))
             except IndexError:
@@ -130,9 +162,26 @@ def _collect_source_identities(src_dir: Path, root: Path) -> list[str]:
             msg = f"Unreadable source file: {path}"
             raise ToolError(msg) from exc
         rel = str(path.relative_to(root))
-        for line_no, comment in _iter_comment_tokens(text, path):
-            identities.extend(_extract_comment_identities(rel, line_no, comment))
+        _ANCHOR_CONTEXT["text"] = text
+        try:
+            file_identities: list[str] = []
+            for line_no, _comment in _iter_comment_tokens(text, path):
+                file_identities.extend(_extract_comment_identities(rel, line_no, text))
+        finally:
+            _ANCHOR_CONTEXT.clear()
+        identities.extend(_disambiguate_duplicates(file_identities))
     return identities
+
+
+def _disambiguate_duplicates(file_identities: list[str]) -> list[str]:
+    """Append occurrence ordinals so byte-identical anchors stay distinct."""
+    seen: dict[str, int] = {}
+    result: list[str] = []
+    for identity in file_identities:
+        count = seen.get(identity, 0) + 1
+        seen[identity] = count
+        result.append(identity if count == 1 else f"{identity}#{count}")
+    return result
 
 
 def _extract_coverage_report_identities(report: dict[str, Any], pyproject_name: str) -> list[str]:
