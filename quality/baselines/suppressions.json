@@ -39,6 +39,8 @@
     "scripts/mutation_policy.py:nosec:fc383c73",
     "scripts/mutation_process.py:nosec:32ac0bd7",
     "scripts/mutation_process.py:nosec:7b76a52d",
+    "scripts/mutation_task_policy.py:noqa:4b192f5f:E402",
+    "scripts/mutation_task_policy.py:noqa:4b192f5f:E402#2",
     "scripts/run_mutation.py:noqa:4b192f5f:E402",
     "scripts/run_mutation.py:noqa:4e5d653a:E402",
     "scripts/run_mutation.py:noqa:834138f2:E402",

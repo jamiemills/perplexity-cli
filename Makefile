@@ -282,7 +282,7 @@ dependency-hygiene: deptry  ## Run all dependency hygiene checks
 # Mutation testing (canonical fresh-run adapters; raw mutmut is never a gate)
 # ---------------------------------------------------------------------------
 
-.PHONY: mutate mutate-results mutate-module mutate-diff mutate-estimate mutate-browse mutate-full-policy mutate-selected mutation-baseline mutation-manifest-check
+.PHONY: mutate mutate-results mutate-module mutate-diff mutate-estimate mutate-browse mutate-full-policy mutate-selected mutation-baseline mutation-manifest-check mutate-task-policy
 
 MUTATION_REPORT ?= build/reports/mutation-report.json
 MUTATION_FULL_TIMEOUT ?= 19800
@@ -329,7 +329,17 @@ ifndef BASELINE_SHA
 endif
 	@case '$(BASELINE_SHA)' in *[!0-9a-f]*) echo "BASELINE_SHA must be lowercase 40-hex" >&2; exit 2;; esac
 	uv run python scripts/mutation_manifest.py check \
-		--manifest-dir quality/baselines/mutation-baseline/$(BASELINE_SHA)
+		--manifest-dir build/reports/mutation-baseline/$(BASELINE_SHA)
+
+mutate-task-policy:  ## Run one triage task's surviving keyset through the fail-closed canonical policy
+ifndef TASK
+	$(error TASK is not set. Usage: make mutate-task-policy TASK=T009)
+endif
+	@case '$(TASK)' in T[0-9][0-9][0-9]) ;; *) echo "TASK must match Tddd" >&2; exit 2;; esac
+	uv run python scripts/mutation_task_policy.py \
+		--task $(TASK) \
+		--report-path build/reports/mutation-task-$(TASK).json \
+		--timeout-seconds $(MUTATION_SELECTED_TIMEOUT)
 
 mutate-estimate:  ## Estimate how long a full mutation run would take
 	uv run mutmut print-time-estimates

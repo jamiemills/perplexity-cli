@@ -11,14 +11,14 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: remediation-waves-execution
-- Status: ready
-- Current CSM state: NOT_STARTED
-- Cycle: 0
+- Status: executing
+- Current CSM state: DISPATCH
+- Cycle: 1
 - Commits: allowed
-- Last checkpoint: 2026-08-22 - plan created from T002 triage output (3,179 actionable across 15 tasks)
-- Last model/run: ox-alpha-free / csm-plan session of 2026-08-22
-- Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
-- Active tasks: none
+- Last checkpoint: 2026-08-22 cycle 1 - Batch A infra repair committed; T007-T011 dispatched
+- Last model/run: ox-alpha / opencode csm-build session of 2026-08-22
+- Next transition: DISPATCH -> INTEGRATE for batch A1-A5 results
+- Active tasks: T007, T008, T009, T010, T011
 - Blockers: none
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
@@ -40,11 +40,31 @@ After T003 completes, T004 (two clean full-tree proof runs), T005 (optional remo
 
 - Baseline report: `build/reports/mutation-baseline/7b0b6a41cc92b497c279d51d21c61385ee45bf05/mutation-report.json`
 - Triage artifact: `quality/baselines/mutation-triage.json` (15 task manifests, 0 unassigned)
-- Keysets manifest: same directory (`keysets.json`)
-- Source ledger: same directory (`source-ledger.json`)
+- Keysets manifest: `build/reports/mutation-baseline/7b0b6a41cc92b497c279d51d21c61385ee45bf05/keysets.json`
+- Source ledger: same directory (`source-ledger.json`) — corrected in cycle 1; the plan previously placed these under `quality/baselines/`, where they never existed
 - Canonical runner: `scripts/run_mutation.py` (535 lines); process/environment modules extracted
 - Make targets: `mutate-selected`, `mutate-key`, `mutation-triage-check`, `mutate-full-policy`
 - Full `ci-conventional` exit 0 at commit `74b3c97`
+
+### Cycle-1 tooling corrections (VALIDATE)
+
+Verified against full git history and `make -qp`: the plan's named per-wave targets
+`mutation-task-static`, `mutation-task-tests`, and `mutate-task-policy` were never implemented
+in this tree. Corrections made without changing the goal:
+
+- `make mutate-task-policy TASK=Txxx` now exists as a thin fail-closed wrapper
+  (`scripts/mutation_task_policy.py` + Makefile target): loads the task's exact keyset from the
+  triage artifact, runs it through the canonical selected-scope policy via `scripts/run_mutation.py`,
+  and exits 0 only when the report is policy-clean with scope patterns and `total_mutants`
+  covering every key. Unit-tested in `tests/test_mutation_task_policy.py`.
+- `mutation-manifest-check` pointed at a non-existent `quality/baselines/mutation-baseline/`
+  path and failed at baseline; corrected to `build/reports/mutation-baseline/` where the recorded
+  manifests live (now exits 0 for BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05).
+- Static gate per task = ruff format/check + pyright + radon on owned paths; tests gate =
+  focused pytest on owned test modules. These replace the never-built static/tests targets.
+- Batch A triage categories are survived/timeout/no_tests only (no structural-exclusion class):
+  every key must end killed; historical timeout keys require 3 consecutive serial post-repair kills;
+  no_tests keys require newly authored coverage.
 
 ## Discovered Requirements
 
@@ -198,7 +218,12 @@ After T003 completes, the following items from the execution plan must still be 
 
 ## Verification Strategy
 
-Per-key verification via fresh selected-scope runs. Per-wave verification via `mutation-task-static && mutation-task-tests && mutate-task-policy`. Batch-boundary verification via `make ci-conventional`. Final verification via `mutation-final-policy`.
+Per-key verification via fresh selected-scope runs (`make mutate-selected PATTERNS=...` or exact
+mutant-name patterns through `scripts/run_mutation.py`). Per-task closure via
+`make mutate-task-policy TASK=Txxx` (implemented cycle 1; see tooling corrections above) plus
+ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verification via
+`mutation-manifest-check BASELINE_SHA=...` then `make ci-conventional`. Final verification via
+`mutation-final-policy` / T004 double run.
 
 ## Risks And Recovery
 
@@ -218,6 +243,8 @@ Per-key verification via fresh selected-scope runs. Per-wave verification via `m
 | Timestamp | Cycle | Transition | Tasks | Evidence/result | Next state |
 | --------- | ----- | ---------- | ----- | --------------- | ---------- |
 | 2026-08-22 | 0 | INTAKE -> SAVED | - | Plan created from T002 triage output; batches designed for max parallelism | SAVED |
+| 2026-08-22 | 1 | NOT_STARTED -> RECOVER -> VALIDATE | - | Triage counts match plan (T007=519, T008=303, T009=172, T010=301, T011=186; Batch A=1,481); NORMS.md authentic (csm-scan 2026-08-04); baseline manifests verify against live tree only under build/reports/mutation-baseline/; manifest-check target had stale path and failed at baseline; mutate-task-policy/mutation-task-static/mutation-task-tests never implemented (git -S across all history) | VALIDATE corrections applied |
+| 2026-08-22 | 1 | VALIDATE -> SELECT -> DISPATCH | T007-T011 | Implemented scripts/mutation_task_policy.py + Makefile mutate-task-policy (13 unit tests green, ruff/pyright/radon clean); fixed manifest-check path (now exit 0 for baseline SHA); plan Verification Strategy corrected; pre-existing untracked .agents/reviews/ and report.json left untouched | DISPATCH batch A1-A5 |
 
 ## Completion Review
 
