@@ -76,6 +76,33 @@ _wire_query_runner_seam("load_attachments", load_attachments)
 _wire_query_runner_seam("run_async", run_async)
 _wire_query_runner_seam("AttachmentUploader", _attachment_uploader_factory)
 
+# Typed container binding (F-002 remediation): the composition root installs
+# every collaborator through one frozen object; legacy per-name seams remain
+# during migration and are removed once no reader remains.
+from perplexity_cli.query_deps import QueryDeps, bind_query_deps  # noqa: E402
+
+bind_query_deps(
+    QueryDeps(
+        handle_error=handle_error,
+        get_logger=get_logger,
+        redact_path=redact_path,
+        redact_text=redact_text,
+        redact_url=redact_url,
+        get_config_paths=get_config_paths,
+        get_save_cookies_enabled=get_save_cookies_enabled,
+        get_formatter=get_formatter,
+        list_formatters=list_formatters,
+        StyleManager=StyleManager,
+        TokenManager=TokenManager,
+        load_token_optional=load_token_optional,
+        PerplexityAPI=PerplexityAPI,
+        resolve_file_arguments=resolve_file_arguments,
+        load_attachments=load_attachments,
+        run_async=run_async,
+        AttachmentUploader=_attachment_uploader_factory,
+    )
+)
+
 
 @click.group()
 @click.version_option(version=get_version())

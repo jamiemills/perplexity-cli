@@ -87,6 +87,8 @@ class _Formatter(Protocol):
 # patchable by tests exactly as the previous runtime-resolved bindings were.
 
 
+from perplexity_cli.query_deps import require_query_deps
+
 handle_error: Any = None
 get_logger: Any = None
 redact_path: Any = None
@@ -379,7 +381,7 @@ def get_query_formatter(output_format: str | None) -> tuple[str, _Formatter]:
     logger = get_logger()
     resolved_output_format = output_format or "rich"
     try:
-        formatter = get_formatter(resolved_output_format)
+        formatter = require_query_deps().get_formatter(resolved_output_format)
     except ValueError:
         logger.exception("Invalid formatter: %s", resolved_output_format)
         raise

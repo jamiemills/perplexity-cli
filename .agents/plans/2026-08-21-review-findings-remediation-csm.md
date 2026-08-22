@@ -12,8 +12,8 @@ format: csm-plan/1
 
 - Plan ID: review-findings-remediation
 - Status: in_progress
-- Current CSM state: CHECKPOINT
-- Cycle: 1
+- Current CSM state: SELECT
+- Cycle: 2
 - Commits: allowed
 - Last checkpoint: 2026-08-21 - G1 verified: T001 cycle broken (pyright src/ = 0/0), T002 content-anchored ratchet with ordinals (97 suite tests, one baseline regeneration), T003 scripts-side FBT + drift-guard test, T004 composite action (0 setup-uv in workflows); full ci-conventional exit 0. Prior: invoked at commit 93a22fa; prior checkpoint: plan drafted from review report `.agents/reviews/2026-08-21-perplexity-cli-review.md` (findings F-001..F-006 at pinned SHA a78ec7f)
 - Last model/run: ox-alpha-free / csm-plan session of 2026-08-21
@@ -158,7 +158,7 @@ Critical path: T002 -> T006 (scheme stability, then relocation-only refresh). Pa
    - Acceptance evidence: outputs + grep counts.
    - Repair attempts: 0
    - Recovery note: per-workflow git checkout of the two files reverts cleanly.
-5. [pending] Replace Any-typed service-locator seams with typed dependency container
+5. [in_progress] Replace Any-typed service-locator seams with typed dependency container
    - Task ID: T005
    - Depends on: T001–T004 (checkpoint stability, ratchet re-key)
    - Parallel group: G2
@@ -228,7 +228,7 @@ Cheapest-first per task: ruff format/check → pyright → focused pytest → ta
 | 2026-08-21 | 1 | INTEGRATE -> VERIFY | T002 | Content-hash identities + occurrence ordinals; 43 test literals migrated mechanically; move-tolerance semantics tests added; duplicate-pair regression covered; baseline regenerated; 97 suppression-suite tests pass | REVIEW |
 | 2026-08-21 | 1 | INTEGRATE -> VERIFY | T003 | FBT un-ignored for scripts/** (already clean), rationale comment, drift-guard test pinning ruff-FBT + .semgrep.yml boolean rule pairing | VERIFY |
 | 2026-08-21 | 1 | INTEGRATE -> VERIFY | T004 | Composite action created; 16+1 preambles replaced (matrix/3.13 variants handled); workflow assertions updated; 2 new composite tests; actionlint green | CHECKPOINT |
-| 2026-08-21 | 1 | VERIFY -> CHECKPOINT | T001-T004 | Gate repairs: formatting, mutation_manifest issues-init (latent), cache-literal test retargeted to ConfigPaths home, coupling baseline refreshed for legitimate metric shift; final ci-conventional exit 0 | SELECT T005 |
+| 2026-08-21 | 1 | VERIFY -> CHECKPOINT | T001-T004 | Gate repairs: formatting, mutation_manifest issues-init (latent), cache-literal test retargeted to ConfigPaths home, coupling baseline refreshed for legitimate metric shift; final ci-conventional exit 0; committed c3806cc | SELECT T005 |
 
 ## Completion Review
 
