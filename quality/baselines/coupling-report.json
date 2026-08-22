@@ -712,6 +712,25 @@
       "ca": 2,
       "ce": 1,
       "dependencies": [
+        "query_runner"
+      ],
+      "dependents": [
+        "cli",
+        "query_runner"
+      ],
+      "distance": 0.667,
+      "finding_id": "query_deps",
+      "instability": 0.333,
+      "module": "query_deps",
+      "zone_of_pain": false,
+      "zone_of_uselessness": false
+    },
+    {
+      "abstractness": 0.0,
+      "advisory": true,
+      "ca": 2,
+      "ce": 1,
+      "dependencies": [
         "utils.exceptions"
       ],
       "dependents": [
@@ -1796,24 +1815,25 @@
       "abstractness": 0.0,
       "advisory": true,
       "ca": 1,
-      "ce": 9,
+      "ce": 10,
       "dependencies": [
         "_types",
         "api.models",
         "auth.models",
         "envelope",
         "ports",
+        "query_deps",
         "query_streaming",
         "utils.attachment_models",
         "utils.exceptions",
         "utils.version"
       ],
       "dependents": [
-        "cli"
+        "query_deps"
       ],
-      "distance": 0.1,
+      "distance": 0.091,
       "finding_id": "query_runner",
-      "instability": 0.9,
+      "instability": 0.909,
       "module": "query_runner",
       "zone_of_pain": false,
       "zone_of_uselessness": false
@@ -2069,7 +2089,7 @@
         "commands",
         "error_handler",
         "formatting",
-        "query_runner",
+        "query_deps",
         "utils.async_bridge",
         "utils.config",
         "utils.file_handler",
@@ -2257,7 +2277,7 @@
       "zone_of_uselessness": false
     }
   ],
-  "flagged_count": 29,
+  "flagged_count": 30,
   "flagged_identities": [
     "api.endpoints",
     "api.models",
@@ -2276,6 +2296,7 @@
     "formatting.plain",
     "formatting.registry",
     "formatting.rich",
+    "query_deps",
     "runners",
     "threads.exporter",
     "utils.atomic_write",
@@ -2292,7 +2313,7 @@
   "graph_error": false,
   "report_version": "1",
   "threshold": 0.3,
-  "timestamp": "2026-08-22T05:35:44.433234+00:00",
-  "total_modules": 105,
+  "timestamp": "2026-08-22T08:32:26.923181+00:00",
+  "total_modules": 106,
   "trend": null
 }
