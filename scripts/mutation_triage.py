@@ -139,7 +139,7 @@ def build(report_path: Path) -> dict[str, Any]:
             tid = "UNASSIGNED"
         tasks[tid].append(f["key"])
         cats_by_task[tid][f["category"]] += 1
-    manifests = []
+    manifests: list[dict[str, Any]] = []
     for tid in sorted(tasks):
         keys = sorted(tasks[tid])
         digest = hashlib.sha256(json.dumps(keys, sort_keys=True).encode()).hexdigest()

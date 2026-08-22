@@ -27,7 +27,6 @@ from scripts.mutation_evidence import (  # noqa: E402  # owner: quality-infrastr
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 LEDGER_SCHEMA_VERSION = 1
 _SOURCE_ROOT_NAME = "src"
