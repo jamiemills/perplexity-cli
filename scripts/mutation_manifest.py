@@ -20,7 +20,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""}:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.mutation_evidence import GeneratedSourceError, enumerate_generated_mutants
+from scripts.mutation_evidence import (  # noqa: E402  # owner: quality-infrastructure; reason: package import follows the direct-script repository-root bootstrap
+    GeneratedSourceError,
+    enumerate_generated_mutants,
+)
 
 logger = logging.getLogger(__name__)
 

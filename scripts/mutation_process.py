@@ -45,7 +45,7 @@ def _terminate_process_group(process_group_id: int) -> None:
     for send in (signal.SIGTERM, signal.SIGKILL):
         try:
             os.killpg(process_group_id, send)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
             return
         if send == signal.SIGTERM:
             time.sleep(_termination_grace_s())
@@ -87,7 +87,10 @@ def launch_mutmut(argv_suffix: tuple[str, ...], budget: int) -> None:
         env=_sanitised_environment(),
         start_new_session=True,
     )
-    forwarder.process_group_id = os.getpgid(process.pid)
+    try:
+        forwarder.process_group_id = os.getpgid(process.pid)
+    except ProcessLookupError:
+        forwarder.process_group_id = process.pid
     previous = _install_forwarders(forwarder)
     try:
         returncode = process.wait(timeout=budget)
