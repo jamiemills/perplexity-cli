@@ -278,6 +278,9 @@ def test_mutmut_ignores_repository_infrastructure_tests() -> None:
         "--ignore=tests/test_quality_gates_documentation.py",
         "--ignore=tests/test_mutation_evidence.py",
         "--ignore=tests/test_mutation_test_review_ledger.py",
+        "--ignore=tests/test_mutation_manifest.py",
+        "--ignore=tests/test_run_mutation.py",
+        "--ignore=tests/test_query_deps.py",
     }
     assert required <= arguments
 
