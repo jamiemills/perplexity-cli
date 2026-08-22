@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts import mutation_environment as me
 from scripts import run_mutation as rm
 from scripts.mutation_evidence import MutationSelection, matches_selection
 
@@ -148,7 +149,7 @@ def test_execute_writes_schema_valid_failure_report(
     sandbox_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def explode() -> rm.policy.EnvironmentIdentity:
-        raise rm.EnvironmentMismatchError("verification failed")
+        raise me.EnvironmentMismatchError("verification failed")
 
     monkeypatch.setattr(rm, "verify_environment", explode)
     report_path = sandbox_root / "reports" / "failure.json"
@@ -182,7 +183,7 @@ class TestLaunchMutmut:
             "MUTMUT_PREFIX",
             (rm.sys.executable, "-c", "import sys; sys.exit(7)"),
         )
-        with pytest.raises(rm.EnvironmentMismatchError, match="status 7"):
+        with pytest.raises(me.EnvironmentMismatchError, match="status 7"):
             rm.launch_mutmut((), 30)
 
     def test_timeout_terminates_group_and_raises(
@@ -193,7 +194,7 @@ class TestLaunchMutmut:
             "MUTMUT_PREFIX",
             (rm.sys.executable, "-c", "import time; time.sleep(30)"),
         )
-        with pytest.raises(rm.EnvironmentMismatchError, match="timed out"):
+        with pytest.raises(me.EnvironmentMismatchError, match="timed out"):
             rm.launch_mutmut((), 1)
 
 
@@ -227,16 +228,16 @@ class TestRecordVerification:
         record.write_text("\n".join(lines) + f"\n{record.relative_to(tmp_path).as_posix()},,\n")
         if mutate == "extra":
             (package / "implant.py").write_bytes(b"evil")
-        monkeypatch.setattr(rm.sys, "path", [str(tmp_path), *rm.sys.path])
+        monkeypatch.setattr(rm.sys, "path", [str(tmp_path), *me.sys.path])
         monkeypatch.setattr(
-            rm.importlib.metadata,
+            me.importlib.metadata,
             "version",
             lambda _name: rm.policy.LOCKED_MUTMUT_VERSION,
         )
 
     def test_clean_tree_verifies(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         self._install_fake(monkeypatch, tmp_path, "clean")
-        distribution_digest, record_digest = rm._distribution_identity()
+        distribution_digest, record_digest = me._distribution_identity()
         assert len(distribution_digest) == len(record_digest) == 64
         assert all(ch in "0123456789abcdef" for ch in distribution_digest + record_digest)
 
@@ -244,22 +245,22 @@ class TestRecordVerification:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         self._install_fake(monkeypatch, tmp_path, "tamper")
-        with pytest.raises(rm.EnvironmentMismatchError, match="tampered"):
-            rm._distribution_identity()
+        with pytest.raises(me.EnvironmentMismatchError, match="tampered"):
+            me._distribution_identity()
 
     def test_missing_file_is_rejected(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         self._install_fake(monkeypatch, tmp_path, "missing")
-        with pytest.raises(rm.EnvironmentMismatchError, match="missing"):
-            rm._distribution_identity()
+        with pytest.raises(me.EnvironmentMismatchError, match="missing"):
+            me._distribution_identity()
 
     def test_unlisted_file_is_rejected(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         self._install_fake(monkeypatch, tmp_path, "extra")
-        with pytest.raises(rm.EnvironmentMismatchError, match="not recorded"):
-            rm._distribution_identity()
+        with pytest.raises(me.EnvironmentMismatchError, match="not recorded"):
+            me._distribution_identity()
 
 
 class TestMakeInjectionGuards:

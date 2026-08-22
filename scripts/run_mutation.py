@@ -8,15 +8,11 @@ generated/result evidence and always publishes a schema-valid report.
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
-import importlib.metadata
 import json
 import logging
 import os
-import platform
 import re
-import signal
 import subprocess  # nosec B404  # owner: quality-infrastructure; reason: internally assembled argv without a shell
 import sys
 import time
@@ -24,8 +20,7 @@ import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import FrameType
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""}:
@@ -34,11 +29,18 @@ if __package__ in {None, ""}:
 from scripts import (  # noqa: E402  # owner: quality-infrastructure; reason: package import follows the direct-script repository-root bootstrap
     mutation_policy as policy,
 )
+from scripts.mutation_environment import (  # noqa: E402  # owner: quality-infrastructure; reason: package import follows the direct-script repository-root bootstrap
+    EnvironmentMismatchError,
+    verify_environment,
+)
 from scripts.mutation_evidence import (  # noqa: E402  # owner: quality-infrastructure; reason: package import follows the direct-script repository-root bootstrap
     MutationSelection,
     SourceDocument,
     StructuralExclusion,
     enumerate_generated_mutants,
+)
+from scripts.mutation_process import (  # noqa: E402  # owner: quality-infrastructure; reason: package import follows the direct-script repository-root bootstrap
+    launch_mutmut,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,8 +55,9 @@ SELECTED_TIMEOUT_CAP_S = 2_100
 REPORT_RESERVE_S = 120
 PUBLICATION_RESERVE_BY_SCOPE: dict[str, int] = {"full": 600, "selected": 300}
 TERMINATION_GRACE_S = 5
+DeclarationKindLiteral = Literal["abstract-method", "protocol-method"]
+
 _CANDIDATE_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
-_SANITISED_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "VIRTUAL_ENV")
 
 
 class RunnerUsageError(ValueError):
@@ -63,10 +66,6 @@ class RunnerUsageError(ValueError):
 
 class StaleWorkspaceError(RuntimeError):
     """Raised when a previous mutants workspace already exists."""
-
-
-class EnvironmentMismatchError(RuntimeError):
-    """Raised when the installed Mutmut environment cannot be verified."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,148 +83,6 @@ class RunRequest:
 def _lexists(path: Path) -> bool:
     """Return whether any filesystem entry exists at ``path``."""
     return os.path.lexists(path)
-
-
-def _git_output(arguments: tuple[str, ...]) -> str:
-    """Run Git with assembled argv and return stripped stdout."""
-    result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: fixed git argv without a shell
-        ("git", *arguments),
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=60,
-    )
-    if result.returncode != 0:
-        msg = f"git {arguments[0]} failed with status {result.returncode}"
-        raise EnvironmentMismatchError(msg)
-    return result.stdout.strip()
-
-
-def _file_digest(path: Path) -> str:
-    """Return the SHA-256 digest of a file's bytes."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _verify_record_entries(dist_root: Path, record: Path) -> tuple[dict[str, str], frozenset[str]]:
-    """Hash every digest-bearing RECORD entry against actual bytes.
-
-    Args:
-        dist_root: Installed distribution root directory.
-        record: Path to the dist-info ``RECORD`` file.
-
-    Returns:
-        Mapping of relative path to verified SHA-256 plus the full set of
-        recorded paths (including digest-free entries such as ``RECORD``).
-
-    Raises:
-        EnvironmentMismatchError: If an entry is missing or tampered.
-    """
-    verified: dict[str, str] = {}
-    listed: set[str] = set()
-    for line in record.read_text(encoding="utf-8").splitlines():
-        relative, expected, _size = line.rsplit(",", 2)
-        listed.add(relative)
-        if not expected:
-            continue
-        target = dist_root / relative
-        if not target.is_file():
-            msg = f"installed Mutmut file is missing: {relative}"
-            raise EnvironmentMismatchError(msg)
-        encoded = base64.urlsafe_b64encode(hashlib.sha256(target.read_bytes()).digest())
-        if f"sha256={encoded.rstrip(b'=').decode()}" != expected:
-            msg = f"installed Mutmut file is tampered: {relative}"
-            raise EnvironmentMismatchError(msg)
-        verified[relative] = _file_digest(target)
-    return verified, frozenset(listed)
-
-
-def _reject_unlisted_files(dist_root: Path, record: Path, listed: frozenset[str]) -> None:
-    """Fail when installed Mutmut files are absent from ``RECORD``."""
-    for parent in (dist_root / "mutmut", record.parent):
-        for candidate in sorted(parent.rglob("*")):
-            if not candidate.is_file():
-                continue
-            relative = candidate.relative_to(dist_root).as_posix()
-            if relative not in listed:
-                msg = f"installed Mutmut file is not recorded: {relative}"
-                raise EnvironmentMismatchError(msg)
-
-
-def _find_record() -> tuple[Path, Path]:
-    """Locate the installed Mutmut distribution root and its RECORD file."""
-    dist_info = f"mutmut-{policy.LOCKED_MUTMUT_VERSION}.dist-info"
-    for entry in sys.path:
-        record = Path(entry) / dist_info / "RECORD"
-        if record.is_file():
-            return record.parent.parent, record
-    msg = f"Mutmut {dist_info} RECORD was not found on sys.path"
-    raise EnvironmentMismatchError(msg)
-
-
-def _distribution_identity() -> tuple[str, str]:
-    """Verify the installed Mutmut tree and return its digests."""
-    dist_root, record = _find_record()
-    installed_version = importlib.metadata.version("mutmut")
-    if installed_version != policy.LOCKED_MUTMUT_VERSION:
-        msg = f"Mutmut version {installed_version} is not locked {policy.LOCKED_MUTMUT_VERSION}"
-        raise EnvironmentMismatchError(msg)
-    verified, listed = _verify_record_entries(dist_root, record)
-    _reject_unlisted_files(dist_root, record, listed)
-    record_digest = hashlib.sha256(record.read_bytes()).hexdigest()
-    combined = "".join(f"{path}\0{digest}\n" for path, digest in sorted(verified.items()))
-    return hashlib.sha256(combined.encode()).hexdigest(), record_digest
-
-
-def _uv_version() -> str:
-    """Return the installed uv version string."""
-    result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: fixed uv argv without a shell
-        ("uv", "--version"),
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=30,
-    )
-    if result.returncode != 0:
-        msg = f"uv --version failed with status {result.returncode}"
-        raise EnvironmentMismatchError(msg)
-    return result.stdout.strip()
-
-
-def _installed_distributions_digest() -> str:
-    """Digest the sorted installed distribution inventory."""
-    inventory = sorted(
-        f"{dist.metadata['Name']}\0{dist.version}"
-        for dist in importlib.metadata.distributions()
-        if dist.metadata.get("Name")
-    )
-    payload = "".join(f"{entry}\n" for entry in inventory)
-    return hashlib.sha256(payload.encode()).hexdigest()
-
-
-def verify_environment() -> policy.EnvironmentIdentity:
-    """Verify installed Mutmut and build authoritative environment identity.
-
-    Returns:
-        Complete environment identity for provenance-bound reports.
-
-    Raises:
-        EnvironmentMismatchError: If verification fails.
-    """
-    mutmut_digest, record_digest = _distribution_identity()
-    return policy.EnvironmentIdentity(
-        python_implementation=platform.python_implementation(),
-        python_version=platform.python_version(),
-        python_cache_tag=sys.implementation.cache_tag,
-        platform=platform.platform(terse=True),
-        uv_version=_uv_version(),
-        installed_distributions_digest=_installed_distributions_digest(),
-        mutmut_distribution_digest=mutmut_digest,
-        mutmut_record_digest=record_digest,
-        locked_wheel_filename=policy.LOCKED_WHEEL_FILENAME,
-        locked_wheel_sha256=policy.LOCKED_WHEEL_SHA256,
-    )
 
 
 def _module_pattern(relative_source: str) -> str:
@@ -334,99 +191,22 @@ def resolve_budget(request: RunRequest, setup_started: float) -> int:
     return budget
 
 
-def _sanitised_environment() -> dict[str, str]:
-    """Build a minimal credential-free, offline-forced child environment."""
-    source = os.environ
-    child = {key: source[key] for key in _SANITISED_ENV_KEYS if key in source}
-    child["UV_OFFLINE"] = "1"
-    return child
+def _git_output(arguments: tuple[str, ...]) -> str:
+    """Run Git with assembled argv and return stripped stdout."""
+    from scripts.mutation_environment import EnvironmentMismatchError
 
-
-def _termination_grace_s() -> int:
-    """Return the bounded teardown grace period before SIGKILL."""
-    return TERMINATION_GRACE_S
-
-
-def _terminate_process_group(process_group_id: int) -> None:
-    """Terminate then kill one process group after a grace period."""
-    for send in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(process_group_id, send)
-        except ProcessLookupError:
-            return
-        if send == signal.SIGTERM:
-            time.sleep(_termination_grace_s())
-
-
-class _SignalForwarder:
-    """Forward termination signals to the mutation process group."""
-
-    def __init__(self) -> None:
-        self.process_group_id: int | None = None
-
-    def __call__(self, signum: int, _frame: FrameType | None) -> None:
-        if self.process_group_id is not None:
-            _terminate_process_group(self.process_group_id)
-            self._exit(signum)
-
-    @staticmethod
-    def _exit(signum: int) -> None:
-        forwarded = f"forwarded signal {signum} to the mutation group"
-        raise SystemExit(forwarded)
-
-
-def launch_mutmut(argv_suffix: tuple[str, ...], budget: int) -> None:
-    """Run Mutmut inside its own process group with a hard budget.
-
-    Args:
-        argv_suffix: Arguments after ``run`` (patterns for selected scope).
-        budget: Maximum seconds before controlled termination.
-
-    Raises:
-        EnvironmentMismatchError: On timeout or non-zero Mutmut exit.
-    """
-    command = (*policy.MUTMUT_PREFIX, "run", *argv_suffix)
-    logger.info("Running %s with %ss budget", " ".join(command), budget)
-    forwarder = _SignalForwarder()
-    process = subprocess.Popen(  # nosec B603  # owner: quality-infrastructure; reason: pinned mutmut argv without a shell
-        command,
+    result = subprocess.run(  # nosec B603  # owner: quality-infrastructure; reason: fixed git argv without a shell
+        ("git", *arguments),
         cwd=PROJECT_ROOT,
-        env=_sanitised_environment(),
-        start_new_session=True,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
     )
-    forwarder.process_group_id = os.getpgid(process.pid)
-    previous = _install_forwarders(forwarder)
-    try:
-        returncode = process.wait(timeout=budget)
-        _raise_on_infrastructure_exit(returncode)
-    except subprocess.TimeoutExpired:
-        _log_timeout(budget)
-        _terminate_process_group(forwarder.process_group_id)
-        msg = f"mutation run timed out after {budget}s"
-        raise EnvironmentMismatchError(msg) from None
-    finally:
-        signal.signal(signal.SIGINT, previous[signal.SIGINT])
-        signal.signal(signal.SIGTERM, previous[signal.SIGTERM])
-        if process.poll() is None:
-            _terminate_process_group(forwarder.process_group_id)
-            process.kill()
-            process.wait()
-
-
-def _install_forwarders(forwarder: _SignalForwarder) -> dict[int, Any]:
-    """Install SIGINT/SIGTERM forwarders and return the previous handlers."""
-    signums: tuple[int, int] = (signal.SIGINT, signal.SIGTERM)
-    previous: dict[int, Any] = {signum: signal.getsignal(signum) for signum in signums}
-    for signum in signums:
-        signal.signal(signum, forwarder)
-    return previous
-
-
-def _raise_on_infrastructure_exit(returncode: int) -> None:
-    """Treat any Mutmut exit beyond clean/findings as an infrastructure error."""
-    if returncode not in (0, 1):
-        msg = f"mutmut exited with status {returncode}"
+    if result.returncode != 0:
+        msg = f"git {arguments[0]} failed with status {result.returncode}"
         raise EnvironmentMismatchError(msg)
+    return result.stdout.strip()
 
 
 def collect_generated_keys() -> tuple[str, ...]:
@@ -540,15 +320,6 @@ def _failure_report(selection: MutationSelection, message: str) -> policy.Mutati
 def _log_failure(kind: str) -> None:
     """Log one controlled failure kind without reflecting its payload."""
     logger.error("mutation run failed: %s", kind)
-
-
-def _log_timeout(budget: int) -> None:
-    """Log a budget overrun before group termination."""
-    logger.error("Mutation run exceeded its %ss budget; terminating group", budget)
-
-
-_DECLARATION_KINDS = ("abstract-method", "protocol-method")
-DeclarationKindLiteral = Literal["abstract-method", "protocol-method"]
 
 
 def _validated_kind(raw: str) -> DeclarationKindLiteral:
