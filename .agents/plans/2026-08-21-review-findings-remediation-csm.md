@@ -12,10 +12,10 @@ format: csm-plan/1
 
 - Plan ID: review-findings-remediation
 - Status: in_progress
-- Current CSM state: SELECT
+- Current CSM state: CHECKPOINT
 - Cycle: 2
 - Commits: allowed
-- Last checkpoint: 2026-08-21 - G1 verified: T001 cycle broken (pyright src/ = 0/0), T002 content-anchored ratchet with ordinals (97 suite tests, one baseline regeneration), T003 scripts-side FBT + drift-guard test, T004 composite action (0 setup-uv in workflows); full ci-conventional exit 0. Prior: invoked at commit 93a22fa; prior checkpoint: plan drafted from review report `.agents/reviews/2026-08-21-perplexity-cli-review.md` (findings F-001..F-006 at pinned SHA a78ec7f)
+- Last checkpoint: 2026-08-21 - T005 completed: Any=None count 0, QueryDeps container, 79 focused tests pass, ci-conventional exit 0. Prior: G1 verified: T001 cycle broken (pyright src/ = 0/0), T002 content-anchored ratchet with ordinals (97 suite tests, one baseline regeneration), T003 scripts-side FBT + drift-guard test, T004 composite action (0 setup-uv in workflows); full ci-conventional exit 0. Prior: invoked at commit 93a22fa; prior checkpoint: plan drafted from review report `.agents/reviews/2026-08-21-perplexity-cli-review.md` (findings F-001..F-006 at pinned SHA a78ec7f)
 - Last model/run: ox-alpha-free / csm-plan session of 2026-08-21
 - Next transition: RECOVER -> SELECT (G1 batch)
 - Active tasks: none
@@ -170,9 +170,10 @@ Critical path: T002 -> T006 (scheme stability, then relocation-only refresh). Pa
    - Acceptance signal: `UV_OFFLINE=1 npm_config_offline=true uv run pytest tests/test_query_runner.py tests/test_api_client.py tests/test_formatters.py tests/test_oauth_handler.py -q` passes AND `grep -rc "Any = None" src/perplexity_cli/query_runner.py` prints `0`.
    - Validation: full ordinary suite via `make test`; pyright strict clean; radon clean; `make ci-conventional` green.
    - Acceptance evidence: grep proof, suite outputs, independent review verdict.
-   - Repair attempts: 0
+   - Completed evidence: Any=None count 0; typed QueryDeps container; cli binds via bind_query_deps; 79 focused tests pass; full ci-conventional exit 0. PEP 562 __getattr__ + _sync_legacy_attributes for legacy @patch compatibility.
+   - Repair attempts: 3
    - Recovery note: feature-scale diff — commit in two steps (container introduction with globals still present, then deletion sweep) so bisectable rollback exists.
-6. [pending] Split run_mutation.py into process and environment modules
+6. [in_progress] Split run_mutation.py into process and environment modules
    - Task ID: T006
    - Depends on: T002 (identity scheme stable so only genuine relocations need refresh), T005 checkpoint (review bandwidth)
    - Parallel group: G3
@@ -229,6 +230,7 @@ Cheapest-first per task: ruff format/check → pyright → focused pytest → ta
 | 2026-08-21 | 1 | INTEGRATE -> VERIFY | T003 | FBT un-ignored for scripts/** (already clean), rationale comment, drift-guard test pinning ruff-FBT + .semgrep.yml boolean rule pairing | VERIFY |
 | 2026-08-21 | 1 | INTEGRATE -> VERIFY | T004 | Composite action created; 16+1 preambles replaced (matrix/3.13 variants handled); workflow assertions updated; 2 new composite tests; actionlint green | CHECKPOINT |
 | 2026-08-21 | 1 | VERIFY -> CHECKPOINT | T001-T004 | Gate repairs: formatting, mutation_manifest issues-init (latent), cache-literal test retargeted to ConfigPaths home, coupling baseline refreshed for legitimate metric shift; final ci-conventional exit 0; committed c3806cc | SELECT T005 |
+| 2026-08-21 | 2 | REPAIR -> CHECKPOINT | T005 | All suites green; ci-conventional exit 0; architecture manifest updated for query_deps; baselines refreshed | SELECT T006 |
 
 ## Completion Review
 

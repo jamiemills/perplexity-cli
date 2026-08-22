@@ -30,6 +30,7 @@ from perplexity_cli.query_runner import (
 )
 from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.exceptions import AuthenticationError, UpstreamSchemaError
+from tests.helpers.query_deps import patch_query_deps, patched_dep
 
 
 def _make_api_mock(answer: Answer | None = None):
@@ -58,7 +59,7 @@ def _default_options(**overrides: object) -> QueryOptions:
 
 def test_build_final_query_appends_style():
     """Configured style text is appended to the outgoing query."""
-    with patch("perplexity_cli.query_runner.StyleManager", autospec=True) as mock_sm_class:
+    with patched_dep("StyleManager", Mock(autospec=True)) as mock_sm_class:
         mock_sm_class.return_value.load_style.return_value = "be concise"
 
         result = build_final_query("What is Python?")
@@ -77,12 +78,8 @@ def test_get_query_formatter_defaults_to_rich():
 def test_get_query_formatter_invalid_format_exits(capsys):
     """Invalid formatter names produce a clean user-facing failure."""
     with (
-        patch("perplexity_cli.query_runner.TokenManager", return_value=Mock(), autospec=True),
-        patch(
-            "perplexity_cli.query_runner.load_token_optional",
-            return_value=("token-123", None),
-            autospec=True,
-        ),
+        patched_dep("TokenManager", Mock(return_value=Mock())),
+        patched_dep("load_token_optional", Mock(return_value=("token-123", None))),
         patch(
             "perplexity_cli.query_runner.resolve_attachment_urls", return_value=[], autospec=True
         ),
@@ -141,12 +138,12 @@ def test_log_query_debug_context_logs_redacted_environment_context(monkeypatch, 
     token_path = tmp_path / "token.json"
     token_path.write_text("secret", encoding="utf-8")
     paths = Mock(token_path=token_path)
-    monkeypatch.setattr("perplexity_cli.query_runner.get_config_paths", lambda: paths)
-    monkeypatch.setattr("perplexity_cli.query_runner.get_save_cookies_enabled", lambda: False)
-    monkeypatch.setattr("perplexity_cli.query_runner.redact_path", lambda value: "<path>")
-    monkeypatch.setattr(
-        "perplexity_cli.query_runner.redact_text",
-        lambda value: "<query>",
+    patch_query_deps(monkeypatch, get_config_paths=lambda: paths)
+    patch_query_deps(monkeypatch, get_save_cookies_enabled=lambda: False)
+    patch_query_deps(monkeypatch, redact_path=lambda value: "<path>")
+    patch_query_deps(
+        monkeypatch,
+        redact_text=lambda value: "<query>",
     )
     monkeypatch.setattr("perplexity_cli.query_runner.socket.gethostname", lambda: "runner")
 
@@ -171,13 +168,13 @@ def test_log_query_debug_context_handles_hostname_failure(monkeypatch, caplog):
         "perplexity_cli.query_runner.socket.gethostname",
         Mock(side_effect=OSError("hostname unavailable")),
     )
-    monkeypatch.setattr(
-        "perplexity_cli.query_runner.get_config_paths",
-        lambda: Mock(token_path=Mock(exists=lambda: False)),
+    patch_query_deps(
+        monkeypatch,
+        get_config_paths=lambda: Mock(token_path=Mock(exists=lambda: False)),
     )
-    monkeypatch.setattr("perplexity_cli.query_runner.get_save_cookies_enabled", lambda: True)
-    monkeypatch.setattr("perplexity_cli.query_runner.redact_path", lambda value: "<path>")
-    monkeypatch.setattr("perplexity_cli.query_runner.redact_text", lambda value: "<query>")
+    patch_query_deps(monkeypatch, get_save_cookies_enabled=lambda: True)
+    patch_query_deps(monkeypatch, redact_path=lambda value: "<path>")
+    patch_query_deps(monkeypatch, redact_text=lambda value: "<query>")
 
     with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
         log_query_debug_context("query", None, "stream")
@@ -268,7 +265,7 @@ def test_resolve_and_upload_forwards_validated_auth_and_cookies(monkeypatch, tmp
     resolver = Mock(return_value=[file_path])
     auth_validator = Mock(return_value="validated-token")
     loader = Mock(return_value=["https://file.test/one"])
-    monkeypatch.setattr("perplexity_cli.query_runner.resolve_file_arguments", resolver)
+    patch_query_deps(monkeypatch, resolve_file_arguments=resolver)
     monkeypatch.setattr("perplexity_cli.query_runner._require_auth_for_attachments", auth_validator)
     monkeypatch.setattr("perplexity_cli.query_runner._load_and_upload_attachments", loader)
 
@@ -299,7 +296,7 @@ def test_load_and_upload_attachments_returns_empty_without_files(monkeypatch):
     """No loaded attachments means no uploader call and an empty URL list."""
     loader = Mock(return_value=[])
     uploader = Mock()
-    monkeypatch.setattr("perplexity_cli.query_runner.load_attachments", loader)
+    patch_query_deps(monkeypatch, load_attachments=loader)
     monkeypatch.setattr("perplexity_cli.query_runner._do_s3_upload", uploader)
 
     result = _load_and_upload_attachments([], "token", None, Mock())
@@ -316,8 +313,8 @@ def test_do_s3_upload_constructs_uploader_with_token_and_cookies(monkeypatch):
     uploader.upload_files.return_value = Mock()
     uploader_class = Mock(return_value=uploader)
     async_runner = Mock(return_value=["https://file.test/one"])
-    monkeypatch.setattr("perplexity_cli.query_runner.AttachmentUploader", uploader_class)
-    monkeypatch.setattr("perplexity_cli.query_runner.run_async", async_runner)
+    patch_query_deps(monkeypatch, AttachmentUploader=uploader_class)
+    patch_query_deps(monkeypatch, run_async=async_runner)
 
     result = _do_s3_upload(
         [attachment],
@@ -359,21 +356,13 @@ def test_run_query_command_non_streaming_renders_answer(capsys):
     mock_api = _make_api_mock(answer)
 
     with (
-        patch("perplexity_cli.query_runner.TokenManager", return_value=Mock(), autospec=True),
-        patch(
-            "perplexity_cli.query_runner.load_token_optional",
-            return_value=("token-123", None),
-            autospec=True,
-        ),
+        patched_dep("TokenManager", Mock(return_value=Mock())),
+        patched_dep("load_token_optional", Mock(return_value=("token-123", None))),
         patch(
             "perplexity_cli.query_runner.resolve_attachment_urls", return_value=[], autospec=True
         ),
-        patch("perplexity_cli.query_runner.PerplexityAPI", return_value=mock_api, autospec=True),
-        patch(
-            "perplexity_cli.query_runner.build_final_query",
-            return_value="final query",
-            autospec=True,
-        ),
+        patched_dep("PerplexityAPI", Mock(return_value=mock_api)),
+        patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
     ):
         run_query_command(
             ctx_obj={"debug": False},
@@ -395,23 +384,13 @@ def test_run_query_command_streaming_delegates_to_stream_handler():
     mock_api = _make_api_mock()
 
     with (
-        patch("perplexity_cli.query_runner.TokenManager", return_value=Mock(), autospec=True),
+        patched_dep("TokenManager", Mock(return_value=Mock())),
+        patched_dep("load_token_optional", Mock(return_value=("token-123", None))),
         patch(
-            "perplexity_cli.query_runner.load_token_optional",
-            return_value=("token-123", None),
-            autospec=True,
+            "perplexity_cli.query_runner.resolve_attachment_urls", return_value=["https://s3/file"]
         ),
-        patch(
-            "perplexity_cli.query_runner.resolve_attachment_urls",
-            return_value=["https://s3/file"],
-            autospec=True,
-        ),
-        patch("perplexity_cli.query_runner.PerplexityAPI", return_value=mock_api, autospec=True),
-        patch(
-            "perplexity_cli.query_runner.build_final_query",
-            return_value="final query",
-            autospec=True,
-        ),
+        patched_dep("PerplexityAPI", Mock(return_value=mock_api)),
+        patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
         patch("perplexity_cli.query_runner.stream_query_response", autospec=True) as mock_stream,
     ):
         run_query_command(
@@ -451,21 +430,13 @@ def test_run_query_command_reports_upstream_schema_error(capsys):
     mock_api.get_complete_answer.side_effect = UpstreamSchemaError("bad payload")
 
     with (
-        patch("perplexity_cli.query_runner.TokenManager", return_value=Mock(), autospec=True),
-        patch(
-            "perplexity_cli.query_runner.load_token_optional",
-            return_value=("token-123", None),
-            autospec=True,
-        ),
+        patched_dep("TokenManager", Mock(return_value=Mock())),
+        patched_dep("load_token_optional", Mock(return_value=("token-123", None))),
         patch(
             "perplexity_cli.query_runner.resolve_attachment_urls", return_value=[], autospec=True
         ),
-        patch("perplexity_cli.query_runner.PerplexityAPI", return_value=mock_api, autospec=True),
-        patch(
-            "perplexity_cli.query_runner.build_final_query",
-            return_value="final query",
-            autospec=True,
-        ),
+        patched_dep("PerplexityAPI", Mock(return_value=mock_api)),
+        patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
     ):
         with pytest.raises(SystemExit) as exc_info:
             run_query_command(
@@ -507,21 +478,13 @@ def test_run_query_command_passes_request_param_overrides_to_api():
     mock_api = _make_api_mock(answer)
 
     with (
-        patch("perplexity_cli.query_runner.TokenManager", return_value=Mock(), autospec=True),
-        patch(
-            "perplexity_cli.query_runner.load_token_optional",
-            return_value=("token-123", None),
-            autospec=True,
-        ),
+        patched_dep("TokenManager", Mock(return_value=Mock())),
+        patched_dep("load_token_optional", Mock(return_value=("token-123", None))),
         patch(
             "perplexity_cli.query_runner.resolve_attachment_urls", return_value=[], autospec=True
         ),
-        patch("perplexity_cli.query_runner.PerplexityAPI", return_value=mock_api, autospec=True),
-        patch(
-            "perplexity_cli.query_runner.build_final_query",
-            return_value="final query",
-            autospec=True,
-        ),
+        patched_dep("PerplexityAPI", Mock(return_value=mock_api)),
+        patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
     ):
         run_query_command(
             ctx_obj={"debug": False},
@@ -542,21 +505,13 @@ def test_run_query_command_json_includes_requested_schema(capsys):
     mock_api = _make_api_mock(Answer(text="Test answer", references=[]))
 
     with (
-        patch("perplexity_cli.query_runner.TokenManager", return_value=Mock(), autospec=True),
-        patch(
-            "perplexity_cli.query_runner.load_token_optional",
-            return_value=("token-123", None),
-            autospec=True,
-        ),
+        patched_dep("TokenManager", Mock(return_value=Mock())),
+        patched_dep("load_token_optional", Mock(return_value=("token-123", None))),
         patch(
             "perplexity_cli.query_runner.resolve_attachment_urls", return_value=[], autospec=True
         ),
-        patch("perplexity_cli.query_runner.PerplexityAPI", return_value=mock_api, autospec=True),
-        patch(
-            "perplexity_cli.query_runner.build_final_query",
-            return_value="final query",
-            autospec=True,
-        ),
+        patched_dep("PerplexityAPI", Mock(return_value=mock_api)),
+        patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
     ):
         run_query_command(
             ctx_obj={"json": True, "schema": True},
@@ -574,21 +529,13 @@ def test_run_query_command_keyboard_interrupt_json_mode(capsys):
     mock_api.get_complete_answer.side_effect = KeyboardInterrupt()
 
     with (
-        patch("perplexity_cli.query_runner.TokenManager", return_value=Mock(), autospec=True),
-        patch(
-            "perplexity_cli.query_runner.load_token_optional",
-            return_value=("token-123", None),
-            autospec=True,
-        ),
+        patched_dep("TokenManager", Mock(return_value=Mock())),
+        patched_dep("load_token_optional", Mock(return_value=("token-123", None))),
         patch(
             "perplexity_cli.query_runner.resolve_attachment_urls", return_value=[], autospec=True
         ),
-        patch("perplexity_cli.query_runner.PerplexityAPI", return_value=mock_api, autospec=True),
-        patch(
-            "perplexity_cli.query_runner.build_final_query",
-            return_value="final query",
-            autospec=True,
-        ),
+        patched_dep("PerplexityAPI", Mock(return_value=mock_api)),
+        patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
     ):
         with pytest.raises(SystemExit) as exc_info:
             run_query_command(

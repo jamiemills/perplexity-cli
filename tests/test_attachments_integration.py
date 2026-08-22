@@ -18,6 +18,7 @@ from click.testing import CliRunner
 from perplexity_cli.api.models import Answer
 from perplexity_cli.cli import query
 from tests.helpers.fake_uploader import FakeAttachmentUploader
+from tests.helpers.query_deps import patch_query_deps
 
 
 class FakeTokenManager:
@@ -102,21 +103,21 @@ def query_app(
     fake_tm = FakeTokenManager()
     fake_sm = FakeStyleManager()
 
-    monkeypatch.setattr(
-        "perplexity_cli.query_runner.StyleManager",
-        lambda *args, **kwargs: fake_sm,
+    patch_query_deps(
+        monkeypatch,
+        StyleManager=lambda *args, **kwargs: fake_sm,
     )
-    monkeypatch.setattr(
-        "perplexity_cli.query_runner.TokenManager",
-        lambda *args, **kwargs: fake_tm,
+    patch_query_deps(
+        monkeypatch,
+        TokenManager=lambda *args, **kwargs: fake_tm,
     )
     monkeypatch.setattr(
         "perplexity_cli.attachments.AttachmentUploader",
         lambda *args, **kwargs: fake_uploader,
     )
-    monkeypatch.setattr(
-        "perplexity_cli.query_runner.PerplexityAPI",
-        lambda *args, **kwargs: fake_api,
+    patch_query_deps(
+        monkeypatch,
+        PerplexityAPI=lambda *args, **kwargs: fake_api,
     )
     return fake_api, fake_uploader, fake_tm, fake_sm
 

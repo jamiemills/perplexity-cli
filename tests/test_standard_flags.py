@@ -2,11 +2,12 @@
 
 import json
 from contextlib import ExitStack
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from perplexity_cli._types import QueryOptions
 from perplexity_cli.api.models import Answer
 from perplexity_cli.query_runner import run_query_command
+from tests.helpers.query_deps import patched_dep
 
 _DEFAULT_OPTIONS = QueryOptions(
     output_format="plain",
@@ -30,18 +31,18 @@ def _make_api_mock(answer: Answer | None = None):
 
 def _apply_standard_patches(stack, mock_api, api_class_mock=None):
     """Apply standard patches to an ExitStack. Returns the API class mock."""
-    stack.enter_context(patch("perplexity_cli.query_runner.TokenManager", return_value=Mock()))
-    stack.enter_context(
-        patch(
-            "perplexity_cli.query_runner.load_token_optional",
-            return_value=("token-123", None),
-        )
-    )
+    stack.enter_context(patched_dep("TokenManager", Mock(return_value=Mock())))
+    stack.enter_context(patched_dep("load_token_optional", Mock(return_value=("token-123", None))))
     stack.enter_context(
         patch("perplexity_cli.query_runner.resolve_attachment_urls", return_value=[])
     )
-    cls_mock = api_class_mock or Mock(return_value=mock_api)
-    stack.enter_context(patch("perplexity_cli.query_runner.PerplexityAPI", cls_mock))
+    cls_mock = api_class_mock or MagicMock(return_value=mock_api)
+    stack.enter_context(
+        patched_dep(
+            "PerplexityAPI",
+            api_class_mock or MagicMock(return_value=mock_api),
+        )
+    )
     stack.enter_context(
         patch("perplexity_cli.query_runner.build_final_query", side_effect=lambda q: q)
     )

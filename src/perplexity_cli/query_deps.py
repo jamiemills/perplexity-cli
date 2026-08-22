@@ -34,12 +34,14 @@ class QueryDeps:
     list_formatters: Callable[[], list[str]]
     StyleManager: type
     TokenManager: type
-    load_token_optional: Callable[[], tuple[str | None, dict[str, str] | None]]
+    load_token_optional: Callable[[Any, Any], tuple[str | None, dict[str, str] | None]]
     PerplexityAPI: type
     resolve_file_arguments: Callable[..., Any]
     load_attachments: Callable[..., Any]
     run_async: Callable[..., Any]
-    AttachmentUploader: type
+    # Factory rather than bare ``type``: the composition root re-reads the
+    # attachments module attribute at call time so test patches keep working.
+    AttachmentUploader: Callable[..., Any]
 
 
 _deps: QueryDeps | None = None
@@ -55,6 +57,25 @@ def set_query_deps(container: QueryDeps | None) -> None:
     # Single deliberate mutable binding for the composition seam; enforced
     # frozen contents make this the only assignment site.
     globals()["_deps"] = container
+    _sync_legacy_attributes(container)
+
+
+def _sync_legacy_attributes(container: QueryDeps | None) -> None:
+    """Mirror container fields into query_runner for ``mock.patch`` support.
+
+    ``unittest.mock.patch("perplexity_cli.query_runner.TokenManager")`` needs
+    a real, writable module attribute; PEP 562 ``__getattr__`` alone only
+    covers reads.  Syncing keeps every legacy decorator working while reads
+    inside the runner go through the typed container.
+    """
+    if container is None:
+        return
+    from dataclasses import fields
+
+    import perplexity_cli.query_runner as qr
+
+    for field in fields(QueryDeps):
+        setattr(qr, field.name, getattr(container, field.name))
 
 
 def require_query_deps() -> QueryDeps:
@@ -87,8 +108,14 @@ def override_query_deps(monkeypatch: Any, **overrides: Any) -> QueryDeps:
     signature; restoration happens through :func:`set_query_deps` in the
     caller's teardown via ``monkeypatch.setattr`` on ``query_deps._deps``.
     """
-    del monkeypatch
     base = _deps if _deps is not None else make_query_deps()
     replacement = replace(base, **overrides)
-    set_query_deps(replacement)
+    if monkeypatch is not None:
+        monkeypatch.setattr(
+            __import__("perplexity_cli.query_deps", fromlist=["_deps"]),
+            "_deps",
+            replacement,
+        )
+    else:
+        set_query_deps(replacement)
     return base

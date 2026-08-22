@@ -18,6 +18,7 @@ from perplexity_cli.cli import (
 )
 from perplexity_cli.config.models import FeatureConfig
 from perplexity_cli.utils.exceptions import AuthenticationError
+from tests.helpers.query_deps import patch_query_deps
 
 
 def _make_api_mock(**kwargs):
@@ -201,10 +202,19 @@ class TestCLICommands:
         assert result.exit_code == 1
         assert "Error during logout: permission denied" in result.output
 
-    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
-    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
-    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
-    def test_query_success(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
+    def test_query_success(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test successful query."""
         # Mock style manager (no style configured)
         mock_sm = Mock()
@@ -233,17 +243,18 @@ class TestCLICommands:
             extra_params=([], None, {}),
         )
 
-    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
-    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
-    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
-    def test_query_debug_logging_redacts_sensitive_values(
-        self,
-        mock_api_class,
-        mock_tm_class,
-        mock_sm_class,
-        runner,
-        caplog,
-    ):
+    def test_query_debug_logging_redacts_sensitive_values(self, monkeypatch, runner, caplog):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+        )
         """Test query debug logs do not include raw query, style, or token path."""
         import logging
         from pathlib import Path
@@ -276,12 +287,18 @@ class TestCLICommands:
         assert str(Path.home() / ".config" / "perplexity-cli" / "token.json") not in combined
         assert "<redacted:" in combined
 
-    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
-    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
-    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
-    def test_query_success_with_references(
-        self, mock_api_class, mock_tm_class, mock_sm_class, runner
-    ):
+    def test_query_success_with_references(self, monkeypatch, runner, caplog):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+        )
         """Test successful query with references."""
         from perplexity_cli.api.models import WebResult
 
@@ -323,10 +340,19 @@ class TestCLICommands:
         for url in ref_urls:
             assert result.output.count(url) >= 1
 
-    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
-    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
-    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
-    def test_query_not_authenticated(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
+    def test_query_not_authenticated(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test query when not authenticated - should attempt to run without token."""
         mock_tm = Mock()
         mock_tm.load_token.return_value = (None, None)
@@ -357,10 +383,19 @@ class TestCLICommands:
         call_args = mock_api_class.call_args
         assert call_args[0][0] is None  # token is first positional arg
 
-    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
-    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
-    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
-    def test_query_network_error(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
+    def test_query_network_error(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test query with network error."""
         from perplexity_cli.utils.exceptions import PerplexityRequestError
 
@@ -506,10 +541,19 @@ class TestCLIIntegration:
         assert result.exit_code == 0
         assert "No style is currently configured" in result.output
 
-    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
-    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
-    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
-    def test_query_with_style_appended(self, mock_tm_class, mock_api_class, mock_sm_class, runner):
+    def test_query_with_style_appended(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test query appends style to query text."""
         # Mock token manager
         mock_tm = Mock()
@@ -666,10 +710,19 @@ class TestExportThreadsRateLimitConfig:
 class TestStreamingDefault:
     """Tests for batch mode as the default query mode."""
 
-    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
-    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
-    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
-    def test_query_default_batch_mode(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
+    def test_query_default_batch_mode(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test that invoking query without flags uses batch (non-streaming) path."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = None
@@ -691,12 +744,18 @@ class TestStreamingDefault:
         mock_api.get_complete_answer.assert_called_once()
         mock_api.submit_query.assert_not_called()
 
-    @patch("perplexity_cli.query_runner.StyleManager", autospec=True)
-    @patch("perplexity_cli.query_runner.TokenManager", autospec=True)
-    @patch("perplexity_cli.query_runner.PerplexityAPI", autospec=True)
-    def test_query_explicit_stream_uses_streaming(
-        self, mock_api_class, mock_tm_class, mock_sm_class, runner
-    ):
+    def test_query_explicit_stream_uses_streaming(self, monkeypatch, runner, caplog):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+        )
         """Test that --stream explicitly uses the streaming path."""
         from perplexity_cli.api.models import Block, SSEMessage
 

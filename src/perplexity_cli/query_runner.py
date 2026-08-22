@@ -33,6 +33,7 @@ from perplexity_cli.api.models import Answer, QueryInput, TraceContext, WebResul
 from perplexity_cli.auth.models import AuthContext
 from perplexity_cli.envelope import Meta, envelope_to_dict, success_envelope
 from perplexity_cli.ports import QueryGateway
+from perplexity_cli.query_deps import require_query_deps
 from perplexity_cli.query_streaming import stream_query_response
 from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.exceptions import (
@@ -41,6 +42,14 @@ from perplexity_cli.utils.exceptions import (
     AuthenticationError,
 )
 from perplexity_cli.utils.version import get_version
+
+logger = logging.getLogger(__name__)
+
+
+def _d():
+    """Return the bound dependency container."""
+    return require_query_deps()
+
 
 _QUERY_JSON_COMMAND = "pxcli query --json"
 
@@ -83,31 +92,6 @@ class _Formatter(Protocol):
 # The application layer is not permitted to statically import adapter or
 # presentation modules (enforced by ``scripts/check_architecture.py``), so the
 # concrete collaborators are injected by the composition root (``cli.py``)
-# into these module-level names.  They are read at call time, which keeps them
-# patchable by tests exactly as the previous runtime-resolved bindings were.
-
-
-from perplexity_cli.query_deps import require_query_deps
-
-handle_error: Any = None
-get_logger: Any = None
-redact_path: Any = None
-redact_text: Any = None
-redact_url: Any = None
-get_config_paths: Any = None
-get_save_cookies_enabled: Any = None
-get_formatter: Any = None
-list_formatters: Any = None
-StyleManager: Any = None
-TokenManager: Any = None
-load_token_optional: Any = None
-PerplexityAPI: Any = None
-resolve_file_arguments: Any = None
-load_attachments: Any = None
-run_async: Any = None
-AttachmentUploader: Any = None
-
-
 # ---------------------------------------------------------------------------
 # Environment & debug helpers
 # ---------------------------------------------------------------------------
@@ -145,7 +129,7 @@ def log_query_debug_context(
         output_format: The requested output format, or None for the default.
         stream_mode: Either ``"stream"`` or ``"batch"``.
     """
-    logger = get_logger()
+    logger = _d().get_logger()
     if not logger.isEnabledFor(logging.DEBUG):
         return
 
@@ -160,19 +144,19 @@ def log_query_debug_context(
     logger.debug("Python executable: %s", sys.executable)
     logger.debug("Execution environment: %s", _detect_execution_environment())
 
-    token_path = get_config_paths().token_path
+    token_path = _d().get_config_paths().token_path
     # owner: security - the argument is a redacted token-file path.
     logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: quality-infrastructure; reason: token redacted before logging
-        "Token path: %s", redact_path(token_path)
+        "Token path: %s", _d().redact_path(token_path)
     )
     # owner: security - the argument is only a token-file presence boolean.
     logger.debug(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: quality-infrastructure; reason: token redacted before logging
         "Token exists: %s", token_path.exists()
     )
-    logger.debug("Cookie storage enabled: %s", get_save_cookies_enabled())
+    logger.debug("Cookie storage enabled: %s", _d().get_save_cookies_enabled())
     logger.debug(
         "Query command invoked: query=%s, format=%s, stream=%s",
-        redact_text(query_text),
+        _d().redact_text(query_text),
         output_format,
         stream_mode,
     )
@@ -234,7 +218,7 @@ def resolve_attachment_urls(
         AuthenticationError: If authentication is required for attachments.
         AttachmentError: If attachments cannot be resolved or loaded.
     """
-    logger = get_logger()
+    logger = _d().get_logger()
     attachment_list = list(attachments_str)
     if not _has_potential_file_references(query_text, attachment_list):
         return []
@@ -265,7 +249,7 @@ def _resolve_and_upload(
     Returns:
         List of uploaded attachment URLs.
     """
-    file_paths = resolve_file_arguments(
+    file_paths = _d().resolve_file_arguments(
         [query_text],
         attach_args=attachment_list or None,
     )
@@ -314,12 +298,12 @@ def _load_and_upload_attachments(
     Returns:
         List of uploaded attachment URLs.
     """
-    file_attachments = load_attachments(file_paths)
+    file_attachments = _d().load_attachments(file_paths)
     logger.debug("Attachment loading complete: %s file(s) loaded", len(file_attachments))
     for attachment in file_attachments:
         logger.debug(
             "  - %s (%s, %s bytes base64)",
-            redact_path(attachment.filename),
+            _d().redact_path(attachment.filename),
             attachment.content_type,
             len(attachment.data),
         )
@@ -348,16 +332,16 @@ def _do_s3_upload(
         List of uploaded attachment URLs.
     """
     logger.debug("Starting S3 upload for attachments")
-    uploader = AttachmentUploader(token=token, cookies=cookies)
+    uploader = _d().AttachmentUploader(token=token, cookies=cookies)
     try:
-        attachment_urls = run_async(uploader.upload_files(file_attachments))
+        attachment_urls = _d().run_async(uploader.upload_files(file_attachments))
     except AttachmentUploadError as e:
         logger.exception("Attachment upload failed: %s", e)
         raise
 
     logger.debug("S3 upload complete: %s file(s) uploaded", len(attachment_urls))
     for i, url in enumerate(attachment_urls, 1):
-        logger.debug("  [%s] %s", i, redact_url(url))
+        logger.debug("  [%s] %s", i, _d().redact_url(url))
     return attachment_urls
 
 
@@ -378,10 +362,10 @@ def get_query_formatter(output_format: str | None) -> tuple[str, _Formatter]:
     Raises:
         ValueError: If the format name is not registered.
     """
-    logger = get_logger()
+    logger = _d().get_logger()
     resolved_output_format = output_format or "rich"
     try:
-        formatter = require_query_deps().get_formatter(resolved_output_format)
+        formatter = _d().get_formatter(resolved_output_format)
     except ValueError:
         logger.exception("Invalid formatter: %s", resolved_output_format)
         raise
@@ -397,12 +381,12 @@ def build_final_query(query_text: str) -> str:
     Returns:
         The query text with the style prompt appended, if configured.
     """
-    logger = get_logger()
-    style = StyleManager().load_style()
+    logger = _d().get_logger()
+    style = _d().StyleManager().load_style()
     if not style:
         return query_text
 
-    logger.debug("Applied style: %s", redact_text(style))
+    logger.debug("Applied style: %s", _d().redact_text(style))
     return f"{query_text}\n\n{style}"
 
 
@@ -498,7 +482,7 @@ def _handle_query_exception(exc: Exception, output_format: OutputFormat) -> None
         exc: The exception to handle.
         output_format: Either ``"json"`` or ``"human"``.
     """
-    handle_error(exc, _QUERY_JSON_COMMAND, output_format=output_format)
+    _d().handle_error(exc, _QUERY_JSON_COMMAND, output_format=output_format)
 
 
 def _handle_broken_pipe() -> None:
@@ -508,7 +492,7 @@ def _handle_broken_pipe() -> None:
     not re-raise ``BrokenPipeError`` during shutdown, then exits with the
     general-failure code.
     """
-    logger = get_logger()
+    logger = _d().get_logger()
     try:
         devnull_fd = os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull_fd, sys.stdout.fileno())
@@ -525,7 +509,7 @@ def _handle_keyboard_interrupt(output_format: OutputFormat, logger: logging.Logg
         logger: Logger instance.
     """
     if output_format == "json":
-        handle_error(KeyboardInterrupt(), _QUERY_JSON_COMMAND, output_format="json")
+        _d().handle_error(KeyboardInterrupt(), _QUERY_JSON_COMMAND, output_format="json")
     logger.info("Query interrupted by user")
     _write_stderr("\n[ERROR] Query interrupted.\n")
     raise SystemExit(130)
@@ -538,7 +522,7 @@ def _handle_query_error(fn: Callable[[], None], output_format: OutputFormat) -> 
         fn: The callable to execute within error handling.
         output_format: Either ``"json"`` or ``"human"``.
     """
-    logger = get_logger()
+    logger = _d().get_logger()
     try:
         fn()
     except KeyboardInterrupt:
@@ -570,7 +554,7 @@ def _fetch_and_render(
         render: Formatter and output options.
         trace: Trace and timing context.
     """
-    logger = get_logger()
+    logger = _d().get_logger()
     logger.info("Fetching complete answer")
     answer_obj = api.get_complete_answer(
         query_input.query,
@@ -702,7 +686,7 @@ def run_query_command(
     model_preference = options.model_preference
     request_param_overrides = options.request_param_overrides
 
-    logger = get_logger()
+    logger = _d().get_logger()
     query_text = _read_query_from_stdin(query_text)
     json_mode, timeout, include_schema = _read_ctx_options(ctx_obj)
 
@@ -711,8 +695,8 @@ def run_query_command(
     log_query_debug_context(query_text, output_format, "stream" if stream else "batch")
 
     def _execute_query_body() -> None:
-        tm = TokenManager()
-        token, cookies = load_token_optional(tm, logger)
+        tm = _d().TokenManager()
+        token, cookies = _d().load_token_optional(tm, logger)
         auth = AuthContext(token=token, cookies=cookies)
         attachment_urls = resolve_attachment_urls(query_text, attachments_str, auth)
 
@@ -734,7 +718,7 @@ def run_query_command(
         )
         render = _QueryRenderContextData(formatter=formatter, options=output_opts)
 
-        with PerplexityAPI(token, cookies, timeout=timeout) as api:
+        with _d().PerplexityAPI(token, cookies, timeout=timeout) as api:
             if stream:
                 logger.info("Streaming query response")
                 stream_query_response(api, query_input, render, trace)
@@ -742,3 +726,42 @@ def run_query_command(
                 _fetch_and_render(api, query_input, render, trace)
 
     _handle_query_error(_execute_query_body, "json" if json_mode else "human")
+
+
+# ---------------------------------------------------------------------------
+# Compatibility read-through (PEP 562)
+# ---------------------------------------------------------------------------
+# Legacy ``unittest.mock.patch("perplexity_cli.query_runner.Name")`` usages
+# resolve attributes here, transparently reading the bound dependency
+# container.  Writes go to ordinary module globals and are restored by the
+# mocking library afterwards, so the container itself stays authoritative.
+
+_SEAM_NAMES = frozenset(
+    {
+        "handle_error",
+        "get_logger",
+        "redact_path",
+        "redact_text",
+        "redact_url",
+        "get_config_paths",
+        "get_save_cookies_enabled",
+        "get_formatter",
+        "list_formatters",
+        "StyleManager",
+        "TokenManager",
+        "load_token_optional",
+        "PerplexityAPI",
+        "resolve_file_arguments",
+        "load_attachments",
+        "run_async",
+        "AttachmentUploader",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Delegate legacy seam attribute reads to the dependency container."""
+    if name in _SEAM_NAMES:
+        return getattr(require_query_deps(), name)
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)

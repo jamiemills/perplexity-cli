@@ -79,11 +79,17 @@ class _MockGateway:
         return Answer(text="mocked answer: " + query, references=[])
 
 
-import perplexity_cli.query_runner as _query_runner
+import perplexity_cli.query_deps as _query_deps
 
-_query_runner.PerplexityAPI = _MockGateway
+import perplexity_cli.cli  # noqa: E402  # owner: quality-infrastructure; reason: composition root must bind before the test override
 
-from perplexity_cli.cli import main
+from dataclasses import replace as _dc_replace
+
+_query_deps.set_query_deps(
+    _dc_replace(_query_deps.require_query_deps(), PerplexityAPI=_MockGateway)
+)
+
+from perplexity_cli.cli import main  # noqa: E402  # owner: quality-infrastructure; reason: entry point imported after the override is installed
 
 sys.argv = ["pxcli"] + CLI_ARGS
 main()

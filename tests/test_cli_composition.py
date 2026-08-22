@@ -16,6 +16,7 @@ from perplexity_cli.api.models import (
 from perplexity_cli.cli import query
 from perplexity_cli.formatting.context import OutputOptions, RenderContext
 from perplexity_cli.query_streaming import stream_query_response
+from tests.helpers.query_deps import patch_query_deps
 
 
 def _make_api_mock(**kwargs):
@@ -64,10 +65,19 @@ def runner():
 class TestStripReferencesWithMarkdown:
     """Test --strip-references combined with --format markdown."""
 
-    @patch("perplexity_cli.query_runner.StyleManager")
-    @patch("perplexity_cli.query_runner.TokenManager")
-    @patch("perplexity_cli.query_runner.PerplexityAPI")
-    def test_strip_references_markdown(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
+    def test_strip_references_markdown(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test that --strip-references works with --format markdown."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = None
@@ -99,10 +109,19 @@ class TestStripReferencesWithMarkdown:
 class TestStreamWithPlainFormat:
     """Test --stream combined with --format plain."""
 
-    @patch("perplexity_cli.query_runner.StyleManager")
-    @patch("perplexity_cli.query_runner.TokenManager")
-    @patch("perplexity_cli.query_runner.PerplexityAPI")
-    def test_stream_plain_format(self, mock_api_class, mock_tm_class, mock_sm_class, runner):
+    def test_stream_plain_format(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test that --stream works with --format plain."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = None
@@ -124,12 +143,19 @@ class TestStreamWithPlainFormat:
 class TestFlagPassthrough:
     """Test that flags are correctly passed through to the API layer."""
 
-    @patch("perplexity_cli.query_runner.StyleManager")
-    @patch("perplexity_cli.query_runner.TokenManager")
-    @patch("perplexity_cli.query_runner.PerplexityAPI")
-    def test_stream_flag_uses_submit_query(
-        self, mock_api_class, mock_tm_class, mock_sm_class, runner
-    ):
+    def test_stream_flag_uses_submit_query(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test that --stream uses submit_query instead of get_complete_answer."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = None
@@ -147,12 +173,19 @@ class TestFlagPassthrough:
         mock_api.submit_query.assert_called_once()
         mock_api.get_complete_answer.assert_not_called()
 
-    @patch("perplexity_cli.query_runner.StyleManager")
-    @patch("perplexity_cli.query_runner.TokenManager")
-    @patch("perplexity_cli.query_runner.PerplexityAPI")
-    def test_no_stream_flag_uses_get_complete_answer(
-        self, mock_api_class, mock_tm_class, mock_sm_class, runner
-    ):
+    def test_no_stream_flag_uses_get_complete_answer(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test that --no-stream uses get_complete_answer."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = None
@@ -175,12 +208,19 @@ class TestFlagPassthrough:
 class TestMultipleFlagCombinations:
     """Test various multi-flag combinations work without errors."""
 
-    @patch("perplexity_cli.query_runner.StyleManager")
-    @patch("perplexity_cli.query_runner.TokenManager")
-    @patch("perplexity_cli.query_runner.PerplexityAPI")
-    def test_strip_references_json_no_stream(
-        self, mock_api_class, mock_tm_class, mock_sm_class, runner
-    ):
+    def test_strip_references_json_no_stream(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test --strip-references --format json --no-stream all together."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = None
@@ -203,12 +243,19 @@ class TestMultipleFlagCombinations:
 
         assert result.exit_code == 0
 
-    @patch("perplexity_cli.query_runner.StyleManager")
-    @patch("perplexity_cli.query_runner.TokenManager")
-    @patch("perplexity_cli.query_runner.PerplexityAPI")
-    def test_stream_strip_references_plain(
-        self, mock_api_class, mock_tm_class, mock_sm_class, runner
-    ):
+    def test_stream_strip_references_plain(self, monkeypatch, runner):
+        mock_api_class = Mock()
+        mock_tm_class = Mock()
+        mock_sm_class = Mock()
+        mock_tm = Mock()
+        mock_tm.load_token.return_value = ("test-token", None)
+        patch_query_deps(
+            monkeypatch,
+            PerplexityAPI=mock_api_class,
+            TokenManager=mock_tm_class,
+            StyleManager=mock_sm_class,
+            load_token_optional=lambda _tm, _logger: mock_tm.load_token(),
+        )
         """Test --stream --strip-references --format plain all together."""
         mock_sm = Mock()
         mock_sm.load_style.return_value = None

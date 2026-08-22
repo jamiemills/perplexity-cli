@@ -90,6 +90,7 @@ description = "Use cases, orchestration, and cross-cutting application concerns 
 allowed_deps = ["shared_pure", "domain", "ports", "application"]
 modules = [
     "exit_codes",
+    "query_deps",
     "query_runner",
     "query_streaming",
     "services",
