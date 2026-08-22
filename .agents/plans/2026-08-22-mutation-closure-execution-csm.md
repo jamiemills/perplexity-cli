@@ -11,13 +11,13 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: mutation-closure-execution
-- Status: ready
-- Current CSM state: NOT_STARTED
+- Status: in_progress
+- Current CSM state: RECOVER
 - Cycle: 0
 - Commits: allowed
 - Last checkpoint: 2026-08-22 - plan created for the 5 remaining mutation-closure items
 - Last model/run: ox-alpha-free / csm-plan session of 2026-08-22
-- Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
+- Next transition: RECOVER -> SELECT -> DISPATCH T001 baseline run
 - Active tasks: none
 - Blockers: none
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, Discovered Requirements, working-tree diff

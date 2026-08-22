@@ -66,7 +66,7 @@ def _reject_unlisted_files(dist_root: Path, record: Path, listed: frozenset[str]
     """Fail when installed Mutmut files are absent from ``RECORD``."""
     for parent in (dist_root / "mutmut", record.parent):
         for candidate in sorted(parent.rglob("*")):
-            if not candidate.is_file():
+            if not candidate.is_file() or "__pycache__" in candidate.parts:
                 continue
             relative = candidate.relative_to(dist_root).as_posix()
             if relative not in listed:
