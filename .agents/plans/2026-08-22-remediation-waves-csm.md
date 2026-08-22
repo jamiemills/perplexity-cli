@@ -1,0 +1,224 @@
+format: csm-plan/1
+
+# Remediation Waves Execution CSM Plan
+
+## How To Execute
+
+- Start work only through a separate, explicit csm-build invocation naming this plan.
+- Commit policy and live state are maintained in Control by csm-build.
+- Risk summary: 15 tasks across 4 parallel batches; all high-risk (production/test churn at scale) requiring independent review.
+
+## Control
+
+- Plan ID: remediation-waves-execution
+- Status: ready
+- Current CSM state: NOT_STARTED
+- Cycle: 0
+- Commits: allowed
+- Last checkpoint: 2026-08-22 - plan created from T002 triage output (3,179 actionable across 15 tasks)
+- Last model/run: ox-alpha-free / csm-plan session of 2026-08-22
+- Next transition: On a future explicit csm-build invocation, NOT_STARTED -> RECOVER
+- Active tasks: none
+- Blockers: none
+- Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
+
+## Goal
+
+Close all 3,179 actionable mutation findings across 105 modules by writing behavioural tests over public boundaries, simplifying production code, or documenting reviewed structural exclusions — organised as 15 independently executable tasks running in 4 maximum-parallelism batches.
+
+After T003 completes, T004 (two clean full-tree proof runs), T005 (optional remote dispatch), and `make ci-conventional` must still be executed to declare the overall mutation-closure goal COMPLETE.
+
+## Acceptance Criteria
+
+1. Every one of the 3,179 baseline keys is accounted for: killed by a new test, removed by production simplification, or documented as structural exclusion.
+2. Per-task `mutate-task-policy TASK=Txxx` exits 0 with a complete schema-valid clean report.
+3. `mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` still passes (no keys lost).
+4. `make ci-conventional` exits 0 after each batch.
+5. All changed tests/helpers CC <= 5; changed test files <= 1,000 lines.
+
+## Current-State Evidence
+
+- Baseline report: `build/reports/mutation-baseline/7b0b6a41cc92b497c279d51d21c61385ee45bf05/mutation-report.json`
+- Triage artifact: `quality/baselines/mutation-triage.json` (15 task manifests, 0 unassigned)
+- Keysets manifest: same directory (`keysets.json`)
+- Source ledger: same directory (`source-ledger.json`)
+- Canonical runner: `scripts/run_mutation.py` (535 lines); process/environment modules extracted
+- Make targets: `mutate-selected`, `mutate-key`, `mutation-triage-check`, `mutate-full-policy`
+- Full `ci-conventional` exit 0 at commit `74b3c97`
+
+## Discovered Requirements
+
+- CC <= 5 on every changed function; file cap 1,000 lines
+- Prefer behavioural tests over public boundaries over private-helper isolation
+- Historical timeout mutants require 3 consecutive serial post-repair kills
+- No exact human-facing wording assertions unless documented contract
+- Unique sentinel values for security assertions
+- Suppression annotations need owner:/reason:
+- Ratchet is content-anchored (line moves don't trigger false positives)
+
+## Design
+
+Each task owns a disjoint set of modules. Agents work through their module's surviving keys systematically: reproduce the distinction, write a minimal behavioural test over the most public available boundary, verify the mutant dies, move to the next. Production simplification is preferred when the code is genuinely redundant. Structural exclusions require independent proof of non-executability.
+
+Batches are ordered so that foundation modules land first (their tests stabilise downstream modules), then transport/persistence, then orchestration/CLI remainder.
+
+## Execution Graph
+
+```
+Batch A (parallel): T007 + T008 + T009 + T010 + T011   = 1,481 survivors
+Batch B (parallel): T012 + T013 + T014 + T015 + T016   = 873 survivors
+Batch C (parallel): T017 + T018 + T019 + T020 + T021   = 825 survivors
+Batch D (serial):   ci-conventional gate + any repairs
+```
+
+Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
+
+## Numbered Plan
+
+### Batch A (foundation/API/formatting/auth — 1,481 survivors)
+
+1. [pending] Close T007 foundation survivors (519)
+   - Task ID: T007
+   - Depends on: none
+   - Parallel group: A1
+   - Risk: high
+   - Owned scope: utils/config/*, utils/encryption, utils/file_handler, utils/logging/*, utils/retry, utils/version, utils/upstream_contracts, utils/file_permissions, utils/cookies, utils/session_token, utils/atomic_write, runners/models, envelope, exit_codes, ndjson, contracts/query, _types, models/model_config, config/models, utils/style_manager, utils/async_bridge
+   - Not in scope: any other module
+   - Actions: per key — reproduce distinction, write behavioural test over most-public boundary, verify killed; simplify redundant production code where applicable; historical timeouts (26) require 3 serial kills
+   - Acceptance signal: all T007 keys killed in fresh selected-scope run; focused tests pass; CC<=5; file caps met
+   - Validation: ruff format/check, pyright, radon, focused pytest for owned modules
+   - Acceptance evidence: per-key kill confirmation, test names, amendment hashes
+   - Repair attempts: 0
+   - Recovery note: per-key commits; failed key reverts independently
+2. [pending] Close T008 API transport survivors (303)
+   - Task ID: T008
+   - Depends on: none
+   - Parallel group: A2
+   - Risk: high
+   - Owned scope: api/client, api/endpoints, api/rest_client, api/models, api/contracts
+   - Not in scope: any other module
+   - Actions: same methodology as T007; 1 timeout needs triple-kill
+   - Acceptance signal: all T008 keys killed; api-focused tests pass
+   - Validation: ruff/pyright/radon/focused pytest
+   - Acceptance evidence: per-key kills, test names
+   - Repair attempts: 0
+   - Recovery note: per-key commits
+3. [pending] Close T009 token persistence survivors (172)
+   - Task ID: T009
+   - Depends on: none
+   - Parallel group: A3
+   - Risk: standard
+   - Owned scope: auth/token_manager, auth/utils, auth/models
+   - Not in scope: auth/oauth_handler (T011)
+   - Actions: same methodology; no timeouts
+   - Acceptance signal: all T009 keys killed; token tests pass
+   - Validation: ruff/pyright/radon/focused pytest
+   - Acceptance evidence: per-key kills
+   - Repair attempts: 0
+   - Recovery note: per-key commits
+4. [pending] Close T010 formatting survivors (301)
+   - Task ID: T010
+   - Depends on: none
+   - Parallel group: A4
+   - Risk: high
+   - Owned scope: formatting/base, formatting/rich, formatting/markdown, formatting/plain, formatting/json, formatting/registry, formatting/context
+   - Not in scope: any other module
+   - Actions: presentation semantics (not trivia); 9 timeouts need triple-kill; 21 no-tests need coverage
+   - Acceptance signal: all T010 keys killed; formatting tests pass
+   - Validation: ruff/pyright/radon/focused pytest
+   - Acceptance evidence: per-key kills
+   - Repair attempts: 0
+   - Recovery note: per-key commits
+5. [pending] Close T011 OAuth/CDP survivors (186)
+   - Task ID: T011
+   - Depends on: none
+   - Parallel group: A5
+   - Risk: high
+   - Owned scope: auth/oauth_handler
+   - Not in scope: other auth modules
+   - Actions: CDP protocol hardening tests; 10 timeouts need triple-kill
+   - Acceptance signal: all T011 keys killed; oauth tests pass
+   - Validation: ruff/pyright/radon/focused pytest
+   - Acceptance evidence: per-key kills
+   - Repair attempts: 0
+   - Recovery note: per-key commits
+
+### Batch B (persistence/scraper/upload/status — 873 survivors)
+
+6. [pending] Close T012 config runner survivors (108)
+   - Task ID: T012 | Depends on: Batch A | Parallel group: B1 | Risk: standard
+   - Owned scope: runners/config
+   - Actions/Validation/Evidence: same methodology
+7. [pending] Close T013 cache/persistence survivors (152)
+   - Task ID: T013 | Depends on: Batch A | Parallel group: B2 | Risk: standard
+   - Owned scope: threads/cache_manager, threads/models, threads/date_parser, threads/exporter, threads/utils
+8. [pending] Close T014 scraper survivors (206)
+   - Task ID: T014 | Depends on: Batch A | Parallel group: B3 | Risk: high
+   - Owned scope: threads/scraper, threads/pagination
+9. [pending] Close T015 upload/help/error survivors (274)
+   - Task ID: T015 | Depends on: Batch A | Parallel group: B4 | Risk: high
+   - Owned scope: attachments/upload_manager, commands/_help_sections, commands/_help_refs, commands/_examples, commands/_ctx, commands/_schemas, utils/http_errors/*, utils/http_headers, utils/rate_limiter*, utils/session_factory, utils/attachment_models
+10. [pending] Close T016 status/service survivors (133)
+    - Task ID: T016 | Depends on: Batch A | Parallel group: B5 | Risk: standard
+    - Owned scope: runners/status, services/model_service, services/ports, error_handler
+
+### Batch C (command runners/orchestration/remainder — 825 survivors)
+
+11. [pending] Close T017 auth command runner survivors (118)
+    - Task ID: T017 | Depends on: Batch B | Parallel group: C1 | Risk: standard
+    - Owned scope: runners/auth
+12. [pending] Close T018 export runner survivors (169)
+    - Task ID: T018 | Depends on: Batch B | Parallel group: C2 | Risk: standard
+    - Owned scope: runners/export
+13. [pending] Close T019 MCP boundary survivors (105)
+    - Task ID: T019 | Depends on: Batch B | Parallel group: C3 | Risk: high
+    - Owned scope: mcp_server
+14. [pending] Close T020 query orchestration survivors (372)
+    - Task ID: T020 | Depends on: Batch B | Parallel group: C4 | Risk: high
+    - Owned scope: query_runner, query_streaming, query_deps, commands/query_cmd
+15. [pending] Close T021 CLI remainder survivors (61)
+    - Task ID: T021 | Depends on: Batch B | Parallel group: C5 | Risk: standard
+    - Owned scope: session_log, runners/skill, help_json, commands/_runner_adapter, commands/__init__, ports, cli, command_runner, completion_commands, remaining commands/*
+
+### Post-waves
+
+16. [pending] Final conventional gate and repair round
+    - Task ID: GATE
+    - Depends on: T007-T021 all complete
+    - Parallel group: serial
+    - Risk: standard
+    - Actions: `make ci-conventional`; fix any regressions; verify mutation-manifest-check still passes
+
+## Note On Remaining Work
+
+After T003 completes, the following items from the execution plan must still be tackled before the overall mutation-closure goal is COMPLETE:
+- **T004**: Two independent cache-free full-tree runs proving zero survivors (`make mutation-final-policy`)
+- **T005**: Optional remote workflow dispatch for corroboration
+- **Final `ci-conventional`**: Must pass on the unchanged candidate used for both T004 runs
+
+## Verification Strategy
+
+Per-key verification via fresh selected-scope runs. Per-wave verification via `mutation-task-static && mutation-task-tests && mutate-task-policy`. Batch-boundary verification via `make ci-conventional`. Final verification via `mutation-final-policy`.
+
+## Risks And Recovery
+
+- Equivalent mutants (high): prefer production simplification; never suppress with broad exclusions
+- Test suite slowdown (medium): each new test adds runtime; monitor cumulative wall time
+- Cross-module coupling (medium): waves share no owned files but may share test fixtures; isolate fixtures per wave
+- Rollback: per-key/per-task commits enable surgical reversion
+
+## Critique Resolution
+
+| Finding | Severity | Resolution | Evidence |
+| ------- | -------- | ---------- | -------- |
+| (primary-led; direct execution of validated triage data) | - | - | - |
+
+## Progress Journal
+
+| Timestamp | Cycle | Transition | Tasks | Evidence/result | Next state |
+| --------- | ----- | ---------- | ----- | --------------- | ---------- |
+| 2026-08-22 | 0 | INTAKE -> SAVED | - | Plan created from T002 triage output; batches designed for max parallelism | SAVED |
+
+## Completion Review
+
+Filled by csm-build when all criteria are verified.
