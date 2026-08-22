@@ -318,7 +318,7 @@ endif
 	case $$(printf %s '$(CANDIDATE_SHA)' | wc -c) in 40) ;; *) echo "CANDIDATE_SHA must be 40 characters" >&2; exit 2;; esac; \
 	test "$$(git rev-parse HEAD)" = '$(CANDIDATE_SHA)' || { echo "CANDIDATE_SHA does not match HEAD" >&2; exit 2; }; \
 	test ! -e build/reports/mutation-baseline/$(CANDIDATE_SHA) || { echo "baseline already exists" >&2; exit 2; }
-	$(MAKE) mutate-full-policy MUTATION_REPORT=build/reports/mutation-baseline/$(CANDIDATE_SHA)/mutation-report.json
+	-$(MAKE) mutate-full-policy MUTATION_REPORT=build/reports/mutation-baseline/$(CANDIDATE_SHA)/mutation-report.json
 	uv run python scripts/mutation_manifest.py build \
 		--mutants-dir mutants \
 		--output-dir build/reports/mutation-baseline/$(CANDIDATE_SHA)

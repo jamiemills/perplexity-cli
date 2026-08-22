@@ -16,6 +16,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from scripts.mutation_evidence import GeneratedSourceError, enumerate_generated_mutants
 
 logger = logging.getLogger(__name__)
