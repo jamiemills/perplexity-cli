@@ -3,17 +3,31 @@
 from __future__ import annotations
 
 import json
+import locale
 import stat
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from perplexity_cli.utils.style_manager import StyleManager
+from perplexity_cli.utils.style_manager import MAX_STYLE_LENGTH, StyleManager
 
 _POSIX = sys.platform != "win32"
+
+
+@contextmanager
+def _non_utf8_locale() -> Iterator[None]:
+    """Force a non-UTF-8 preferred encoding so explicit encodings are distinguished."""
+    previous = locale.setlocale(locale.LC_CTYPE)
+    locale.setlocale(locale.LC_CTYPE, "C")
+    try:
+        yield
+    finally:
+        locale.setlocale(locale.LC_CTYPE, previous)
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,3 +243,133 @@ class TestStyleManagerErrorHandling:
         result = sm.load_style()
         # Returns None for missing style key (via .get)
         assert result is None
+
+    def test_load_style_wraps_decode_failure_with_exact_message(self, mocked_style_path: Path):
+        """Corrupted style files raise an OSError carrying the path and cause."""
+        mocked_style_path.write_text("{invalid json", encoding="utf-8")
+        with pytest.raises(json.JSONDecodeError) as decode_info:
+            json.loads("{invalid json")
+        expected = f"Failed to load style from {mocked_style_path}: {decode_info.value}"
+
+        sm = StyleManager()
+        with pytest.raises(OSError) as excinfo:
+            sm.load_style()
+
+        assert str(excinfo.value) == expected
+
+
+class TestStyleManagerEncoding:
+    """Test that style files are always decoded as UTF-8."""
+
+    def test_load_style_decodes_utf8_regardless_of_locale(self, mocked_style_path: Path):
+        """Non-ASCII styles load correctly even under a non-UTF-8 locale."""
+        mocked_style_path.write_bytes(b'{"style": "caf\xc3\xa9"}')
+        with _non_utf8_locale():
+            assert StyleManager().load_style() == "café"
+
+
+class TestStyleManagerValidationMessages:
+    """Test exact validation error messages raised through save_style."""
+
+    def test_save_style_empty_string_message_is_exact(self, mocked_style_path: Path):
+        """Empty styles raise the precise non-empty-string message."""
+        with pytest.raises(ValueError) as excinfo:
+            StyleManager().save_style("")
+        assert str(excinfo.value) == "Style must be a non-empty string"
+
+    def test_save_style_blank_string_message_is_exact(self, mocked_style_path: Path):
+        """Whitespace-only styles raise the precise blank-style message."""
+        with pytest.raises(ValueError) as excinfo:
+            StyleManager().save_style("   ")
+        assert str(excinfo.value) == "Style cannot be blank or whitespace only"
+
+    def test_save_style_too_long_message_is_exact(self, mocked_style_path: Path):
+        """Over-long styles raise the precise maximum-length message."""
+        oversized = "x" * (MAX_STYLE_LENGTH + 1)
+        expected = (
+            f"Style exceeds maximum length of {MAX_STYLE_LENGTH} characters "
+            f"(current length: {len(oversized)} characters)"
+        )
+        with pytest.raises(ValueError) as excinfo:
+            StyleManager().save_style(oversized)
+        assert str(excinfo.value) == expected
+
+
+class TestStyleManagerBoundaries:
+    """Test boundary behaviour of style length limits."""
+
+    def test_save_style_accepts_exactly_maximum_length(self, mocked_style_path: Path):
+        """A style of exactly MAX_STYLE_LENGTH characters saves successfully."""
+        StyleManager().save_style("x" * MAX_STYLE_LENGTH)
+        assert mocked_style_path.exists()
+
+    def test_validate_style_accepts_exactly_maximum_length(self):
+        """A style of exactly MAX_STYLE_LENGTH characters validates as True."""
+        assert StyleManager().validate_style("x" * MAX_STYLE_LENGTH) is True
+
+
+class TestStyleManagerParentDirectories:
+    """Test parent-directory creation when saving styles."""
+
+    def test_save_style_creates_missing_parent_directories(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """save_style creates every missing ancestor of the style file."""
+        nested_style_path = tmp_path / "settings" / "deep" / "style.json"
+        config_paths = MockConfigPaths(style_path=nested_style_path)
+        monkeypatch.setattr(
+            "perplexity_cli.utils.style_manager.get_config_paths",
+            lambda: config_paths,
+        )
+
+        StyleManager().save_style("nested style")
+
+        assert nested_style_path.exists()
+
+
+class TestStyleManagerSerialisationFormat:
+    """Test the on-disk JSON rendering produced by save_style."""
+
+    def test_save_style_writes_two_space_indented_json(self, mocked_style_path: Path):
+        """Saved style JSON is indented with exactly two spaces per level."""
+        StyleManager().save_style("indented")
+
+        lines = mocked_style_path.read_text(encoding="utf-8").splitlines()
+        assert lines[0] == "{"
+        assert lines[1].startswith('  "')
+        assert not lines[1].startswith('   "')
+        assert lines[-1] == "}"
+
+
+class TestStyleManagerSaveFailure:
+    """Test exact error reporting when saving fails."""
+
+    def test_save_style_write_failure_message_is_exact(self, mocked_style_path: Path):
+        """Write failures are re-raised with the precise save-failure message."""
+        sm = StyleManager()
+        with patch(
+            "perplexity_cli.utils.atomic_write._write_content",
+            side_effect=OSError("injected write"),
+        ):
+            with pytest.raises(OSError) as excinfo:
+                sm.save_style("new style")
+
+        assert str(excinfo.value) == (
+            f"Failed to save style to {mocked_style_path}: injected write"
+        )
+
+
+class TestStyleManagerClearFailure:
+    """Test exact error reporting when clearing fails."""
+
+    def test_clear_style_unlink_failure_message_is_exact(self, mocked_style_path: Path):
+        """Unlink failures are re-raised with the precise delete-failure message."""
+        sm = StyleManager()
+        sm.save_style("doomed")
+        with patch.object(Path, "unlink", side_effect=OSError("injected delete")):
+            with pytest.raises(OSError) as excinfo:
+                sm.clear_style()
+
+        assert str(excinfo.value) == (
+            f"Failed to delete style file {mocked_style_path}: injected delete"
+        )

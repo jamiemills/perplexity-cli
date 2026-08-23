@@ -14,7 +14,16 @@ from perplexity_cli.utils.encryption import (
     derive_encryption_key,
     encrypt_token,
 )
-from perplexity_cli.utils.exceptions import AuthenticationError
+from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationError
+
+
+def _expected_derived_key(hostname: str, username: str) -> bytes:
+    """Independently recompute the PBKDF2 key for the given identifiers."""
+    material = f"{hostname}:{username}".encode()
+    return base64.urlsafe_b64encode(
+        hashlib.pbkdf2_hmac("sha256", material, FIXTURE_SALT, FIXTURE_PBKDF2_ITERATIONS)
+    )
+
 
 # ---------------------------------------------------------------------------
 # Synthetic NON-secret legacy fixtures.  These are generated locally from the
@@ -324,3 +333,100 @@ class TestStrictDecoding:
         """A non-ASCII payload raises AuthenticationError."""
         with pytest.raises(AuthenticationError, match="Failed to decrypt token"):
             decrypt_token("\u00e9\u00e8")
+
+
+class TestKeyMaterialContract:
+    """Hostname and username selection inside the machine key material."""
+
+    def test_derived_key_pins_hostname_and_username_fallbacks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The key follows hostname plus USER, USERNAME, then 'unknown'."""
+        monkeypatch.setattr("socket.gethostname", lambda: "kmat-host")
+
+        monkeypatch.setenv("USER", "alice")
+        monkeypatch.delenv("USERNAME", raising=False)
+        derive_encryption_key.cache_clear()
+        assert derive_encryption_key() == _expected_derived_key("kmat-host", "alice")
+
+        monkeypatch.delenv("USER")
+        monkeypatch.setenv("USERNAME", "bob")
+        derive_encryption_key.cache_clear()
+        assert derive_encryption_key() == _expected_derived_key("kmat-host", "bob")
+
+        monkeypatch.delenv("USER", raising=False)
+        monkeypatch.delenv("USERNAME", raising=False)
+        derive_encryption_key.cache_clear()
+        assert derive_encryption_key() == _expected_derived_key("kmat-host", "unknown")
+
+        derive_encryption_key.cache_clear()
+
+
+class TestEncryptErrorReporting:
+    """Exact failure reporting when encryption cannot proceed."""
+
+    def test_encrypt_failure_message_is_exact(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A key-derivation failure surfaces the full wrapped message."""
+
+        def broken_derive(_salt: bytes) -> bytes:
+            raise ValueError("no usable key")
+
+        monkeypatch.setattr(encryption_module, "_derive_fernet_key", broken_derive)
+        with pytest.raises(ConfigurationError) as exc_info:
+            encrypt_token("secret-input")
+        assert str(exc_info.value) == "Failed to encrypt token: no usable key"
+
+
+class TestStrictDecodeContract:
+    """Strict outer base64url validation behaviour."""
+
+    def test_invalid_characters_are_rejected_not_stripped(self) -> None:
+        """Characters outside the alphabet abort decoding instead of being dropped."""
+        with pytest.raises(AuthenticationError) as exc_info:
+            decrypt_token("abcd!!!!")
+        expected = (
+            f"Failed to decrypt token: payload is not valid base64. "
+            f"{encryption_module._DECRYPT_FAILURE_HINT}"
+        )
+        assert str(exc_info.value) == expected
+
+
+class TestTruncationBoundary:
+    """Length boundary between the per-message salt and ciphertext."""
+
+    def test_payload_exactly_salt_sized_reports_truncated(self) -> None:
+        """A v2 payload holding only the salt fails as truncated, not corrupt."""
+        truncated = base64.urlsafe_b64encode(b"v2:" + b"\x07" * 16).decode()
+        with pytest.raises(AuthenticationError) as exc_info:
+            decrypt_token(truncated)
+        expected = (
+            f"Failed to decrypt token in the current format. "
+            f"{encryption_module._DECRYPT_FAILURE_HINT}"
+        )
+        assert str(exc_info.value) == expected
+        cause = exc_info.value.__cause__
+        assert isinstance(cause, ValueError)
+        assert str(cause) == "Encrypted token payload is truncated"
+
+
+class TestLegacyReaderErrorChain:
+    """Failure propagation from the legacy SHA-256 key reader."""
+
+    def test_legacy_reader_preserves_exact_configuration_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An OSError during legacy derivation keeps its exact message as cause."""
+
+        def failing_hostname() -> str:
+            raise OSError("disk unavailable")
+
+        monkeypatch.setattr(encryption_module.socket, "gethostname", failing_hostname)
+        garbage = base64.urlsafe_b64encode(b"z" * 72).decode()
+        try:
+            with pytest.raises(AuthenticationError) as exc_info:
+                decrypt_token(garbage)
+            cause = exc_info.value.__cause__
+            assert isinstance(cause, ConfigurationError)
+            assert str(cause) == "Failed to derive encryption key (legacy): disk unavailable"
+        finally:
+            derive_encryption_key.cache_clear()

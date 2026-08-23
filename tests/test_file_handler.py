@@ -1,9 +1,12 @@
 """Tests for file handler utilities."""
 
+import logging
+import os
 from pathlib import Path
 
 import pytest
 
+import perplexity_cli.utils.file_handler as file_handler_module
 from perplexity_cli.utils.exceptions import AttachmentError
 from perplexity_cli.utils.file_handler import (
     MAX_ATTACHMENT_COUNT,
@@ -12,6 +15,12 @@ from perplexity_cli.utils.file_handler import (
     load_attachments,
     resolve_file_arguments,
 )
+from perplexity_cli.utils.logging import redact_path
+
+
+def _messages(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """Return rendered message text for every captured log record."""
+    return [record.getMessage() for record in caplog.records]
 
 
 class TestResolveFileArguments:
@@ -104,6 +113,25 @@ class TestResolveFileArguments:
         with pytest.raises(AttachmentError, match="Too many attachments"):
             resolve_file_arguments([], attach_args=[str(tmp_path)])
 
+    def test_resolve_exact_count_limit_is_accepted(self, tmp_path: Path) -> None:
+        """Resolving exactly the attachment count limit must not raise."""
+        for index in range(MAX_ATTACHMENT_COUNT):
+            (tmp_path / f"file-{index}.txt").write_text("content")
+
+        result = resolve_file_arguments([], attach_args=[str(tmp_path)])
+
+        assert len(result) == MAX_ATTACHMENT_COUNT
+
+    def test_resolve_special_file_raises_with_path_in_message(self, tmp_path: Path) -> None:
+        """ValueError for non-file entries quotes the offending path."""
+        pipe = tmp_path / "pipe"
+        os.mkfifo(pipe)
+
+        with pytest.raises(ValueError) as excinfo:
+            resolve_file_arguments([], attach_args=[str(pipe)])
+
+        assert str(excinfo.value) == f"Not a file or directory: {pipe}"
+
     def test_resolve_nonexistent_file_raises(self):
         """Test that nonexistent file raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
@@ -147,6 +175,62 @@ class TestResolveFileArguments:
         attach_str = f"{file1} , {file2}"
         result = resolve_file_arguments([], attach_args=[attach_str])
         assert len(result) == 2
+
+
+class TestQueryTextExtraction:
+    """Tilde-path extraction behaviour exercised via resolve_file_arguments."""
+
+    @staticmethod
+    def _home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+        """Create an isolated HOME directory so tilde expansion is deterministic."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        return home
+
+    def test_tilde_path_lowercase_is_extracted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Lowercase tilde paths resolve to files inside the isolated HOME."""
+        home = self._home(monkeypatch, tmp_path)
+        (home / "notes.txt").write_text("content")
+
+        result = resolve_file_arguments(["~/notes.txt"])
+
+        assert [path.name for path in result] == ["notes.txt"]
+
+    def test_tilde_path_uppercase_is_extracted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Uppercase characters survive in extracted tilde paths."""
+        home = self._home(monkeypatch, tmp_path)
+        (home / "Report.TXT").write_text("content")
+
+        result = resolve_file_arguments(["~/Report.TXT"])
+
+        assert [path.name for path in result] == ["Report.TXT"]
+
+    def test_unix_candidate_trailing_x_is_preserved(self, tmp_path: Path) -> None:
+        """A trailing uppercase X in a matched unix path is not stripped."""
+        nested = tmp_path / "nested"
+        nested.mkdir()
+        candidate = nested / "BOX.X"
+        candidate.write_text("content")
+
+        result = resolve_file_arguments([str(candidate)])
+
+        assert [path.name for path in result] == ["BOX.X"]
+
+    def test_tilde_candidate_trailing_x_is_preserved(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A trailing uppercase X in a matched tilde path is not stripped."""
+        home = self._home(monkeypatch, tmp_path)
+        (home / "BOX.X").write_text("content")
+
+        result = resolve_file_arguments(["~/BOX.X"])
+
+        assert [path.name for path in result] == ["BOX.X"]
 
 
 class TestLoadAttachments:
@@ -262,6 +346,124 @@ class TestLoadAttachments:
 
         with pytest.raises(AttachmentError, match="Total attachment size exceeds"):
             load_attachments([file1, file2, file3])
+
+    def test_load_exactly_max_count_is_accepted(self, tmp_path: Path) -> None:
+        """Loading exactly the attachment count limit must not raise."""
+        files = []
+        for index in range(MAX_ATTACHMENT_COUNT):
+            path = tmp_path / f"file-{index}.txt"
+            path.write_text("content")
+            files.append(path)
+
+        attachments = load_attachments(files)
+
+        assert len(attachments) == MAX_ATTACHMENT_COUNT
+
+    def test_load_count_limit_message_quotes_actual_and_limit(self, tmp_path: Path) -> None:
+        """The count-limit error message quotes the real count and limit."""
+        files = []
+        for index in range(MAX_ATTACHMENT_COUNT + 1):
+            path = tmp_path / f"file-{index}.txt"
+            path.write_text("content")
+            files.append(path)
+
+        with pytest.raises(AttachmentError) as excinfo:
+            load_attachments(files)
+
+        assert str(excinfo.value) == (
+            f"Too many attachments: {MAX_ATTACHMENT_COUNT + 1} files exceeds "
+            f"the limit of {MAX_ATTACHMENT_COUNT}"
+        )
+
+    def test_load_total_size_equal_to_limit_is_accepted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A cumulative size exactly equal to the total limit is accepted."""
+        monkeypatch.setattr(file_handler_module, "MAX_ATTACHMENT_FILE_SIZE", 10)
+        monkeypatch.setattr(file_handler_module, "MAX_TOTAL_ATTACHMENT_SIZE", 10)
+        first = tmp_path / "first.bin"
+        second = tmp_path / "second.bin"
+        first.write_bytes(b"a" * 6)
+        second.write_bytes(b"b" * 4)
+
+        attachments = load_attachments([first, second])
+
+        assert [attachment.filename for attachment in attachments] == [
+            "first.bin",
+            "second.bin",
+        ]
+
+
+class TestFileHandlerDiagnosticLogs:
+    """Exact log output emitted by the file handler at public boundaries."""
+
+    def test_query_extraction_logs_redacted_path(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Extracted inline paths are logged once with a redacted path argument."""
+        target = tmp_path / "test.txt"
+        target.write_text("content")
+
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            resolve_file_arguments([str(target)])
+
+        assert _messages(caplog) == [f"Extracted path from query: {redact_path(target)}"]
+
+    def test_symlink_skip_logs_redacted_path(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Symlinked directory entries are skipped and logged with a redacted path."""
+        target = tmp_path / "target.txt"
+        target.write_text("content")
+        linked = tmp_path / "linked.txt"
+        linked.symlink_to(target)
+
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            result = resolve_file_arguments([], attach_args=[str(tmp_path)])
+
+        assert [path.name for path in result] == ["target.txt"]
+        assert _messages(caplog) == [
+            f"Skipping symlink during directory attachment: {redact_path(linked)}",
+        ]
+
+    def test_loaded_attachment_logs_name_and_content_type(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Each loaded attachment is logged with its redacted name and content type."""
+        note = tmp_path / "note.txt"
+        note.write_text("content")
+
+        with caplog.at_level(logging.DEBUG, logger="perplexity_cli"):
+            load_attachments([note])
+
+        assert _messages(caplog) == [f"Loaded attachment: {redact_path(note.name)} (text/plain)"]
+
+    def test_missing_attachment_logs_failure_with_exception(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Missing files log a failure record quoting the path and exception."""
+        ghost = tmp_path / "ghost.txt"
+
+        with caplog.at_level(logging.ERROR, logger="perplexity_cli"):
+            with pytest.raises(FileNotFoundError) as excinfo:
+                load_attachments([ghost])
+
+        assert _messages(caplog) == [f"Failed to load attachment: {ghost}: {excinfo.value}"]
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions")
+    def test_unreadable_attachment_logs_read_error(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Unreadable files log a read-error record quoting the path and exception."""
+        locked = tmp_path / "locked.txt"
+        locked.write_text("secret")
+        locked.chmod(0o000)
+
+        with caplog.at_level(logging.ERROR, logger="perplexity_cli"):
+            with pytest.raises(PermissionError) as excinfo:
+                load_attachments([locked])
+
+        assert _messages(caplog) == [f"Error reading file: {locked}: {excinfo.value}"]
 
 
 class TestIntegrationResolveAndLoad:

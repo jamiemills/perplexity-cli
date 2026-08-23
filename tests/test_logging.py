@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import io
+import locale
 import logging
+import re
+import sys
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from perplexity_cli.utils.logging import (
     DynamicStderrHandler,
@@ -19,6 +27,35 @@ from perplexity_cli.utils.logging import (
     redact_url,
     setup_logging,
 )
+
+_CONSOLE_LINE_FORMAT = (
+    r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"
+    r" - perplexity_cli - WARNING - boom\n"
+)
+
+
+@contextmanager
+def _non_utf8_locale() -> Iterator[None]:
+    """Force a non-UTF-8 preferred encoding so explicit encodings are distinguished."""
+    previous = locale.setlocale(locale.LC_CTYPE)
+    locale.setlocale(locale.LC_CTYPE, "C")
+    try:
+        yield
+    finally:
+        locale.setlocale(locale.LC_CTYPE, previous)
+
+
+def _make_record(message: str = "hello") -> logging.LogRecord:
+    """Create a minimal log record for direct handler emission."""
+    return logging.LogRecord(
+        name="perplexity_cli",
+        level=logging.WARNING,
+        pathname="test.py",
+        lineno=1,
+        msg=message,
+        args=(),
+        exc_info=None,
+    )
 
 
 class TestLoggingSetup:
@@ -187,6 +224,83 @@ class TestEnableStructuredLogging:
             if isinstance(h, DynamicStderrHandler):
                 assert isinstance(h.formatter, JSONLogFormatter)
                 assert h.formatter.trace_id == "abc-123"
+
+
+class TestDynamicStderrHandlerEmission:
+    """Test that emit writes the formatted message plus terminator to stderr."""
+
+    def test_emit_writes_message_and_terminator_to_current_stderr(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """emit writes '<message>\\n' to whichever stream sys.stderr holds."""
+        buffer = io.StringIO()
+        monkeypatch.setattr(sys, "stderr", buffer)
+
+        DynamicStderrHandler().emit(_make_record("hello"))
+
+        assert buffer.getvalue() == "hello\n"
+
+
+class TestSetupLoggingVerbosity:
+    """Test verbosity handling in setup_logging."""
+
+    def test_unknown_verbosity_falls_back_to_warning(self):
+        """Unrecognised verbosity values configure WARNING, not an error."""
+        logger = setup_logging(verbosity="not-a-level")
+        assert logger.level == logging.WARNING
+
+
+class TestSetupLoggingConsoleFormat:
+    """Test the exact rendered console line produced by setup_logging."""
+
+    def test_console_output_matches_configured_format(self, monkeypatch: pytest.MonkeyPatch):
+        """A warning renders as 'asctime - name - LEVELNAME - message'."""
+        buffer = io.StringIO()
+        monkeypatch.setattr(sys, "stderr", buffer)
+
+        logger = setup_logging(verbosity="warning")
+        logger.warning("boom")
+
+        assert re.fullmatch(_CONSOLE_LINE_FORMAT, buffer.getvalue())
+
+
+class TestSetupLoggingFileHandler:
+    """Test file-handler creation in setup_logging."""
+
+    def test_log_file_parent_directories_are_created(self, tmp_path: Path):
+        """setup_logging creates every missing ancestor of the log file."""
+        log_file = tmp_path / "logs" / "deep" / "app.log"
+
+        logger = setup_logging(log_file=log_file)
+        _close_file_handlers(logger)
+
+        assert log_file.exists()
+
+    def test_log_file_content_is_utf8_encoded(self, tmp_path: Path):
+        """Non-ASCII messages reach the log file as UTF-8 under any locale."""
+        log_file = tmp_path / "app.log"
+        with _non_utf8_locale():
+            logger = setup_logging(log_file=log_file)
+            logger.warning("café")
+            for handler in logger.handlers:
+                handler.flush()
+
+        assert b"caf\xc3\xa9" in log_file.read_bytes()
+
+
+def _close_file_handlers(logger: logging.Logger) -> None:
+    """Close any FileHandlers owned by the logger so temp files are released."""
+    for handler in logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            handler.close()
+
+
+class TestRedactionPreviewLengths:
+    """Test exact redaction preview lengths."""
+
+    def test_redact_response_text_keeps_zero_char_preview(self):
+        """HTTP response text never leaks even a preview of its length."""
+        assert redact_response_text("abc") == "<redacted:0 chars>"
 
 
 def test_logging_contracts_module_re_exports_protocols() -> None:

@@ -88,6 +88,13 @@ class TestJSONLogFormatter:
         parsed = json.loads(formatter.format(record))
         assert "trace_id" not in parsed
 
+    def test_ts_is_utc_offset_aware(self):
+        """The 'ts' field carries an explicit UTC offset."""
+        formatter = JSONLogFormatter()
+        record = _make_log_record()
+        parsed = json.loads(formatter.format(record))
+        assert parsed["ts"].endswith("+00:00")
+
 
 class TestQuietMode:
     """Test quiet mode suppresses stderr."""
