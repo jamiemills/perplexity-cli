@@ -156,6 +156,24 @@ class TestRichFormatAnswer:
         positions = [result.index(part) for part in ("A", canonical, "B")]
         assert positions == sorted(positions)
 
+    def test_bare_fence_matches_canonical_text_lexer_render(self):
+        """A fence with no language highlights through the documented default lexer."""
+        result = RichFormatter().format_answer("```\nplain stuff\n```")
+        assert result == _t010_canonical_code_block("plain stuff", "text")
+
+    def test_wide_index_labels_match_canonical_table_render(self):
+        """Four-digit row labels keep the documented number-column geometry."""
+        refs = [_t010_ref(f"S{n}", f"https://example.test/{n}") for n in range(1, 1002)]
+        assert RichFormatter().format_references(refs) == _t010_canonical_references(refs)
+
+    def test_wide_index_labels_match_canonical_direct_render(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        """Four-digit labels keep their geometry during direct rendering too."""
+        refs = [_t010_ref(f"S{n}", f"https://example.test/{n}") for n in range(1, 1002)]
+        RichFormatter().render_complete(Answer(text="Body", references=refs))
+        assert capsys.readouterr().out == _t010_canonical_render("Body", refs)
+
     def test_prose_around_code_blocks_has_no_separator_artifacts(self):
         """Segments are joined directly with no synthetic separators."""
         result = RichFormatter().format_answer("before\n```py\nx = 1\n```\nafter")
@@ -221,9 +239,12 @@ class TestRichReferencesTable:
         refs = [WebResult(name="x" * 80, url="https://a.b", snippet=None)]
         assert RichFormatter().format_references(refs) == _t010_canonical_references(refs)
 
-    def test_over_long_url_row_matches_canonical_render(self):
+    def test_over_long_url_row_matches_canonical_render(self, monkeypatch: pytest.MonkeyPatch):
         """An over-wide URL folds exactly as the canonical column allows."""
-        refs = [WebResult(name="Src", url="u" * 121, snippet=None)]
+        # A wide console budget makes the documented max_width=120 URL cap bind,
+        # so any relaxation of the cap changes the rendered bytes.
+        monkeypatch.setenv("COLUMNS", "300")
+        refs = [WebResult(name="Src", url="u" * 130, snippet=None)]
         assert RichFormatter().format_references(refs) == _t010_canonical_references(refs)
 
     def test_output_carries_terminal_styling(self):

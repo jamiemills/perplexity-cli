@@ -47,6 +47,10 @@ def _web_result(url: str = "https://example.test/source") -> WebResult:
 
 # ---------------------------------------------------------------------------
 # Paragraph unwrapping (public boundary for the private collectors)
+#
+# Termination guards for index-corrupting collector mutants live in
+# tests/test_aa_unwrap_termination_guards.py, which pytest collects ahead
+# of every other suite file.
 # ---------------------------------------------------------------------------
 
 

@@ -136,19 +136,19 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
    - Acceptance evidence: per-key kills
    - Repair attempts: 0
    - Recovery note: per-key commits
-4. [pending] Close T010 formatting survivors (301)
-   - Task ID: T010
-   - Depends on: none
-   - Parallel group: A4
-   - Risk: high
-   - Owned scope: formatting/base, formatting/rich, formatting/markdown, formatting/plain, formatting/json, formatting/registry, formatting/context
-   - Not in scope: any other module
-   - Actions: presentation semantics (not trivia); 9 timeouts need triple-kill; 21 no-tests need coverage
-   - Acceptance signal: all T010 keys killed; formatting tests pass
-   - Validation: ruff/pyright/radon/focused pytest
-   - Acceptance evidence: per-key kills
-   - Repair attempts: 0
-   - Recovery note: per-key commits
+4. [complete] Close T010 formatting survivors (301)
+    - Task ID: T010
+    - Depends on: none
+    - Parallel group: A4
+    - Risk: high
+    - Owned scope: formatting/base, formatting/rich, formatting/markdown, formatting/plain, formatting/json, formatting/registry, formatting/context
+    - Not in scope: any other module
+    - Actions: presentation semantics (not trivia); 9 timeouts need triple-kill; 21 no-tests need coverage
+    - Acceptance signal: all T010 keys killed; formatting tests pass
+    - Validation: ruff/pyright/radon/focused pytest
+    - Acceptance evidence: 3 consecutive serial policy gates exit 0 (clean, 232/232 required keys killed); 69 documented structural exclusions with owner/reason/proof; 163 focused tests pass; ruff/pyright clean
+    - Repair attempts: 3
+    - Recovery note: closed in recovery session 4; key mechanisms - SIGALRM termination guards in an early-collected test file against event-loop/index-corruption spins, byte-exact canonical comparisons with a COLUMNS-wide console for the URL cap, and empirically-proven equivalence exclusions (Rich defaults, style-name case-insensitivity, colourless code-block console, trampoline-bound signature defaults)
 5. [complete] Close T011 OAuth/CDP survivors (186)
     - Task ID: T011
     - Depends on: none
@@ -255,6 +255,8 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
   | 2026-08-23 | 3 | SELECT -> BLOCKED | T011 | Removed stale mutants/ and verified `uv run mutmut --version` = 3.5.0. T011 focused tests pass (60). A serialized full T011 run classified all 175 selected keys as killed once, but consecutive reruns regressed to timeout findings; narrowed isolated runs fail during Mutmut clean-test stats with `BadTestExecutionCommandsException`. T010/T007 were not started. | RECOVER after mutation test environment repair |
    | 2026-08-23 | 4 | BLOCKED -> RECOVER -> REPAIR | T007, T010, T011 | Recovery session 4. Committed verified prior-session partial work as 5fae4e4 (T011 at 2 timeout findings; T010 78; T007 405). Diagnosed the two T011 timeout keys (`_await_response__mutmut_8` forwards None as command id; `_wait_for_matching__mutmut_12` matches on key None): under either, a waiter fed endlessly-repeating instantly-returning AsyncMock frames spins WITHOUT yielding to the event loop, starving all asyncio timers - mutmut classified the whole selected suite as timeout, masking every killing assertion. Repair: replaced endless `recv.return_value` mocks with finite side_effect lists ending in a ConnectionClosed poison pill across test_oauth_cdp.py and test_oauth_handler.py (12 tests), so mis-correlation dies sub-second. Targeted run: both keys killed. | CHECKPOINT after three serial T011 gates |
    | 2026-08-23 | 4 | VERIFY -> CHECKPOINT | T011 | Three consecutive serial full policy gates: each exit 0, status clean, 175/175 required keys killed (186 minus 11 documented exclusions), 0 findings. Focused tests: 116 passed (test_oauth_cdp.py + test_oauth_handler.py). ruff format/check clean; pyright strict src/ = 0 errors; radon no C+ functions in oauth_handler. | SELECT T010 |
+   | 2026-08-23 | 4 | SELECT -> REPAIR -> VERIFY | T010 | Fresh policy runs exposed 79 findings (9 timeouts, 70 survivors). Iterated five gate runs with per-class repairs: SIGALRM termination guards against index-corruption spins, moved into tests/test_aa_unwrap_termination_guards.py so they execute before hang-prone suites (test_formatters.py collects before test_formatting_base.py); byte-exact canonical comparisons; COLUMNS=300 console budget to bind the URL max_width cap. Documented 69 empirically-proven structural exclusions (trampoline-bound signature defaults, Rich library defaults for show_header/padding/line_numbers/theme/max_width/no_wrap-on-fixed-width, style-name case-insensitivity, colourless code-block console, truthiness-only consumption, empty-string join identity). | CHECKPOINT after triple gates |
+   | 2026-08-23 | 4 | VERIFY -> CHECKPOINT | T010 | Three consecutive serial full policy gates exit 0 each: clean, 232/232 required keys killed (301 minus 69 documented exclusions). Focused tests: 163 passed across guard/base/formatters/rich-table files. ruff format/check clean; pyright strict src/ 0 errors. | SELECT T007 |
 
 ## Completion Review
 

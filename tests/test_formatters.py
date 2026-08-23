@@ -902,3 +902,7 @@ class TestTrailingWhitespaceOnlyTrimming:
     def test_plain_formatter_keeps_leading_blank_line(self):
         """A blank first line is a counted blank line, not an unconditionally dropped one."""
         assert PlainTextFormatter().format_answer("\nBody") == "\nBody"
+
+    def test_three_leading_blank_lines_collapse_to_two(self):
+        """Leading blank lines obey the same two-blank cap as interior blanks."""
+        assert PlainTextFormatter().format_answer("\n\n\nBody") == "\n\nBody"

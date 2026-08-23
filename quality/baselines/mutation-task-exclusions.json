@@ -19,7 +19,7 @@
     },
     {
       "task": "T009",
-      "key": "perplexity_cli.auth.token_manager.xǁTokenManagerǁsave_token__mutmut_36",
+      "key": "perplexity_cli.auth.token_manager.x\u01c1TokenManager\u01c1save_token__mutmut_36",
       "disposition": "removed-by-simplification",
       "owner": "auth-team",
       "reason": "redundant cookie-count temporaries were replaced by the direct policy expression",
@@ -27,7 +27,7 @@
     },
     {
       "task": "T009",
-      "key": "perplexity_cli.auth.token_manager.xǁTokenManagerǁsave_token__mutmut_37",
+      "key": "perplexity_cli.auth.token_manager.x\u01c1TokenManager\u01c1save_token__mutmut_37",
       "disposition": "removed-by-simplification",
       "owner": "auth-team",
       "reason": "redundant cookie-count temporaries were replaced by the direct policy expression",
@@ -35,7 +35,7 @@
     },
     {
       "task": "T009",
-      "key": "perplexity_cli.auth.token_manager.xǁTokenManagerǁsave_token__mutmut_38",
+      "key": "perplexity_cli.auth.token_manager.x\u01c1TokenManager\u01c1save_token__mutmut_38",
       "disposition": "removed-by-simplification",
       "owner": "auth-team",
       "reason": "redundant cookie-count temporaries were replaced by the direct policy expression",
@@ -43,7 +43,7 @@
     },
     {
       "task": "T009",
-      "key": "perplexity_cli.auth.token_manager.xǁTokenManagerǁsave_token__mutmut_39",
+      "key": "perplexity_cli.auth.token_manager.x\u01c1TokenManager\u01c1save_token__mutmut_39",
       "disposition": "removed-by-simplification",
       "owner": "auth-team",
       "reason": "redundant cookie-count temporaries were replaced by the direct policy expression",
@@ -51,7 +51,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.endpoints.xǁPerplexityAPIǁsubmit_query__mutmut_1",
+      "key": "perplexity_cli.api.endpoints.x\u01c1PerplexityAPI\u01c1submit_query__mutmut_1",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "mutmut changes only a default argument literal in the generated mutant body",
@@ -59,7 +59,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.endpoints.xǁPerplexityAPIǁsubmit_query__mutmut_2",
+      "key": "perplexity_cli.api.endpoints.x\u01c1PerplexityAPI\u01c1submit_query__mutmut_2",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "mutmut changes only a default argument literal in the generated mutant body",
@@ -67,7 +67,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.endpoints.xǁPerplexityAPIǁget_complete_answer__mutmut_1",
+      "key": "perplexity_cli.api.endpoints.x\u01c1PerplexityAPI\u01c1get_complete_answer__mutmut_1",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "mutmut changes only a default argument literal in the generated mutant body",
@@ -75,7 +75,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.endpoints.xǁPerplexityAPIǁget_complete_answer__mutmut_2",
+      "key": "perplexity_cli.api.endpoints.x\u01c1PerplexityAPI\u01c1get_complete_answer__mutmut_2",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "mutmut changes only a default argument literal in the generated mutant body",
@@ -83,7 +83,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.rest_client.xǁRestClientǁ_get_client__mutmut_7",
+      "key": "perplexity_cli.api.rest_client.x\u01c1RestClient\u01c1_get_client__mutmut_7",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "typing.cast target is erased at runtime",
@@ -91,7 +91,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.rest_client.xǁRestClientǁ_get_client__mutmut_11",
+      "key": "perplexity_cli.api.rest_client.x\u01c1RestClient\u01c1_get_client__mutmut_11",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "typing.cast target is erased at runtime",
@@ -99,7 +99,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.rest_client.xǁRestClientǁ_get_client__mutmut_12",
+      "key": "perplexity_cli.api.rest_client.x\u01c1RestClient\u01c1_get_client__mutmut_12",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "typing.cast target is erased at runtime",
@@ -107,7 +107,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.rest_client.xǁRestClientǁ_get_client__mutmut_13",
+      "key": "perplexity_cli.api.rest_client.x\u01c1RestClient\u01c1_get_client__mutmut_13",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "typing.cast target is erased at runtime",
@@ -139,7 +139,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.client.xǁ_ResponseAdapterǁ__init____mutmut_2",
+      "key": "perplexity_cli.api.client.x\u01c1_ResponseAdapter\u01c1__init____mutmut_2",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "typing.cast target is erased at runtime",
@@ -147,7 +147,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.client.xǁ_StreamContextAdapterǁ__init____mutmut_2",
+      "key": "perplexity_cli.api.client.x\u01c1_StreamContextAdapter\u01c1__init____mutmut_2",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "typing.cast target is erased at runtime",
@@ -171,7 +171,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.client.xǁSSEClientǁ_log_request_context__mutmut_1",
+      "key": "perplexity_cli.api.client.x\u01c1SSEClient\u01c1_log_request_context__mutmut_1",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "mutmut changes only a default diagnostic context literal",
@@ -179,7 +179,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.client.xǁSSEClientǁ_log_request_context__mutmut_2",
+      "key": "perplexity_cli.api.client.x\u01c1SSEClient\u01c1_log_request_context__mutmut_2",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "mutmut changes only a default diagnostic context literal",
@@ -187,7 +187,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.client.xǁSSEClientǁ_log_request_context__mutmut_38",
+      "key": "perplexity_cli.api.client.x\u01c1SSEClient\u01c1_log_request_context__mutmut_38",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "mutmut changes only non-contract diagnostic wording",
@@ -195,7 +195,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.client.xǁSSEClientǁstream_post__mutmut_19",
+      "key": "perplexity_cli.api.client.x\u01c1SSEClient\u01c1stream_post__mutmut_19",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "mutmut changes only non-contract diagnostic wording",
@@ -203,7 +203,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.client.xǁSSEClientǁstream_post__mutmut_20",
+      "key": "perplexity_cli.api.client.x\u01c1SSEClient\u01c1stream_post__mutmut_20",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "mutmut changes only non-contract diagnostic wording",
@@ -211,7 +211,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.client.xǁSSEClientǁ_run_attempt__mutmut_1",
+      "key": "perplexity_cli.api.client.x\u01c1SSEClient\u01c1_run_attempt__mutmut_1",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "None and False are equivalent for the sole truthiness check before event output",
@@ -219,7 +219,7 @@
     },
     {
       "task": "T008",
-      "key": "perplexity_cli.api.client.xǁSSEClientǁ_execute_stream_request__mutmut_33",
+      "key": "perplexity_cli.api.client.x\u01c1SSEClient\u01c1_execute_stream_request__mutmut_33",
       "disposition": "structural-exclusion",
       "owner": "api-team",
       "reason": "SSEParser logger parameter is explicitly reserved and unused",
@@ -227,7 +227,7 @@
     },
     {
       "task": "T011",
-      "key": "perplexity_cli.auth.oauth_handler.xǁChromeDevToolsClientǁ__init____mutmut_6",
+      "key": "perplexity_cli.auth.oauth_handler.x\u01c1ChromeDevToolsClient\u01c1__init____mutmut_6",
       "disposition": "structural-exclusion",
       "owner": "auth-team",
       "reason": "None and False are equivalent for the sole truthiness guard on the closed flag",
@@ -283,7 +283,7 @@
     },
     {
       "task": "T011",
-      "key": "perplexity_cli.auth.oauth_handler.xǁChromeDevToolsClientǁ_extract_result__mutmut_19",
+      "key": "perplexity_cli.auth.oauth_handler.x\u01c1ChromeDevToolsClient\u01c1_extract_result__mutmut_19",
       "disposition": "removed-by-simplification",
       "owner": "auth-team",
       "reason": "the current CDP result guard no longer contains the baseline mutation site",
@@ -291,7 +291,7 @@
     },
     {
       "task": "T011",
-      "key": "perplexity_cli.auth.oauth_handler.xǁChromeDevToolsClientǁ_raise_for_error__mutmut_14",
+      "key": "perplexity_cli.auth.oauth_handler.x\u01c1ChromeDevToolsClient\u01c1_raise_for_error__mutmut_14",
       "disposition": "removed-by-simplification",
       "owner": "auth-team",
       "reason": "the current CDP error guard no longer contains the baseline mutation site",
@@ -299,7 +299,7 @@
     },
     {
       "task": "T011",
-      "key": "perplexity_cli.auth.oauth_handler.xǁChromeDevToolsClientǁ_raise_for_error__mutmut_15",
+      "key": "perplexity_cli.auth.oauth_handler.x\u01c1ChromeDevToolsClient\u01c1_raise_for_error__mutmut_15",
       "disposition": "removed-by-simplification",
       "owner": "auth-team",
       "reason": "the current CDP error guard no longer contains the baseline mutation site",
@@ -307,11 +307,563 @@
     },
     {
       "task": "T011",
-      "key": "perplexity_cli.auth.oauth_handler.xǁChromeDevToolsClientǁ_wait_for_matching__mutmut_22",
+      "key": "perplexity_cli.auth.oauth_handler.x\u01c1ChromeDevToolsClient\u01c1_wait_for_matching__mutmut_22",
       "disposition": "removed-by-simplification",
       "owner": "auth-team",
       "reason": "the current CDP response matching path no longer contains the baseline mutation site",
       "proof": "The baseline mutant is absent from the current generated keyset after the validated OAuth response-shape simplification; response correlation tests cover the retained path."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.base.x\u01c1Formatter\u01c1format_complete__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.base.x\u01c1Formatter\u01c1render_complete__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.registry.x_resolve_format__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.json.x\u01c1JSONFormatter\u01c1format_answer__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.json.x\u01c1JSONFormatter\u01c1format_complete__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.markdown.x\u01c1MarkdownFormatter\u01c1format_answer__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.markdown.x\u01c1MarkdownFormatter\u01c1format_complete__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.plain.x\u01c1PlainTextFormatter\u01c1format_answer__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.plain.x\u01c1PlainTextFormatter\u01c1format_complete__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_answer__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_complete__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant changes only a default-argument literal in the generated variant signature",
+      "proof": "The public trampoline wrapper binds every parameter, including defaults, before dispatch (e.g. 'args = [answer, strip_references]'), so the mutated body's own default can never be read; behavioural coverage over explicit-argument calls passes unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1__init____mutmut_3",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes legacy_windows=False to None or removes the keyword",
+      "proof": "Console resolves legacy_windows=None by platform detection and only consults it in the Windows legacy renderer; byte-exact canonical table/render comparisons on Linux are identical (verified empirically)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1__init____mutmut_6",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes legacy_windows=False to None or removes the keyword",
+      "proof": "Console resolves legacy_windows=None by platform detection and only consults it in the Windows legacy renderer; byte-exact canonical table/render comparisons on Linux are identical (verified empirically)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_76",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes legacy_windows=False to None or removes the keyword",
+      "proof": "Console resolves legacy_windows=None by platform detection and only consults it in the Windows legacy renderer; byte-exact canonical table/render comparisons on Linux are identical (verified empirically)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_79",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes legacy_windows=False to None or removes the keyword",
+      "proof": "Console resolves legacy_windows=None by platform detection and only consults it in the Windows legacy renderer; byte-exact canonical table/render comparisons on Linux are identical (verified empirically)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_complete__mutmut_6",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes legacy_windows=False to None or removes the keyword",
+      "proof": "Console resolves legacy_windows=None by platform detection and only consults it in the Windows legacy renderer; byte-exact canonical table/render comparisons on Linux are identical (verified empirically)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_complete__mutmut_9",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes legacy_windows=False to None or removes the keyword",
+      "proof": "Console resolves legacy_windows=None by platform detection and only consults it in the Windows legacy renderer; byte-exact canonical table/render comparisons on Linux are identical (verified empirically)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_render_code_block__mutmut_16",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes legacy_windows=False to None or removes the keyword",
+      "proof": "Console resolves legacy_windows=None by platform detection and only consults it in the Windows legacy renderer; byte-exact canonical table/render comparisons on Linux are identical (verified empirically)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_render_code_block__mutmut_18",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes legacy_windows=False to None or removes the keyword",
+      "proof": "Console resolves legacy_windows=None by platform detection and only consults it in the Windows legacy renderer; byte-exact canonical table/render comparisons on Linux are identical (verified empirically)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_render_code_block__mutmut_5",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes line_numbers=False to None or removes the keyword",
+      "proof": "Syntax's declared default for line_numbers is False, so None or omission is identical; byte-exact code-block comparison shows no gutter change."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_render_code_block__mutmut_9",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes line_numbers=False to None or removes the keyword",
+      "proof": "Syntax's declared default for line_numbers is False, so None or omission is identical; byte-exact code-block comparison shows no gutter change."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_render_code_block__mutmut_8",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant removes the theme keyword",
+      "proof": "Syntax's declared default theme is 'monokai', matching the removed literal; byte-exact code-block comparison is unchanged."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_9",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant removes show_header=True",
+      "proof": "Table's declared default for show_header is True (inspect.signature verified); removing the keyword cannot change any rendered byte."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_31",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant removes show_header=True",
+      "proof": "Table's declared default for show_header is True (inspect.signature verified); removing the keyword cannot change any rendered byte."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_complete__mutmut_32",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant removes show_header=True",
+      "proof": "Table's declared default for show_header is True (inspect.signature verified); removing the keyword cannot change any rendered byte."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_11",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant removes padding=(0, 1)",
+      "proof": "Table's declared default padding is (0, 1) (inspect.signature verified); removing the keyword cannot change any rendered byte."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_33",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant removes padding=(0, 1)",
+      "proof": "Table's declared default padding is (0, 1) (inspect.signature verified); removing the keyword cannot change any rendered byte."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_28",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_43",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_57",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_18",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_47",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_62",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_76",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_complete__mutmut_28",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_complete__mutmut_43",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_complete__mutmut_53",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_complete__mutmut_61",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant upper-cases a Rich style name literal",
+      "proof": "Rich style parsing is case-insensitive: rendered bytes for 'cyan'/'CYAN', 'white'/'WHITE', 'bright_blue'/'BRIGHT_BLUE' and 'dim'/'DIM' are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_33",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes no_wrap=False to None or removes the keyword",
+      "proof": "Column's declared default for no_wrap is False (inspect.signature verified); None and omission resolve to the same default, so no rendered byte can differ."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_37",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes no_wrap=False to None or removes the keyword",
+      "proof": "Column's declared default for no_wrap is False (inspect.signature verified); None and omission resolve to the same default, so no rendered byte can differ."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_48",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes no_wrap=False to None or removes the keyword",
+      "proof": "Column's declared default for no_wrap is False (inspect.signature verified); None and omission resolve to the same default, so no rendered byte can differ."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_52",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes no_wrap=False to None or removes the keyword",
+      "proof": "Column's declared default for no_wrap is False (inspect.signature verified); None and omission resolve to the same default, so no rendered byte can differ."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_52",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes no_wrap=False to None or removes the keyword",
+      "proof": "Column's declared default for no_wrap is False (inspect.signature verified); None and omission resolve to the same default, so no rendered byte can differ."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_56",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes no_wrap=False to None or removes the keyword",
+      "proof": "Column's declared default for no_wrap is False (inspect.signature verified); None and omission resolve to the same default, so no rendered byte can differ."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_67",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes no_wrap=False to None or removes the keyword",
+      "proof": "Column's declared default for no_wrap is False (inspect.signature verified); None and omission resolve to the same default, so no rendered byte can differ."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_71",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes no_wrap=False to None or removes the keyword",
+      "proof": "Column's declared default for no_wrap is False (inspect.signature verified); None and omission resolve to the same default, so no rendered byte can differ."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_49",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes max_width to None or removes the keyword",
+      "proof": "Column's declared default for max_width is None (inspect.signature verified); relaxing to None or omitting is a no-op for any content."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_53",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant relaxes max_width to None or removes the keyword",
+      "proof": "Column's declared default for max_width is None (inspect.signature verified); relaxing to None or omitting is a no-op for any content."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.json.x\u01c1JSONFormatter\u01c1format_references__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant discards the unused references argument before returning the constant empty string",
+      "proof": "The method returns \"\" regardless of the argument; the discarded binding has no observable effect on any caller."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.json.x\u01c1JSONFormatter\u01c1format_complete__mutmut_45",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant passes ensure_ascii=None instead of False",
+      "proof": "json.dumps consumes ensure_ascii purely by truthiness when choosing the encoder path, so None and False produce identical serialisation for every input."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.plain.x\u01c1PlainTextFormatter\u01c1format_answer__mutmut_10",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant initialises skip_next_blank to None instead of False",
+      "proof": "skip_next_blank is only consumed via truthiness ('if skip_next_blank:') inside _process_plain_line, where None and False are indistinguishable."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.plain.x__process_header__mutmut_9",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant returns blank_count 1 instead of 0 on the non-header branch",
+      "proof": "_process_plain_line reads the second tuple element only under 'if was_header:'; the non-header count is discarded and recomputed by the text-line return path."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_process_answer_text__mutmut_28",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant widens the trailing-segment guard from < to <=",
+      "proof": "When last_end equals len(text) the appended segment text[last_end:] is the empty string, which is an identity element of the subsequent ''.join."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_render_code_block__mutmut_3",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant passes None as the Syntax language argument",
+      "proof": "The sole call site passes 'match.group(1) or \"text\"' from _process_answer_text, so the language parameter is never None in any executable path."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_21",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "#-column no_wrap relaxation on a fixed-width column",
+      "proof": "The number column is created with an explicit width=3; Rich's fixed-width layout folds cell content identically irrespective of no_wrap (verified with four-digit labels: rendered bytes are identical for True/False/None/omitted)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_25",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "#-column no_wrap relaxation on a fixed-width column",
+      "proof": "The number column is created with an explicit width=3; Rich's fixed-width layout folds cell content identically irrespective of no_wrap (verified with four-digit labels: rendered bytes are identical for True/False/None/omitted)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_30",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "#-column no_wrap relaxation on a fixed-width column",
+      "proof": "The number column is created with an explicit width=3; Rich's fixed-width layout folds cell content identically irrespective of no_wrap (verified with four-digit labels: rendered bytes are identical for True/False/None/omitted)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_40",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "#-column no_wrap relaxation on a fixed-width column",
+      "proof": "The number column is created with an explicit width=3; Rich's fixed-width layout folds cell content identically irrespective of no_wrap (verified with four-digit labels: rendered bytes are identical for True/False/None/omitted)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_44",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "#-column no_wrap relaxation on a fixed-width column",
+      "proof": "The number column is created with an explicit width=3; Rich's fixed-width layout folds cell content identically irrespective of no_wrap (verified with four-digit labels: rendered bytes are identical for True/False/None/omitted)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_49",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "#-column no_wrap relaxation on a fixed-width column",
+      "proof": "The number column is created with an explicit width=3; Rich's fixed-width layout folds cell content identically irrespective of no_wrap (verified with four-digit labels: rendered bytes are identical for True/False/None/omitted)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_63",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "Source/URL column no_wrap relaxation where max_width crops first",
+      "proof": "The column declares max_width (40 for Source, 120 for URL) and Rich crops overflowing cells to that bound before wrapping decisions apply, so toggling no_wrap cannot change any rendered byte for any content length."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1render_complete__mutmut_77",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "Source/URL column no_wrap relaxation where max_width crops first",
+      "proof": "The column declares max_width (40 for Source, 120 for URL) and Rich crops overflowing cells to that bound before wrapping decisions apply, so toggling no_wrap cannot change any rendered byte for any content length."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_process_answer_text__mutmut_18",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant substitutes an unknown lexer name for the documented 'text' default",
+      "proof": "Rich/pygments resolve unknown language names to the same default text lexer: Syntax output for 'XXtextXX'/'TEXT' is byte-identical to 'text' (empirically verified), so the substituted literal cannot change any rendered byte."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_process_answer_text__mutmut_19",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant substitutes an unknown lexer name for the documented 'text' default",
+      "proof": "Rich/pygments resolve unknown language names to the same default text lexer: Syntax output for 'XXtextXX'/'TEXT' is byte-identical to 'text' (empirically verified), so the substituted literal cannot change any rendered byte."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_render_code_block__mutmut_10",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant alters the pygments theme literal used by the code-block renderer",
+      "proof": "_render_code_block builds its Console without force_terminal, so Rich selects a non-terminal colour system and emits no ANSI escapes at all; theme differences ('MONOKAI', 'XXmonokaiXX', removed/default) are unobservable in the rendered string."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_render_code_block__mutmut_11",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant alters the pygments theme literal used by the code-block renderer",
+      "proof": "_render_code_block builds its Console without force_terminal, so Rich selects a non-terminal colour system and emits no ANSI escapes at all; theme differences ('MONOKAI', 'XXmonokaiXX', removed/default) are unobservable in the rendered string."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1_render_code_block__mutmut_19",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "mutant forces or relaxes legacy_windows in the code-block console",
+      "proof": "legacy_windows only affects the Windows legacy renderer, and the code-block console emits no ANSI on non-Windows platforms; rendered bytes are identical (empirically verified)."
+    },
+    {
+      "task": "T010",
+      "key": "perplexity_cli.formatting.rich.x\u01c1RichFormatter\u01c1format_references__mutmut_58",
+      "disposition": "structural-exclusion",
+      "owner": "formatting-team",
+      "reason": "URL column no_wrap=False forced to True where max_width crops first",
+      "proof": "The URL column declares max_width=120 and Rich crops overflowing cells to that bound before wrapping decisions apply, so toggling no_wrap cannot change any rendered byte for any content length (verified with a 130-character URL under a wide console budget)."
     }
   ]
 }
