@@ -138,6 +138,8 @@ class TestConcurrentCommands:
             if recv_calls == 1:
                 recv_started.set()
                 await gate.wait()
+            if recv_calls > 2:
+                raise ConnectionClosed(None, None)
             return json.dumps({"id": 2, "result": {"ok": True}})
 
         mock_ws.recv.side_effect = recv
@@ -190,7 +192,10 @@ class TestCdpResponseHardening:
     @pytest.mark.asyncio
     async def test_malformed_result_raises(self) -> None:
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "result": "not-a-dict"})
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1, "result": "not-a-dict"}),
+            ConnectionClosed(None, None),
+        ]
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
         with pytest.raises(AuthenticationError):
@@ -199,7 +204,10 @@ class TestCdpResponseHardening:
     @pytest.mark.asyncio
     async def test_malformed_error_object_raises(self) -> None:
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "error": "oops"})
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1, "error": "oops"}),
+            ConnectionClosed(None, None),
+        ]
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
         with pytest.raises(AuthenticationError):
@@ -208,7 +216,10 @@ class TestCdpResponseHardening:
     @pytest.mark.asyncio
     async def test_error_missing_message_raises(self) -> None:
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "error": {"code": -32601}})
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1, "error": {"code": -32601}}),
+            ConnectionClosed(None, None),
+        ]
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
         with pytest.raises(AuthenticationError):
@@ -352,7 +363,10 @@ class TestSendCommandWireFormat:
     @pytest.mark.asyncio
     async def test_payload_id_method_and_params_are_correlated(self) -> None:
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "result": {"ok": True}})
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1, "result": {"ok": True}}),
+            ConnectionClosed(None, None),
+        ]
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
 
@@ -461,7 +475,10 @@ class TestCdpWaitDeadline:
     async def test_matching_waiter_preserves_id_and_deadline(self) -> None:
         """The waiter accepts the requested ID and does not poll forever."""
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "result": {"ok": True}})
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1, "result": {"ok": True}}),
+            ConnectionClosed(None, None),
+        ]
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
 
@@ -517,7 +534,7 @@ class TestCdpWaitDeadline:
 
         receives = 0
 
-        async def receive_wrong_key() -> dict[None | str, object]:
+        async def receive_wrong_key() -> dict[str | None, object]:
             nonlocal receives
             receives += 1
             if receives > 1:
@@ -534,11 +551,16 @@ class TestCdpWaitDeadline:
     @pytest.mark.asyncio
     async def test_send_command_uses_incremented_id_for_wire_response(self) -> None:
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "result": {"ok": True}})
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1, "result": {"ok": True}}),
+            ConnectionClosed(None, None),
+        ]
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
 
-        assert await asyncio.wait_for(client.send_command("Page.enable"), timeout=0.3) == {"ok": True}
+        assert await asyncio.wait_for(client.send_command("Page.enable"), timeout=0.3) == {
+            "ok": True
+        }
 
 
 class TestErrorResponseMethodNaming:
@@ -552,7 +574,10 @@ class TestErrorResponseMethodNaming:
     )
     async def test_malformed_error_names_the_method(self, error_payload: object) -> None:
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "error": error_payload})
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1, "error": error_payload}),
+            ConnectionClosed(None, None),
+        ]
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
 
@@ -564,7 +589,10 @@ class TestErrorResponseMethodNaming:
     @pytest.mark.asyncio
     async def test_missing_result_names_the_method(self) -> None:
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1})
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1}),
+            ConnectionClosed(None, None),
+        ]
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
 

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from websockets.exceptions import ConnectionClosed
 
 from perplexity_cli.auth.oauth_handler import (
     ChromeDevToolsClient,
@@ -205,11 +206,16 @@ class TestSendCommand:
     async def test_sends_and_receives(self):
         """Sends command and returns result from matching response."""
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "result": {"frameId": "abc"}})
+        # The trailing poison pill guarantees any mis-correlation spin fails
+        # fast instead of starving the event loop's timers forever.
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1, "result": {"frameId": "abc"}}),
+            ConnectionClosed(None, None),
+        ]
 
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
-        result = await client.send_command("Page.enable")
+        result = await asyncio.wait_for(client.send_command("Page.enable"), timeout=0.5)
         assert result == {"frameId": "abc"}
         assert client.message_id == 1
         mock_ws.send.assert_called_once()
@@ -258,23 +264,29 @@ class TestAwaitResponse:
     async def test_raises_on_chrome_error(self):
         """Raises AuthenticationError when Chrome returns an error."""
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1, "error": {"message": "fail"}})
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1, "error": {"message": "fail"}}),
+            ConnectionClosed(None, None),
+        ]
 
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
         with pytest.raises(AuthenticationError, match="Chrome error"):
-            await client._await_response(1, "Page.enable")
+            await asyncio.wait_for(client._await_response(1, "Page.enable"), timeout=0.5)
 
     @pytest.mark.asyncio
     async def test_raises_on_missing_result_and_error(self):
         """Raises AuthenticationError when a matching response has neither."""
         mock_ws = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({"id": 1})
+        mock_ws.recv.side_effect = [
+            json.dumps({"id": 1}),
+            ConnectionClosed(None, None),
+        ]
 
         client = ChromeDevToolsClient(9222)
         client.ws = mock_ws
         with pytest.raises(AuthenticationError, match="malformed result"):
-            await client._await_response(1, "Page.enable")
+            await asyncio.wait_for(client._await_response(1, "Page.enable"), timeout=0.5)
 
 
 class TestExtractToken:

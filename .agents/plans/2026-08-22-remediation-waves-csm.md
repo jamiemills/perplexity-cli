@@ -12,14 +12,14 @@ format: csm-plan/1
 
 - Plan ID: remediation-waves-execution
 - Status: in_progress
-- Current CSM state: BLOCKED
-- Cycle: 3
+- Current CSM state: REPAIR
+- Cycle: 4
 - Commits: allowed
-- Last checkpoint: 2026-08-23 cycle 3 - recovery session 3; T011 timeout repair remains unverified
-- Last model/run: openai/gpt-5.6-luna / recovery session 3 / T011 targeted mutation attempt
-- Next transition: BLOCKED -> RECOVER after mutation runner/test environment repair
-- Active tasks: T011, T010, T007
-- Blockers: Mutmut reaches clean-test/mutation execution but exits with BadTestExecutionCommandsException or unstable historical timeout classifications; T011 retains 2 timeout findings after targeted coverage; T010 and T007 remain unrun in this recovery session
+- Last checkpoint: 2026-08-23 cycle 4 - recovery session 4; T011 closed with 3 consecutive clean policy gates; T010 next
+- Last model/run: stealth/ox-alpha / recovery session 4 / T011 timeout-key repair via event-loop-starvation diagnosis
+- Next transition: CHECKPOINT -> SELECT (T010 then T007)
+- Active tasks: T010, T007
+- Blockers: none for Batch A remainder; T010 holds 78 findings, T007 holds 405 per verified pre-session state
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
 ## Goal
@@ -149,19 +149,19 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
    - Acceptance evidence: per-key kills
    - Repair attempts: 0
    - Recovery note: per-key commits
-5. [pending] Close T011 OAuth/CDP survivors (186)
-   - Task ID: T011
-   - Depends on: none
-   - Parallel group: A5
-   - Risk: high
-   - Owned scope: auth/oauth_handler
-   - Not in scope: other auth modules
-   - Actions: CDP protocol hardening tests; 10 timeouts need triple-kill
-   - Acceptance signal: all T011 keys killed; oauth tests pass
-   - Validation: ruff/pyright/radon/focused pytest
-   - Acceptance evidence: per-key kills
-   - Repair attempts: 0
-   - Recovery note: per-key commits
+5. [complete] Close T011 OAuth/CDP survivors (186)
+    - Task ID: T011
+    - Depends on: none
+    - Parallel group: A5
+    - Risk: high
+    - Owned scope: auth/oauth_handler
+    - Not in scope: other auth modules
+    - Actions: CDP protocol hardening tests; 10 timeouts need triple-kill
+    - Acceptance signal: all T011 keys killed; oauth tests pass
+    - Validation: ruff/pyright/radon/focused pytest
+    - Acceptance evidence: 3 consecutive serial policy gates exit 0 (clean, 175/175 killed incl. the 2 historical timeout keys); 116 focused tests pass; ruff/pyright/radon clean
+    - Repair attempts: 1
+    - Recovery note: closed in recovery session 4 via event-loop-starvation diagnosis and poison-pill mock repair
 
 ### Batch B (persistence/scraper/upload/status — 873 survivors)
 
@@ -253,6 +253,8 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
   | 2026-08-23 | 2 | REPAIR -> BLOCKED | T007, T010 | Continued with focused tests and fresh gates. T010/T007 mutation runs failed before classification with Mutmut EnvironmentMismatchError/tool errors after interrupted/concurrent mutation workspaces; stale workspace removed and `uv sync --all-groups` completed. Actionable keys remain and require a clean mutation environment. | RECOVER after environment repair |
   | 2026-08-23 | 3 | RECOVER -> SELECT | T008, T009, T011, T010, T007 | Recovery confirmed plan format, authentic NORMS.md, clean Mutmut 3.5.0 environment status from user evidence, and verified T008/T009 commit e85c494. Existing uncommitted edits are prior Batch A work and remain preserved for classification. | SELECT T011 first |
   | 2026-08-23 | 3 | SELECT -> BLOCKED | T011 | Removed stale mutants/ and verified `uv run mutmut --version` = 3.5.0. T011 focused tests pass (60). A serialized full T011 run classified all 175 selected keys as killed once, but consecutive reruns regressed to timeout findings; narrowed isolated runs fail during Mutmut clean-test stats with `BadTestExecutionCommandsException`. T010/T007 were not started. | RECOVER after mutation test environment repair |
+   | 2026-08-23 | 4 | BLOCKED -> RECOVER -> REPAIR | T007, T010, T011 | Recovery session 4. Committed verified prior-session partial work as 5fae4e4 (T011 at 2 timeout findings; T010 78; T007 405). Diagnosed the two T011 timeout keys (`_await_response__mutmut_8` forwards None as command id; `_wait_for_matching__mutmut_12` matches on key None): under either, a waiter fed endlessly-repeating instantly-returning AsyncMock frames spins WITHOUT yielding to the event loop, starving all asyncio timers - mutmut classified the whole selected suite as timeout, masking every killing assertion. Repair: replaced endless `recv.return_value` mocks with finite side_effect lists ending in a ConnectionClosed poison pill across test_oauth_cdp.py and test_oauth_handler.py (12 tests), so mis-correlation dies sub-second. Targeted run: both keys killed. | CHECKPOINT after three serial T011 gates |
+   | 2026-08-23 | 4 | VERIFY -> CHECKPOINT | T011 | Three consecutive serial full policy gates: each exit 0, status clean, 175/175 required keys killed (186 minus 11 documented exclusions), 0 findings. Focused tests: 116 passed (test_oauth_cdp.py + test_oauth_handler.py). ruff format/check clean; pyright strict src/ = 0 errors; radon no C+ functions in oauth_handler. | SELECT T010 |
 
 ## Completion Review
 
