@@ -35,6 +35,11 @@ from perplexity_cli.utils.exceptions import (
 from perplexity_cli.utils.logging import setup_logging
 
 
+def assert_no_deep_research_log(messages: list[str]) -> None:
+    """Ensure default request logging does not claim deep research mode."""
+    assert not any(message.startswith("Deep research mode detected") for message in messages)
+
+
 @pytest.fixture(autouse=True)
 def retry_sleep_trace(monkeypatch):
     """Record all retry sleeps and disable jitter for deterministic traces."""
@@ -578,6 +583,7 @@ class TestSSEClient:
         assert messages
         assert all(sentinel not in message for message in messages for sentinel in sentinels)
         assert any("<redacted>" in message for message in messages)
+        assert_no_deep_research_log(messages)
 
     def test_log_response_headers_labels_cloudflare_fields(self, caplog):
         """Response diagnostics label all supported headers safely."""

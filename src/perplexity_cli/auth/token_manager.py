@@ -83,14 +83,11 @@ class TokenManager:
             token_record = self._prepare_token_data(encrypted_token, cookies)
             atomic_write_json(self.token_path, token_record, mode=self.SECURE_PERMISSIONS)
 
-            saved_cookies = "cookies" in token_record
-            cookie_count = len(cookies) if cookies else 0
-            saved_cookie_count = cookie_count if saved_cookies else 0
             # owner: security - arguments are a redacted path and cookie count, never values.
             self.logger.info(  # nosemgrep: custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure  # owner: auth-team; reason: token redacted before logging
                 "Token saved to %s with %s cookies",
                 redact_path(self.token_path),
-                saved_cookie_count,
+                len(cookies) if cookies and get_save_cookies_enabled() else 0,
             )
 
         except OSError as e:
