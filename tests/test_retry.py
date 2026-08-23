@@ -228,3 +228,137 @@ class TestRetryHttpRequest:
                 initial_wait=0.01,
                 max_wait=0.02,
             )
+
+
+class TestRetryWithBackoffStopContract:
+    """The decorator must stop at max_attempts using bounded waiting."""
+
+    def test_stops_after_max_attempts_with_bounded_sleeps(self, monkeypatch):
+        """Exactly max_attempts calls happen and only max_attempts-1 sleeps."""
+
+        class _SleepLimitReached(Exception):
+            """Sentinel raised when an unexpected extra backoff sleep occurs."""
+
+        sleeps: list[float] = []
+
+        def fake_sleep(seconds):
+            sleeps.append(seconds)
+            if len(sleeps) > 2:
+                raise _SleepLimitReached("retrying beyond the configured attempt budget")
+
+        monkeypatch.setattr("tenacity.nap.time.sleep", fake_sleep)
+        attempts: list[int] = []
+
+        @retry_with_backoff(max_attempts=3, initial_wait=0.01, max_wait=0.02)
+        def always_fails():
+            attempts.append(1)
+            raise PerplexityRequestError("persistent")
+
+        with pytest.raises(PerplexityRequestError):
+            always_fails()
+        assert len(attempts) == 3
+        assert len(sleeps) == 2
+
+
+class TestRetryHttpRequestDefaults:
+    """retry_http_request default parameters pin the documented backoff shape."""
+
+    def test_default_max_attempts_is_three(self, monkeypatch):
+        """Bare invocation performs three attempts before reraising."""
+        sleeps: list[float] = []
+        monkeypatch.setattr("tenacity.nap.time.sleep", sleeps.append)
+        attempts: list[int] = []
+
+        def always_fails():
+            attempts.append(1)
+            raise PerplexityRequestError("persistent")
+
+        with pytest.raises(PerplexityRequestError):
+            retry_http_request(always_fails)
+        assert len(attempts) == 3
+
+    def test_default_initial_wait_is_one_second(self, monkeypatch):
+        """The first exponential backoff wait is exactly the 1.0s multiplier."""
+        sleeps: list[float] = []
+
+        def fake_sleep(seconds):
+            sleeps.append(seconds)
+
+        monkeypatch.setattr("tenacity.nap.time.sleep", fake_sleep)
+
+        def always_fails():
+            raise PerplexityRequestError("persistent")
+
+        with pytest.raises(PerplexityRequestError):
+            retry_http_request(always_fails, max_attempts=2)
+        assert sleeps and sleeps[0] == pytest.approx(1.0)
+
+    def test_default_max_wait_caps_long_backoffs(self, monkeypatch):
+        """Waits are capped at the documented 10-second maximum."""
+        sleeps: list[float] = []
+        monkeypatch.setattr("tenacity.nap.time.sleep", sleeps.append)
+
+        def always_fails():
+            raise PerplexityRequestError("persistent")
+
+        with pytest.raises(PerplexityRequestError):
+            retry_http_request(always_fails, max_attempts=7, initial_wait=1.0)
+        assert len(sleeps) == 6
+        assert max(sleeps) == pytest.approx(10.0)
+
+
+class TestSleepWithBackoffDefaults:
+    """sleep_with_backoff defaults produce the documented delay window."""
+
+    def test_default_base_delay_is_one_second(self, monkeypatch):
+        """Attempt zero sleeps roughly the 1.0 second base delay."""
+        delays: list[float] = []
+        monkeypatch.setattr("perplexity_cli.utils.retry.time.sleep", delays.append)
+        sleep_with_backoff(0)
+        assert 0.5 <= delays[0] <= 1.5
+
+    def test_default_jitter_window_is_tenth_of_delay(self, monkeypatch):
+        """Without an explicit jitter factor the jitter window is 10%."""
+        recorded = {}
+
+        def fake_uniform(low, high):
+            recorded["low"] = low
+            return 0.0
+
+        monkeypatch.setattr("perplexity_cli.utils.retry._rng.uniform", fake_uniform)
+        get_backoff_delay(0, base_delay=1.0, max_delay=60.0)
+        assert recorded["low"] == pytest.approx(-0.1)
+
+
+class TestGetBackoffDelayDefaults:
+    """get_backoff_delay default arguments are pinned by behaviour."""
+
+    def test_default_max_delay_caps_growth_at_sixty(self):
+        """Unbounded exponential growth caps at the 60 second default."""
+        assert get_backoff_delay(30, base_delay=1.0, jitter_factor=0.0) == pytest.approx(60.0)
+
+    def test_default_base_delay_is_one_second(self):
+        """Attempt zero without a base delay yields one second."""
+        assert get_backoff_delay(0, jitter_factor=0.0) == pytest.approx(1.0)
+
+
+class TestReadRetryAfterHeaderPrecedence:
+    """Canonical Retry-After casing takes precedence over lowercase."""
+
+    def test_canonical_header_wins_over_lowercase_duplicate(self):
+        """When both casings appear the canonical value is honoured."""
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(
+            status_code=429,
+            headers={"Retry-After": "1.5", "retry-after": "9.9"},
+            request=req,
+        )
+        error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
+        assert get_retry_after_delay(error) == pytest.approx(1.5)
+
+    def test_lowercase_only_header_is_honoured(self):
+        """A lowercase-only Retry-After header still supplies the delay."""
+        req = SimpleRequest(method="GET", url="http://example.com")
+        resp = SimpleResponse(status_code=429, headers={"retry-after": "2"}, request=req)
+        error = PerplexityHTTPStatusError("Rate limit", request=req, response=resp)
+        assert get_retry_after_delay(error) == pytest.approx(2.0)

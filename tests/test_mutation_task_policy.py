@@ -89,10 +89,64 @@ class TestVerifyReportCoverage:
         assert issues == sorted(issues)
 
 
+class TestLoadExclusions:
+    def _write_exclusions(self, tmp_path: Path, entries: list[dict[str, Any]]) -> Path:
+        path = tmp_path / "exclusions.json"
+        path.write_text(json.dumps({"entries": entries}), encoding="utf-8")
+        return path
+
+    def _entry(self, **overrides: Any) -> dict[str, str]:
+        record = {
+            "task": "T009",
+            "key": "a.x__mutmut_1",
+            "disposition": "removed-by-simplification",
+            "owner": "quality-infra",
+            "reason": "mutation site deleted",
+            "proof": "behaviour-equivalent rewrite verified",
+        }
+        record.update(overrides)
+        return record
+
+    def test_missing_file_yields_no_exclusions(self, tmp_path: Path) -> None:
+        keys = ("a.x__mutmut_1",)
+        assert mtp.load_exclusions(tmp_path / "absent.json", "T009", keys) == {}
+
+    def test_valid_entry_loaded(self, tmp_path: Path) -> None:
+        path = self._write_exclusions(tmp_path, [self._entry()])
+        assert mtp.load_exclusions(path, "T009", ("a.x__mutmut_1",)) == {
+            "a.x__mutmut_1": "removed-by-simplification"
+        }
+
+    def test_other_task_entries_ignored(self, tmp_path: Path) -> None:
+        path = self._write_exclusions(tmp_path, [self._entry(task="T010")])
+        assert mtp.load_exclusions(path, "T009", ("a.x__mutmut_1",)) == {}
+
+    def test_unknown_key_fails_closed(self, tmp_path: Path) -> None:
+        path = self._write_exclusions(tmp_path, [self._entry(key="zzz.y__mutmut_9")])
+        with pytest.raises(mtp.TaskPolicyError, match="does not belong"):
+            mtp.load_exclusions(path, "T009", ("a.x__mutmut_1",))
+
+    def test_blank_provenance_fails_closed(self, tmp_path: Path) -> None:
+        path = self._write_exclusions(tmp_path, [self._entry(proof="  ")])
+        with pytest.raises(mtp.TaskPolicyError, match="provenance"):
+            mtp.load_exclusions(path, "T009", ("a.x__mutmut_1",))
+
+    def test_invalid_disposition_fails_closed(self, tmp_path: Path) -> None:
+        path = self._write_exclusions(tmp_path, [self._entry(disposition="just-because")])
+        with pytest.raises(mtp.TaskPolicyError, match="disposition"):
+            mtp.load_exclusions(path, "T009", ("a.x__mutmut_1",))
+
+
 class TestExecuteTaskValidation:
     def test_non_positive_timeout_fails_closed(self, tmp_path: Path) -> None:
+        spec = mtp.TaskRunSpec(
+            task_id="T009",
+            triage_path=tmp_path / "t.json",
+            report_path=tmp_path / "r.json",
+            timeout_seconds=0,
+        )
         with pytest.raises(mtp.TaskPolicyError, match="positive"):
-            mtp.execute_task("T009", tmp_path / "t.json", tmp_path / "r.json", 0)
+            mtp.execute_task(spec)
 
 
 class TestParseArgs:

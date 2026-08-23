@@ -142,3 +142,19 @@ class TestGetVersionFromPyprojectEdgeCases:
         ):
             with pytest.raises(RuntimeError, match=r"pyproject\.toml version"):
                 get_version_from_pyproject()
+
+
+class TestGetVersionFromPyprojectMessage:
+    """The unreadable-pyproject failure carries its documented message."""
+
+    def test_error_message_is_fully_anchored(self):
+        """RuntimeError text is exactly the documented unreadable message."""
+        with patch(
+            "perplexity_cli.utils.version._read_pyproject_version",
+            return_value=None,
+        ):
+            with pytest.raises(
+                RuntimeError,
+                match=r"^pyproject\.toml version could not be read$",
+            ):
+                get_version_from_pyproject()

@@ -1,0 +1,317 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "task": "T009",
+      "key": "perplexity_cli.auth.utils.x_load_or_prompt_token__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "auth-team",
+      "reason": "mutmut changes only the default argument literal in the generated mutant body",
+      "proof": "The public trampoline retains the original default and never dispatches an omitted argument to the mutated body; explicit command_context behavioural coverage passes."
+    },
+    {
+      "task": "T009",
+      "key": "perplexity_cli.auth.utils.x_load_or_prompt_token__mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "auth-team",
+      "reason": "mutmut changes only the default argument literal in the generated mutant body",
+      "proof": "The public trampoline retains the original default and never dispatches an omitted argument to the mutated body; explicit command_context behavioural coverage passes."
+    },
+    {
+      "task": "T009",
+      "key": "perplexity_cli.auth.token_manager.xǁTokenManagerǁsave_token__mutmut_36",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "redundant cookie-count temporaries were replaced by the direct policy expression",
+      "proof": "The pre-existing intermediate values no longer exist in TokenManager.save_token; the focused token save and logging tests cover the retained behaviour."
+    },
+    {
+      "task": "T009",
+      "key": "perplexity_cli.auth.token_manager.xǁTokenManagerǁsave_token__mutmut_37",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "redundant cookie-count temporaries were replaced by the direct policy expression",
+      "proof": "The pre-existing intermediate values no longer exist in TokenManager.save_token; the focused token save and logging tests cover the retained behaviour."
+    },
+    {
+      "task": "T009",
+      "key": "perplexity_cli.auth.token_manager.xǁTokenManagerǁsave_token__mutmut_38",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "redundant cookie-count temporaries were replaced by the direct policy expression",
+      "proof": "The pre-existing intermediate values no longer exist in TokenManager.save_token; the focused token save and logging tests cover the retained behaviour."
+    },
+    {
+      "task": "T009",
+      "key": "perplexity_cli.auth.token_manager.xǁTokenManagerǁsave_token__mutmut_39",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "redundant cookie-count temporaries were replaced by the direct policy expression",
+      "proof": "The pre-existing intermediate values no longer exist in TokenManager.save_token; the focused token save and logging tests cover the retained behaviour."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.endpoints.xǁPerplexityAPIǁsubmit_query__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "mutmut changes only a default argument literal in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the original default before dispatch; explicit mode forwarding is covered at the public submit boundary."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.endpoints.xǁPerplexityAPIǁsubmit_query__mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "mutmut changes only a default argument literal in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the original default before dispatch; explicit mode forwarding is covered at the public submit boundary."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.endpoints.xǁPerplexityAPIǁget_complete_answer__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "mutmut changes only a default argument literal in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the original default before dispatch; explicit mode forwarding is covered at the public answer boundary."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.endpoints.xǁPerplexityAPIǁget_complete_answer__mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "mutmut changes only a default argument literal in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the original default before dispatch; explicit mode forwarding is covered at the public answer boundary."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.rest_client.xǁRestClientǁ_get_client__mutmut_7",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns its value unchanged; the public REST client session creation, reuse, and close behaviour is covered by runtime tests."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.rest_client.xǁRestClientǁ_get_client__mutmut_11",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns its value unchanged; the public REST client session creation, reuse, and close behaviour is covered by runtime tests."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.rest_client.xǁRestClientǁ_get_client__mutmut_12",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns its value unchanged; the public REST client session creation, reuse, and close behaviour is covered by runtime tests."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.rest_client.xǁRestClientǁ_get_client__mutmut_13",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns its value unchanged; the public REST client session creation, reuse, and close behaviour is covered by runtime tests."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.x__iter_object_values__mutmut_3",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns the original iterable unchanged; invalid and valid transport values are covered through the public SSE transport boundary."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.x__coerce_header_pair__mutmut_8",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns the original header sequence unchanged; header coercion behaviour is covered through request construction."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.x__coerce_header_mapping__mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns the original mapping unchanged; header coercion behaviour is covered through request construction."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.xǁ_ResponseAdapterǁ__init____mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns the response unchanged; response iteration and transport failures are covered through the public SSE boundary."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.xǁ_StreamContextAdapterǁ__init____mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns the context unchanged; stream enter and exit behaviour is covered through the public transport boundary."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.x__close_transport_session__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns the session unchanged; close success and failure behaviour is covered through transport lifecycle tests."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.x__open_stream_context__mutmut_14",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "typing.cast target is erased at runtime",
+      "proof": "typing.cast returns the session unchanged; stream request construction and context lifecycle are covered through runtime tests."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.xǁSSEClientǁ_log_request_context__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "mutmut changes only a default diagnostic context literal",
+      "proof": "The public mutmut trampoline retains the original default; diagnostic wording is not a documented public contract and security-safe logging is tested without exact prose assertions."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.xǁSSEClientǁ_log_request_context__mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "mutmut changes only a default diagnostic context literal",
+      "proof": "The public mutmut trampoline retains the original default; diagnostic wording is not a documented public contract and security-safe logging is tested without exact prose assertions."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.xǁSSEClientǁ_log_request_context__mutmut_38",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "mutmut changes only non-contract diagnostic wording",
+      "proof": "The log is internal debug diagnostics, not a documented user-facing contract; tests assert redaction and structured values without pinning prose."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.xǁSSEClientǁstream_post__mutmut_19",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "mutmut changes only non-contract diagnostic wording",
+      "proof": "The changed literal is passed only to internal request diagnostics; request semantics are covered independently at the public stream boundary."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.xǁSSEClientǁstream_post__mutmut_20",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "mutmut changes only non-contract diagnostic wording",
+      "proof": "The changed literal is passed only to internal request diagnostics; request semantics are covered independently at the public stream boundary."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.xǁSSEClientǁ_run_attempt__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "None and False are equivalent for the sole truthiness check before event output",
+      "proof": "event_yielded is assigned True before any successful event path and is only tested for truthiness in the exception path; None and False produce identical control flow."
+    },
+    {
+      "task": "T008",
+      "key": "perplexity_cli.api.client.xǁSSEClientǁ_execute_stream_request__mutmut_33",
+      "disposition": "structural-exclusion",
+      "owner": "api-team",
+      "reason": "SSEParser logger parameter is explicitly reserved and unused",
+      "proof": "SSEParser.parse documents _logger as reserved for future debug output and never reads it; parsed events and stream completion are covered through runtime tests."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.xǁChromeDevToolsClientǁ__init____mutmut_6",
+      "disposition": "structural-exclusion",
+      "owner": "auth-team",
+      "reason": "None and False are equivalent for the sole truthiness guard on the closed flag",
+      "proof": "ChromeDevToolsClient.close only tests _closed for truthiness and then sets it True; constructor behaviour and repeated-close socket lifecycle are covered by runtime tests."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.x__poll_for_auth_data__mutmut_7",
+      "disposition": "structural-exclusion",
+      "owner": "auth-team",
+      "reason": "mutmut changes only undocumented timeout-remedy wording",
+      "proof": "The timeout control flow and exception type are independently covered; the changed remediation sentence is human-facing prose without a documented wording contract, so exact prose assertions are intentionally excluded."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.x__build_cookie_dict__mutmut_28",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "the current cookie validation path no longer contains the baseline mutation site",
+      "proof": "The baseline mutant is absent from the current generated keyset after the validated OAuth type-guard simplification; cookie extraction tests cover the retained path."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.x__build_cookie_dict__mutmut_29",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "the current cookie validation path no longer contains the baseline mutation site",
+      "proof": "The baseline mutant is absent from the current generated keyset after the validated OAuth type-guard simplification; cookie extraction tests cover the retained path."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.x__extract_token__mutmut_8",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "the current token extraction path no longer contains the baseline mutation site",
+      "proof": "The baseline mutant is absent from the current generated keyset after the validated OAuth type-guard simplification; token extraction tests cover the retained path."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.x__fetch_local_storage__mutmut_37",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "the current localStorage shape guard no longer contains the baseline mutation site",
+      "proof": "The baseline mutant is absent from the current generated keyset after the validated OAuth type-guard simplification; localStorage shape tests cover the retained path."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.x__fetch_local_storage__mutmut_41",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "the current localStorage shape guard no longer contains the baseline mutation site",
+      "proof": "The baseline mutant is absent from the current generated keyset after the validated OAuth type-guard simplification; localStorage shape tests cover the retained path."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.xǁChromeDevToolsClientǁ_extract_result__mutmut_19",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "the current CDP result guard no longer contains the baseline mutation site",
+      "proof": "The baseline mutant is absent from the current generated keyset after the validated OAuth type-guard simplification; CDP result shape tests cover the retained path."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.xǁChromeDevToolsClientǁ_raise_for_error__mutmut_14",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "the current CDP error guard no longer contains the baseline mutation site",
+      "proof": "The baseline mutant is absent from the current generated keyset after the validated OAuth type-guard simplification; malformed error tests cover the retained path."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.xǁChromeDevToolsClientǁ_raise_for_error__mutmut_15",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "the current CDP error guard no longer contains the baseline mutation site",
+      "proof": "The baseline mutant is absent from the current generated keyset after the validated OAuth type-guard simplification; malformed error tests cover the retained path."
+    },
+    {
+      "task": "T011",
+      "key": "perplexity_cli.auth.oauth_handler.xǁChromeDevToolsClientǁ_wait_for_matching__mutmut_22",
+      "disposition": "removed-by-simplification",
+      "owner": "auth-team",
+      "reason": "the current CDP response matching path no longer contains the baseline mutation site",
+      "proof": "The baseline mutant is absent from the current generated keyset after the validated OAuth response-shape simplification; response correlation tests cover the retained path."
+    }
+  ]
+}

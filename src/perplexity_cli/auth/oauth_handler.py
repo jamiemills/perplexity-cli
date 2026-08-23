@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any, NoReturn, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, NoReturn, TypeGuard
 
 import httpx
 import websockets
@@ -29,6 +29,7 @@ from ..utils.config import get_perplexity_base_url
 
 if TYPE_CHECKING:
     import logging
+    from collections.abc import Sequence
 
 #: Maximum time to wait for a matching CDP response before timing out.
 _CDP_RESPONSE_TIMEOUT = 30.0
@@ -37,6 +38,11 @@ _CDP_RESPONSE_TIMEOUT = 30.0
 def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
     """TypeGuard: value is a dict with string keys."""
     return isinstance(value, dict)
+
+
+def _is_object_list(value: object) -> TypeGuard[list[object]]:
+    """TypeGuard: value is a list."""
+    return isinstance(value, list)
 
 
 class ChromeDevToolsClient:
@@ -83,7 +89,7 @@ class ChromeDevToolsClient:
         try:
             response = httpx.get(url, timeout=5)
             response.raise_for_status()
-            targets = response.json()
+            payload = response.json()
         except (json.JSONDecodeError, httpx.HTTPError) as e:
             msg = (
                 f"Failed to connect to Chrome on port {self.port}. "
@@ -92,11 +98,11 @@ class ChromeDevToolsClient:
             )
             raise AuthenticationError(msg) from e
 
-        if not isinstance(targets, list):
+        if not _is_object_list(payload):
             msg = "Chrome returned an invalid targets payload"
             raise AuthenticationError(msg)
 
-        return cast(list[object], targets)
+        return payload
 
     @staticmethod
     def _find_page_target(targets: list[object]) -> dict[str, object]:
@@ -200,13 +206,12 @@ class ChromeDevToolsClient:
         while True:
             raw = await self._recv_from_ws()
             cdp_message = self._parse_cdp_message(raw)
-            if not isinstance(cdp_message, dict):
+            if not _is_str_dict(cdp_message):
                 msg = "Chrome returned a malformed CDP message"
                 raise AuthenticationError(msg)
-            message = cast(dict[str, object], cdp_message)
-            if message.get("id") != command_id:
+            if cdp_message.get("id") != command_id:
                 continue
-            return self._extract_result(message, method)
+            return self._extract_result(cdp_message, method)
 
     async def _recv_from_ws(self) -> str | bytes:
         """Receive the next raw CDP message, raising on a closed connection.
@@ -245,10 +250,11 @@ class ChromeDevToolsClient:
         if "error" in cdp_message:
             self._raise_for_error(cdp_message["error"], method)
         result = cdp_message.get("result")
-        if result is None or not isinstance(result, dict):
+        if not _is_str_dict(result):
             msg = f"Chrome returned a malformed result for {method}"
             raise AuthenticationError(msg)
-        return cast(dict[str, Any], result)
+        extracted: dict[str, Any] = result
+        return extracted
 
     def _raise_for_error(self, error: object, method: str) -> NoReturn:
         """Raise AuthenticationError for a CDP error object.
@@ -257,11 +263,10 @@ class ChromeDevToolsClient:
             AuthenticationError: Always; the error message is used only when
                 the error object is well-formed, otherwise a generic message.
         """
-        if not isinstance(error, dict):
+        if not _is_str_dict(error):
             msg = f"Chrome returned a malformed error for {method}"
             raise AuthenticationError(msg)
-        error_dict = cast(dict[str, object], error)
-        error_message = error_dict.get("message")
+        error_message = error.get("message")
         if not isinstance(error_message, str):
             msg = f"Chrome returned a malformed error for {method}"
             raise AuthenticationError(msg)
@@ -366,17 +371,17 @@ async def _fetch_local_storage(client: ChromeDevToolsClient) -> dict[str, Any]:
     inner_result = local_storage_result.get("result")
     if inner_result is None:
         return {}
-    if not isinstance(inner_result, dict):
+    if not _is_str_dict(inner_result):
         msg = "Chrome returned a malformed localStorage payload"
         raise AuthenticationError(msg)
-    inner_map = cast("dict[str, Any]", inner_result)
-    value = inner_map.get("value")
+    value = inner_result.get("value")
     if value is None:
         return {}
-    if not isinstance(value, dict):
+    if not _is_str_dict(value):
         msg = "Chrome returned a malformed localStorage payload"
         raise AuthenticationError(msg)
-    return cast(dict[str, Any], value)
+    storage: dict[str, Any] = value
+    return storage
 
 
 async def _poll_for_auth_data(
@@ -553,14 +558,14 @@ def _extract_token(
     Raises:
         AuthenticationError: If a cookie entry is malformed.
     """
-    cookie_dict = _build_cookie_dict(cast("list[object]", cookies))
+    cookie_dict = _build_cookie_dict(cookies)
     token = _extract_token_from_local_storage(local_storage)
     if not token:
         token = _extract_token_from_cookies(cookie_dict)
     return (token, cookie_dict)
 
 
-def _build_cookie_dict(cookies: list[object]) -> dict[str, str]:
+def _build_cookie_dict(cookies: Sequence[object]) -> dict[str, str]:
     """Build a validated {name: value} cookie map.
 
     Args:
@@ -574,12 +579,11 @@ def _build_cookie_dict(cookies: list[object]) -> dict[str, str]:
     """
     cookie_dict: dict[str, str] = {}
     for entry in cookies:
-        if not isinstance(entry, dict):
+        if not _is_str_dict(entry):
             msg = "Chrome returned a malformed cookie entry"
             raise AuthenticationError(msg)
-        entry_map = cast("dict[str, Any]", entry)
-        name = entry_map.get("name")
-        value = entry_map.get("value")
+        name = entry.get("name")
+        value = entry.get("value")
         if not isinstance(name, str) or not isinstance(value, str):
             msg = "Chrome returned a malformed cookie entry"
             raise AuthenticationError(msg)

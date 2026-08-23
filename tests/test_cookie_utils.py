@@ -30,3 +30,18 @@ def test_prefixed_cookies_do_not_warn():
     ]
     assert cookie_warnings == []
     assert dict(jar) == cookies
+
+
+def test_secure_prefix_cookies_get_secure_attribute():
+    """__Secure- and __Host- cookies are stored with secure=True."""
+    jar = to_curl_cffi_cookies(
+        {
+            "__Secure-next-auth.session-token": "secure-sentinel",
+            "__Host-session": "host-sentinel",
+            "csrftoken": "plain-sentinel",
+        }
+    )
+    by_name = {cookie.name: cookie for cookie in jar.jar}
+    assert by_name["__Secure-next-auth.session-token"].secure is True
+    assert by_name["__Host-session"].secure is True
+    assert by_name["csrftoken"].secure is False

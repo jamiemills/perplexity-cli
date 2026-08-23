@@ -124,3 +124,56 @@ class TestNDJSONWriter:
         lines = buf.getvalue().strip().split("\n")
         types = [json.loads(line)["type"] for line in lines]
         assert types == ["start", "chunk", "chunk", "result"]
+
+
+class TestNDJSONTimestampsUTC:
+    """Event timestamps are UTC-stamped ISO 8601 strings."""
+
+    def test_event_timestamp_carries_utc_offset(self) -> None:
+        """Serialised timestamps resolve to a zero UTC offset."""
+        from datetime import timedelta
+
+        buf = io.StringIO()
+        writer = NDJSONWriter(output=buf)
+        writer.write_event(StartEvent(command="pxcli"))
+        event = json.loads(buf.getvalue().splitlines()[0])
+        parsed = datetime.fromisoformat(event["ts"])
+        assert parsed.utcoffset() == timedelta(0)
+
+
+class TestNDJSONWriterResultExtras:
+    """Tests for the result event's meta/next_actions/schema handling."""
+
+    def test_result_includes_meta_and_next_actions(self) -> None:
+        """Provided meta and next actions are serialised on the result line."""
+        meta = {"duration_ms": 5}
+        actions = [{"command": "follow-up"}]
+        buf = io.StringIO()
+        writer = NDJSONWriter(output=buf)
+        writer.result(
+            ok=True,
+            command="pxcli ask",
+            result={"a": 1},
+            extras=(meta, actions, False),
+        )
+        payload = json.loads(buf.getvalue())
+        assert payload["meta"] == meta
+        assert payload["next_actions"] == actions
+        assert payload["ok"] is True
+
+    def test_result_defaults_next_actions_to_empty_list(self) -> None:
+        """Missing next actions fall back to an empty list."""
+        buf = io.StringIO()
+        writer = NDJSONWriter(output=buf)
+        writer.result(ok=False, command="cmd", result={}, extras=(None, None, False))
+        payload = json.loads(buf.getvalue())
+        assert payload["next_actions"] == []
+        assert payload["meta"] is None
+
+    def test_result_with_schema_prepends_schema_key(self) -> None:
+        """Schema inclusion embeds a $schema key ahead of the event fields."""
+        buf = io.StringIO()
+        writer = NDJSONWriter(output=buf)
+        writer.result(ok=True, command="cmd", result={}, extras=(None, None, True))
+        payload = json.loads(buf.getvalue())
+        assert next(iter(payload)) == "$schema"

@@ -12,6 +12,7 @@ import argparse
 import json
 import logging
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -29,7 +30,9 @@ from scripts import (  # noqa: E402  # owner: quality-infrastructure; reason: pa
 logger = logging.getLogger(__name__)
 
 DEFAULT_TRIAGE_PATH = Path("quality/baselines/mutation-triage.json")
+DEFAULT_EXCLUSIONS_PATH = Path("quality/baselines/mutation-task-exclusions.json")
 DEFAULT_TIMEOUT_SECONDS = 2100
+ALLOWED_DISPOSITIONS = frozenset({"structural-exclusion", "removed-by-simplification"})
 
 
 class TaskPolicyError(ValueError):
@@ -63,6 +66,38 @@ def load_task_keys(triage_path: Path, task_id: str) -> tuple[str, ...]:
     return keys
 
 
+def load_exclusions(exclusions_path: Path, task_id: str, keys: tuple[str, ...]) -> dict[str, str]:
+    """Load this task's documented exclusions keyed by baseline mutant name.
+
+    Args:
+        exclusions_path: Path to the recorded exclusions JSON document.
+        task_id: Task identifier whose entries are selected.
+        keys: The task's full baseline keyset, used to reject unknown names.
+
+    Returns:
+        Mapping of baseline key to its recorded disposition.
+
+    Raises:
+        TaskPolicyError: If the document is malformed, an entry lacks
+            owner/reason/proof, or names a key outside the task keyset.
+    """
+    if not exclusions_path.exists():
+        return {}
+    raw = _read_exclusions(exclusions_path)
+    known = frozenset(keys)
+    exclusions: dict[str, str] = {}
+    for entry in cast("list[object]", raw["entries"]):
+        record = _validated_entry(entry)
+        if record["task"] != task_id:
+            continue
+        key = record["key"]
+        if key not in known:
+            msg = f"exclusion for {key} does not belong to {task_id}"
+            raise TaskPolicyError(msg)
+        exclusions[key] = record["disposition"]
+    return dict(sorted(exclusions.items()))
+
+
 def verify_report_coverage(payload: dict[str, object], keys: tuple[str, ...]) -> list[str]:
     """Return coverage disagreements between a canonical report and a keyset.
 
@@ -84,36 +119,99 @@ def verify_report_coverage(payload: dict[str, object], keys: tuple[str, ...]) ->
     return sorted(issues)
 
 
-def execute_task(task_id: str, triage_path: Path, report_path: Path, timeout_seconds: int) -> int:
+@dataclass(frozen=True, slots=True)
+class TaskRunSpec:
+    """Immutable inputs for one task-policy execution."""
+
+    task_id: str
+    triage_path: Path = DEFAULT_TRIAGE_PATH
+    report_path: Path = Path("build/reports/mutation-task-report.json")
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+    exclusions_path: Path = DEFAULT_EXCLUSIONS_PATH
+
+
+def execute_task(spec: TaskRunSpec) -> int:
     """Run one task's keyset through the canonical policy and verify coverage.
 
     Args:
-        task_id: Task identifier such as ``T009``.
-        triage_path: Path to the recorded triage JSON document.
-        report_path: Where the canonical report is written.
-        timeout_seconds: Positive wall-clock budget for the mutmut run.
+        spec: Immutable execution inputs.
 
     Returns:
         Canonical policy exit code: 0 clean, 1 findings, 2 tool error.
     """
-    if timeout_seconds <= 0:
+    if spec.timeout_seconds <= 0:
         msg = "--timeout-seconds must be positive"
         raise TaskPolicyError(msg)
-    keys = load_task_keys(triage_path, task_id)
-    logger.info("Task %s keyset loaded: %d keys", task_id, len(keys))
+    keys = load_task_keys(spec.triage_path, spec.task_id)
+    exclusions = load_exclusions(spec.exclusions_path, spec.task_id, keys)
+    required = tuple(key for key in keys if key not in exclusions)
+    logger.info(
+        "Task %s keyset loaded: %d keys (%d documented exclusions)",
+        spec.task_id,
+        len(keys),
+        len(keys) - len(required),
+    )
+    exit_code = _run_selected(required, spec.report_path, spec.timeout_seconds)
+    if exit_code != policy.EXIT_CLEAN:
+        return exit_code
+    return _coverage_exit(spec.report_path, spec.task_id, required)
+
+
+def _run_selected(required: tuple[str, ...], report_path: Path, timeout_seconds: int) -> int:
+    """Run the required keyset through the canonical selected-scope policy."""
     argv = [
         "--scope",
         "selected",
-        *(pattern for key in keys for pattern in ("--pattern", key)),
+        *(pattern for key in required for pattern in ("--pattern", key)),
         "--report-path",
         str(report_path),
         "--timeout-seconds",
         str(timeout_seconds),
     ]
-    exit_code = runner.main(argv)
-    if exit_code != policy.EXIT_CLEAN:
-        return exit_code
-    return _coverage_exit(report_path, task_id, keys)
+    return runner.main(argv)
+
+
+def _read_exclusions(path: Path) -> dict[str, object]:
+    """Load the exclusions document, failing closed on unreadable content."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        msg = f"unreadable exclusions artifact: {path}"
+        raise TaskPolicyError(msg) from exc
+    if not isinstance(raw, dict):
+        msg = f"malformed exclusions artifact: {path}"
+        raise TaskPolicyError(msg)
+    document = cast("dict[str, object]", raw)
+    if not isinstance(document.get("entries"), list):
+        msg = f"malformed exclusions artifact: {path}"
+        raise TaskPolicyError(msg)
+    return document
+
+
+def _provenance_gaps(record: dict[str, object]) -> list[str]:
+    """Return required provenance fields that are missing or blank."""
+    return [
+        field
+        for field in ("task", "key", "disposition", "owner", "reason", "proof")
+        if not isinstance(record.get(field), str) or not cast("str", record.get(field)).strip()
+    ]
+
+
+def _validated_entry(raw_entry: object) -> dict[str, str]:
+    """Validate one exclusion record, requiring full provenance fields."""
+    if not isinstance(raw_entry, dict):
+        msg = "exclusion entry is not an object"
+        raise TaskPolicyError(msg)
+    record = cast("dict[str, object]", raw_entry)
+    gaps = _provenance_gaps(record)
+    disposition = str(record.get("disposition"))
+    if gaps or disposition not in ALLOWED_DISPOSITIONS:
+        msg = f"exclusion entry for {record.get('key')!r} lacks provenance or valid disposition"
+        raise TaskPolicyError(msg)
+    return {
+        field: str(record.get(field))
+        for field in ("task", "key", "disposition", "owner", "reason", "proof")
+    }
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -128,6 +226,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task", required=True, help="Triage task id, e.g. T009")
     parser.add_argument("--triage-path", type=Path, default=DEFAULT_TRIAGE_PATH)
+    parser.add_argument("--exclusions-path", type=Path, default=DEFAULT_EXCLUSIONS_PATH)
     parser.add_argument("--report-path", type=Path, required=True)
     parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
     return parser.parse_args(argv)
@@ -138,7 +237,15 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     args = parse_args(argv)
     try:
-        return execute_task(args.task, args.triage_path, args.report_path, args.timeout_seconds)
+        return execute_task(
+            TaskRunSpec(
+                task_id=args.task,
+                triage_path=args.triage_path,
+                report_path=args.report_path,
+                timeout_seconds=args.timeout_seconds,
+                exclusions_path=args.exclusions_path,
+            )
+        )
     except TaskPolicyError as exc:
         logger.exception("%s", exc)
         return policy.EXIT_TOOL_ERROR

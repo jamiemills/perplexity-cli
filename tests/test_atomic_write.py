@@ -319,3 +319,117 @@ class TestDirectoryFsync:
         """A failed directory fsync is silently ignored."""
         with patch("os.open", side_effect=OSError("cannot open dir")):
             _fsync_directory(tmp_path)
+
+
+class TestTempSiblingNamingContract:
+    """Temporary siblings are hidden same-directory files."""
+
+    def test_temp_sibling_uses_hidden_dot_prefix(self, tmp_path):
+        """The temp file name hides behind a dot prefix derived from the target."""
+        import perplexity_cli.utils.atomic_write as aw
+
+        dest = tmp_path / "data.json"
+        temp = aw._create_temp_sibling(dest)
+        try:
+            assert temp.parent == tmp_path
+            assert temp.name.startswith(f".{dest.name}.")
+            assert temp.name.endswith(".tmp")
+        finally:
+            temp.unlink(missing_ok=True)
+
+
+class TestReplacementSameDirectory:
+    """Replacement sources must live in the destination directory."""
+
+    def test_replacement_source_lives_in_destination_directory(self, tmp_path, monkeypatch):
+        """The rename source is the temp sibling created beside the destination."""
+        import perplexity_cli.utils.atomic_write as aw
+
+        dest = tmp_path / "data.json"
+        seen = {}
+        real_replace = aw._replace_temp
+
+        def spy(temp_path, target):
+            seen["temp_parent"] = temp_path.parent
+            return real_replace(temp_path, target)
+
+        monkeypatch.setattr(aw, "_replace_temp", spy)
+        atomic_write_text(dest, "payload")
+        assert seen["temp_parent"] == tmp_path
+        assert dest.read_text() == "payload"
+
+
+class TestSilentCleanupOfVanishedTemp:
+    """Cleanup of an already-removed temporary is silent."""
+
+    def test_cleanup_of_already_removed_temp_logs_no_warning(self, tmp_path, monkeypatch, caplog):
+        """A vanished temp does not trigger the removal-failure warning."""
+        import perplexity_cli.utils.atomic_write as aw
+
+        dest = tmp_path / "data.json"
+
+        def replace_then_vanish(_temp_path, _target):
+            raise OSError("injected replace failure")
+
+        def vanished_temp(_temp_path):
+            return None
+
+        monkeypatch.setattr(aw, "_replace_temp", replace_then_vanish)
+        monkeypatch.setattr(aw, "_cleanup_temp", vanished_temp)
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(OSError, match="injected replace failure"):
+                atomic_write_json(dest, {"a": 1})
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert not any("Could not remove temporary file" in r.getMessage() for r in warnings)
+
+
+class TestCleanupFailureWarningContent:
+    """The cleanup warning names the redacted temporary path."""
+
+    def test_warning_names_the_redacted_temp_file(self, tmp_path, monkeypatch, caplog):
+        """The warning message carries the prefix and the redacted temp name."""
+        import logging as logging_module
+
+        import perplexity_cli.utils.atomic_write as aw
+
+        dest = tmp_path / "data.json"
+
+        def unremovable_temp(_temp_path):
+            raise OSError("locked")
+
+        def failing_replace(_temp_path, _target):
+            raise OSError("injected replace failure")
+
+        monkeypatch.setattr(aw, "_cleanup_temp", unremovable_temp)
+        monkeypatch.setattr(aw, "_replace_temp", failing_replace)
+        with caplog.at_level(logging_module.WARNING):
+            with pytest.raises(OSError, match="replace"):
+                atomic_write_json(dest, {"a": 1})
+        warning_records = [r for r in caplog.records if r.levelno == logging_module.WARNING]
+        message = warning_records[0].getMessage()
+        assert message.startswith("Could not remove temporary file ")
+        assert "%s" not in message
+
+
+class TestDirectoryFsyncImplementation:
+    """Directory fsync opens the parent with the platform directory flag."""
+
+    def test_opens_directory_with_o_directory_flag(self, tmp_path, monkeypatch):
+        """The directory handle is opened read-only with O_DIRECTORY set."""
+        calls: list[int] = []
+        real_open = os.open
+
+        def spy(path, flags, *args, **kwargs):
+            calls.append(flags)
+            return real_open(path, flags, *args, **kwargs)
+
+        monkeypatch.setattr(os, "open", spy)
+        _fsync_directory(tmp_path)
+        dir_flag = getattr(os, "O_DIRECTORY", 0)
+        assert calls, "expected the directory to be opened for fsync"
+        assert calls[0] & dir_flag
+
+    def test_missing_o_directory_constant_is_tolerated(self, tmp_path, monkeypatch):
+        """Platforms without O_DIRECTORY skip the fsync without error."""
+        monkeypatch.delattr(os, "O_DIRECTORY")
+        _fsync_directory(tmp_path)

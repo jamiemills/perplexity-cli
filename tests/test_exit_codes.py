@@ -154,3 +154,29 @@ class TestFormatExitCodesHelp:
         result = format_exit_codes_help()
         for code in ["0", "1", "2", "3", "4", "5", "6", "7", "130"]:
             assert code in result
+
+
+class TestFormatExitCodesHelpStructure:
+    """The help block pairs every exit-code constant with its documented label."""
+
+    def test_every_code_line_pairs_constant_with_label(self):
+        """Each body line is the constant's number followed by its label."""
+        expected_rows = [
+            (SUCCESS, "Success"),
+            (GENERAL_FAILURE, "General failure"),
+            (USAGE_ERROR, "Usage error"),
+            (NOT_FOUND, "Not found"),
+            (AUTH_REQUIRED, "Authentication required"),
+            (CONFLICT, "Conflict"),
+            (TRANSIENT, "Transient error (retry may help)"),
+            (VALIDATION, "Validation error"),
+            (INTERRUPTED, "Interrupted (Ctrl+C)"),
+        ]
+        lines = format_exit_codes_help().splitlines()
+        assert lines[0] == "Exit codes:"
+        body = lines[1:]
+        assert len(body) == len(expected_rows)
+        for line, (code, label) in zip(body, expected_rows, strict=True):
+            assert line.startswith(f"  {code}"), line
+            assert line[7:] == label, line
+            assert line[len(f"  {code}") : 7].strip() == "", line

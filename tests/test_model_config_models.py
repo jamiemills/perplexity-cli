@@ -347,3 +347,72 @@ class TestSubscriptionLevel:
     def test_can_access_tier_free(self) -> None:
         assert SubscriptionLevel.FREE.can_access_tier("pro") is False
         assert SubscriptionLevel.FREE.can_access_tier("max") is False
+
+
+# ---------------------------------------------------------------------------
+# ModelConfigResponse.search_models filtering
+# ---------------------------------------------------------------------------
+
+
+class TestSearchModelsModeFiltering:
+    """search_models filters config entries by search-mode model IDs."""
+
+    @staticmethod
+    def _response_with_modes() -> ModelConfigResponse:
+        """Build a response mixing search and research mode models."""
+        return ModelConfigResponse(
+            models={
+                "s1": ModelInfo(label="Search One", mode="search"),
+                "r1": ModelInfo(label="Research One", mode="research"),
+            },
+            config=[
+                ModelConfigEntry(
+                    label="Search One",
+                    subscription_tier="pro",
+                    non_reasoning_model="s1",
+                ),
+                ModelConfigEntry(
+                    label="Research One",
+                    subscription_tier="pro",
+                    non_reasoning_model="r1",
+                ),
+            ],
+        )
+
+    def test_returns_only_entries_whose_model_is_search_mode(self) -> None:
+        """Only config entries with a search-mode model ID are returned."""
+        result = self._response_with_modes().search_models()
+        assert [entry.model_id for entry in result] == ["s1"]
+
+    def test_falls_back_to_all_config_when_no_models_have_search_mode(self) -> None:
+        """Without any search-mode models every config entry is returned."""
+        response = ModelConfigResponse(
+            models={"r1": ModelInfo(label="Research One", mode="research")},
+            config=[
+                ModelConfigEntry(
+                    label="Research One",
+                    subscription_tier="pro",
+                    non_reasoning_model="r1",
+                ),
+            ],
+        )
+        result = response.search_models()
+        assert [entry.model_id for entry in result] == ["r1"]
+
+    def test_falls_back_to_all_config_when_intersection_is_empty(self) -> None:
+        """A search-mode ID absent from config yields the full fallback."""
+        response = ModelConfigResponse(
+            models={
+                "ghost": ModelInfo(label="Ghost", mode="search"),
+                "r1": ModelInfo(label="Research One", mode="research"),
+            },
+            config=[
+                ModelConfigEntry(
+                    label="Research One",
+                    subscription_tier="pro",
+                    non_reasoning_model="r1",
+                ),
+            ],
+        )
+        result = response.search_models()
+        assert [entry.model_id for entry in result] == ["r1"]

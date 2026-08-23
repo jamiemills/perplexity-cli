@@ -202,7 +202,9 @@ class TestRichFormatter:
         assert "References" not in result
         assert "https://test.com" not in result
 
-    def test_render_complete_prints_reference_separator_and_table(self, capsys):
+    def test_render_complete_prints_reference_separator_and_table(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
         """Direct rendering prints the styled separator and references."""
         formatter = RichFormatter()
         answer = Answer(
@@ -350,6 +352,8 @@ class TestStripReferences:
         formatter = RichFormatter()
         text = "Answer text[1] with citations[2]."
         result = formatter.format_answer(text, strip_references=True)
+        assert "Answer text" in result
+        assert "with citations." in result
         assert "[1]" not in result
         assert "[2]" not in result
 
@@ -729,3 +733,172 @@ class TestJSONEnvelopeFormat:
         answer = Answer(text="Answer[1]", references=refs)
         parsed = json.loads(formatter.format_complete(answer, strip_references=True))
         assert parsed["result"]["references"] == []
+
+
+class TestPlainTextPresentationContract:
+    """Structural pins for the plain-text presentation pipeline."""
+
+    def test_format_answer_keeps_citations_by_default(self):
+        """Citations survive unless stripping is requested."""
+        result = PlainTextFormatter().format_answer("Facts[1] and more[2]")
+        assert "[1]" in result
+        assert "[2]" in result
+
+    def test_format_answer_trailing_blank_lines_are_removed(self):
+        """Trailing whitespace is trimmed; leading content is untouched."""
+        assert PlainTextFormatter().format_answer("Body\n\n") == "Body"
+
+    def test_blank_pair_after_text_is_preserved(self):
+        """A single blank line between paragraphs is kept."""
+        assert PlainTextFormatter().format_answer("A\n\nB") == "A\n\nB"
+
+    def test_blank_line_after_header_is_absorbed(self):
+        """The first blank line after a header is suppressed exactly once."""
+        result = PlainTextFormatter().format_answer("Intro\n# Sec\n\nAfter")
+        assert result == "Intro\n\nSec\n===\nAfter"
+
+    def test_second_blank_after_header_is_kept(self):
+        """Only one blank after a header is absorbed; further blanks remain."""
+        result = PlainTextFormatter().format_answer("Intro\n# Sec\n\n\nAfter")
+        assert result == "Intro\n\nSec\n===\n\nAfter"
+
+    def test_three_blanks_after_header_yield_two(self):
+        """Blank suppression after headers caps at the standard two lines."""
+        result = PlainTextFormatter().format_answer("# T\n\n\n\nBody")
+        assert result == "T\n=\n\n\nBody"
+
+    def test_four_blank_lines_collapse_to_two(self):
+        """Four consecutive blank lines collapse to exactly two."""
+        assert PlainTextFormatter().format_answer("A\n\n\n\n\nB") == "A\n\n\nB"
+
+    def test_format_complete_default_includes_references(self):
+        """References appear unless stripping is requested."""
+        answer = Answer(
+            text="Body",
+            references=[WebResult(name="S", url="https://s.test", snippet=None)],
+        )
+        result = PlainTextFormatter().format_complete(answer)
+        assert result.splitlines() == [
+            "Body",
+            "",
+            "─" * 50,
+            "References",
+            "=" * len("References"),
+            "[1] https://s.test",
+        ]
+
+    def test_format_complete_strip_flag_removes_section(self):
+        """strip_references=True yields only the formatted answer."""
+        answer = Answer(
+            text="Body",
+            references=[WebResult(name="S", url="https://s.test", snippet=None)],
+        )
+        result = PlainTextFormatter().format_complete(answer, strip_references=True)
+        assert result == "Body"
+        assert "References" not in result
+
+
+class TestMarkdownPresentationContract:
+    """Structural pins for the Markdown presentation pipeline."""
+
+    def test_format_answer_keeps_citations_by_default(self):
+        """Citations survive unless stripping is requested."""
+        result = MarkdownFormatter().format_answer("Facts[1] here")
+        assert "[1]" in result
+
+    def test_format_answer_trailing_blank_lines_are_removed(self):
+        """Trailing blank lines are trimmed from the section."""
+        assert MarkdownFormatter().format_answer("Body\n\n") == "Body"
+
+    def test_format_complete_default_joins_sections_with_blank_line(self):
+        """Answer and references sections are separated by one blank line."""
+        answer = Answer(
+            text="Body",
+            references=[WebResult(name="S", url="https://s.test", snippet=None)],
+        )
+        result = MarkdownFormatter().format_complete(answer)
+        assert result == "Body\n\n## References\n1. [S](https://s\\.test)"
+
+    def test_format_complete_propagates_strip_flag(self):
+        """strip_references=True strips citations and drops the section."""
+        answer = Answer(
+            text="Body[1]",
+            references=[WebResult(name="S", url="https://s.test", snippet=None)],
+        )
+        result = MarkdownFormatter().format_complete(answer, strip_references=True)
+        assert result == "Body"
+
+    def test_format_references_empty_list_renders_nothing(self):
+        """No references produce an empty string."""
+        assert MarkdownFormatter().format_references([]) == ""
+
+    def test_format_references_heading_is_exact(self):
+        """The references section heading is exactly '## References'."""
+        refs = [WebResult(name="S", url="https://s.test", snippet=None)]
+        assert MarkdownFormatter().format_references(refs).splitlines()[0] == "## References"
+
+    def test_format_references_snippetless_entry_has_no_suffix(self):
+        """Entries without snippets render without a snippet clause."""
+        refs = [WebResult(name="S", url="https://s.test", snippet=None)]
+        (line,) = MarkdownFormatter().format_references(refs).splitlines()[1:]
+        assert line == "1. [S](https://s\\.test)"
+
+
+class TestJsonPresentationContract:
+    """Structural pins for the JSON serialisation pipeline."""
+
+    def test_format_answer_keeps_citations_by_default(self):
+        """Citations survive unless stripping is requested."""
+        assert "[1]" in JSONFormatter().format_answer("Facts[1]")
+
+    def test_format_answer_trailing_blank_lines_are_removed(self):
+        """Trailing whitespace is trimmed from the answer text."""
+        assert JSONFormatter().format_answer("Body\n\n") == "Body"
+
+    def test_format_complete_serialises_with_two_space_indent_and_raw_unicode(self):
+        """Output is indented JSON with unescaped Unicode values."""
+        formatter = JSONFormatter()
+        answer = Answer(text="Café", references=[])
+        expected = json.dumps(
+            {
+                "ok": True,
+                "command": "pxcli query",
+                "result": {"answer": "Café", "references": []},
+                "meta": None,
+                "next_actions": [],
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        assert formatter.format_complete(answer) == expected
+
+    def test_format_complete_default_includes_references(self):
+        """Without the strip flag references are serialised."""
+        formatter = JSONFormatter()
+        refs = [WebResult(name="S", url="https://s.test", snippet="snip")]
+        parsed = json.loads(formatter.format_complete(Answer(text="B", references=refs)))
+        assert parsed["result"]["references"] == [
+            {"index": 1, "title": "S", "url": "https://s.test", "snippet": "snip"}
+        ]
+
+
+class TestTrailingWhitespaceOnlyTrimming:
+    """Formatters trim trailing whitespace but preserve leading indentation."""
+
+    @pytest.mark.parametrize(
+        ("formatter", "format_name"),
+        [
+            (PlainTextFormatter(), "plain"),
+            (MarkdownFormatter(), "markdown"),
+            (RichFormatter(), "rich"),
+            (JSONFormatter(), "json"),
+        ],
+        ids=["plain", "markdown", "rich", "json"],
+    )
+    def test_leading_indent_kept_while_trailing_trimmed(self, formatter, format_name):
+        """rstrip semantics: leading spaces survive, trailing whitespace is removed."""
+        assert formatter.format_answer("  Body\n") == "  Body", format_name
+
+    def test_plain_formatter_keeps_leading_blank_line(self):
+        """A blank first line is a counted blank line, not an unconditionally dropped one."""
+        assert PlainTextFormatter().format_answer("\nBody") == "\nBody"

@@ -11,15 +11,15 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: remediation-waves-execution
-- Status: executing
-- Current CSM state: DISPATCH
-- Cycle: 1
+- Status: in_progress
+- Current CSM state: BLOCKED
+- Cycle: 3
 - Commits: allowed
-- Last checkpoint: 2026-08-22 cycle 1 - Batch A infra repair committed; T007-T011 dispatched
-- Last model/run: ox-alpha / opencode csm-build session of 2026-08-22
-- Next transition: DISPATCH -> INTEGRATE for batch A1-A5 results
-- Active tasks: T007, T008, T009, T010, T011
-- Blockers: none
+- Last checkpoint: 2026-08-23 cycle 3 - recovery session 3; T011 timeout repair remains unverified
+- Last model/run: openai/gpt-5.6-luna / recovery session 3 / T011 targeted mutation attempt
+- Next transition: BLOCKED -> RECOVER after mutation runner/test environment repair
+- Active tasks: T011, T010, T007
+- Blockers: Mutmut reaches clean-test/mutation execution but exits with BadTestExecutionCommandsException or unstable historical timeout classifications; T011 retains 2 timeout findings after targeted coverage; T010 and T007 remain unrun in this recovery session
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
 ## Goal
@@ -245,6 +245,14 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
 | 2026-08-22 | 0 | INTAKE -> SAVED | - | Plan created from T002 triage output; batches designed for max parallelism | SAVED |
 | 2026-08-22 | 1 | NOT_STARTED -> RECOVER -> VALIDATE | - | Triage counts match plan (T007=519, T008=303, T009=172, T010=301, T011=186; Batch A=1,481); NORMS.md authentic (csm-scan 2026-08-04); baseline manifests verify against live tree only under build/reports/mutation-baseline/; manifest-check target had stale path and failed at baseline; mutate-task-policy/mutation-task-static/mutation-task-tests never implemented (git -S across all history) | VALIDATE corrections applied |
 | 2026-08-22 | 1 | VALIDATE -> SELECT -> DISPATCH | T007-T011 | Implemented scripts/mutation_task_policy.py + Makefile mutate-task-policy (13 unit tests green, ruff/pyright/radon clean); fixed manifest-check path (now exit 0 for baseline SHA); plan Verification Strategy corrected; pre-existing untracked .agents/reviews/ and report.json left untouched | DISPATCH batch A1-A5 |
+| 2026-08-23 | 1 | DISPATCH -> VERIFY -> CHECKPOINT | T008-T009 | Focused Batch A tests green; T009 policy clean with 166 killed keys plus 6 independently documented exclusions; T008 policy report complete but has 22 surviving API keys; stale mutation workspace removed | REPAIR T008 |
+| 2026-08-23 | 1 | REPAIR -> VERIFY | T008 | Added runtime tests for endpoint construction/query forwarding, REST session reuse/close, and SSE transport context/close; removed source-inspection assertions. `uv run pytest tests/test_endpoints.py tests/test_api_client.py tests/test_api_transport_guards.py tests/test_api_retry_logging.py tests/test_rest_client_wiring.py tests/test_api_models_extractors.py` = 152 passed; ruff format/check, pyright API modules, radon CC, and diff-check pass | CHECKPOINT after primary mutation policy |
+ | 2026-08-23 | 1 | VERIFY -> CHECKPOINT | T007, T010, T011 | T008/T009 policy gates clean with documented exclusions. Latest T007 policy: 113 killed, 387 survived, 18 timeout, 0 no-tests after partial repair; T010 policy: 223 killed, 70 survived, 8 timeout; T011 policy: 168 killed, 7 timeout after bounded CDP tests. Mutation workspace removed. | REPAIR remaining Batch A tasks |
+ | 2026-08-23 | 2 | RECOVER -> REPAIR | T008, T009, T011 | Re-read plan and working tree; committed verified T008/T009 work as e85c494 after isolating pre-existing Batch A edits. T011 has 7 timeout findings and no survivors/no-tests; each requires three consecutive serial post-repair kills. | REPAIR T011 first |
+ | 2026-08-23 | 2 | REPAIR -> REPAIR | T011 | Added public CDP boundary assertions for protocol IDs, command correlation, and configured deadlines. Focused tests: 57 passed. Fresh T011 mutation runs remained non-clean with historical timeouts (latest: 171 killed, 4 timeout: await_response_8, wait_for_matching_12, send_command_16, send_command_24); no survivors/no-tests. | REPAIR T011 with a non-hanging mutation angle |
+  | 2026-08-23 | 2 | REPAIR -> BLOCKED | T007, T010 | Continued with focused tests and fresh gates. T010/T007 mutation runs failed before classification with Mutmut EnvironmentMismatchError/tool errors after interrupted/concurrent mutation workspaces; stale workspace removed and `uv sync --all-groups` completed. Actionable keys remain and require a clean mutation environment. | RECOVER after environment repair |
+  | 2026-08-23 | 3 | RECOVER -> SELECT | T008, T009, T011, T010, T007 | Recovery confirmed plan format, authentic NORMS.md, clean Mutmut 3.5.0 environment status from user evidence, and verified T008/T009 commit e85c494. Existing uncommitted edits are prior Batch A work and remain preserved for classification. | SELECT T011 first |
+  | 2026-08-23 | 3 | SELECT -> BLOCKED | T011 | Removed stale mutants/ and verified `uv run mutmut --version` = 3.5.0. T011 focused tests pass (60). A serialized full T011 run classified all 175 selected keys as killed once, but consecutive reruns regressed to timeout findings; narrowed isolated runs fail during Mutmut clean-test stats with `BadTestExecutionCommandsException`. T010/T007 were not started. | RECOVER after mutation test environment repair |
 
 ## Completion Review
 

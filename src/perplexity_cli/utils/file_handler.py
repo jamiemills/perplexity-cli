@@ -57,7 +57,7 @@ def _extract_file_paths_from_text(text: str) -> list[Path]:
 
     # Pattern for Unix absolute paths with file extensions (/path/to/file.ext)
     # Requires at least one dot (file extension)
-    unix_pattern = r"/[a-zA-Z0-9._\-/]+\.[a-zA-Z0-9]+"
+    unix_pattern = r"(?<!~)/[a-zA-Z0-9._\-/]+\.[a-zA-Z0-9]+"
 
     # Pattern for tilde paths (~/path/to/file.ext)
     tilde_pattern = r"~[a-zA-Z0-9._\-/]*\.[a-zA-Z0-9]+"

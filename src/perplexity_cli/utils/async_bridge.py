@@ -52,6 +52,6 @@ def run_async[T](coro: Coroutine[object, object, T]) -> T:
         return asyncio.run(coro)
 
     # Already inside an event loop — run in a dedicated thread
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+    with concurrent.futures.ThreadPoolExecutor() as pool:
         future = pool.submit(asyncio.run, coro)
         return future.result()  # ty: ignore[invalid-return-type]

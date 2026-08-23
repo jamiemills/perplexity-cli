@@ -145,4 +145,4 @@ def write_envelope(
     """
     out = output if output is not None else sys.stdout
     envelope_dict = envelope_to_dict(env, include_schema=include_schema)
-    out.write(json.dumps(envelope_dict, default=str) + "\n")
+    out.write(json.dumps(envelope_dict) + "\n")
