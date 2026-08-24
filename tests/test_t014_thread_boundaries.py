@@ -70,8 +70,9 @@ class TestPaginationBoundaries:
         callback = MagicMock()
         assert _coerce_progress_callback(None) is None
         assert _coerce_progress_callback(callback) is callback
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError) as raised:
             _coerce_progress_callback("callback-sentinel")
+        assert "None" in str(raised.value)
 
     @staticmethod
     def test_legacy_context_argument_count_and_index_contract() -> None:
@@ -158,13 +159,20 @@ class TestPaginationBoundaries:
                 _build_legacy_batch_processing_context(args)
             assert raised.value.args and raised.value.args[0] is not None
             assert "XX" not in str(raised.value)
+        with pytest.raises(TypeError) as raised:
+            _build_legacy_batch_processing_context((12,))
+        assert "from_date" in str(raised.value)
+        with pytest.raises(TypeError) as raised:
+            _build_legacy_batch_processing_context((None, "12"))
+        assert "total_threads" in str(raised.value)
 
     @staticmethod
     def test_pagination_rejects_non_advancing_negative_limits() -> None:
         """Every non-positive page size is rejected before the next request."""
         with pytest.raises(UpstreamSchemaError) as raised:
             _next_pagination_offset(5, -1)
-        assert raised.value.args
+        assert raised.value.args and raised.value.args[0] is not None
+        assert "XX" not in str(raised.value)
 
     @staticmethod
     def test_page_flags_default_false_and_validate_first_record_only() -> None:
@@ -355,8 +363,9 @@ class TestScraperBoundaries:
     def test_parse_single_thread_rejects_empty_and_malformed_timestamps() -> None:
         """Required timestamps cannot be empty or syntactically invalid."""
         for timestamp in ("", "not-a-timestamp"):
-            with pytest.raises((UpstreamSchemaError, ValueError)):
+            with pytest.raises((UpstreamSchemaError, ValueError)) as raised:
                 _parse_single_thread({"last_query_datetime": timestamp}, None)
+            assert "XX" not in str(raised.value)
 
     @staticmethod
     def test_http_error_mapping_preserves_unhandled_response() -> None:
@@ -428,6 +437,89 @@ class TestScraperBoundaries:
         fetch.assert_awaited_once_with("session", context.progress_callback, from_date="2026-01-01")
         merge.assert_called_once_with("2026-01-01", "2026-02-01", [], [])
 
+        with (
+            patch.object(scraper.logger, "info") as info,
+            patch.object(
+                scraper, "_fetch_all_threads_from_api", new_callable=AsyncMock, return_value=[]
+            ),
+            patch.object(scraper, "_merge_and_save", return_value=[]),
+        ):
+            await scraper._fetch_and_merge(context)
+        assert info.call_args.args[0] is not None
+        assert "XX" not in str(info.call_args.args)
+
+    @pytest.mark.asyncio
+    async def test_scrape_all_threads_forwards_all_public_context(self) -> None:
+        """The public scrape boundary forwards dates and progress unchanged."""
+        scraper = _scraper()
+        callback = MagicMock()
+        with (
+            patch.object(scraper, "_try_cache_only", return_value=None) as cache_only,
+            patch.object(
+                scraper,
+                "_prepare_fetch",
+                return_value=([], "fetch-from", "fetch-to"),
+            ) as prepare,
+            patch.object(
+                scraper, "_fetch_and_merge", new_callable=AsyncMock, return_value=[]
+            ) as fetch,
+        ):
+            assert await scraper.scrape_all_threads("2026-01-01", "2026-02-01", callback) == []
+        cache_only.assert_called_once_with("2026-01-01", "2026-02-01")
+        prepare.assert_called_once_with("2026-01-01", "2026-02-01")
+        fetch.assert_awaited_once()
+        context = fetch.await_args.args[0]
+        assert context.from_date == "2026-01-01"
+        assert context.to_date == "2026-02-01"
+        assert context.fetch_from == "fetch-from"
+        assert context.progress_callback is callback
+
+    @pytest.mark.asyncio
+    async def test_fetch_all_threads_paginates_until_terminal_page(self) -> None:
+        """API fetching advances offsets and accumulates records across pages."""
+        scraper = _scraper()
+        session = MagicMock()
+        client = AsyncMock()
+        session.__aenter__ = AsyncMock(return_value=client)
+        session.__aexit__ = AsyncMock(return_value=None)
+        pages = [
+            [
+                {
+                    "last_query_datetime": "2026-01-02T00:00:00",
+                    "slug": "new",
+                    "title": "New",
+                    "has_next_page": True,
+                    "total_threads": 2,
+                }
+            ],
+            [
+                {
+                    "last_query_datetime": "2026-01-01T00:00:00",
+                    "slug": "old",
+                    "title": "Old",
+                    "has_next_page": False,
+                    "total_threads": 2,
+                }
+            ],
+        ]
+        with (
+            patch("perplexity_cli.threads.scraper._create_async_session", return_value=session),
+            patch.object(
+                scraper, "_make_api_request", new_callable=AsyncMock, side_effect=pages
+            ) as request,
+        ):
+            records = await scraper._fetch_all_threads_from_api("session")
+        assert [record.title for record in records] == ["New", "Old"]
+        assert request.await_args_list[0].args[3]["offset"] == 0
+        assert request.await_args_list[1].args[3]["offset"] == 100
+
+    @staticmethod
+    def test_single_entry_wraps_timestamp_value_errors() -> None:
+        """Malformed timestamp parsing is normalised at the scraper boundary."""
+        with pytest.raises(UpstreamSchemaError) as raised:
+            _scraper()._process_single_thread_entry({"last_query_datetime": "invalid"}, [], None)
+        assert raised.value.args and raised.value.args[0] is not None
+
     @pytest.mark.asyncio
     async def test_rate_limiter_does_not_log_zero_wait(self) -> None:
         """Zero wait is not a rate-limit event."""
@@ -442,12 +534,13 @@ class TestScraperBoundaries:
     async def test_rate_limiter_logs_positive_wait_and_forwards_value(self) -> None:
         """Positive limiter waits are logged with the measured delay."""
         limiter = AsyncMock()
-        limiter.acquire.return_value = 1.234
+        limiter.acquire.return_value = 0.5
         scraper = _scraper(rate_limiter=limiter)
         with patch.object(scraper.logger, "debug") as debug:
             await scraper._acquire_rate_limit()
         debug.assert_called_once()
         assert debug.call_args.args[0] is not None
+        assert debug.call_args.args[1] == 0.5
         assert "XX" not in str(debug.call_args.args)
 
     @staticmethod
@@ -470,6 +563,15 @@ class TestScraperBoundaries:
         assert scraper._prepare_fetch("from", "to") == ([], "from", "to")
         cache_manager.requires_fresh_data.assert_not_called()
 
+        scraper.force_refresh = False
+        cache_manager.requires_fresh_data.return_value = (True, "gap-from", "gap-to")
+        cache_manager.load_cache.return_value = {"threads": []}
+        with patch.object(scraper.logger, "info") as info:
+            assert scraper._prepare_fetch("from", "to") == ([], "gap-from", "gap-to")
+        info.assert_called_once()
+        assert info.call_args.args[0] is not None
+        assert "XX" not in str(info.call_args.args)
+
     @staticmethod
     def test_merge_with_cache_uses_manager_only_for_nonempty_cached_data() -> None:
         """Fetched records bypass merging without cached records or a manager."""
@@ -478,9 +580,26 @@ class TestScraperBoundaries:
         cache_manager.merge_threads.return_value = fetched
         scraper = _scraper(cache_manager=cache_manager)
         assert scraper._merge_with_cache([], fetched) is fetched
-        assert scraper._merge_with_cache([fetched[0]], fetched) is fetched
+        with patch.object(scraper.logger, "info") as info:
+            assert scraper._merge_with_cache([fetched[0]], fetched) is fetched
         cache_manager.merge_threads.assert_called_once_with([fetched[0]], fetched)
         assert cache_manager.merge_threads.return_value is fetched
+        info.assert_called_once()
+        assert info.call_args.args[0] is not None
+        assert "XX" not in str(info.call_args.args)
+
+    @staticmethod
+    def test_cache_only_log_has_diagnostic_template() -> None:
+        """A cache-only hit emits a real diagnostic record."""
+        cache_manager = MagicMock()
+        cache_manager.requires_fresh_data.return_value = (False, None, None)
+        cache_manager.load_cache.return_value = {"threads": []}
+        scraper = _scraper(cache_manager=cache_manager)
+        with patch.object(scraper.logger, "info") as info:
+            assert scraper._try_cache_only(None, None) == []
+        info.assert_called_once()
+        assert info.call_args.args[0] is not None
+        assert "XX" not in str(info.call_args.args)
 
     @staticmethod
     def test_error_diagnostics_do_not_collapse_to_empty_or_mutant_sentinels() -> None:
