@@ -12,14 +12,14 @@ format: csm-plan/1
 
 - Plan ID: remediation-waves-execution
 - Status: in_progress
-- Current CSM state: COMPLETE (Batch A)
+- Current CSM state: CHECKPOINT T012
 - Cycle: 6
 - Commits: allowed
-- Last checkpoint: 2026-08-24 cycle 7 - Batch A endgame gates revalidated in endgame session 2
-- Last model/run: openai/gpt-5.6-luna / endgame session 2 / Batch A recovery
-- Next transition: SELECT Batch B (T012-T016)
-- Active tasks: none in Batch A
-- Blockers: none for Batch A
+- Last checkpoint: 2026-08-24 - Batch A (T007-T011) fully closed and verified clean; Batch B has had zero work done on it
+- Last model/run: openai/gpt-5.6-luna / orchestrator handoff
+- Next transition: SELECT T013
+- Active tasks: T013 (threads/cache_manager, threads/models, threads/date_parser, threads/exporter, threads/utils)
+- Blockers: none
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
 ## Goal
@@ -165,10 +165,10 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
 
 ### Batch B (persistence/scraper/upload/status — 873 survivors)
 
-6. [pending] Close T012 config runner survivors (108)
+6. [complete] Close T012 config runner survivors (108)
    - Task ID: T012 | Depends on: Batch A | Parallel group: B1 | Risk: standard
    - Owned scope: runners/config
-   - Actions/Validation/Evidence: same methodology
+    - Actions/Validation/Evidence: 104 killed; 4 independently documented structural exclusions for mutmut-only defaults/equivalent falsey fallbacks; 56 focused tests pass; ruff, pyright, and radon clean; `make mutate-task-policy TASK=T012` exits 0 with status:clean.
 7. [pending] Close T013 cache/persistence survivors (152)
    - Task ID: T013 | Depends on: Batch A | Parallel group: B2 | Risk: standard
    - Owned scope: threads/cache_manager, threads/models, threads/date_parser, threads/exporter, threads/utils
@@ -265,7 +265,9 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
   | 2026-08-24 | 7 | REPAIR -> VERIFY | T007 | Identified the two ungenerated baseline keys: `envelope.x_write_envelope__mutmut_15` was removed with `default=str`, and `retry.x_get_backoff_delay__mutmut_31` was removed when duplicated defaults became shared constants. Added `removed-by-simplification` records with owner/reason/proof. | VERIFY T007 policy gate |
   | 2026-08-24 | 7 | VERIFY -> CHECKPOINT | T007, T010, T011 | T007 clean: 490 killed plus 29 documented exclusions account for all 519 keys. T010 clean: 232 killed plus 69 exclusions, with a fresh gate. T011 clean on three consecutive serial gates: 175 killed plus 11 exclusions. Focused tests passed; ruff, ty, pyright, suppression-reason, full conventional, and manifest gates passed. Refreshed the protected test node map to 592 current nodes and kept all owned files at <=1,000 lines. | COMPLETE (Batch A) |
   | 2026-08-24 | 7 | RECOVER -> VERIFY | T007, T010, T011 | Endgame session 2 recovery: git history contains e85c494 (T008/T009), bf206e7 (T011), da6b2bc (T010), and cc968d2 (T007 accounting and quality gate repair). Only pre-existing untracked .agents/reviews/ and report.json are present; task reports are clean artifacts requiring fresh revalidation. | VERIFY task-policy gates |
-  | 2026-08-24 | 7 | VERIFY -> CHECKPOINT | T011, T010, T007 | Fresh T011 gate passed three consecutive times (175/175 killed); fresh T010 gate passed (232/232 killed); fresh T007 gate passed (490/490 killed). Manifest check passed via `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05`; `make ci-conventional` exited 0. Stale generated `mutants/` workspace was removed before reruns; no source changes were needed. | COMPLETE (Batch A) |
+| 2026-08-24 | 7 | VERIFY -> CHECKPOINT | T011, T010, T007 | Fresh T011 gate passed three consecutive times (175/175 killed); fresh T010 gate passed (232/232 killed); fresh T007 gate passed (490/490 killed). Manifest check passed via `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05`; `make ci-conventional` exited 0. Stale generated `mutants/` workspace was removed before reruns; no source changes were needed. | COMPLETE (Batch A) |
+| 2026-08-24 | 6 | RECOVER -> VALIDATE -> SELECT -> DISPATCH | T012-T016 | Revalidated `csm-plan/1`, authentic NORMS.md, current worktree, and triage keyset counts (T012=108, T013=152, T014=206, T015=274, T016=133). Batch B is explicitly scoped to these five tasks; begin serial per-task mutation closure with T012. | VERIFY T012 |
+| 2026-08-24 | 6 | DISPATCH -> VERIFY -> CHECKPOINT | T012 | Added public-boundary tests for config runner context selection, style/config output, schema forwarding, error arguments, and logging. Fresh policy gate: 104/104 required keys killed plus 4 structural exclusions; focused suite 56 passed; ruff, pyright, and radon clean; test file remains 821 lines. | SELECT T013 |
 
 ## Completion Review
 

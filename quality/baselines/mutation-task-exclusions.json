@@ -1096,6 +1096,38 @@
       "owner": "foundation-team",
       "reason": "the mutation targets a duplicated default literal replaced by a shared constant",
       "proof": "get_backoff_delay now references _DEFAULT_BACKOFF_DELAY and _DEFAULT_MAX_BACKOFF_DELAY; the baseline literal mutation no longer exists in current generated mutant metadata, and retry default behaviour is covered by test_retry.py."
+    },
+    {
+      "task": "T012",
+      "key": "perplexity_cli.runners.config.x__collect_env_overrides__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "config-runner-team",
+      "reason": "mutmut changes only the helper's default argument in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source empty-string default, and explicit default and indented-prefix calls are covered by test_config_runners.py."
+    },
+    {
+      "task": "T012",
+      "key": "perplexity_cli.runners.config.x__read_ctx_bool__mutmut_4",
+      "disposition": "structural-exclusion",
+      "owner": "config-runner-team",
+      "reason": "the dictionary fallback changes from False to None before bool coercion",
+      "proof": "Both False and None coerce to the same False result for every dictionary lookup, so the generated replacement is observationally equivalent at this boundary; true, false, and missing keys are covered by test_config_runners.py."
+    },
+    {
+      "task": "T012",
+      "key": "perplexity_cli.runners.config.x__read_ctx_bool__mutmut_6",
+      "disposition": "structural-exclusion",
+      "owner": "config-runner-team",
+      "reason": "mutmut removes the dictionary fallback argument before bool coercion",
+      "proof": "The only reachable omitted-key result is the same falsey value used by the source fallback, and the public boolean boundary has no observable distinction; dictionary and object contexts are covered by test_config_runners.py."
+    },
+    {
+      "task": "T012",
+      "key": "perplexity_cli.runners.config.x__read_ctx_bool__mutmut_12",
+      "disposition": "structural-exclusion",
+      "owner": "config-runner-team",
+      "reason": "the object fallback changes from False to None before bool coercion",
+      "proof": "Both False and None coerce to the same False result for every missing object attribute, so the generated replacement is observationally equivalent at this boundary; object contexts with present and missing attributes are covered by test_config_runners.py."
     }
   ]
 }

@@ -8,10 +8,13 @@ import pytest
 
 from perplexity_cli.runners.config import (
     _collect_env_overrides,
+    _execute_clear_style,
+    _get_ctx_obj_dict,
     _get_include_schema,
     _get_json_mode_from_ctx,
     _output_config_change,
     _output_config_text,
+    _output_view_style,
     _read_ctx_bool,
     run_clear_style_command,
     run_configure_command,
@@ -412,6 +415,73 @@ class TestConfigRunnerMutationKillers:
         assert envelope["result"]["debug_mode"] is False
         assert envelope["result"]["config_path"] == "/tmp/config.json"
 
+    @patch("perplexity_cli.runners.config.get_feature_config_path")
+    @patch("perplexity_cli.runners.config.get_feature_config")
+    def test_show_config_json_preserves_override_key(
+        self, mock_get_config, mock_get_path, monkeypatch
+    ):
+        """JSON configuration output keeps environment overrides under its contract key."""
+        monkeypatch.setenv("PERPLEXITY_DEBUG_MODE", "sentinel")
+        mock_get_config.return_value = Mock(save_cookies=True, debug_mode=False)
+        mock_get_path.return_value = Path("/tmp/config.json")
+        with patch("perplexity_cli.runners.config.write_envelope") as write:
+            run_show_config_command(output_format="json")
+
+        result = write.call_args.args[0].result
+        assert result["env_overrides"] == ["PERPLEXITY_DEBUG_MODE=sentinel"]
+
+    @patch("perplexity_cli.runners.config.get_feature_config_path")
+    @patch("perplexity_cli.runners.config.get_feature_config")
+    def test_show_config_human_uses_indented_overrides_and_logs(
+        self, mock_get_config, mock_get_path, capsys, monkeypatch
+    ):
+        """Human configuration output indents overrides and records successful display."""
+        monkeypatch.setenv("PERPLEXITY_DEBUG_MODE", "sentinel")
+        mock_get_config.return_value = Mock(save_cookies=True, debug_mode=False)
+        mock_get_path.return_value = Path("/tmp/config.json")
+        logger = Mock()
+        with patch("perplexity_cli.runners.config.get_logger", return_value=logger):
+            run_show_config_command(output_format="human")
+
+        assert "  PERPLEXITY_DEBUG_MODE=sentinel" in capsys.readouterr().out
+        logger.debug.assert_called_once_with("Configuration displayed successfully")
+
+    @patch("perplexity_cli.runners.config.get_feature_config")
+    def test_show_config_json_error_forwards_exception_and_contract(self, mock_get_config):
+        """JSON configuration failures preserve the error envelope arguments."""
+        from perplexity_cli.utils.exceptions import ConfigurationError
+
+        error = ConfigurationError("sentinel failure")
+        mock_get_config.side_effect = error
+        with (
+            patch("perplexity_cli.runners.config.handle_error") as handle,
+            patch("perplexity_cli.runners.config.sys.exit", side_effect=SystemExit(1)),
+            pytest.raises(SystemExit),
+        ):
+            run_show_config_command(output_format="json")
+
+        handle.assert_called_once_with(error, "pxcli config show", output_format="json")
+
+    @patch("perplexity_cli.runners.config.get_feature_config")
+    def test_show_config_human_error_logs_with_traceback(self, mock_get_config, capsys):
+        """Human configuration failures log the message with exception information."""
+        from perplexity_cli.utils.exceptions import ConfigurationError
+
+        error = ConfigurationError("sentinel failure")
+        mock_get_config.side_effect = error
+        logger = Mock()
+        with (
+            patch("perplexity_cli.runners.config.get_logger", return_value=logger),
+            patch("perplexity_cli.runners.config.sys.exit", side_effect=SystemExit(1)),
+            pytest.raises(SystemExit),
+        ):
+            run_show_config_command(output_format="human")
+
+        assert "sentinel failure" in capsys.readouterr().err
+        logger.error.assert_called_once_with(
+            "Configuration display failed: sentinel failure", exc_info=True
+        )
+
     def test_read_ctx_bool_supports_dict_and_object_contexts(self):
         """Context booleans work for both Click dictionaries and objects."""
         assert _read_ctx_bool({"schema": True}, "schema") is True
@@ -428,6 +498,16 @@ class TestConfigRunnerMutationKillers:
         )
         assert _get_json_mode_from_ctx() == "json"
         assert _get_include_schema() == "with_schema"
+
+    def test_context_output_modes_have_human_defaults(self, monkeypatch):
+        """Absent or false context flags select the human output contract."""
+        monkeypatch.setattr(
+            "perplexity_cli.runners.config._get_ctx_obj_dict",
+            lambda: {"json": False, "schema": False},
+        )
+
+        assert _get_json_mode_from_ctx() == "human"
+        assert _get_include_schema() == "no_schema"
 
     def test_collect_env_overrides_preserves_configured_order(self, monkeypatch):
         """Environment overrides are returned in the stable key order."""
@@ -459,6 +539,29 @@ class TestConfigRunnerMutationKillers:
         )
         assert all(fragment in output for fragment in semantic_fragments)
 
+    def test_output_config_text_has_exact_layout_with_override(self, capsys):
+        """Human configuration output retains its headings, spacing, and commands."""
+        config = Mock(save_cookies=True, debug_mode=False)
+
+        _output_config_text(config, "/tmp/config.json", ["  OVERRIDE=sentinel"])
+
+        assert capsys.readouterr().out.splitlines() == [
+            "Perplexity CLI Configuration",
+            "=" * 40,
+            "Config file: /tmp/config.json",
+            "",
+            "Feature Toggles:",
+            "  save_cookies: True",
+            "  debug_mode:   False",
+            "",
+            "Environment Overrides:",
+            "  OVERRIDE=sentinel",
+            "",
+            "To change settings:",
+            "  pxcli config set save_cookies true|false",
+            "  pxcli config set debug_mode true|false",
+        ]
+
     def test_output_config_change_json_forwards_schema(self):
         """JSON configuration changes forward the schema inclusion flag."""
         logger = Mock()
@@ -471,6 +574,20 @@ class TestConfigRunnerMutationKillers:
         write.assert_called_once()
         assert write.call_args.kwargs["include_schema"] == "with_schema"
         logger.info.assert_not_called()
+
+    def test_output_config_change_human_logs_and_prints_exact_state(self, capsys):
+        """Human configuration changes log the key and boolean state lazily."""
+        logger = Mock()
+
+        _output_config_change("debug_mode", "disabled", "human", logger)
+
+        assert capsys.readouterr().out.splitlines() == [
+            "[OK] Configuration updated: debug_mode = False",
+            "",
+            "[INFO] Debug mode disabled.",
+            "  Use --debug flag for one-time debug output.",
+        ]
+        logger.info.assert_called_once_with("Configuration updated: %s = %s", "debug_mode", False)
 
     def test_configure_json_error_preserves_exception_and_command(self):
         """Style validation failures retain their JSON error contract."""
@@ -505,3 +622,200 @@ class TestConfigRunnerMutationKillers:
             run_set_config_command("unknown", "true")
 
         handle.assert_called_once_with(error, "pxcli config set", output_format="json")
+
+    def test_set_config_error_logs_original_exception(self):
+        """Configuration failures log the original error before exiting."""
+        from perplexity_cli.runners.config import _handle_set_config_error
+        from perplexity_cli.utils.exceptions import ConfigurationError
+
+        error = ConfigurationError("invalid key")
+        logger = Mock()
+        with (
+            patch("perplexity_cli.runners.config.handle_error"),
+            patch("perplexity_cli.runners.config.sys.exit", side_effect=SystemExit(1)),
+            pytest.raises(SystemExit),
+        ):
+            _handle_set_config_error(error, "human", logger)
+
+        logger.error.assert_called_once_with("Configuration update failed: %s", error)
+
+    def test_context_object_lookup_is_silent_and_returns_context_object(self, monkeypatch):
+        """Context lookup must not raise outside Click and must preserve the object."""
+        context = Mock(obj={"json": True})
+        lookup = Mock(return_value=context)
+        monkeypatch.setattr("perplexity_cli.runners.config.click.get_current_context", lookup)
+
+        assert _get_ctx_obj_dict() == {"json": True}
+        lookup.assert_called_once_with(silent=True)
+
+    def test_context_object_lookup_returns_empty_dict_without_context(self, monkeypatch):
+        """Commands have empty context flags when invoked outside Click."""
+        monkeypatch.setattr(
+            "perplexity_cli.runners.config.click.get_current_context", lambda silent: None
+        )
+
+        assert _get_ctx_obj_dict() == {}
+
+    def test_configure_human_output_has_stable_lines(self, capsys):
+        """Human style configuration output keeps all contract lines."""
+        with patch("perplexity_cli.runners.config.StyleManager") as manager_class:
+            run_configure_command("unique-style", output_format="human")
+
+        assert capsys.readouterr().out.splitlines() == [
+            "[OK] Style configured successfully.",
+            "[OK] Style will be applied to all future queries.",
+            "",
+            "Style preview:",
+            "  unique-style",
+        ]
+        manager_class.return_value.save_style.assert_called_once_with("unique-style")
+
+    def test_configure_json_output_forwards_schema_mode(self):
+        """JSON style configuration forwards the Click schema mode."""
+        with (
+            patch("perplexity_cli.runners.config.StyleManager"),
+            patch("perplexity_cli.runners.config._get_include_schema", return_value="with_schema"),
+            patch("perplexity_cli.runners.config.write_envelope") as write,
+        ):
+            run_configure_command("unique-style", output_format="json")
+
+        assert write.call_args.kwargs["include_schema"] == "with_schema"
+
+    def test_configure_context_selects_json_mode(self):
+        """A context-derived JSON mode reaches the envelope boundary."""
+        with (
+            patch("perplexity_cli.runners.config._get_json_mode_from_ctx", return_value="json"),
+            patch("perplexity_cli.runners.config.StyleManager"),
+            patch("perplexity_cli.runners.config.write_envelope") as write,
+        ):
+            run_configure_command("unique-style")
+
+        write.assert_called_once()
+
+    def test_view_style_json_output_forwards_schema_mode(self):
+        """JSON style display forwards the Click schema mode."""
+        manager = Mock(load_style=Mock(return_value="unique-style"))
+        with (
+            patch("perplexity_cli.runners.config.StyleManager", return_value=manager),
+            patch("perplexity_cli.runners.config._get_include_schema", return_value="with_schema"),
+            patch("perplexity_cli.runners.config.write_envelope") as write,
+        ):
+            run_view_style_command(output_format="json")
+
+        assert write.call_args.kwargs["include_schema"] == "with_schema"
+
+    def test_view_style_context_selects_json_mode(self):
+        """A context-derived JSON mode reaches the style envelope boundary."""
+        manager = Mock(load_style=Mock(return_value="unique-style"))
+        with (
+            patch("perplexity_cli.runners.config._get_json_mode_from_ctx", return_value="json"),
+            patch("perplexity_cli.runners.config.StyleManager", return_value=manager),
+            patch("perplexity_cli.runners.config.write_envelope") as write,
+        ):
+            run_view_style_command()
+
+        write.assert_called_once()
+
+    def test_view_style_error_forwards_command_and_format(self):
+        """Style read failures preserve the public error-handler arguments."""
+        manager = Mock()
+        manager.load_style.side_effect = OSError("read failure")
+        with (
+            patch("perplexity_cli.runners.config.StyleManager", return_value=manager),
+            patch("perplexity_cli.runners.config._handle_style_error") as handle,
+        ):
+            run_view_style_command(output_format="json")
+
+        handle.assert_called_once_with(
+            manager.load_style.side_effect,
+            "json",
+            "pxcli style show",
+            "Error reading style",
+        )
+
+    def test_view_style_human_output_has_exact_separators(self, capsys):
+        """Configured style output has exactly two fixed-width separators."""
+        _output_view_style("unique-style")
+
+        assert capsys.readouterr().out.splitlines() == [
+            "Current style:",
+            "-" * 50,
+            "unique-style",
+            "-" * 50,
+        ]
+
+    def test_view_style_missing_output_has_complete_hint(self, capsys):
+        """Missing styles include the complete configuration hint."""
+        _output_view_style(None)
+
+        assert capsys.readouterr().out.splitlines() == [
+            "No style configured.",
+            "",
+            "Set a style with:",
+            "  perplexity-cli configure <STYLE>",
+        ]
+
+    def test_clear_style_json_forwards_schema_mode(self):
+        """JSON style clearing forwards schema inclusion and does not clear twice."""
+        manager = Mock()
+        manager.load_style.return_value = "unique-style"
+        with (
+            patch("perplexity_cli.runners.config._get_include_schema", return_value="with_schema"),
+            patch("perplexity_cli.runners.config.write_envelope") as write,
+        ):
+            _execute_clear_style(manager, "json")
+
+        manager.clear_style.assert_called_once_with()
+        assert write.call_args.kwargs["include_schema"] == "with_schema"
+
+    def test_clear_style_context_selects_json_mode(self):
+        """A context-derived JSON mode reaches the clear envelope boundary."""
+        manager = Mock()
+        manager.load_style.return_value = None
+        with (
+            patch("perplexity_cli.runners.config._get_json_mode_from_ctx", return_value="json"),
+            patch("perplexity_cli.runners.config.StyleManager", return_value=manager),
+            patch("perplexity_cli.runners.config.write_envelope") as write,
+        ):
+            run_clear_style_command()
+
+        write.assert_called_once()
+
+    def test_clear_style_error_forwards_command_and_format(self):
+        """Style clear failures preserve the public error-handler arguments."""
+        manager = Mock()
+        manager.load_style.side_effect = OSError("clear failure")
+        with (
+            patch("perplexity_cli.runners.config.StyleManager", return_value=manager),
+            patch("perplexity_cli.runners.config._handle_style_error") as handle,
+        ):
+            run_clear_style_command(output_format="json")
+
+        handle.assert_called_once_with(
+            manager.load_style.side_effect,
+            "json",
+            "pxcli style clear",
+            "Error clearing style",
+        )
+
+    def test_clear_style_human_output_has_complete_messages(self, capsys):
+        """Human style clearing reports both the action and its effect."""
+        manager = Mock()
+        manager.load_style.return_value = "unique-style"
+
+        _execute_clear_style(manager, "human")
+
+        assert capsys.readouterr().out.splitlines() == [
+            "[OK] Style cleared successfully.",
+            "[OK] Queries will no longer include a style prompt.",
+        ]
+
+    def test_clear_style_without_style_has_single_message(self, capsys):
+        """Clearing an absent style does not call the mutating operation."""
+        manager = Mock()
+        manager.load_style.return_value = None
+
+        _execute_clear_style(manager, "human")
+
+        manager.clear_style.assert_not_called()
+        assert capsys.readouterr().out.splitlines() == ["No style is currently configured."]
