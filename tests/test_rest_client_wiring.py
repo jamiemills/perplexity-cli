@@ -62,7 +62,7 @@ URL = "https://api.example.test/rest/t008"
 def _wired_client(timeout: int | None = 33) -> tuple[RestClient, _RecordingSession]:
     client = RestClient(auth=AUTH, timeout=timeout)
     session = _RecordingSession(response=_JsonResponse())
-    client._client = session  # type: ignore[assignment]
+    client._client = session  # type: ignore[assignment]  # owner: test-infrastructure; reason: inject the recording session at the HTTP boundary
     return client, session
 
 
@@ -136,7 +136,7 @@ class TestRestClientDiagnosticsAndFailures:
         """Transport failures wrap into an anchored request error."""
         transport_error = CurlConnectionError("t008-refused")
         client = RestClient(auth=AUTH)
-        client._client = _RecordingSession(error=transport_error)  # type: ignore[assignment]
+        client._client = _RecordingSession(error=transport_error)  # type: ignore[assignment]  # owner: test-infrastructure; reason: inject a failing session to verify transport wrapping
 
         expected = re.escape(f"REST GET {URL} failed: t008-refused")
         with pytest.raises(PerplexityRequestError, match=rf"^{expected}$") as exc_info:

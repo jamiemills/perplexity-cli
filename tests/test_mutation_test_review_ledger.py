@@ -297,7 +297,7 @@ def test_reviewed_tests_exist_at_current_locations() -> None:
     assert all((review["file"], review["test"]) in existing for review in reviews)
 
 
-def test_node_map_is_exact_521_to_521_bijection() -> None:
+def test_node_map_is_exact_current_to_current_bijection() -> None:
     node_map = _load_json(NODE_MAP)
     mappings = node_map["mappings"]
     after = _collect_nodes(ROOT, CURRENT_TEST_FILES, "-qq")
@@ -309,7 +309,7 @@ def test_node_map_is_exact_521_to_521_bijection() -> None:
         len(set(mapped_before)),
         len(set(mapped_after)),
         set(after) == set(mapped_after),
-    ) == (521, 521, 521, 521, True)
+    ) == (592, 592, 592, 592, True)
 
 
 def test_node_map_preserves_every_marker_explicitly() -> None:
@@ -329,7 +329,7 @@ def test_node_status_accounts_for_unchanged_moved_and_renamed_nodes() -> None:
         status: sum(row["status"] == status for row in mappings)
         for status in ("unchanged", "moved", "renamed")
     }
-    assert counts == {"unchanged": 492, "moved": 26, "renamed": 3}
+    assert counts == {"unchanged": 563, "moved": 26, "renamed": 3}
 
 
 def test_changed_tests_helpers_and_validator_have_cc_at_most_five() -> None:

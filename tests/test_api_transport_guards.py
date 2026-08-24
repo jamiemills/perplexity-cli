@@ -66,7 +66,7 @@ def _request_context(json_data: object = None) -> HttpRequestContext:
     return HttpRequestContext(
         url="https://api.example.test/query",
         headers={"Content-Type": "application/json"},
-        json_data=json_data,  # type: ignore[arg-type]
+        json_data=json_data,  # type: ignore[arg-type]  # owner: test-infrastructure; reason: exercise the transport boundary with arbitrary decoded JSON
         effective_timeout=30,
     )
 

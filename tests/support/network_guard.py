@@ -188,7 +188,7 @@ def _check_send_address(address: Any, args: tuple[Any, ...]) -> None:
         _assert_loopback_host(_host_from_address(args[0]))
 
 
-def _patched_getaddrinfo(
+def _patched_getaddrinfo(  # owner: test-infrastructure; reason: socket API signature must mirror getaddrinfo
     host: Any,
     port: Any,
     family: int = 0,

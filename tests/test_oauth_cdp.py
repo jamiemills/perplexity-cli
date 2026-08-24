@@ -48,8 +48,6 @@ class _ObservedLock:
 
 
 class TestConcurrentCommands:
-    """Concurrency and cancellation guarantees for send_command."""
-
     @pytest.mark.asyncio
     async def test_concurrent_commands_are_serialised_with_correlated_ids(self) -> None:
         responses = [
@@ -85,9 +83,7 @@ class TestConcurrentCommands:
         assert client._command_lock.locked()
         release_first_recv.set()
         results = await asyncio.gather(first, second)
-        assert results == [{"cmd": 1}, {"cmd": 2}]
-        assert client.message_id == 2
-        assert max_active == 1
+        assert (results, client.message_id, max_active) == ([{"cmd": 1}, {"cmd": 2}], 2, 1)
         sent_ids = [json.loads(item.args[0])["id"] for item in mock_ws.send.call_args_list]
         assert sent_ids == [1, 2]
 
@@ -782,16 +778,18 @@ class TestFetchLocalStorageProtocol:
         mock_client = AsyncMock(spec=ChromeDevToolsClient)
         mock_client.send_command.return_value = {"result": {"value": storage}}
 
-        assert await _fetch_local_storage(mock_client) == storage
-
-        assert mock_client.send_command.await_count == 1
+        result = await _fetch_local_storage(mock_client)
         await_args = mock_client.send_command.await_args
-        assert len(await_args.args) == 2
-        assert await_args.args[0] == "Runtime.evaluate"
         params = await_args.args[1]
-        assert set(params.keys()) == {"expression"}
-        assert "localStorage.length" in params["expression"]
-        assert "localStorage.getItem" in params["expression"]
+        assert (
+            result,
+            mock_client.send_command.await_count,
+            len(await_args.args),
+            await_args.args[0],
+            set(params.keys()),
+            "localStorage.length" in params["expression"],
+            "localStorage.getItem" in params["expression"],
+        ) == (storage, 1, 2, "Runtime.evaluate", {"expression"}, True, True)
 
     @pytest.mark.asyncio
     async def test_non_dict_inner_result_rejected_exactly(self) -> None:

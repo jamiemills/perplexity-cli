@@ -13,7 +13,7 @@
 - Validates the architecture manifest before the operational check
 - The --no-baseline and --explain flags work
 """
-# noqa: D (tests are exempt from docstring requirements)  # owner: quality-infrastructure; reason: test modules exempt from pydocstyle
+# owner: quality-infrastructure; reason: test module header intentionally documents the covered behaviours
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def _with_src_root(new_root: Path):
         ca.SRC_ROOT = old
 
 
-def _make_context(
+def _make_context(  # owner: test-infrastructure; reason: fixture helper assembles the complete import-check context
     source_rel: str,
     lineno: int = 1,
     layer_map: dict | None = None,

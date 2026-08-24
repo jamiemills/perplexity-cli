@@ -667,7 +667,7 @@ class TestExportThreadsRateLimitConfig:
     @patch("perplexity_cli.runners.export.ThreadCacheManager", autospec=True)
     @patch("perplexity_cli.runners.export.get_rate_limiting_config", autospec=True)
     @patch("perplexity_cli.runners.export.TokenManager", autospec=True)
-    def test_export_threads_passes_cookies_to_scraper(
+    def test_export_threads_passes_cookies_to_scraper(  # owner: test-infrastructure; reason: pytest patch injection mirrors the tested composition boundary
         self,
         mock_tm_class,
         mock_get_rl_config,

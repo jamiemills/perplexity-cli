@@ -244,7 +244,7 @@ def test_public_runner_authentication_failure_terminates_before_listing(
         ),
     ],
 )
-def test_public_runner_human_errors_preserve_classification_and_logging(  # noqa: PLR0917
+def test_public_runner_human_errors_preserve_classification_and_logging(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     failure: Exception,

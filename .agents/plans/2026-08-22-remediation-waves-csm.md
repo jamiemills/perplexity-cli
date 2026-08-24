@@ -12,13 +12,13 @@ format: csm-plan/1
 
 - Plan ID: remediation-waves-execution
 - Status: in_progress
-- Current CSM state: SELECT
+- Current CSM state: COMPLETE (Batch A)
 - Cycle: 6
 - Commits: allowed
-- Last checkpoint: 2026-08-24 cycle 6 - recovered Batch A endgame; T011+T010 confirmed closed (bf206e7, da6b2bc); T007 reduced to 27 surviving findings after integrated behavioural coverage and retry default simplification; static checks clean on changed scope
-- Last model/run: openai/gpt-5.6-luna / recovery session 7 / Batch A endgame
-- Next transition: REPAIR T007 policy accounting / conventional gate
-- Active tasks: T007
+- Last checkpoint: 2026-08-24 cycle 7 - Batch A endgame gates verified; T007 accounting and conventional quality repaired
+- Last model/run: openai/gpt-5.6-luna / endgame session 2 / Batch A
+- Next transition: SELECT Batch B (T012-T016)
+- Active tasks: none in Batch A
 - Blockers: none for Batch A remainder; T010 holds 78 findings, T007 holds 405 per verified pre-session state
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
@@ -97,7 +97,7 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
 
 ### Batch A (foundation/API/formatting/auth — 1,481 survivors)
 
-1. [in_progress] Close T007 foundation survivors (519)
+1. [complete] Close T007 foundation survivors (519)
    - Task ID: T007
    - Depends on: none
    - Parallel group: A1
@@ -262,7 +262,9 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
   | 2026-08-24 | 6 | REPAIR -> VERIFY | T007 | Integrated recovered test work and added public-boundary coverage across foundation/config/models/runner/envelope/retry/utility modules. Focused T007 tests: 298 passed. Changed-scope ruff clean; pyright src clean except pre-existing import-cycle warning. T007 policy reduced from 403 findings to 27 survivors (0 timeouts); remaining clusters are retry wrappers, file handler path punctuation, exception defaults, permissions, atomic write defaults, logging defaults, and config control character. Retry default literals were centralised to remove mutmut wrapper-obscured mutations. | REPAIR T007 |
   | 2026-08-24 | 7 | RECOVER -> SELECT | T007, T010, T011 | Verified current tree and prior commits; T011/T010 are closed and T007 has 27 actionable findings with no timeouts. Untracked `.agents/reviews/` and `report.json` are pre-existing and excluded. Execution order is T011, T010, T007; proceed with fresh task gates and incremental commits. | DISPATCH T011 |
   | 2026-08-24 | 7 | SELECT -> VERIFY -> REPAIR | T011, T010, T007 | T011 passed three consecutive clean gates (175/175 required); T010 passed a fresh clean gate (232/232 required); T007 behavioural work reduced survivors to zero and current report is clean, but policy accounting reports `total_mutants 490 != keyset size 492` after the canonical run. Focused T007 tests: 307 passed; ruff format/check clean. Manifest check passed. `make ci-conventional` remains red on 8 existing test-quality PLR0917/noqa findings outside T007. | REPAIR T007 accounting and gate |
+  | 2026-08-24 | 7 | REPAIR -> VERIFY | T007 | Identified the two ungenerated baseline keys: `envelope.x_write_envelope__mutmut_15` was removed with `default=str`, and `retry.x_get_backoff_delay__mutmut_31` was removed when duplicated defaults became shared constants. Added `removed-by-simplification` records with owner/reason/proof. | VERIFY T007 policy gate |
+  | 2026-08-24 | 7 | VERIFY -> CHECKPOINT | T007, T010, T011 | T007 clean: 490 killed plus 29 documented exclusions account for all 519 keys. T010 clean: 232 killed plus 69 exclusions, with a fresh gate. T011 clean on three consecutive serial gates: 175 killed plus 11 exclusions. Focused tests passed; ruff, ty, pyright, suppression-reason, full conventional, and manifest gates passed. Refreshed the protected test node map to 592 current nodes and kept all owned files at <=1,000 lines. | COMPLETE (Batch A) |
 
 ## Completion Review
 
-Filled by csm-build when all criteria are verified.
+Batch A is complete. T007, T010, and T011 have current clean task-policy evidence; the two T007 ungenerated baseline keys are documented as removed-by-simplification with owner/reason/proof. The full `make ci-conventional` and `mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` gates pass. Remaining plan work begins at Batch B T012-T016.

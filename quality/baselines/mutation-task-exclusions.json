@@ -1080,6 +1080,22 @@
       "owner": "formatting-team",
       "reason": "URL column no_wrap=False forced to True where max_width crops first",
       "proof": "The URL column declares max_width=120 and Rich crops overflowing cells to that bound before wrapping decisions apply, so toggling no_wrap cannot change any rendered byte for any content length (verified with a 130-character URL under a wide console budget)."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.envelope.x_write_envelope__mutmut_15",
+      "disposition": "removed-by-simplification",
+      "owner": "foundation-team",
+      "reason": "the mutation targets the removed default=str serialisation argument",
+      "proof": "The production simplification removed default=str from write_envelope; the baseline operator no longer exists in the current generated mutant metadata, and the public JSON boundary is covered by test_envelope.py."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.retry.x_get_backoff_delay__mutmut_31",
+      "disposition": "removed-by-simplification",
+      "owner": "foundation-team",
+      "reason": "the mutation targets a duplicated default literal replaced by a shared constant",
+      "proof": "get_backoff_delay now references _DEFAULT_BACKOFF_DELAY and _DEFAULT_MAX_BACKOFF_DELAY; the baseline literal mutation no longer exists in current generated mutant metadata, and retry default behaviour is covered by test_retry.py."
     }
   ]
 }

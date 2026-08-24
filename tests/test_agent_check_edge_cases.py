@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # ---------------------------------------------------------------------------
 
 
-def _make_result(
+def _make_result(  # owner: test-infrastructure; reason: fixture helper exposes every analyser result field
     name: str = "test",
     passed: bool = True,
     exit_code: int = 0,

@@ -87,7 +87,7 @@ def test_make_finding_id_stable() -> None:
 # ============================================================================
 
 
-def _make_metric(
+def _make_metric(  # owner: test-infrastructure; reason: metric fixture exposes each independently asserted field
     module: str,
     ca: int = 0,
     ce: int = 0,

@@ -168,7 +168,7 @@ class TestRetryUtilities:
 
 
 @pytest.fixture(autouse=True)
-def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]  # owner: test-infrastructure; reason: autouse fixture is discovered by pytest rather than called directly
     """Replace tenacity's real sleep with a no-op for deterministic tests."""
 
     def noop_sleep(_seconds: float) -> None:

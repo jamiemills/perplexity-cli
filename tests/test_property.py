@@ -564,7 +564,9 @@ def test_envelope_to_dict_schema_toggle_includes_schema(command: str, message: s
 )
 @example(year=2024, month=2, day=29, hour=12, minute=0)
 @settings()
-def test_date_parser_roundtrip_iso(year: int, month: int, day: int, hour: int, minute: int) -> None:
+def test_date_parser_roundtrip_iso(  # owner: test-infrastructure; reason: Hypothesis exposes each date component as a generated property
+    year: int, month: int, day: int, hour: int, minute: int
+) -> None:
     """Parsing an ISO-format date string produces the correct datetime."""
     date_str = f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:00Z"
     result = parse_absolute_date_string(date_str)

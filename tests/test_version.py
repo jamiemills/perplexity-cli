@@ -11,9 +11,9 @@ from unittest.mock import patch
 import pytest
 
 from perplexity_cli.utils.version import (
-    _extract_version_from_data,  # pyright: ignore[reportPrivateUsage]
-    _get_pyproject_path,  # pyright: ignore[reportPrivateUsage]
-    _read_pyproject_version,  # pyright: ignore[reportPrivateUsage]
+    _extract_version_from_data,  # pyright: ignore[reportPrivateUsage]  # owner: test-infrastructure; reason: tests exercise the version module's private parsing boundaries
+    _get_pyproject_path,  # pyright: ignore[reportPrivateUsage]  # owner: test-infrastructure; reason: tests exercise the version module's private path boundary
+    _read_pyproject_version,  # pyright: ignore[reportPrivateUsage]  # owner: test-infrastructure; reason: tests exercise the version module's private file boundary
     get_api_version,
     get_version,
     get_version_from_pyproject,

@@ -139,7 +139,7 @@ def test_missing_extra_duplicate_and_dictionary_disagreement_fail_closed() -> No
         ("skipped", "unsafe_results", "skipped"),
     ],
 )
-def test_duplicate_results_write_tool_error_report(
+def test_duplicate_results_write_tool_error_report(  # owner: test-infrastructure; reason: parametrised policy cases require each schema field as an independent argument
     tmp_path: Path,
     raw_status: str,
     detail_field: str,

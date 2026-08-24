@@ -97,7 +97,7 @@ def test_public_url_accessor_reflects_environment_override(
     monkeypatch.setattr("perplexity_cli.utils.config.impl.get_config_dir", lambda: tmp_path)
     value = "https://example.test/value"
     monkeypatch.setenv(name, value)
-    assert accessor() == value  # type: ignore[operator]
+    assert accessor() == value  # type: ignore[operator]  # owner: test-infrastructure; reason: parametrised accessors intentionally share a callable protocol
     clear_urls_cache()
 
 

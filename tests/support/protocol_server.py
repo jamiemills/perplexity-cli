@@ -379,7 +379,7 @@ class ProtocolServer(ThreadingHTTPServer):
         self._send(handler, resp.status_code, resp.body, "application/octet-stream", resp.headers)
 
     @staticmethod
-    def _send(
+    def _send(  # owner: test-infrastructure; reason: HTTP handler adapter mirrors the protocol send boundary
         handler: _Handler,
         status: int,
         body: str,
