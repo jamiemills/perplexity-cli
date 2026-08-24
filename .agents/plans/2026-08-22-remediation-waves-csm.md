@@ -15,11 +15,11 @@ format: csm-plan/1
 - Current CSM state: COMPLETE (Batch A)
 - Cycle: 6
 - Commits: allowed
-- Last checkpoint: 2026-08-24 cycle 7 - Batch A endgame gates verified; T007 accounting and conventional quality repaired
-- Last model/run: openai/gpt-5.6-luna / endgame session 2 / Batch A
+- Last checkpoint: 2026-08-24 cycle 7 - Batch A endgame gates revalidated in endgame session 2
+- Last model/run: openai/gpt-5.6-luna / endgame session 2 / Batch A recovery
 - Next transition: SELECT Batch B (T012-T016)
 - Active tasks: none in Batch A
-- Blockers: none for Batch A remainder; T010 holds 78 findings, T007 holds 405 per verified pre-session state
+- Blockers: none for Batch A
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
 ## Goal
@@ -264,6 +264,8 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
   | 2026-08-24 | 7 | SELECT -> VERIFY -> REPAIR | T011, T010, T007 | T011 passed three consecutive clean gates (175/175 required); T010 passed a fresh clean gate (232/232 required); T007 behavioural work reduced survivors to zero and current report is clean, but policy accounting reports `total_mutants 490 != keyset size 492` after the canonical run. Focused T007 tests: 307 passed; ruff format/check clean. Manifest check passed. `make ci-conventional` remains red on 8 existing test-quality PLR0917/noqa findings outside T007. | REPAIR T007 accounting and gate |
   | 2026-08-24 | 7 | REPAIR -> VERIFY | T007 | Identified the two ungenerated baseline keys: `envelope.x_write_envelope__mutmut_15` was removed with `default=str`, and `retry.x_get_backoff_delay__mutmut_31` was removed when duplicated defaults became shared constants. Added `removed-by-simplification` records with owner/reason/proof. | VERIFY T007 policy gate |
   | 2026-08-24 | 7 | VERIFY -> CHECKPOINT | T007, T010, T011 | T007 clean: 490 killed plus 29 documented exclusions account for all 519 keys. T010 clean: 232 killed plus 69 exclusions, with a fresh gate. T011 clean on three consecutive serial gates: 175 killed plus 11 exclusions. Focused tests passed; ruff, ty, pyright, suppression-reason, full conventional, and manifest gates passed. Refreshed the protected test node map to 592 current nodes and kept all owned files at <=1,000 lines. | COMPLETE (Batch A) |
+  | 2026-08-24 | 7 | RECOVER -> VERIFY | T007, T010, T011 | Endgame session 2 recovery: git history contains e85c494 (T008/T009), bf206e7 (T011), da6b2bc (T010), and cc968d2 (T007 accounting and quality gate repair). Only pre-existing untracked .agents/reviews/ and report.json are present; task reports are clean artifacts requiring fresh revalidation. | VERIFY task-policy gates |
+  | 2026-08-24 | 7 | VERIFY -> CHECKPOINT | T011, T010, T007 | Fresh T011 gate passed three consecutive times (175/175 killed); fresh T010 gate passed (232/232 killed); fresh T007 gate passed (490/490 killed). Manifest check passed via `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05`; `make ci-conventional` exited 0. Stale generated `mutants/` workspace was removed before reruns; no source changes were needed. | COMPLETE (Batch A) |
 
 ## Completion Review
 
