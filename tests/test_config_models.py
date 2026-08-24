@@ -99,6 +99,17 @@ class TestURLConfigValidation:
         with pytest.raises(ValidationError):
             URLConfig(base_url=url)
 
+    @pytest.mark.parametrize("character", ["\x00", "\x1f", "\x7f"])
+    def test_rejects_each_control_character_boundary(self, character):
+        """Control and delete characters are forbidden in URL values."""
+        with pytest.raises(ValidationError, match="whitespace or control"):
+            URLConfig(base_url=f"https://example.com/{character}path")
+
+    def test_ascii_control_upper_boundary_is_forbidden(self):
+        """The ASCII control range includes 0x1f, not only values below it."""
+        with pytest.raises(ValidationError, match="whitespace or control"):
+            URLConfig(base_url="https://example.com/\x1fpath")
+
 
 class TestRateLimitConfig:
     """Tests for RateLimitConfig model."""

@@ -232,6 +232,27 @@ class TestQueryTextExtraction:
 
         assert [path.name for path in result] == ["BOX.X"]
 
+    def test_query_path_trailing_sentence_punctuation_is_removed(self, tmp_path: Path) -> None:
+        """Inline paths remain resolvable when followed by sentence punctuation."""
+        target = tmp_path / "notes.txt"
+        target.write_text("content")
+
+        result = resolve_file_arguments([f"Please attach {target},"])
+
+        assert result == [target.resolve()]
+
+    def test_tilde_path_trailing_sentence_punctuation_is_removed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Tilde paths also exclude punctuation attached by prose."""
+        home = self._home(monkeypatch, tmp_path)
+        target = home / "notes.txt"
+        target.write_text("content")
+
+        result = resolve_file_arguments(["Please attach ~/notes.txt,"])
+
+        assert result == [target.resolve()]
+
 
 class TestLoadAttachments:
     """Test load_attachments function."""
@@ -464,6 +485,37 @@ class TestFileHandlerDiagnosticLogs:
                 load_attachments([locked])
 
         assert _messages(caplog) == [f"Error reading file: {locked}: {excinfo.value}"]
+
+
+class TestDirectorySymlinkBoundary:
+    """Symlinks whose targets escape the attached directory are never attached."""
+
+    def test_symlink_pointing_outside_directory_is_skipped(self, tmp_path: Path) -> None:
+        """A file symlink targeting a file outside the directory is excluded."""
+        outside_dir = tmp_path / "outside"
+        outside_dir.mkdir()
+        target = outside_dir / "leaked.txt"
+        target.write_text("content")
+        attach_dir = tmp_path / "attach"
+        attach_dir.mkdir()
+        (attach_dir / "kept.txt").write_text("content")
+        (attach_dir / "linked.txt").symlink_to(target)
+
+        result = resolve_file_arguments([], attach_args=[str(attach_dir)])
+
+        assert [path.name for path in result] == ["kept.txt"]
+
+    def test_configured_sensitive_prefix_is_skipped_at_public_boundary(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Configured sensitive filename prefixes are excluded from directories."""
+        monkeypatch.setattr(file_handler_module, "SKIPPED_FILENAME_PREFIXES", ("secret",))
+        (tmp_path / "secret-notes.txt").write_text("secret")
+        (tmp_path / "notes.txt").write_text("public")
+
+        result = resolve_file_arguments([], attach_args=[str(tmp_path)])
+
+        assert [path.name for path in result] == ["notes.txt"]
 
 
 class TestIntegrationResolveAndLoad:

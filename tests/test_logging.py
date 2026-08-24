@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
 import io
+import json
 import locale
 import logging
 import re
@@ -301,6 +303,95 @@ class TestRedactionPreviewLengths:
     def test_redact_response_text_keeps_zero_char_preview(self):
         """HTTP response text never leaks even a preview of its length."""
         assert redact_response_text("abc") == "<redacted:0 chars>"
+
+
+class TestSetupLoggingDefaultsContract:
+    """API contract for setup_logging's documented default verbosity."""
+
+    def test_default_verbosity_literal_is_warning(self) -> None:
+        """The verbosity parameter declares the documented 'warning' default."""
+        signature = inspect.signature(setup_logging)
+        assert signature.parameters["verbosity"].default == "warning"
+
+
+class TestRedactTextDefaultPreviewCap:
+    """Default preview length applied by redact_text."""
+
+    def test_default_preview_caps_at_32_chars(self) -> None:
+        """Without an explicit cap the preview reports exactly 32 characters."""
+        assert redact_text("q" * 64) == "<redacted:32 chars>"
+
+    def test_public_default_preview_parameter_is_32(self) -> None:
+        """The redaction API declares the documented 32-character default."""
+        assert inspect.signature(redact_text).parameters["max_length"].default == 32
+
+    def test_explicit_zero_preview_cap_is_respected(self) -> None:
+        """An explicit zero cap does not fall back to the default cap."""
+        assert redact_text("secret", max_length=0) == "<redacted:0 chars>"
+
+
+class TestSetupLoggingFileHandlerState:
+    """File-handler state and rendering configured by setup_logging."""
+
+    def test_file_handler_encoding_literal_is_utf8(self, tmp_path: Path) -> None:
+        """The file handler is constructed with the lowercase utf-8 encoding."""
+        logger = setup_logging(log_file=tmp_path / "app.log")
+        try:
+            encodings = [
+                handler.encoding
+                for handler in logger.handlers
+                if isinstance(handler, logging.FileHandler)
+            ]
+        finally:
+            _close_file_handlers(logger)
+
+        assert encodings == ["utf-8"]
+
+    def test_log_file_adds_only_one_file_handler(self, tmp_path: Path) -> None:
+        """A configured log path creates one file handler alongside stderr."""
+        logger = setup_logging(log_file=tmp_path / "app.log")
+        try:
+            file_handlers = [
+                handler for handler in logger.handlers if isinstance(handler, logging.FileHandler)
+            ]
+            stream_handlers = [
+                handler for handler in logger.handlers if isinstance(handler, DynamicStderrHandler)
+            ]
+        finally:
+            _close_file_handlers(logger)
+
+        assert len(file_handlers) == 1
+        assert len(stream_handlers) == 1
+
+
+class TestJsonLogFormatterBoundary:
+    """JSON formatter output keeps the public record fields stable."""
+
+    def test_format_without_trace_id_omits_trace_field(self) -> None:
+        """A missing trace ID does not create an empty trace field."""
+        entry = json.loads(JSONLogFormatter().format(_make_record("hello")))
+
+        assert entry["message"] == "hello"
+        assert entry["level"] == "WARNING"
+        assert entry["logger"] == "perplexity_cli"
+        assert "trace_id" not in entry
+
+    def test_format_with_trace_id_includes_trace_field(self) -> None:
+        """A supplied trace ID is included in the JSON record."""
+        entry = json.loads(JSONLogFormatter(trace_id="trace-1").format(_make_record()))
+
+        assert entry["trace_id"] == "trace-1"
+
+    def test_file_log_lines_use_configured_console_format(self, tmp_path: Path) -> None:
+        """File records render with the same timestamp/name/level layout as stderr."""
+        log_file = tmp_path / "app.log"
+        logger = setup_logging(verbosity="warning", log_file=log_file)
+        logger.warning("boom")
+        for handler in logger.handlers:
+            handler.flush()
+        _close_file_handlers(logger)
+
+        assert re.fullmatch(_CONSOLE_LINE_FORMAT, log_file.read_text())
 
 
 def test_logging_contracts_module_re_exports_protocols() -> None:

@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import tomllib
+from importlib.metadata import PackageNotFoundError
+from pathlib import Path
+from typing import TypeGuard
 from unittest.mock import patch
 
 import pytest
 
 from perplexity_cli.utils.version import (
-    _extract_version_from_data,
-    _read_pyproject_version,
+    _extract_version_from_data,  # pyright: ignore[reportPrivateUsage]
+    _get_pyproject_path,  # pyright: ignore[reportPrivateUsage]
+    _read_pyproject_version,  # pyright: ignore[reportPrivateUsage]
     get_api_version,
     get_version,
     get_version_from_pyproject,
@@ -47,7 +52,7 @@ class TestReadPyprojectVersion:
             mock_path.return_value.exists.return_value = False
             assert _read_pyproject_version() is None
 
-    def test_returns_none_on_os_error(self, tmp_path):
+    def test_returns_none_on_os_error(self, tmp_path: Path):
         """Return None when an OSError occurs reading pyproject.toml."""
         fake = tmp_path / "pyproject.toml"
         fake.write_text("dummy")
@@ -60,7 +65,7 @@ class TestReadPyprojectVersion:
         ):
             assert _read_pyproject_version() is None
 
-    def test_returns_none_on_toml_decode_error(self, tmp_path):
+    def test_returns_none_on_toml_decode_error(self, tmp_path: Path):
         """Return None when pyproject.toml contains invalid TOML."""
         fake = tmp_path / "pyproject.toml"
         fake.write_bytes(b"[[[invalid toml")
@@ -121,9 +126,7 @@ class TestGetVersionEdgeCases:
             ),
             patch(
                 "perplexity_cli.utils.version.version",
-                side_effect=__import__(
-                    "importlib.metadata", fromlist=["PackageNotFoundError"]
-                ).PackageNotFoundError("pxcli"),
+                side_effect=PackageNotFoundError("pxcli"),
             ),
         ):
             with pytest.raises(RuntimeError, match="Unable to determine"):
@@ -158,3 +161,55 @@ class TestGetVersionFromPyprojectMessage:
                 match=r"^pyproject\.toml version could not be read$",
             ):
                 get_version_from_pyproject()
+
+
+def _is_str_dict(value: object) -> TypeGuard[dict[str, object]]:
+    """Narrow an object to ``dict[str, object]`` for pyright strict mode."""
+    return isinstance(value, dict)
+
+
+def _expected_repo_pyproject_version() -> str:
+    """Read the project version from the repository-root pyproject.toml."""
+    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    with pyproject_path.open("rb") as pyproject_file:
+        parsed_toml: dict[str, object] = tomllib.load(pyproject_file)
+    project = parsed_toml.get("project")
+    if not _is_str_dict(project):
+        raise AssertionError("repository pyproject.toml lacks a [project] table")
+    package_version = project.get("version")
+    if not isinstance(package_version, str):
+        raise AssertionError("repository pyproject.toml lacks a version string")
+    return package_version
+
+
+class TestGetVersionFromPyprojectRootResolution:
+    """get_version_from_pyproject resolves the repository-root pyproject.toml."""
+
+    def test_reads_version_from_repository_root_pyproject(self) -> None:
+        """The returned version equals the repo-root pyproject version."""
+        assert get_version_from_pyproject() == _expected_repo_pyproject_version()
+
+    def test_private_source_path_points_to_repository_root(self) -> None:
+        """Source lookup walks from the module to the repository root."""
+        expected = Path(__file__).resolve().parents[1] / "pyproject.toml"
+
+        assert _get_pyproject_path() == expected
+
+
+class TestGetVersionFallbackBoundary:
+    """The public version lookup prefers source metadata when available."""
+
+    def test_get_version_returns_pyproject_value_before_distribution_metadata(self):
+        """A readable pyproject version is returned without consulting metadata."""
+        get_version.cache_clear()
+        with (
+            patch(
+                "perplexity_cli.utils.version._read_pyproject_version",
+                return_value="9.8.7",
+            ),
+            patch("perplexity_cli.utils.version.version") as metadata_version,
+        ):
+            assert get_version() == "9.8.7"
+
+        metadata_version.assert_not_called()
+        get_version.cache_clear()

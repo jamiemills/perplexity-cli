@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
 import json
+import locale
 import logging
 import os
 import stat
@@ -25,6 +27,19 @@ _POSIX = sys.platform != "win32"
 def _temp_files(directory: Path) -> list[Path]:
     """Return any temporary siblings left behind in a directory."""
     return [p for p in directory.iterdir() if p.name.endswith(".tmp")]
+
+
+def _force_c_locale() -> str | None:
+    """Switch the process LC_CTYPE to the C locale and return the saved value.
+
+    Returns ``None`` when the platform refuses the switch so callers can skip.
+    """
+    try:
+        saved = locale.setlocale(locale.LC_CTYPE)
+        locale.setlocale(locale.LC_CTYPE, "C")
+    except locale.Error:
+        return None
+    return saved
 
 
 class TestAtomicWriteRoundTrip:
@@ -51,6 +66,10 @@ class TestAtomicWriteRoundTrip:
         raw = '{"style": "concise", "note": "not-quoted"}'
         atomic_write_text(dest, raw)
         assert dest.read_text() == raw
+
+    def test_raw_text_public_default_mode_is_0600(self):
+        """The raw-text API declares the same restrictive default mode as JSON."""
+        assert inspect.signature(atomic_write_text).parameters["mode"].default == 0o600
 
     def test_raw_text_bypasses_serialisation(self, tmp_path):
         """The raw-text variant never calls the JSON serialisation stage."""
@@ -433,3 +452,98 @@ class TestDirectoryFsyncImplementation:
         """Platforms without O_DIRECTORY skip the fsync without error."""
         monkeypatch.delattr(os, "O_DIRECTORY")
         _fsync_directory(tmp_path)
+
+
+class TestUtf8EncodingContract:
+    """Non-ASCII payloads are persisted as UTF-8 regardless of process locale."""
+
+    @pytest.mark.skipif(not _POSIX, reason="the C locale switch is POSIX-only")
+    def test_non_ascii_text_is_utf8_even_under_c_locale(self, tmp_path: Path) -> None:
+        """Raw text with non-ASCII characters survives an ASCII process locale."""
+        dest = tmp_path / "style.txt"
+        content = "h\u00e9llo w\u00f6rld"
+        saved = _force_c_locale()
+        if saved is None:
+            pytest.skip("the C locale is unavailable on this platform")
+        try:
+            atomic_write_text(dest, content)
+        finally:
+            locale.setlocale(locale.LC_CTYPE, saved)
+        assert dest.read_bytes() == content.encode("utf-8")
+
+
+class TestOpenEncodingContract:
+    """The temporary file is opened with explicit portable text parameters."""
+
+    def test_temp_file_open_arguments_are_explicit(self, tmp_path: Path, monkeypatch) -> None:
+        """Writes preserve explicit UTF-8 encoding and disabled newline translation."""
+        real_open = open
+        calls = []
+
+        def spy(*args, **kwargs):
+            calls.append((args, kwargs))
+            return real_open(*args, **kwargs)
+
+        monkeypatch.setattr("builtins.open", spy)
+        atomic_write_text(tmp_path / "style.txt", "line one\nline two")
+
+        assert calls[0][1]["encoding"] == "utf-8"
+        assert calls[0][1]["newline"] == ""
+
+
+class TestVanishedTempCleanup:
+    """Cleanup of an already-deleted temp file stays silent through the real path."""
+
+    def test_vanished_temp_cleanup_logs_no_warning(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """No removal warning is logged when the temp vanished before cleanup."""
+        import perplexity_cli.utils.atomic_write as aw
+
+        dest = tmp_path / "data.json"
+
+        def replace_after_vanish(temp_path: Path, _target: Path) -> None:
+            temp_path.unlink()
+            raise OSError("injected replace failure")
+
+        monkeypatch.setattr(aw, "_replace_temp", replace_after_vanish)
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(OSError, match="injected replace failure"):
+                atomic_write_json(dest, {"a": 1})
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert not any("Could not remove temporary file" in r.getMessage() for r in warnings)
+        assert _temp_files(tmp_path) == []
+
+
+class TestCleanupWarningNamesTempFile:
+    """The removal warning identifies the exact temporary sibling by name."""
+
+    def test_cleanup_warning_contains_temp_file_name(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The removal warning carries the temp file's basename."""
+        import perplexity_cli.utils.atomic_write as aw
+
+        dest = tmp_path / "data.json"
+        seen: dict[str, Path] = {}
+
+        def failing_replace(temp_path: Path, _target: Path) -> None:
+            seen["temp"] = temp_path
+            raise OSError("injected replace failure")
+
+        def unremovable_temp(_temp_path: Path) -> None:
+            raise OSError("locked")
+
+        monkeypatch.setattr(aw, "_replace_temp", failing_replace)
+        monkeypatch.setattr(aw, "_cleanup_temp", unremovable_temp)
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(OSError, match="injected replace failure"):
+                atomic_write_json(dest, {"a": 1})
+        warning = next(r for r in caplog.records if r.levelno == logging.WARNING)
+        assert seen["temp"].name in warning.getMessage()

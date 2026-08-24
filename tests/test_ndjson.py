@@ -8,11 +8,18 @@ import pytest
 
 from perplexity_cli.ndjson import (
     ChunkEvent,
+    NDJSONEvent,
     NDJSONWriter,
     ProgressEvent,
     ResultEvent,
     StartEvent,
 )
+
+
+class _StampedEvent(NDJSONEvent):
+    """Custom event whose field only serialises to text under JSON mode."""
+
+    when: datetime
 
 
 class TestNDJSONEventModels:
@@ -177,3 +184,28 @@ class TestNDJSONWriterResultExtras:
         writer.result(ok=True, command="cmd", result={}, extras=(None, None, True))
         payload = json.loads(buf.getvalue())
         assert next(iter(payload)) == "$schema"
+
+
+class TestJSONModeSerialisation:
+    """Events are written with pydantic JSON-mode serialisation semantics."""
+
+    def test_write_event_serialises_datetime_field_as_iso_string(self) -> None:
+        """A datetime-typed field on a custom event reaches the line as ISO text."""
+        buf = io.StringIO()
+        writer = NDJSONWriter(output=buf)
+        stamped = _StampedEvent(type="stamped", when=datetime(2026, 1, 2, 3, 4, 5))
+        writer.write_event(stamped)
+        payload = json.loads(buf.getvalue())
+        assert payload["when"] == "2026-01-02T03:04:05"
+
+    def test_result_serialises_datetime_values_inside_result_dict(self) -> None:
+        """Datetime values inside the result payload are written as ISO strings."""
+        buf = io.StringIO()
+        writer = NDJSONWriter(output=buf)
+        writer.result(
+            ok=True,
+            command="search",
+            result={"when": datetime(2026, 1, 2, 3, 4, 5)},
+        )
+        payload = json.loads(buf.getvalue())
+        assert payload["result"]["when"] == "2026-01-02T03:04:05"

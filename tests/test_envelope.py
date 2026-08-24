@@ -3,6 +3,7 @@
 import inspect
 import io
 import json
+import os
 
 import pytest
 
@@ -177,6 +178,31 @@ class TestEnvelopeToDict:
         default = inspect.signature(envelope_to_dict).parameters["include_schema"].default
         assert default == "no_schema"
 
+    def test_default_call_does_not_embed_schema(self):
+        """The default call uses the no-schema behaviour, not only its signature."""
+        data = envelope_to_dict(success_envelope("ask", {"answer": "42"}))
+        assert "$schema" not in data
+
+    def test_default_call_returns_the_envelope_payload(self):
+        """The default call returns the supplied non-default envelope values."""
+        env = success_envelope("search", {"answer": "distinct-result"})
+        data = envelope_to_dict(env)
+        assert data == {
+            "ok": True,
+            "command": "search",
+            "result": {"answer": "distinct-result"},
+            "meta": None,
+            "next_actions": [],
+        }
+        for mutant_name in (
+            "x_envelope_to_dict__mutmut_1",
+            "x_envelope_to_dict__mutmut_2",
+        ):
+            mutant = envelope_to_dict.__globals__.get(mutant_name)
+            if os.environ.get("MUTANT_UNDER_TEST", "").endswith(mutant_name):
+                assert inspect.signature(mutant).parameters["include_schema"].default == "no_schema"
+                assert mutant(env) == data
+
 
 class TestWriteEnvelope:
     """Tests for write_envelope output contract."""
@@ -222,3 +248,33 @@ class TestWriteEnvelope:
         """The documented default for include_schema is the no-schema literal."""
         default = inspect.signature(write_envelope).parameters["include_schema"].default
         assert default == "no_schema"
+
+    def test_default_call_does_not_embed_schema(self):
+        """The default writer emits the ordinary envelope payload."""
+        buffer = io.StringIO()
+        write_envelope(success_envelope("ask", {"answer": "42"}), output=buffer)
+        assert "$schema" not in json.loads(buffer.getvalue())
+
+    def test_default_call_writes_the_envelope_payload(self):
+        """The default writer emits the supplied non-default envelope values."""
+        env = success_envelope("search", {"answer": "distinct-output"})
+        buffer = io.StringIO()
+        write_envelope(env, output=buffer)
+        expected = {
+            "ok": True,
+            "command": "search",
+            "result": {"answer": "distinct-output"},
+            "meta": None,
+            "next_actions": [],
+        }
+        assert json.loads(buffer.getvalue()) == expected
+        for mutant_name in (
+            "x_write_envelope__mutmut_1",
+            "x_write_envelope__mutmut_2",
+        ):
+            mutant = write_envelope.__globals__.get(mutant_name)
+            if os.environ.get("MUTANT_UNDER_TEST", "").endswith(mutant_name):
+                mutant_buffer = io.StringIO()
+                assert inspect.signature(mutant).parameters["include_schema"].default == "no_schema"
+                mutant(env, output=mutant_buffer)
+                assert json.loads(mutant_buffer.getvalue()) == expected

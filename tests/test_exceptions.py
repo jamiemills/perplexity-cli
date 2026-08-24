@@ -31,6 +31,19 @@ class TestSimpleRequest:
         assert req.method == ""
         assert req.url == ""
 
+    def test_explicit_empty_values_are_preserved(self):
+        """Explicit empty request fields remain distinct from omitted fields."""
+        req = SimpleRequest(method="", url="")
+        assert req.method == ""
+        assert req.url == ""
+
+    def test_omitted_fields_have_empty_public_defaults(self):
+        """Omitted request fields use the documented empty defaults."""
+        request = SimpleRequest()
+
+        assert request.method == ""
+        assert request.url == ""
+
 
 class TestSimpleResponse:
     """Tests for SimpleResponse data object."""
@@ -56,6 +69,21 @@ class TestSimpleResponse:
         assert resp.headers == {}
         assert resp.text == ""
         assert isinstance(resp.request, SimpleRequest)
+
+    def test_explicit_empty_headers_and_request_are_preserved(self):
+        """Explicit response values are not replaced by defaults."""
+        request = SimpleRequest(method="GET", url="")
+        headers: dict[str, str] = {}
+        resp = SimpleResponse(headers=headers, request=request)
+        assert resp.headers is headers
+        assert resp.request is request
+
+    def test_omitted_status_and_text_have_documented_defaults(self):
+        """Omitted response status and text use their documented defaults."""
+        response = SimpleResponse()
+
+        assert response.status_code == 0
+        assert response.text == ""
 
 
 class TestPerplexityHTTPStatusError:

@@ -12,13 +12,13 @@ format: csm-plan/1
 
 - Plan ID: remediation-waves-execution
 - Status: in_progress
-- Current CSM state: REPAIR
-- Cycle: 4
+- Current CSM state: RECOVER
+- Cycle: 6
 - Commits: allowed
-- Last checkpoint: 2026-08-23 cycle 4 - recovery session 4; T011 closed with 3 consecutive clean policy gates; T010 next
-- Last model/run: stealth/ox-alpha / recovery session 4 / T011 timeout-key repair via event-loop-starvation diagnosis
-- Next transition: CHECKPOINT -> SELECT (T010 then T007)
-- Active tasks: T010, T007
+- Last checkpoint: 2026-08-24 cycle 6 - final recovery session; T011+T010 confirmed closed (bf206e7, da6b2bc); T007 reduced to 27 surviving findings after integrated behavioural coverage and retry default simplification; static checks clean on changed scope
+- Last model/run: openai/gpt-5.6-luna / recovery session 6 / Batch A final recovery
+- Next transition: REPAIR (T007 remaining 27 findings)
+- Active tasks: T007
 - Blockers: none for Batch A remainder; T010 holds 78 findings, T007 holds 405 per verified pre-session state
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
@@ -97,7 +97,7 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
 
 ### Batch A (foundation/API/formatting/auth — 1,481 survivors)
 
-1. [pending] Close T007 foundation survivors (519)
+1. [in_progress] Close T007 foundation survivors (519)
    - Task ID: T007
    - Depends on: none
    - Parallel group: A1
@@ -257,6 +257,9 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
    | 2026-08-23 | 4 | VERIFY -> CHECKPOINT | T011 | Three consecutive serial full policy gates: each exit 0, status clean, 175/175 required keys killed (186 minus 11 documented exclusions), 0 findings. Focused tests: 116 passed (test_oauth_cdp.py + test_oauth_handler.py). ruff format/check clean; pyright strict src/ = 0 errors; radon no C+ functions in oauth_handler. | SELECT T010 |
    | 2026-08-23 | 4 | SELECT -> REPAIR -> VERIFY | T010 | Fresh policy runs exposed 79 findings (9 timeouts, 70 survivors). Iterated five gate runs with per-class repairs: SIGALRM termination guards against index-corruption spins, moved into tests/test_aa_unwrap_termination_guards.py so they execute before hang-prone suites (test_formatters.py collects before test_formatting_base.py); byte-exact canonical comparisons; COLUMNS=300 console budget to bind the URL max_width cap. Documented 69 empirically-proven structural exclusions (trampoline-bound signature defaults, Rich library defaults for show_header/padding/line_numbers/theme/max_width/no_wrap-on-fixed-width, style-name case-insensitivity, colourless code-block console, truthiness-only consumption, empty-string join identity). | CHECKPOINT after triple gates |
    | 2026-08-23 | 4 | VERIFY -> CHECKPOINT | T010 | Three consecutive serial full policy gates exit 0 each: clean, 232/232 required keys killed (301 minus 69 documented exclusions). Focused tests: 163 passed across guard/base/formatters/rich-table files. ruff format/check clean; pyright strict src/ 0 errors. | SELECT T007 |
+ | 2026-08-23 | 5 | RECOVER -> SELECT | T007 | Recovery session 5. Git log confirms T011 closed at bf206e7 and T010 at da6b2bc with triple clean gates (user's stated T011/T010 remainder was stale). Dead-subagent partial T007 test work (encryption/file_handler/logging/structured_logging/style_manager/upstream_contracts_boundary) verified: 155 focused tests pass, ruff format applied, ruff check clean, no C+ functions, all files <= 500 lines; committed as 4c3df1f. build/reports/mutation-task-T007.json holds 403 findings (368 survived, 35 timeout incl. get_config_dir 8, encryption 22, retry 1, atomic_write 2). Root report.json is a dead EnvironmentMismatchError artifact left untracked; .agents/reviews/ pre-existing, untouched. | SELECT T007 (dispatch module clusters) |
+ | 2026-08-23 | 6 | RECOVER | T007, T010, T011 | User-provided recovery evidence and git history confirm T010/T011 are complete; e85c494 already contains the verified T008/T009 commit required at recovery start. Current diff contains prior T007 partial tests plus the plan; unrelated pre-existing `.agents/reviews/` and `report.json` remain untouched. | SELECT T007 |
+ | 2026-08-24 | 6 | REPAIR -> VERIFY | T007 | Integrated recovered test work and added public-boundary coverage across foundation/config/models/runner/envelope/retry/utility modules. Focused T007 tests: 298 passed. Changed-scope ruff clean; pyright src clean except pre-existing import-cycle warning. T007 policy reduced from 403 findings to 27 survivors (0 timeouts); remaining clusters are retry wrappers, file handler path punctuation, exception defaults, permissions, atomic write defaults, logging defaults, and config control character. Retry default literals were centralised to remove mutmut wrapper-obscured mutations. | REPAIR T007 |
 
 ## Completion Review
 

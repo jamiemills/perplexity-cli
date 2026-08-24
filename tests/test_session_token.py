@@ -65,3 +65,8 @@ class TestExtractSessionToken:
         raw = json.dumps({"user": {"accessToken": ""}})
         with pytest.raises(AuthenticationError):
             extract_session_token(raw)
+
+    def test_user_null_falls_back_to_raw_payload(self):
+        """A JSON null user section is treated as absent session data."""
+        raw = json.dumps({"user": None})
+        assert extract_session_token(raw) == raw

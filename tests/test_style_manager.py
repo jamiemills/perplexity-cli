@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import locale
 import stat
@@ -10,6 +11,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -123,6 +125,14 @@ class TestStyleManagerValidation:
         assert sm.validate_style(None) is False  # type: ignore  # owner: test-infrastructure; reason: deliberately passes non-string values to exercise validation
         assert sm.validate_style(123) is False  # type: ignore  # owner: test-infrastructure; reason: deliberately passes non-string values to exercise validation
         assert sm.validate_style([]) is False  # type: ignore  # owner: test-infrastructure; reason: deliberately passes non-string values to exercise validation
+
+    def test_validate_style_rejects_string_subclasses(self):
+        """Validation accepts only the concrete string type at its boundary."""
+
+        class CustomString(str):
+            __slots__ = ()
+
+        assert StyleManager().validate_style(CustomString("brief")) is False
 
     def test_validate_style_rejects_too_long(self):
         """Test validate_style rejects excessively long strings."""
@@ -307,6 +317,10 @@ class TestStyleManagerBoundaries:
         """A style of exactly MAX_STYLE_LENGTH characters validates as True."""
         assert StyleManager().validate_style("x" * MAX_STYLE_LENGTH) is True
 
+    def test_validate_style_rejects_one_character_over_maximum(self):
+        """One character beyond the limit is rejected without writing a file."""
+        assert StyleManager().validate_style("x" * (MAX_STYLE_LENGTH + 1)) is False
+
 
 class TestStyleManagerParentDirectories:
     """Test parent-directory creation when saving styles."""
@@ -357,6 +371,47 @@ class TestStyleManagerSaveFailure:
         assert str(excinfo.value) == (
             f"Failed to save style to {mocked_style_path}: injected write"
         )
+
+
+class TestStyleManagerIoCallContracts:
+    """Explicit I/O parameters pinned at the module interaction boundary."""
+
+    def test_load_style_opens_file_with_utf8_encoding(
+        self, mocked_style_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """load_style passes the exact lowercase utf-8 encoding to open."""
+        mocked_style_path.write_text('{"style": "spyon-load-style"}', encoding="utf-8")
+        real_open = builtins.open
+        captured: dict[str, Any] = {}
+
+        def spying_open(file: str | Path, mode: str = "r", **kwargs: Any) -> Any:
+            if Path(file) == mocked_style_path:
+                captured["encoding"] = kwargs.get("encoding")
+            return real_open(file, mode, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", spying_open)
+
+        assert StyleManager().load_style() == "spyon-load-style"
+        assert captured["encoding"] == "utf-8"
+
+    def test_save_style_passes_explicit_owner_only_mode(
+        self, mocked_style_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """save_style requests 0o600 permissions explicitly from the writer."""
+        captured: dict[str, Any] = {}
+
+        def spying_write(path: Path, content: str, mode: int = -1) -> None:
+            """Record the writer invocation without touching the filesystem."""
+            captured["mode"] = mode
+
+        monkeypatch.setattr(
+            "perplexity_cli.utils.style_manager.atomic_write_text",
+            spying_write,
+        )
+
+        StyleManager().save_style("spyon-save-style")
+
+        assert captured["mode"] == 0o600
 
 
 class TestStyleManagerClearFailure:

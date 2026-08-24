@@ -377,6 +377,45 @@ class TestEncryptErrorReporting:
         assert str(exc_info.value) == "Failed to encrypt token: no usable key"
 
 
+class TestDerivationParameters:
+    """Exact parameters passed to the cryptographic primitives."""
+
+    def test_pbkdf2_uses_sha256_algorithm_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Key derivation uses the documented lowercase SHA-256 name."""
+        calls: list[tuple[object, ...]] = []
+
+        def fake_pbkdf2(*args: object, **kwargs: object) -> bytes:
+            calls.append((*args, *kwargs.values()))
+            return b"derived-key-material".ljust(32, b"-")
+
+        monkeypatch.setattr(encryption_module.hashlib, "pbkdf2_hmac", fake_pbkdf2)
+        monkeypatch.setattr(encryption_module, "_build_key_material", lambda: b"fixture-material")
+
+        encryption_module._derive_fernet_key(b"fixture-salt")
+
+        assert calls[0][0] == "sha256"
+
+
+class TestStrictDecodeParameters:
+    """Exact text encoding used at the outer payload boundary."""
+
+    def test_decode_uses_ascii_encoding_name(self) -> None:
+        """Outer base64 decoding encodes the text with the ASCII codec."""
+        calls: list[str] = []
+
+        class EncodedPayload(str):
+            __slots__ = ()
+
+            def encode(self, encoding: str = "utf-8", errors: str = "strict") -> bytes:
+                calls.append(encoding)
+                return super().encode(encoding, errors)
+
+        with pytest.raises(AuthenticationError):
+            encryption_module._decode_strict(EncodedPayload("invalid"))
+
+        assert calls == ["ascii"]
+
+
 class TestStrictDecodeContract:
     """Strict outer base64url validation behaviour."""
 
@@ -407,6 +446,46 @@ class TestTruncationBoundary:
         cause = exc_info.value.__cause__
         assert isinstance(cause, ValueError)
         assert str(cause) == "Encrypted token payload is truncated"
+
+
+class TestKeyMaterialBytes:
+    """Fast direct pinning of the machine key-material bytes (no PBKDF2)."""
+
+    HOSTNAME = "kmat-fast-host"
+
+    def _material(self, monkeypatch: pytest.MonkeyPatch) -> bytes:
+        """Read the key material bytes with the hostname pinned."""
+        monkeypatch.setattr(encryption_module.socket, "gethostname", lambda: self.HOSTNAME)
+        return encryption_module._build_key_material()
+
+    def test_username_env_selection_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """USER wins; without USER the USERNAME value is honoured verbatim."""
+        monkeypatch.setenv("USER", "alice")
+        monkeypatch.delenv("USERNAME", raising=False)
+        assert self._material(monkeypatch) == f"{self.HOSTNAME}:alice".encode()
+
+        monkeypatch.delenv("USER")
+        monkeypatch.setenv("USERNAME", "bob")
+        assert self._material(monkeypatch) == f"{self.HOSTNAME}:bob".encode()
+
+    def test_missing_username_falls_back_to_unknown_literal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With no user env vars the exact lowercase 'unknown' literal is used."""
+        monkeypatch.delenv("USER", raising=False)
+        monkeypatch.delenv("USERNAME", raising=False)
+        assert self._material(monkeypatch) == f"{self.HOSTNAME}:unknown".encode()
+
+
+class TestCurrentFormatPrefixRejection:
+    """Rejection of payloads lacking the v2 prefix at the reader boundary."""
+
+    def test_unversioned_payload_message_is_exact(self) -> None:
+        """A payload without the v2 prefix raises the exact format error."""
+        with pytest.raises(ValueError) as exc_info:
+            encryption_module._decrypt_with_current_format(b"unversioned-token-bytes")
+
+        assert str(exc_info.value) == "Encrypted token is not in the current format"
 
 
 class TestLegacyReaderErrorChain:

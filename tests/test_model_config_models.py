@@ -399,6 +399,42 @@ class TestSearchModelsModeFiltering:
         result = response.search_models()
         assert [entry.model_id for entry in result] == ["r1"]
 
+    def test_filters_multiple_search_entries_and_preserves_config_order(self) -> None:
+        """Every matching search ID is retained in the API config order."""
+        response = ModelConfigResponse(
+            models={
+                "s1": ModelInfo(label="Search One", mode="search"),
+                "s2": ModelInfo(label="Search Two", mode="search"),
+                "r1": ModelInfo(label="Research One", mode="research"),
+            },
+            config=[
+                ModelConfigEntry(
+                    label="Research One", subscription_tier="pro", non_reasoning_model="r1"
+                ),
+                ModelConfigEntry(
+                    label="Search Two", subscription_tier="pro", non_reasoning_model="s2"
+                ),
+                ModelConfigEntry(
+                    label="Search One", subscription_tier="pro", non_reasoning_model="s1"
+                ),
+            ],
+        )
+
+        assert [entry.model_id for entry in response.search_models()] == ["s2", "s1"]
+
+    def test_falls_back_when_search_ids_do_not_intersect_config(self) -> None:
+        """Mode metadata without matching UI entries does not hide the config."""
+        response = ModelConfigResponse(
+            models={"missing": ModelInfo(label="Missing", mode="search")},
+            config=[
+                ModelConfigEntry(
+                    label="Visible", subscription_tier="pro", non_reasoning_model="visible"
+                )
+            ],
+        )
+
+        assert [entry.model_id for entry in response.search_models()] == ["visible"]
+
     def test_falls_back_to_all_config_when_intersection_is_empty(self) -> None:
         """A search-mode ID absent from config yields the full fallback."""
         response = ModelConfigResponse(

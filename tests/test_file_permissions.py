@@ -1,5 +1,6 @@
 """Tests for file permission verification utilities."""
 
+import inspect
 import logging
 import os
 from unittest.mock import MagicMock
@@ -19,6 +20,13 @@ class TestVerifySecurePermissions:
         f.write_text("data")
         os.chmod(f, 0o600)
         verify_secure_permissions(f)
+
+    def test_public_defaults_are_secure_file_defaults(self):
+        """The public signature declares 0600 and the generic file label."""
+        signature = inspect.signature(verify_secure_permissions)
+
+        assert signature.parameters["expected_permissions"].default == 0o600
+        assert signature.parameters["file_type"].default == "file"
 
     def test_wrong_permissions_token_raises_auth_error(self, tmp_path):
         """Test that wrong permissions with file_type='token' raises AuthenticationError."""
@@ -105,3 +113,14 @@ class TestVerifySecurePermissionsMessages:
         messages = [r.getMessage() for r in caplog.records]
         assert any("insecure permissions" in m for m in messages)
         assert not all(m == "None" for m in messages)
+
+    def test_matching_custom_permissions_do_not_log_or_raise(self, tmp_path):
+        """A matching non-default mode is accepted even with a logger."""
+        file_path = tmp_path / "custom.txt"
+        file_path.write_text("data")
+        logger = MagicMock(spec=logging.Logger)
+        os.chmod(file_path, 0o640)
+
+        verify_secure_permissions(file_path, expected_permissions=0o640, logger=logger)
+
+        logger.error.assert_not_called()

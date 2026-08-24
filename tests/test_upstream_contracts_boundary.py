@@ -6,6 +6,9 @@ import pytest
 
 from perplexity_cli.utils.exceptions import UpstreamSchemaError
 from perplexity_cli.utils.upstream_contracts import (
+    _describe_dict_shape,
+    _describe_list_shape,
+    _describe_str_shape,
     parse_thread_list_payload,
     parse_upload_url_response,
     require_list,
@@ -73,6 +76,28 @@ class TestParseUploadUrlResponseContract:
             "Malformed upload result entry from upstream API: "
             "expected object, got int (file_uuid=uuid-1)"
         )
+
+
+class TestShapeDescriberTypeNames:
+    """Non-matching values are described by their own type name."""
+
+    def test_dict_describer_names_the_actual_type(self) -> None:
+        """A non-dict value given to the dict describer reports its own type."""
+        assert _describe_dict_shape(42) == "int"
+
+    def test_list_describer_names_the_actual_type(self) -> None:
+        """A non-list value given to the list describer reports its own type."""
+        assert _describe_list_shape(42) == "int"
+
+    def test_str_describer_names_the_actual_type(self) -> None:
+        """A non-str value given to the string describer reports its own type."""
+        assert _describe_str_shape(42) == "int"
+
+    def test_shape_describers_report_empty_container_sizes(self) -> None:
+        """Empty JSON containers retain their concrete shape and zero length."""
+        assert _describe_dict_shape({}) == "object(keys=[])"
+        assert _describe_list_shape([]) == "array(len=0)"
+        assert _describe_str_shape("") == "string(len=0)"
 
 
 class TestParseThreadListPayloadContract:

@@ -51,3 +51,13 @@ class TestRunAsync:
     def test_none_return(self):
         result = run_async(async_return_none())
         assert result is None
+
+    def test_nested_loop_propagates_coroutine_exception(self):
+        """Exceptions from a coroutine remain visible through the nested bridge."""
+        import pytest
+
+        async def outer():
+            return run_async(async_raise())
+
+        with pytest.raises(ValueError, match="test error"):
+            asyncio.run(outer())

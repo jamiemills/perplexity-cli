@@ -22,6 +22,8 @@ _HTTP_STATUS_FORBIDDEN: Final[int] = 403
 _HTTP_STATUS_TOO_MANY_REQUESTS: Final[int] = 429
 _HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
 _MAX_RETRY_AFTER_DELAY: Final[float] = 60.0
+_DEFAULT_BACKOFF_DELAY: Final[float] = 1.0
+_DEFAULT_MAX_BACKOFF_DELAY: Final[float] = 60.0
 _rng = random
 
 T = TypeVar("T")
@@ -114,7 +116,11 @@ def is_retryable_error(exception: Exception) -> bool:
     return False
 
 
-def sleep_with_backoff(attempt: int, base_delay: float = 1.0, max_delay: float = 60.0) -> None:
+def sleep_with_backoff(
+    attempt: int,
+    base_delay: float = _DEFAULT_BACKOFF_DELAY,
+    max_delay: float = _DEFAULT_MAX_BACKOFF_DELAY,
+) -> None:
     """Sleep with exponential backoff.
 
     Args:
@@ -130,8 +136,8 @@ def sleep_with_backoff(attempt: int, base_delay: float = 1.0, max_delay: float =
 
 def get_backoff_delay(
     attempt: int,
-    base_delay: float = 1.0,
-    max_delay: float = 60.0,
+    base_delay: float = _DEFAULT_BACKOFF_DELAY,
+    max_delay: float = _DEFAULT_MAX_BACKOFF_DELAY,
     jitter_factor: float = 0.1,
 ) -> float:
     """Calculate exponential backoff delay with bounded jitter.
