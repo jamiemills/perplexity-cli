@@ -25,10 +25,12 @@ from perplexity_cli.threads.pagination import (
 from perplexity_cli.threads.scraper import (
     ThreadScraper,
     _create_async_session,
+    _extract_cache_thread_dicts,
     _get_str_field,
     _handle_http_error,
     _is_response_protocol,
     _parse_single_thread,
+    _require_response,
     _response_core_members,
 )
 from perplexity_cli.utils.exceptions import (
@@ -131,13 +133,13 @@ class TestPaginationBoundaries:
         for validator, args in invalid_cases:
             with pytest.raises(TypeError) as raised:
                 validator(*args)
-            assert raised.value.args
+            assert raised.value.args and raised.value.args[0] is not None
 
         for count in (-1, 3):
             _validate_batch_processing_arg_count(count)
         with pytest.raises(TypeError) as raised:
             _validate_batch_processing_arg_count(4)
-        assert raised.value.args
+        assert raised.value.args and raised.value.args[0] is not None
 
     @staticmethod
     def test_legacy_context_preserves_each_optional_position() -> None:
@@ -147,6 +149,15 @@ class TestPaginationBoundaries:
         assert context.from_date is None
         assert context.total_threads == 0
         assert context.progress_callback is callback
+
+    @staticmethod
+    def test_legacy_context_labels_invalid_positions() -> None:
+        """Invalid legacy positions expose the corresponding diagnostic field."""
+        for args in ((12,), (None, "12"), (None, None, "callback")):
+            with pytest.raises(TypeError) as raised:
+                _build_legacy_batch_processing_context(args)
+            assert raised.value.args and raised.value.args[0] is not None
+            assert "XX" not in str(raised.value)
 
     @staticmethod
     def test_pagination_rejects_non_advancing_negative_limits() -> None:
@@ -245,6 +256,13 @@ class TestScraperBoundaries:
         assert _is_response_protocol(Mock(ok=False, status_code=503, json=Mock())) is True
 
     @staticmethod
+    def test_response_requirement_rejects_objects_without_required_protocol() -> None:
+        """Request handling fails with a diagnostic schema error for malformed responses."""
+        with pytest.raises(UpstreamSchemaError) as raised:
+            _require_response(object())
+        assert raised.value.args and raised.value.args[0] is not None
+
+    @staticmethod
     def test_constructor_keeps_defaults_and_configured_endpoints() -> None:
         """Constructor options and configured endpoint values are retained."""
         scraper = _scraper()
@@ -271,6 +289,7 @@ class TestScraperBoundaries:
             cache_manager.load_cache.return_value = {"threads": raw_threads}
             with pytest.raises(UpstreamSchemaError):
                 _scraper(cache_manager=cache_manager)._load_cached_threads()
+        assert _extract_cache_thread_dicts([]) == []
 
     @staticmethod
     def test_create_async_session_passes_timeout_and_impersonation() -> None:
@@ -291,7 +310,7 @@ class TestScraperBoundaries:
         with patch("perplexity_cli.threads.scraper._CURL_CFFI_AVAILABLE", False):
             with pytest.raises(RuntimeError) as raised:
                 _create_async_session()
-            assert raised.value.args
+            assert raised.value.args and raised.value.args[0] is not None
 
         with (
             patch("perplexity_cli.threads.scraper._CURL_CFFI_AVAILABLE", True),
@@ -299,7 +318,7 @@ class TestScraperBoundaries:
         ):
             with pytest.raises(RuntimeError) as raised:
                 _create_async_session()
-            assert raised.value.args
+            assert raised.value.args and raised.value.args[0] is not None
 
     @staticmethod
     def test_get_str_field_defaults_only_when_absent() -> None:
@@ -346,7 +365,7 @@ class TestScraperBoundaries:
             _handle_http_error(
                 PerplexityHTTPStatusError("auth", response=SimpleResponse(status_code=401))
             )
-        assert raised.value.args
+        assert raised.value.args and raised.value.args[0] is not None
         with pytest.raises(RateLimitError):
             _handle_http_error(
                 PerplexityHTTPStatusError("limit", response=SimpleResponse(status_code=429))
@@ -418,6 +437,61 @@ class TestScraperBoundaries:
         with patch.object(scraper.logger, "debug") as debug:
             await scraper._acquire_rate_limit()
         debug.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rate_limiter_logs_positive_wait_and_forwards_value(self) -> None:
+        """Positive limiter waits are logged with the measured delay."""
+        limiter = AsyncMock()
+        limiter.acquire.return_value = 1.234
+        scraper = _scraper(rate_limiter=limiter)
+        with patch.object(scraper.logger, "debug") as debug:
+            await scraper._acquire_rate_limit()
+        debug.assert_called_once()
+        assert debug.call_args.args[0] is not None
+        assert "XX" not in str(debug.call_args.args)
+
+    @staticmethod
+    def test_cache_strategy_forwards_date_ranges_and_distinguishes_paths() -> None:
+        """Cache-only and gap-fetch paths preserve range arguments and state."""
+        cache_manager = MagicMock()
+        cached = [ThreadRecord(title="A", url="u", created_at="2026-01-01T00:00:00Z")]
+        cache_manager.load_cache.return_value = {
+            "threads": [{"title": "A", "url": "u", "created_at": "2026-01-01T00:00:00Z"}],
+        }
+        cache_manager.requires_fresh_data.return_value = (False, None, None)
+        scraper = _scraper(cache_manager=cache_manager)
+        result = scraper._try_cache_only("2026-01-01", "2026-01-02")
+        assert result == cached
+        cache_manager.requires_fresh_data.assert_called_with("2026-01-01", "2026-01-02")
+
+        scraper.force_refresh = True
+        assert scraper._try_cache_only("from", "to") is None
+        cache_manager.requires_fresh_data.reset_mock()
+        assert scraper._prepare_fetch("from", "to") == ([], "from", "to")
+        cache_manager.requires_fresh_data.assert_not_called()
+
+    @staticmethod
+    def test_merge_with_cache_uses_manager_only_for_nonempty_cached_data() -> None:
+        """Fetched records bypass merging without cached records or a manager."""
+        fetched = [ThreadRecord(title="F", url="f", created_at="2026-01-01T00:00:00Z")]
+        cache_manager = MagicMock()
+        cache_manager.merge_threads.return_value = fetched
+        scraper = _scraper(cache_manager=cache_manager)
+        assert scraper._merge_with_cache([], fetched) is fetched
+        assert scraper._merge_with_cache([fetched[0]], fetched) is fetched
+        cache_manager.merge_threads.assert_called_once_with([fetched[0]], fetched)
+        assert cache_manager.merge_threads.return_value is fetched
+
+    @staticmethod
+    def test_error_diagnostics_do_not_collapse_to_empty_or_mutant_sentinels() -> None:
+        """Domain errors retain non-empty diagnostics without matching wording."""
+        for status, error_type in ((401, AuthenticationError), (429, RateLimitError)):
+            with pytest.raises(error_type) as raised:
+                _handle_http_error(
+                    PerplexityHTTPStatusError("status", response=SimpleResponse(status_code=status))
+                )
+            assert raised.value.args and raised.value.args[0] is not None
+            assert "XX" not in str(raised.value)
 
     @staticmethod
     def test_merge_and_filter_boundaries() -> None:
