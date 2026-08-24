@@ -4,13 +4,16 @@ import json
 import logging
 from contextlib import contextmanager
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from perplexity_cli.config.models import FeatureConfig
 from perplexity_cli.runners.status import (
     _build_status_envelope,
+    _ctx_flag,
+    _ctx_to_dict,
+    _get_include_schema,
     _get_json_mode_from_ctx,
     _get_token_age_days,
     _handle_authenticated_status,
@@ -74,6 +77,37 @@ class TestGetJsonModeFromCtx:
         ):
             assert _get_json_mode_from_ctx() == expected
 
+    @pytest.mark.parametrize(
+        ("obj", "key", "expected"),
+        [({"json": True}, "json", True), ({"json": False}, "json", False), ({}, "json", False)],
+    )
+    def test_context_flags_are_read_from_mapping(
+        self, obj: object, key: str, expected: bool
+    ) -> None:
+        with patch(
+            "perplexity_cli.runners.status.click.get_current_context",
+            return_value=FakeClickContext(obj=obj),
+        ):
+            assert _ctx_to_dict() == obj
+            assert _ctx_flag(key) is expected
+
+    def test_context_lookup_is_silent(self) -> None:
+        context_lookup = MagicMock(return_value=None)
+        with patch("perplexity_cli.runners.status.click.get_current_context", context_lookup):
+            assert _ctx_to_dict() == {}
+        context_lookup.assert_called_once_with(silent=True)
+
+    @pytest.mark.parametrize(
+        ("obj", "expected"),
+        [({"schema": True}, "with_schema"), ({"schema": False}, "no_schema")],
+    )
+    def test_schema_flag_has_distinct_modes(self, obj: dict[str, bool], expected: str) -> None:
+        with patch(
+            "perplexity_cli.runners.status.click.get_current_context",
+            return_value=FakeClickContext(obj=obj),
+        ):
+            assert _get_include_schema() == expected
+
 
 # ---------------------------------------------------------------------------
 # _get_token_age_days
@@ -133,6 +167,30 @@ class TestVerifyToken:
             result = _verify_token("token", {}, _LOGGER)
             assert result is expected
 
+    def test_verify_token_uses_sentinel_query_and_logs(self, caplog) -> None:
+        gateway = FakeAPIGateway(answer_text="OK")
+        with (
+            caplog.at_level("DEBUG", logger="test-status-runner"),
+            patch("perplexity_cli.runners.status.PerplexityAPI", return_value=gateway),
+        ):
+            assert _verify_token("token", {}, _LOGGER) is True
+        assert gateway.queries == ["test"]
+        assert [record.getMessage() for record in caplog.records] == ["Verifying token validity"]
+
+    def test_verify_token_distinguishes_empty_answer(self) -> None:
+        gateway = FakeAPIGateway(answer_text=None)
+        with patch("perplexity_cli.runners.status.PerplexityAPI", return_value=gateway):
+            assert _verify_token("token-sentinel", None, _LOGGER) is False
+
+    @pytest.mark.parametrize(
+        "exception",
+        [AuthenticationError("auth"), PerplexityRequestError("request")],
+    )
+    def test_verify_token_handles_supported_transport_errors(self, exception: Exception) -> None:
+        gateway = FakeAPIGateway(enter_error=exception)
+        with patch("perplexity_cli.runners.status.PerplexityAPI", return_value=gateway):
+            assert _verify_token("token", None, _LOGGER) is False
+
 
 # ---------------------------------------------------------------------------
 # _output_verification_result
@@ -157,6 +215,15 @@ class TestOutputVerificationResult:
     def test_prints_exact_result(self, verified: object, expected_line: str, capsys) -> None:
         _output_verification_result(verified, _LOGGER)
         assert capsys.readouterr().out == expected_line + "\n"
+
+    def test_logs_success_and_empty_results(self, caplog) -> None:
+        with caplog.at_level("DEBUG", logger="test-status-runner"):
+            _output_verification_result(True, _LOGGER)
+            _output_verification_result(None, _LOGGER)
+        assert [(record.levelname, record.getMessage()) for record in caplog.records] == [
+            ("INFO", "Token verification successful"),
+            ("WARNING", "Token verification returned empty response"),
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +272,15 @@ class TestOutputStatusText:
         _output_status_text("tok", {}, (5, True, True), tm=tm)
         assert "Token is valid and working" in capsys.readouterr().out
 
+    def test_passes_token_path_to_modified_time_output(self, capsys) -> None:
+        tm = _status_token_manager()
+        _output_status_text("tok", {}, (5, None, False), tm=tm)
+        assert "Token last modified: 2023-11-14 22:13:20" in capsys.readouterr().out
+
+    def test_omits_cookie_line_when_cookie_mapping_is_empty(self, capsys) -> None:
+        _output_status_text("sentinel", {}, (None, None, False), tm=_status_token_manager())
+        assert "Cookies:" not in capsys.readouterr().out
+
 
 # ---------------------------------------------------------------------------
 # _handle_no_token
@@ -234,6 +310,10 @@ class TestHandleNoToken:
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True
         assert envelope["result"]["authenticated"] is False
+
+    def test_human_mode_without_hint_has_no_login_instruction(self, capsys) -> None:
+        _handle_no_token("human", FakeTokenManager(), show_auth_hint="hide")
+        assert "pxcli auth login" not in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------
@@ -276,10 +356,44 @@ class TestHandleAuthenticatedStatus:
         assert envelope["ok"] is True
         assert envelope["result"]["authenticated"] is True
 
+    def test_json_mode_reports_zero_for_empty_cookies(self, capsys) -> None:
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json"))
+        _handle_authenticated_status(("tok", {}, "skip", "json"), tm=tm, logger=_LOGGER)
+        assert json.loads(capsys.readouterr().out)["result"]["cookies_stored"] == 0
+
+    def test_json_mode_preserves_age_cookie_and_verification_fields(self, capsys) -> None:
+        mtime = (FixedClock.NOW - timedelta(days=9)).timestamp()
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json", st_mtime=mtime))
+        with patch("perplexity_cli.runners.status.datetime", new=FixedClock):
+            _handle_authenticated_status(
+                ("tok", {"a": "1", "b": "2"}, "skip", "json"), tm=tm, logger=_LOGGER
+            )
+        assert json.loads(capsys.readouterr().out)["result"] == {
+            "authenticated": True,
+            "token_path": "/tmp/token.json",
+            "token_age_days": 9,
+            "cookies_stored": 2,
+            "verified": None,
+        }
+
+    def test_human_mode_reports_cookie_count(self, capsys) -> None:
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json"))
+        _handle_authenticated_status(("tok", {"a": "1"}, "skip", "human"), tm=tm, logger=_LOGGER)
+        assert "Cookies: 1 stored" in capsys.readouterr().out
+
     def test_human_mode_prints_output(self, capsys) -> None:
         tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json", st_mtime=1700000000.0))
         _handle_authenticated_status(("tok", {}, "skip", "human"), tm=tm, logger=_LOGGER)
         assert "Authenticated" in capsys.readouterr().out
+
+    def test_json_mode_uses_context_schema(self, capsys) -> None:
+        tm = FakeTokenManager(token_path=FakePath(value="/tmp/token.json"))
+        with patch(
+            "perplexity_cli.runners.status.click.get_current_context",
+            return_value=FakeClickContext(obj={"schema": True}),
+        ):
+            _handle_authenticated_status(("tok", {}, "skip", "json"), tm=tm, logger=_LOGGER)
+        assert "$schema" in json.loads(capsys.readouterr().out)
 
 
 # ---------------------------------------------------------------------------
@@ -309,8 +423,30 @@ class TestRunDoctorSecurity:
 
         envelope = json.loads(capsys.readouterr().out.strip())
         assert envelope["ok"] is True
-        assert "token_path" in envelope["result"]
-        assert "cookies_enabled" in envelope["result"]
+        assert envelope["result"] == {
+            "storage_backend": "machine-bound encrypted file storage",
+            "token_path": str(token_file),
+            "token_permissions": "secure (0o600)",
+            "cache_path": str(cache_file),
+            "cache_permissions": "secure (0o600)",
+            "cookies_enabled": False,
+        }
+
+    def test_json_mode_uses_context_schema_setting(self, tmp_path, capsys) -> None:
+        token_file, cache_file = self._prepare_secure_files(tmp_path)
+        with (
+            _patch_doctor_dependencies(
+                FakeTokenManager(token_path=token_file),
+                FakeCacheManager(cache_path=cache_file),
+                FeatureConfig(save_cookies=False),
+            ),
+            patch(
+                "perplexity_cli.runners.status.click.get_current_context",
+                return_value=FakeClickContext(obj={"schema": True}),
+            ),
+        ):
+            run_doctor_security_command(output_format="json")
+        assert "$schema" in json.loads(capsys.readouterr().out)
 
     def test_human_mode_prints_output(self, tmp_path, capsys) -> None:
         token_file, cache_file = self._prepare_secure_files(tmp_path)
@@ -322,6 +458,22 @@ class TestRunDoctorSecurity:
         captured = capsys.readouterr()
         assert "Perplexity CLI Security" in captured.out
         assert "Cookie storage warning" in captured.out
+
+    def test_default_mode_comes_from_context(self, tmp_path, capsys) -> None:
+        token_file, cache_file = self._prepare_secure_files(tmp_path)
+        with (
+            _patch_doctor_dependencies(
+                FakeTokenManager(token_path=token_file),
+                FakeCacheManager(cache_path=cache_file),
+                FeatureConfig(save_cookies=False),
+            ),
+            patch(
+                "perplexity_cli.runners.status.click.get_current_context",
+                return_value=FakeClickContext(obj={"json": True}),
+            ),
+        ):
+            run_doctor_security_command()
+        assert json.loads(capsys.readouterr().out)["ok"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -492,6 +644,38 @@ class TestStatusRunnerMutationKillers:
         captured = capsys.readouterr()
         assert "Not authenticated" in captured.out
         assert "pxcli auth login" not in captured.out
+
+    def test_run_status_empty_token_forwards_human_output_and_manager(self):
+        tm = FakeTokenManager(load_token_result=("", None))
+        with (
+            patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm),
+            patch("perplexity_cli.runners.status._handle_no_token") as handle_no_token,
+        ):
+            run_status_command(verify="skip", output_format="human")
+        handle_no_token.assert_called_once_with("human", tm, show_auth_hint="hide")
+
+    def test_run_status_auth_error_logs_without_traceback(self, caplog) -> None:
+        tm = FakeTokenManager(load_token_error=AuthenticationError("sentinel"))
+        with (
+            caplog.at_level("ERROR", logger="perplexity_cli.runners.status"),
+            patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm),
+        ):
+            run_status_command(verify="skip")
+        assert caplog.records[-1].getMessage() == "Token file has insecure permissions"
+        assert caplog.records[-1].exc_info is False
+
+    def test_run_status_auth_error_preserves_user_action(self, capsys) -> None:
+        tm = FakeTokenManager(
+            load_token_error=AuthenticationError("sentinel"),
+            token_path=FakePath(value="/tmp/token-sentinel"),
+        )
+        with patch("perplexity_cli.runners.status.TokenManager", new=lambda: tm):
+            run_status_command(verify="skip")
+        assert capsys.readouterr().out == (
+            "Status: [INFO] Token file has insecure permissions\n"
+            "Error: sentinel\n"
+            "\nFix with: chmod 0600 /tmp/token-sentinel\n"
+        )
 
     def test_run_status_verify_json_verified_true(self, capsys):
         tm = FakeTokenManager(

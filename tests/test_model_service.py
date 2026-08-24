@@ -287,6 +287,36 @@ class TestModelServiceFetchConfig:
         assert settings.subscription_status == "active"
         assert settings.is_subscriber is True
 
+    def test_fetch_methods_use_distinct_configured_endpoints(self, caplog) -> None:
+        client = MagicMock()
+        client.get_json.side_effect = [
+            {"config_schema": "v1", "config": [], "models": {}},
+            {
+                "subscription_status": "active",
+                "subscription_source": "stripe",
+                "subscription_tier": "monthly",
+                "default_model": "turbo",
+            },
+        ]
+        endpoints = MagicMock()
+        endpoints.model_config_endpoint.return_value = "config-sentinel"
+        endpoints.user_settings_endpoint.return_value = "settings-sentinel"
+        service = ModelService(client, SubscriptionLevel.PRO, endpoints)
+
+        with caplog.at_level("DEBUG", logger="perplexity_cli.services.model_service"):
+            service.fetch_model_config()
+            service.fetch_user_settings()
+
+        assert client.get_json.call_args_list[0].args == ("config-sentinel",)
+        assert client.get_json.call_args_list[1].args == ("settings-sentinel",)
+        assert [record.getMessage() for record in caplog.records] == [
+            "Fetching model config from config-sentinel",
+            "Fetching user settings from settings-sentinel",
+        ]
+        assert all(
+            record.name == "perplexity_cli.services.model_service" for record in caplog.records
+        )
+
 
 class TestModelServiceListModels:
     """Tests for listing available models with subscription filtering."""

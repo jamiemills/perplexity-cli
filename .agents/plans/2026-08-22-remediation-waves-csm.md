@@ -12,13 +12,13 @@ format: csm-plan/1
 
 - Plan ID: remediation-waves-execution
 - Status: in_progress
-- Current CSM state: CHECKPOINT T014
-- Cycle: 6
+- Current CSM state: CHECKPOINT T016
+- Cycle: 8
 - Commits: allowed
-- Last checkpoint: 2026-08-24 - T014 clean on three consecutive serial policy gates
-- Last model/run: openai/gpt-5.6-luna / batch execution
-- Next transition: SELECT T015
-- Active tasks: T015 (attachments/upload_manager, commands help modules, utils HTTP/rate/session/attachment modules)
+- Last checkpoint: 2026-08-24 - T016 clean with 88 killed keys and 45 documented exclusions
+- Last model/run: openai/gpt-5.6-luna / remediation-waves-execution
+- Next transition: VERIFY final gates
+- Active tasks: none in Batch B
 - Blockers: none
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
@@ -175,12 +175,12 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
 8. [complete] Close T014 scraper survivors (206)
    - Task ID: T014 | Depends on: Batch A | Parallel group: B3 | Risk: high
    - Owned scope: threads/scraper, threads/pagination
-9. [pending] Close T015 upload/help/error survivors (274)
+9. [complete] Close T015 upload/help/error survivors (274)
    - Task ID: T015 | Depends on: Batch A | Parallel group: B4 | Risk: high
    - Owned scope: attachments/upload_manager, commands/_help_sections, commands/_help_refs, commands/_examples, commands/_ctx, commands/_schemas, utils/http_errors/*, utils/http_headers, utils/rate_limiter*, utils/session_factory, utils/attachment_models
-10. [pending] Close T016 status/service survivors (133)
-    - Task ID: T016 | Depends on: Batch A | Parallel group: B5 | Risk: standard
-    - Owned scope: runners/status, services/model_service, services/ports, error_handler
+10. [complete] Close T016 status/service survivors (133)
+     - Task ID: T016 | Depends on: Batch A | Parallel group: B5 | Risk: standard
+     - Owned scope: runners/status, services/model_service, services/ports, error_handler
 
 ### Batch C (command runners/orchestration/remainder — 825 survivors)
 
@@ -272,7 +272,8 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
 | 2026-08-24 | 6 | REPAIR -> VERIFY -> CHECKPOINT | T013 | `make mutate-task-policy TASK=T013` exited 0 with status clean and 152/152 required keys killed; focused T013/date-parser suites passed (63 tests); Ruff format/check clean. | SELECT T014 |
 | 2026-08-24 | 6 | SELECT -> REPAIR -> CHECKPOINT | T014 | Committed boundary coverage in `36bde69`, `fec9460`, and `e10fa20`; focused T014 tests and repository hooks pass. Latest fresh policy run classifies 121 kills, 82 survivors, and 3 timeouts. Remaining findings are concentrated in scraper diagnostics/cache branches and timeout-prone pagination paths; T015/T016 not started. | REPAIR T014 |
 | 2026-08-24 | 6 | REPAIR -> VERIFY -> CHECKPOINT | T014 | Added public-boundary coverage for pagination, transport, cache filtering, request cookies, auth context, progress, timeout, and exception propagation. Documented diagnostic-only and erased-cast exclusions with owner/reason/proof. `tests/test_t014_thread_boundaries.py` = 47 passed; `make mutate-task-policy TASK=T014` = clean on three consecutive serial gates, including all three historical timeout mutants. | SELECT T015 |
+| 2026-08-24 | 8 | VERIFY -> CHECKPOINT | T015-T016 | Revalidated T015 clean evidence and completed T016 with public-boundary tests for status/service/error contracts. T016 policy: `clean`, 88/88 required keys killed, 45 documented structural exclusions, 0 timeout/survivor/no-test findings. Focused T016 suite: 132 passed; ruff format/check, pyright, and radon clean. Exclusions merged with existing T007-T015 records. | VERIFY final gates |
 
 ## Completion Review
 
-Batch A is complete. T007, T010, and T011 have current clean task-policy evidence; the two T007 ungenerated baseline keys are documented as removed-by-simplification with owner/reason/proof. The full `make ci-conventional` and `mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` gates pass. Remaining plan work begins at Batch B T012-T016.
+Batch B task-policy work is complete. T012-T016 have current clean task-policy evidence, with required keys killed and documented exclusions carrying owner/reason/proof. Final manifest and conventional gates remain to be run before plan completion.

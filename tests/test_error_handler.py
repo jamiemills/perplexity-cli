@@ -5,9 +5,12 @@ modes, emit on a single channel (JSON on stdout, human text on stderr) and
 never mix output across channels.
 """
 
+import inspect
 import json
 from io import StringIO
 from unittest.mock import patch
+
+import pytest
 
 from perplexity_cli.error_handler import handle_error
 from perplexity_cli.exit_codes import (
@@ -173,6 +176,35 @@ class TestHandleErrorJsonMode:
         stdout, _, _ = _capture_handle_error(Exception(), output_format="json")
         data = json.loads(stdout)
         assert data["error"]["message"] == "Exception"
+
+    def test_json_preserves_command_and_schema_selection(self):
+        stdout, stderr, _ = _capture_handle_error(
+            AuthenticationError("sentinel"), output_format="json", command="command-sentinel"
+        )
+        data = json.loads(stdout)
+        assert stderr == ""
+        assert data["command"] == "command-sentinel"
+
+    def test_public_defaults_preserve_output_contract(self):
+        parameters = inspect.signature(handle_error).parameters
+        assert parameters["output_format"].default == "human"
+        assert parameters["include_schema"].default == "no_schema"
+
+    @pytest.mark.parametrize(
+        ("status", "expected"),
+        [
+            (401, "authentication_required"),
+            (403, "permission_denied"),
+            (429, "rate_limited"),
+            (500, "network_error"),
+        ],
+    )
+    def test_http_status_classification_distinguishes_statuses(
+        self, status: int, expected: str
+    ) -> None:
+        exc = PerplexityHTTPStatusError("sentinel", response=SimpleResponse(status_code=status))
+        stdout, _, _ = _capture_handle_error(exc, output_format="json")
+        assert json.loads(stdout)["error"]["code"] == expected
 
 
 class TestHandleErrorHumanMode:
