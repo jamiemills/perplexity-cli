@@ -12,13 +12,13 @@ format: csm-plan/1
 
 - Plan ID: remediation-waves-execution
 - Status: in_progress
-- Current CSM state: REPAIR T014
+- Current CSM state: CHECKPOINT T014
 - Cycle: 6
 - Commits: allowed
-- Last checkpoint: 2026-08-24 - T014 boundary coverage committed; policy remains non-clean
+- Last checkpoint: 2026-08-24 - T014 clean on three consecutive serial policy gates
 - Last model/run: openai/gpt-5.6-luna / batch execution
-- Next transition: repair T014 survivors and timeout mutants
-- Active tasks: T014 (threads/scraper, threads/pagination)
+- Next transition: SELECT T015
+- Active tasks: T015 (attachments/upload_manager, commands help modules, utils HTTP/rate/session/attachment modules)
 - Blockers: none
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
@@ -172,7 +172,7 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
 7. [complete] Close T013 cache/persistence survivors (152)
    - Task ID: T013 | Depends on: Batch A | Parallel group: B2 | Risk: standard
    - Owned scope: threads/cache_manager, threads/models, threads/date_parser, threads/exporter, threads/utils
-8. [pending] Close T014 scraper survivors (206)
+8. [complete] Close T014 scraper survivors (206)
    - Task ID: T014 | Depends on: Batch A | Parallel group: B3 | Risk: high
    - Owned scope: threads/scraper, threads/pagination
 9. [pending] Close T015 upload/help/error survivors (274)
@@ -271,6 +271,7 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
 | 2026-08-24 | 6 | DISPATCH -> REPAIR | T013 | Added `tests/test_t013_thread_boundaries.py` with 24 focused boundary tests. Latest `make mutate-task-policy TASK=T013` completed accounting but remains non-clean: 81 killed, 71 survived, 0 timeout, 0 no-tests. Remaining clusters are cache validation/coverage and several date/export/model distinctions; no T013 commit made because its acceptance gate is not clean. | REPAIR T013 |
 | 2026-08-24 | 6 | REPAIR -> VERIFY -> CHECKPOINT | T013 | `make mutate-task-policy TASK=T013` exited 0 with status clean and 152/152 required keys killed; focused T013/date-parser suites passed (63 tests); Ruff format/check clean. | SELECT T014 |
 | 2026-08-24 | 6 | SELECT -> REPAIR -> CHECKPOINT | T014 | Committed boundary coverage in `36bde69`, `fec9460`, and `e10fa20`; focused T014 tests and repository hooks pass. Latest fresh policy run classifies 121 kills, 82 survivors, and 3 timeouts. Remaining findings are concentrated in scraper diagnostics/cache branches and timeout-prone pagination paths; T015/T016 not started. | REPAIR T014 |
+| 2026-08-24 | 6 | REPAIR -> VERIFY -> CHECKPOINT | T014 | Added public-boundary coverage for pagination, transport, cache filtering, request cookies, auth context, progress, timeout, and exception propagation. Documented diagnostic-only and erased-cast exclusions with owner/reason/proof. `tests/test_t014_thread_boundaries.py` = 47 passed; `make mutate-task-policy TASK=T014` = clean on three consecutive serial gates, including all three historical timeout mutants. | SELECT T015 |
 
 ## Completion Review
 

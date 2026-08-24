@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -28,7 +29,9 @@ from perplexity_cli.threads.scraper import (
     _extract_cache_thread_dicts,
     _get_str_field,
     _handle_http_error,
+    _has_integer_status_code,
     _is_response_protocol,
+    _load_request_exception_type,
     _parse_single_thread,
     _require_response,
     _response_core_members,
@@ -350,6 +353,14 @@ class TestScraperBoundaries:
         )
 
     @staticmethod
+    def test_parse_single_thread_missing_slug_uses_empty_url_component() -> None:
+        """An absent slug uses the documented empty URL component default."""
+        record, stopped = _parse_single_thread({"last_query_datetime": "2026-06-01T12:00:00"}, None)
+        assert stopped is False
+        assert record is not None
+        assert record.url.endswith("/search/")
+
+    @staticmethod
     def test_parse_single_thread_stops_at_lower_bound() -> None:
         """A thread older than the lower bound is not appended."""
         assert _parse_single_thread(
@@ -383,6 +394,15 @@ class TestScraperBoundaries:
         with pytest.raises(PerplexityHTTPStatusError) as raised:
             _handle_http_error(PerplexityHTTPStatusError("down", response=response))
         assert raised.value.response is response
+
+    @staticmethod
+    def test_http_error_mapping_preserves_unhandled_error_details() -> None:
+        """Unhandled status errors retain the upstream diagnostic payload."""
+        response = SimpleResponse(status_code=503)
+        error = PerplexityHTTPStatusError("upstream-sentinel", response=response)
+        with pytest.raises(PerplexityHTTPStatusError) as raised:
+            _handle_http_error(error)
+        assert "upstream-sentinel" in str(raised.value)
 
     @pytest.mark.asyncio
     async def test_request_helpers_cover_auth_rate_limit_and_page_state(self) -> None:
@@ -449,6 +469,24 @@ class TestScraperBoundaries:
         assert "XX" not in str(info.call_args.args)
 
     @pytest.mark.asyncio
+    async def test_post_request_forwards_cookies_to_transport(self) -> None:
+        """The request boundary forwards the caller's cookie mapping."""
+        scraper = _scraper()
+        client = AsyncMock()
+        response = Mock(ok=True, json=Mock(return_value=[]))
+        client.post.return_value = response
+        with patch(
+            "perplexity_cli.threads.scraper.to_curl_cffi_cookies",
+            return_value="cookie-sentinel",
+        ) as convert:
+            result = await scraper._post_thread_list_request(
+                client, {"h": "v"}, {"c": "v"}, {"offset": 0}
+            )
+        assert result is response
+        convert.assert_called_once_with({"c": "v"})
+        assert client.post.await_args.kwargs["cookies"] == "cookie-sentinel"
+
+    @pytest.mark.asyncio
     async def test_scrape_all_threads_forwards_all_public_context(self) -> None:
         """The public scrape boundary forwards dates and progress unchanged."""
         scraper = _scraper()
@@ -513,6 +551,46 @@ class TestScraperBoundaries:
         assert request.await_args_list[0].args[3]["offset"] == 0
         assert request.await_args_list[1].args[3]["offset"] == 100
 
+    @pytest.mark.asyncio
+    async def test_fetch_all_threads_forwards_auth_progress_and_timeout(self) -> None:
+        """The pagination boundary retains auth, progress, and transport settings."""
+        scraper = _scraper(cookies={"existing": "cookie"})
+        callback = MagicMock()
+        session = MagicMock()
+        client = AsyncMock()
+        session.__aenter__ = AsyncMock(return_value=client)
+        session.__aexit__ = AsyncMock(return_value=None)
+        pages = [
+            [
+                {
+                    "last_query_datetime": "2026-01-02T00:00:00",
+                    "slug": "new",
+                    "title": "New",
+                    "has_next_page": False,
+                    "total_threads": 1,
+                }
+            ]
+        ]
+        with (
+            patch(
+                "perplexity_cli.threads.scraper._create_async_session", return_value=session
+            ) as create,
+            patch.object(
+                scraper, "_make_api_request", new_callable=AsyncMock, side_effect=pages
+            ) as request,
+        ):
+            records = await scraper._fetch_all_threads_from_api(
+                "session-sentinel", callback, from_date="2026-01-01"
+            )
+        assert [record.title for record in records] == ["New"]
+        create.assert_called_once_with(timeout=30)
+        assert request.await_args.args[1] == {"Content-Type": "application/json"}
+        assert request.await_args.args[2] == {
+            "existing": "cookie",
+            "__Secure-next-auth.session-token": "session-sentinel",
+        }
+        callback.assert_called_once_with(1, 1)
+
     @staticmethod
     def test_single_entry_wraps_timestamp_value_errors() -> None:
         """Malformed timestamp parsing is normalised at the scraper boundary."""
@@ -571,6 +649,58 @@ class TestScraperBoundaries:
         info.assert_called_once()
         assert info.call_args.args[0] is not None
         assert "XX" not in str(info.call_args.args)
+        cache_manager.requires_fresh_data.assert_called_once_with("from", "to")
+
+    @staticmethod
+    def test_cache_only_applies_lower_date_bound() -> None:
+        """Cache-only results honour both requested date boundaries."""
+        cache_manager = MagicMock()
+        cache_manager.requires_fresh_data.return_value = (False, None, None)
+        cache_manager.load_cache.return_value = {
+            "threads": [
+                {
+                    "title": "old",
+                    "url": "old-url",
+                    "created_at": "2025-12-31T00:00:00Z",
+                },
+                {
+                    "title": "new",
+                    "url": "new-url",
+                    "created_at": "2026-01-02T00:00:00Z",
+                },
+            ]
+        }
+        result = _scraper(cache_manager=cache_manager)._try_cache_only("2026-01-01", None)
+        assert result is not None
+        assert [thread.title for thread in result] == ["new"]
+
+    @staticmethod
+    def test_missing_status_code_is_not_an_integer() -> None:
+        """A failed response without a status code fails closed."""
+        response = type("Response", (), {"ok": False, "json": lambda self: []})()
+        assert _has_integer_status_code(response) is False
+
+    @staticmethod
+    def test_request_exception_loader_reports_available_transport() -> None:
+        """The installed transport reports its exception type as available."""
+        exception_type, available = _load_request_exception_type()
+        assert available is True
+        assert issubclass(exception_type, Exception)
+
+    @staticmethod
+    def test_request_exception_loader_falls_back_when_transport_import_fails() -> None:
+        """An unavailable optional transport gets the safe exception fallback."""
+        real_import = builtins.__import__
+
+        def fail_transport_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "curl_cffi.requests.exceptions":
+                raise ImportError("optional transport unavailable")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=fail_transport_import):
+            exception_type, available = _load_request_exception_type()
+        assert exception_type is Exception
+        assert available is False
 
     @staticmethod
     def test_merge_with_cache_uses_manager_only_for_nonempty_cached_data() -> None:
