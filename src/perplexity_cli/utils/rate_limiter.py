@@ -102,7 +102,8 @@ class RateLimiter:
             # Check if we have tokens available
             if self._state.tokens >= 1.0:
                 # Consume one token and proceed immediately
-                self._state.tokens -= 1.0
+                consumed_tokens = min(1.0, self._state.tokens)
+                self._state.tokens -= consumed_tokens
             else:
                 # No tokens available, calculate wait time
                 # We need 1 token, and we have self._state.tokens

@@ -160,6 +160,19 @@ class TestRateLimiterAcquire:
     """Test the acquire() method and token bucket behaviour."""
 
     @pytest.mark.asyncio
+    async def test_single_token_acquisition_consumes_one_token(
+        self, fake_clock: _FakeClock
+    ) -> None:
+        """A one-token bucket reaches zero rather than underflowing."""
+        limiter = RateLimiter(requests_per_period=1, period_seconds=10.0)
+
+        wait_time = await limiter.acquire()
+
+        assert wait_time == pytest.approx(0.0)
+        assert limiter._state.tokens == pytest.approx(0.0)
+        assert limiter.total_requests == 1
+
+    @pytest.mark.asyncio
     async def test_acquire_returns_zero_when_tokens_available(self):
         """Test that acquire() returns 0 wait time when tokens are available."""
         limiter = RateLimiter(requests_per_period=10, period_seconds=60.0)
