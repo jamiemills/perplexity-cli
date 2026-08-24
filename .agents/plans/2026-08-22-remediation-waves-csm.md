@@ -11,15 +11,15 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: remediation-waves-execution
-- Status: blocked
-- Current CSM state: BLOCKED
+- Status: in_progress
+- Current CSM state: CHECKPOINT
 - Cycle: 9
 - Commits: allowed
-- Last checkpoint: 2026-08-24 - T017 mutation policy passed
+- Last checkpoint: 2026-08-24 - T019 mutation policy passed
 - Last model/run: openai/gpt-5.6-luna / remediation-waves-execution
-- Next transition: BLOCKED -> RECOVER
-- Active tasks: T018
-- Blockers: protected mutation-test node map requires a repository-wide ledger regeneration after the export test file changed; the required map/test updates are outside the five owned module scopes and the pre-commit hook rejects the T018 commit until they are reconciled
+- Next transition: SELECT T020
+- Active tasks: T020
+- Blockers: none
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
 ## Goal
@@ -277,6 +277,8 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
 | 2026-08-24 | 9 | RECOVER -> VALIDATE -> SELECT -> VERIFY -> CHECKPOINT | T017 | Revalidated the triage keyset and current worktree. Removed only stale generated `mutants/` workspace. `make mutate-task-policy TASK=T017` passed with status clean and 118/118 required keys killed; focused `tests/test_t017_boundaries.py` passed 21 tests. | SELECT T018 |
 | 2026-08-24 | 9 | VERIFY -> CHECKPOINT | T018 | Added public export boundary coverage. `make mutate-task-policy TASK=T018` passed with status clean: 166 killed and 3 documented structural exclusions; focused export suite passed 133 tests; Ruff format/check passed. | SELECT T019 |
 | 2026-08-24 | 9 | CHECKPOINT -> BLOCKED | T018 | T018 policy is clean, but the required commit hook fails `test_node_map_is_exact_current_to_current_bijection`: current protected test collection is 673 nodes while the historical map is 615, with renamed/parameterised export nodes also requiring reconciliation. No hook bypass used; T018 remains uncommitted. | BLOCKED -> RECOVER |
+| 2026-08-24 | 9 | RECOVER -> REPAIR -> VERIFY -> CHECKPOINT | T018 | Reconciled the protected node map to 673 current nodes, updated marker/status counts, and reran the policy gate clean: 166/166 required keys killed plus 3 documented exclusions. Focused export and ledger tests passed; commit `e9e830d` passed repository hooks. | SELECT T019 |
+| 2026-08-24 | 9 | SELECT -> REPAIR -> VERIFY -> CHECKPOINT | T019 | Added public MCP boundary tests. Policy gate clean: 100/100 required keys killed plus 5 documented structural exclusions; focused MCP tests, Ruff, Pyright, and Radon passed. | SELECT T020 |
 
 ## Completion Review
 

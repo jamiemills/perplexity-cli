@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import sys
-from unittest.mock import AsyncMock, MagicMock, Mock
+from argparse import ArgumentParser
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, Mock, call
 
 import pytest
 
@@ -50,6 +53,97 @@ def test_parse_args_streamable_http(monkeypatch: pytest.MonkeyPatch) -> None:
     config = _parse_args()
     assert config.transport == "streamable-http"
     assert config.port == 9000
+
+
+@pytest.mark.parametrize("transport", ["socket", "STDIO", "STREAMABLE-HTTP"])
+def test_parse_args_rejects_unknown_transport(
+    monkeypatch: pytest.MonkeyPatch,
+    transport: str,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["pxcli-mcp", "--transport", transport])
+
+    with pytest.raises(SystemExit) as excinfo:
+        _parse_args()
+
+    assert excinfo.value.code == 2
+
+
+def test_parse_args_converts_port_and_preserves_mount_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["pxcli-mcp", "--port", "8123", "--mount-path", "agent/mcp"],
+    )
+
+    assert _parse_args() == ServerConfig(port=8123, mount_path="agent/mcp")
+
+
+def test_parse_args_help_describes_all_options(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["pxcli-mcp", "--help"])
+
+    with pytest.raises(SystemExit) as excinfo:
+        _parse_args()
+
+    assert excinfo.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "Run the Perplexity MCP server." in help_text
+    assert "MCP transport to use." in help_text
+    assert help_text.count("Host to bind when using streamable HTTP.") == 1
+
+
+def test_parse_args_help_describes_http_options(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["pxcli-mcp", "--help"])
+
+    with pytest.raises(SystemExit) as excinfo:
+        _parse_args()
+
+    assert excinfo.value.code == 0
+    help_text = capsys.readouterr().out
+    assert help_text.count("Port to bind when using streamable HTTP.") == 1
+    assert help_text.count("HTTP mount path when using streamable HTTP.") == 1
+
+
+def test_parse_args_builds_the_declared_parser_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = Mock(wraps=ArgumentParser())
+    factory = Mock(return_value=parser)
+    monkeypatch.setattr(
+        mcp_server,
+        "argparse",
+        SimpleNamespace(ArgumentParser=factory),
+    )
+    monkeypatch.setattr(sys, "argv", ["pxcli-mcp"])
+
+    assert _parse_args() == ServerConfig()
+    factory.assert_called_once_with(description="Run the Perplexity MCP server.")
+    assert parser.add_argument.call_args_list == [
+        call(
+            "--transport",
+            choices=["stdio", "streamable-http"],
+            default="stdio",
+            help="MCP transport to use.",
+        ),
+        call(
+            "--host",
+            default="127.0.0.1",
+            help="Host to bind when using streamable HTTP.",
+        ),
+        call(
+            "--port",
+            type=int,
+            default=8000,
+            help="Port to bind when using streamable HTTP.",
+        ),
+        call(
+            "--mount-path",
+            default="/mcp",
+            help="HTTP mount path when using streamable HTTP.",
+        ),
+    ]
 
 
 def test_parse_args_forwards_all_http_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -110,6 +204,13 @@ def test_invalid_user_inputs_raise_validation_errors() -> None:
         _normalise_output_format("xml")
     with pytest.raises(ValueError):
         run_mcp_query(" ", "quick", "plain")
+
+
+def test_normalise_output_format_error_is_stable() -> None:
+    with pytest.raises(ValueError) as excinfo:
+        _normalise_output_format("xml")
+
+    assert str(excinfo.value) == "output_format must be one of: json, markdown, plain"
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +346,20 @@ def test_run_mcp_query_plain_format(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "Plain text." in result.rendered_response
 
 
+def test_run_mcp_query_json_format_preserves_normalised_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "perplexity_cli.mcp_server._request_answer",
+        lambda query, mode: Answer(text="answer", references=[]),
+    )
+
+    result = run_mcp_query("query", "quick", "json")
+
+    assert result.output_format == "json"
+    assert json.loads(result.rendered_response)["answer"] == "answer"
+
+
 def test_run_mcp_query_builds_complete_structured_result(monkeypatch: pytest.MonkeyPatch) -> None:
     """MCP results preserve mode, answer, rendering and reference counts."""
     answer = Answer(
@@ -293,6 +408,31 @@ def test_request_answer_passes_auth_and_search_mode(monkeypatch: pytest.MonkeyPa
     )
 
 
+@pytest.mark.parametrize(
+    ("mode", "expected_search_mode"),
+    [("quick", "standard"), ("deep", "multi_step")],
+)
+def test_request_answer_maps_each_public_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    expected_search_mode: str,
+) -> None:
+    monkeypatch.setattr("perplexity_cli.mcp_server._load_authentication", lambda: (None, None))
+    api = Mock()
+    api.get_complete_answer.return_value = Answer(text="answer", references=[])
+    context = MagicMock()
+    context.__enter__.return_value = api
+    context.__exit__.return_value = False
+    factory = Mock(return_value=context)
+    monkeypatch.setattr("perplexity_cli.mcp_server.PerplexityAPI", factory)
+
+    _request_answer("question", mode)  # type: ignore[arg-type]
+
+    api.get_complete_answer.assert_called_once_with(
+        "question", search_implementation_mode=expected_search_mode
+    )
+
+
 # ---------------------------------------------------------------------------
 # Direct helper function tests
 # ---------------------------------------------------------------------------
@@ -331,6 +471,12 @@ def test_format_json_response_has_complete_schema() -> None:
     }
 
     assert json.loads(_format_json_response(answer)) == expected
+
+
+def test_format_json_response_uses_stable_pretty_json() -> None:
+    answer = Answer(text="Hello", references=[])
+
+    assert _format_json_response(answer) == '{\n  "answer": "Hello",\n  "references": []\n}'
 
 
 def test_render_answer_json() -> None:
@@ -391,6 +537,10 @@ def test_run_mcp_query_rejects_empty_query() -> None:
     with pytest.raises(ValueError, match="query must not be empty"):
         run_mcp_query("   ", "quick", "plain")
 
+    with pytest.raises(ValueError) as excinfo:
+        run_mcp_query("   ", "quick", "plain")
+    assert str(excinfo.value) == "query must not be empty"
+
 
 # ---------------------------------------------------------------------------
 # create_mcp_server — tool ctx paths
@@ -409,8 +559,11 @@ async def test_quick_info_reports_progress_via_ctx(monkeypatch: pytest.MonkeyPat
     result = await _perplexity_quick_info(query="test", output_format="plain", ctx=mock_ctx)
 
     assert result.answer == "test"
-    mock_ctx.info.assert_called_once()
-    assert mock_ctx.report_progress.call_count == 2
+    mock_ctx.info.assert_awaited_once_with("Running quick Perplexity lookup")
+    assert mock_ctx.report_progress.await_args_list == [
+        call(progress=0.2, total=1.0, message="Starting quick lookup"),
+        call(progress=1.0, total=1.0, message="Quick lookup complete"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -427,8 +580,86 @@ async def test_deep_info_reports_progress_via_ctx(monkeypatch: pytest.MonkeyPatc
     )
 
     assert result.answer == "deep result"
-    mock_ctx.info.assert_called_once()
-    assert mock_ctx.report_progress.call_count == 2
+    mock_ctx.info.assert_awaited_once_with("Running deep Perplexity research")
+    assert mock_ctx.report_progress.await_args_list == [
+        call(progress=0.1, total=1.0, message="Starting deep research"),
+        call(progress=1.0, total=1.0, message="Deep research complete"),
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "mode"),
+    [(_perplexity_quick_info, "quick"), (_perplexity_deep_info, "deep")],
+)
+async def test_query_tools_forward_clean_arguments_without_context(
+    monkeypatch: pytest.MonkeyPatch,
+    tool: Any,
+    mode: str,
+) -> None:
+    run_query = Mock(return_value="result")
+    monkeypatch.setattr("perplexity_cli.mcp_server.run_mcp_query", run_query)
+
+    result = await tool("question", "json", None)  # type: ignore[operator]
+
+    assert result == "result"
+    run_query.assert_called_once_with("question", mode, "json")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", [_perplexity_quick_info, _perplexity_deep_info])
+async def test_query_tools_default_to_markdown(
+    monkeypatch: pytest.MonkeyPatch,
+    tool: Any,
+) -> None:
+    run_query = Mock(return_value="result")
+    monkeypatch.setattr("perplexity_cli.mcp_server.run_mcp_query", run_query)
+
+    assert await tool("question") == "result"
+    run_query.assert_called_once_with(
+        "question", "quick" if tool is _perplexity_quick_info else "deep", "markdown"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "title", "description"),
+    [
+        (
+            "perplexity_quick_info",
+            "Perplexity Quick Info",
+            "Fast Perplexity lookup for recent facts, short explanations, and quick validation. "
+            "Use this first when you need concise current information without multi-step research.",
+        ),
+        (
+            "perplexity_deep_info",
+            "Perplexity Deep Info",
+            "Deeper Perplexity research for comparisons, timelines, synthesis, or topics that need "
+            "multi-step investigation across sources. Use when a quick answer may be incomplete.",
+        ),
+    ],
+)
+async def test_create_mcp_server_registers_tool_contract(
+    name: str,
+    title: str,
+    description: str,
+) -> None:
+    server = create_mcp_server()
+    tools = await server.list_tools()
+    by_name = {tool.name: tool for tool in tools}
+
+    assert by_name[name].title == title
+    assert by_name[name].description == description
+    assert by_name[name].meta == _server_meta()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["perplexity_quick_info", "perplexity_deep_info"])
+async def test_create_mcp_server_registers_markdown_default(name: str) -> None:
+    tools = await create_mcp_server().list_tools()
+    by_name = {tool.name: tool for tool in tools}
+
+    assert by_name[name].inputSchema["properties"]["output_format"]["default"] == "markdown"
 
 
 @pytest.mark.asyncio
