@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-from contextlib import contextmanager
+import subprocess
+import sys
+from contextlib import contextmanager, redirect_stderr
+from inspect import signature
+from io import StringIO
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -15,6 +19,7 @@ from perplexity_cli.runners.export import (
     ExportDateRange,
     ExportResult,
     OutputMode,
+    _echo_date_range,
     _emit_json_error,
     _handle_cache_clear,
     _handle_http_status_error,
@@ -25,7 +30,6 @@ from perplexity_cli.runners.export import (
     _output_json,
     _resolve_ctx_flags,
     _scrape_threads,
-    _setup_rate_limiter,
     _validate_export_dates,
     run_export_threads_command,
 )
@@ -174,70 +178,6 @@ class TestValidateExportDates:
             with pytest.raises(SystemExit):
                 _validate_export_dates("bad", None, output_format="json")
             mock_handle.assert_called_once()
-
-
-class TestSetupRateLimiter:
-    """Tests for _setup_rate_limiter."""
-
-    def test_returns_none_when_disabled(self):
-        """When rate limiting is disabled, returns None."""
-        with patch(
-            "perplexity_cli.runners.export.get_rate_limiting_config",
-            new=lambda: RateLimitConfig(enabled=False),
-        ):
-            result = _setup_rate_limiter(_LOGGER)
-        assert result is None
-
-    def test_returns_rate_limiter_when_enabled(self):
-        """When rate limiting is enabled, returns a RateLimiter instance."""
-        with patch(
-            "perplexity_cli.runners.export.get_rate_limiting_config",
-            new=lambda: RateLimitConfig(enabled=True, requests_per_period=10, period_seconds=60),
-        ):
-            result = _setup_rate_limiter(_LOGGER)
-        assert result is not None
-
-
-class TestHandleCacheClear:
-    """Tests for _handle_cache_clear."""
-
-    def test_no_cache_exists(self, tmp_path, capsys):
-        """When no cache file exists, info message is shown."""
-        cm = FakeCacheManager(cache_path=tmp_path / "cache.json")
-        _handle_cache_clear(cm, clear_cache=True, output_format="human", logger=_LOGGER)
-        captured = capsys.readouterr()
-        assert "No cache file to clear" in captured.out
-        assert cm.clear_calls == 0
-
-    def test_cache_cleared(self, tmp_path, capsys):
-        """When cache exists, it is cleared and confirmed."""
-        cache_file = tmp_path / "cache.json"
-        cache_file.write_text("{}")
-        cm = FakeCacheManager(cache_path=cache_file)
-        _handle_cache_clear(cm, clear_cache=True, output_format="human", logger=_LOGGER)
-        assert cm.clear_calls == 1
-        assert not cache_file.exists()
-        assert "Cache cleared" in capsys.readouterr().out
-
-    def test_no_clear_requested(self, tmp_path):
-        """When clear_cache is False, nothing happens."""
-        cm = FakeCacheManager(cache_path=tmp_path / "cache.json")
-        _handle_cache_clear(cm, clear_cache=False, output_format="human", logger=_LOGGER)
-        assert cm.cache_exists_calls == 0
-
-    def test_json_mode_silent_no_cache(self, tmp_path, capsys):
-        """In JSON mode, no output is written when cache doesn't exist."""
-        cm = FakeCacheManager(cache_path=tmp_path / "cache.json")
-        _handle_cache_clear(cm, clear_cache=True, output_format="json", logger=_LOGGER)
-        assert capsys.readouterr().out == ""
-
-    def test_json_mode_silent_cleared(self, tmp_path, capsys):
-        """In JSON mode, no output is written when cache is cleared."""
-        cache_file = tmp_path / "cache.json"
-        cache_file.write_text("{}")
-        cm = FakeCacheManager(cache_path=cache_file)
-        _handle_cache_clear(cm, clear_cache=True, output_format="json", logger=_LOGGER)
-        assert capsys.readouterr().out == ""
 
 
 class TestScrapeThreads:
@@ -562,6 +502,18 @@ class TestExportRunnerMutationKillers:
         _echo_date_range("2025-01-01", "2025-12-31")
         captured = capsys.readouterr()
         assert "[OK] Filtered by date range: 2025-01-01 to 2025-12-31" in captured.err
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from perplexity_cli.runners.export import _echo_date_range; "
+                "_echo_date_range('2025-01-01', '2025-12-31')",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stderr == "[OK] Filtered by date range: 2025-01-01 to 2025-12-31\n"
 
     def test_echo_date_range_from_only(self, capsys):
         from perplexity_cli.runners.export import _echo_date_range
@@ -589,6 +541,43 @@ class TestExportRunnerMutationKillers:
         _echo_date_range("2025-01-01", None, prefix="Date range")
         captured = capsys.readouterr()
         assert "Date range: 2025-01-01 to end" in captured.err
+
+    def test_echo_date_range_default_prefix_is_exact(self, capsys):
+        assert _echo_date_range.__kwdefaults__ == {"prefix": "[OK] Filtered by date range"}
+        _echo_date_range("2025-01-01", None)
+        assert capsys.readouterr().err == ("[OK] Filtered by date range: 2025-01-01 to end\n")
+
+    @pytest.mark.parametrize(
+        ("from_date", "to_date", "expected"),
+        (
+            (
+                "2025-01-01",
+                None,
+                "[OK] Filtered by date range: 2025-01-01 to end\n",
+            ),
+            (
+                None,
+                "2025-12-31",
+                "[OK] Filtered by date range: beginning to 2025-12-31\n",
+            ),
+        ),
+    )
+    def test_echo_date_range_default_prefix_exact_for_open_bounds(
+        self, from_date, to_date, expected
+    ):
+        with redirect_stderr(StringIO()):
+            _echo_date_range(from_date, to_date)
+        code = (
+            "from perplexity_cli.runners.export import _echo_date_range; "
+            f"_echo_date_range({from_date!r}, {to_date!r})"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stderr == expected
 
     def test_handle_no_threads_shows_date_range(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
@@ -676,16 +665,6 @@ class TestExportRunnerMutationKillers:
         _handle_cache_clear(cm, clear_cache=False, output_format="human", logger=_LOGGER)
         assert cm.cache_exists_calls == 0
         assert cm.clear_calls == 0
-
-    def test_setup_rate_limiter_logs_config(self, caplog):
-        with patch(
-            "perplexity_cli.runners.export.get_rate_limiting_config",
-            new=lambda: RateLimitConfig(enabled=True, requests_per_period=5, period_seconds=30),
-        ):
-            with caplog.at_level(logging.INFO, logger="test-export-runner"):
-                result = _setup_rate_limiter(_LOGGER)
-        assert result is not None
-        assert "Rate limiting enabled: 5 requests per 30.0 seconds" in caplog.text
 
     def test_resolve_ctx_flags_maps_json_and_schema(self):
         """Export output mode reflects both context flags independently."""
@@ -864,3 +843,588 @@ class TestExportRunnerMutationKillers:
             run_export_threads_command({"json": True}, None, None, None, False, False)
 
         assert handle.call_args.args[:2] == (error, "json")
+
+
+class TestExportPublicBoundaryCoverage:
+    """Cover export request, output, and error distinctions at the public boundary."""
+
+    @staticmethod
+    def _run(scraper, cache=None, config=None):
+        return _export_dependencies(
+            FakeTokenManager(load_token_result=("token", {})),
+            cache or FakeCacheManager(),
+            scraper,
+            config or RateLimitConfig(enabled=False),
+        )
+
+    def test_request_validation_is_exact(self):
+        with pytest.raises(TypeError) as positional:
+            run_export_threads_command({}, None, None, None, False)
+        assert str(positional.value) == (
+            "run_export_threads_command expected output, force_refresh, and clear_cache"
+        )
+        with pytest.raises(TypeError) as keyword:
+            run_export_threads_command(
+                {}, None, None, output=None, force_refresh=False, wrong=False
+            )
+        assert (
+            str(keyword.value)
+            == "run_export_threads_command requires output, force_refresh, clear_cache"
+        )
+        with pytest.raises(TypeError) as output:
+            run_export_threads_command({}, None, None, "out.csv", False, False)
+        assert str(output.value) == "output must be a Path or None"
+
+    def test_json_payload_uses_empty_string_defaults_at_boundary(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        monkeypatch.chdir(tmp_path)
+
+        class Defaults(dict):
+            def __init__(self):
+                super().__init__()
+                self.defaults = []
+
+            def get(self, key, default=None):
+                self.defaults.append((key, default))
+                return default
+
+        record = Defaults()
+        with self._run(FakeThreadScraper(threads=[record])):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+        payload = json.loads(capsys.readouterr().out)["result"]["threads"][0]
+        assert payload == {"title": "", "created_at": "", "url": ""}
+        assert record.defaults == [("title", ""), ("created_at", ""), ("url", "")]
+
+    @pytest.mark.parametrize("bad", ("not-a-date", "2025-99-99"))
+    def test_invalid_date_is_structured_and_stops_scrape(self, bad, capsys):
+        scraper = FakeThreadScraper(threads=[_THREAD_1])
+        with self._run(scraper), pytest.raises(SystemExit):
+            run_export_threads_command({"json": True}, bad, None, None, False, False)
+        envelope = json.loads(capsys.readouterr().out)
+        assert envelope["ok"] is False
+        assert envelope["error"]["message"] in {
+            "Unknown string format: not-a-date",
+            "month must be in 1..12: 2025-99-99",
+        }
+        assert scraper.scrape_calls == []
+
+    def test_human_output_and_logs_are_exact(self, tmp_path, monkeypatch, capsys, caplog):
+        monkeypatch.chdir(tmp_path)
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])), caplog.at_level(logging.INFO):
+            run_export_threads_command({}, None, None, None, False, False)
+        output = capsys.readouterr().out
+        assert "Exporting threads from Perplexity.ai library...\n" in output
+        assert "\n[OK] Export complete\n[OK] Exported 1 threads\n" in output
+        assert "Exported 1 threads to " in caplog.text
+        assert "Starting thread export" in caplog.text
+
+    def test_progress_callback_uses_non_newline_human_output(self, monkeypatch):
+        scraper = FakeThreadScraper(threads=[_THREAD_1])
+        echoes = []
+        monkeypatch.setattr(
+            "perplexity_cli.runners.export.click.echo", lambda *a, **kw: echoes.append((a, kw))
+        )
+        with self._run(scraper):
+            run_export_threads_command({}, None, None, None, False, False)
+        progress = next(args for args, kwargs in echoes if args and "Extracting" in args[0])
+        assert next(kwargs for args, kwargs in echoes if args == progress)["nl"] is False
+
+    @pytest.mark.parametrize("error", (AuthenticationError("expired"), ValueError("sentinel")))
+    def test_known_errors_preserve_exact_public_diagnostics(self, error, capsys, caplog):
+        with (
+            self._run(FakeThreadScraper(scrape_error=error)),
+            caplog.at_level(logging.ERROR),
+            pytest.raises(SystemExit),
+        ):
+            run_export_threads_command({}, None, None, None, False, False)
+        text = capsys.readouterr().err
+        assert f"[ERROR] Export failed: {error}" in text
+        assert "Export failed: " + str(error) in caplog.text
+        if isinstance(error, AuthenticationError):
+            assert (
+                "Your token may have expired. Please re-authenticate:\n  perplexity-cli auth\n"
+                in text
+            )
+
+    @pytest.mark.parametrize(
+        "error,handler",
+        (
+            (PerplexityHTTPStatusError("http"), "handle_http_error"),
+            (RuntimeError("unexpected"), "handle_unexpected_cli_error"),
+        ),
+    )
+    def test_public_error_handlers_receive_mode_context_and_logger(self, error, handler):
+        with (
+            self._run(FakeThreadScraper(scrape_error=error)),
+            patch(f"perplexity_cli.runners.export.{handler}", side_effect=SystemExit(1)) as mock,
+            pytest.raises(SystemExit),
+        ):
+            run_export_threads_command({}, None, None, None, False, False)
+        assert mock.call_args.args[0] is error
+        assert mock.call_args.args[1] is not None
+        assert mock.call_args.kwargs.get("debug_mode") == "normal"
+
+    def test_interrupt_keeps_exit_code_and_exact_log(self, capsys, caplog):
+        with (
+            self._run(FakeThreadScraper(scrape_error=KeyboardInterrupt())),
+            caplog.at_level(logging.INFO),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                run_export_threads_command({}, None, None, None, False, False)
+        assert exc_info.value.code == 130
+        assert capsys.readouterr().err == "\n[ERROR] Export interrupted.\n"
+        assert "Export interrupted by user" in caplog.text
+
+    @pytest.mark.parametrize(
+        ("from_date", "to_date", "message"),
+        (
+            (123, None, "from_date must be a string or None"),
+            (None, 123, "to_date must be a string or None"),
+        ),
+    )
+    def test_public_request_names_invalid_dates(self, from_date, to_date, message):
+        with pytest.raises(TypeError, match=message):
+            run_export_threads_command({}, from_date, to_date, None, False, False)
+
+    def test_public_human_date_output_is_exact(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])):
+            run_export_threads_command({}, "2025-01-01", "2025-12-31", None, False, False)
+        assert "[OK] Filtered by date range: 2025-01-01 to 2025-12-31\n" in capsys.readouterr().err
+
+    def test_public_scraper_constructor_receives_prepared_dependencies(self):
+        scraper = FakeThreadScraper(threads=[_THREAD_1])
+        received = {}
+
+        def construct(**kwargs):
+            received.update(kwargs)
+            return scraper
+
+        with (
+            self._run(scraper),
+            patch("perplexity_cli.runners.export.ThreadScraper", new=construct),
+        ):
+            run_export_threads_command({}, None, None, None, True, False)
+        assert received == {
+            "token": "token",
+            "cookies": {},
+            "rate_limiter": None,
+            "cache_manager": received["cache_manager"],
+            "force_refresh": True,
+        }
+
+    @pytest.mark.parametrize(
+        "ctx,expected", (({}, "[ERROR] Not authenticated.\n"), ({"json": True}, None))
+    )
+    def test_public_missing_authentication_has_mode_specific_boundary(
+        self, ctx, expected, capsys, caplog
+    ):
+        with self._run(FakeThreadScraper()), pytest.raises(SystemExit):
+            with patch(
+                "perplexity_cli.runners.export._create_token_manager",
+                new=lambda: FakeTokenManager(load_token_result=(None, None)),
+            ):
+                run_export_threads_command(ctx, None, None, None, False, False)
+        if expected is not None:
+            assert expected in capsys.readouterr().err
+        else:
+            assert json.loads(capsys.readouterr().out)["error"]["message"] == "Not authenticated"
+
+    @pytest.mark.parametrize("ctx", ({}, {"json": True}))
+    def test_public_empty_result_has_mode_specific_boundary(self, ctx, capsys):
+        with self._run(FakeThreadScraper()), pytest.raises(SystemExit):
+            run_export_threads_command(ctx, None, None, None, False, False)
+        output = capsys.readouterr()
+        if ctx.get("json"):
+            assert (
+                json.loads(output.out)["error"]["message"] == "No threads found matching criteria"
+            )
+        else:
+            assert output.err.startswith("\n[ERROR] No threads found matching criteria.\n")
+
+    def test_public_explicit_json_output_writes_and_reports_csv(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        monkeypatch.chdir(tmp_path)
+        output = tmp_path / "export.csv"
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])):
+            run_export_threads_command({"json": True}, None, None, output, False, False)
+        envelope = json.loads(capsys.readouterr().out)
+        assert envelope["result"]["output_path"] == str(output.resolve())
+        assert output.exists()
+
+    def test_public_cache_clear_distinguishes_missing_and_present(self, tmp_path, capsys, caplog):
+        cache = FakeCacheManager(cache_path=tmp_path / "cache.json")
+        with (
+            self._run(FakeThreadScraper(threads=[_THREAD_1]), cache),
+            caplog.at_level(logging.INFO),
+        ):
+            run_export_threads_command({}, None, None, None, False, True)
+        assert "[INFO] No cache file to clear\n" in capsys.readouterr().out
+        assert "Cache cleared by user" not in caplog.text
+        cache.cache_path.write_text("{}")
+        with (
+            self._run(FakeThreadScraper(threads=[_THREAD_1]), cache),
+            caplog.at_level(logging.INFO),
+        ):
+            run_export_threads_command({}, None, None, None, False, True)
+        assert "[OK] Cache cleared\n" in capsys.readouterr().out
+        assert "Cache cleared by user" in caplog.text
+
+    def test_public_enabled_rate_limiter_is_constructed_and_logged(self, caplog):
+        config = RateLimitConfig(enabled=True, requests_per_period=2, period_seconds=10)
+        with (
+            self._run(FakeThreadScraper(threads=[_THREAD_1]), config=config),
+            caplog.at_level(logging.INFO),
+        ):
+            run_export_threads_command({}, None, None, None, False, False)
+        assert "Rate limiting enabled: 2 requests per 10.0 seconds" in caplog.text
+
+    @pytest.mark.parametrize(
+        ("error", "handler"),
+        (
+            (RuntimeError("unexpected"), "handle_unexpected_cli_error"),
+            (PerplexityHTTPStatusError("http"), "handle_http_error"),
+        ),
+    )
+    def test_public_json_errors_preserve_exception_and_debug_mode(self, error, handler):
+        with (
+            self._run(FakeThreadScraper(scrape_error=error)),
+            patch("perplexity_cli.runners.export.handle_error") as json_error,
+            patch(f"perplexity_cli.runners.export.{handler}", side_effect=SystemExit(1)) as mock,
+            pytest.raises(SystemExit),
+        ):
+            run_export_threads_command(
+                {"json": True, "debug": True}, None, None, None, False, False
+            )
+        json_error.assert_called_once_with(error, "pxcli threads export", output_format="json")
+        assert mock.call_args.args[0] is error
+        assert mock.call_args.kwargs["debug_mode"] == "debug"
+
+    @pytest.mark.parametrize("ctx", ({"schema": "yes"}, {"debug": "yes"}))
+    def test_public_context_rejects_non_bool_flags(self, ctx):
+        with pytest.raises(TypeError, match="must be a bool"):
+            run_export_threads_command(ctx, None, None, None, False, False)
+
+    @pytest.mark.parametrize("args", ((None, "yes", False), (None, False, "no")))
+    def test_public_request_rejects_non_bool_tail_values(self, args):
+        with pytest.raises(TypeError, match="must be a bool"):
+            run_export_threads_command({}, None, None, *args)
+
+    def test_public_json_only_log_is_exact(self, caplog):
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])), caplog.at_level(logging.INFO):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+        assert "Exported 1 threads (JSON only, no CSV written)" in caplog.text
+
+    def test_public_human_output_includes_resolved_path(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])):
+            run_export_threads_command({}, None, None, None, False, False)
+        assert (
+            f"[OK] Saved to: {next(tmp_path.glob('threads-*.csv')).resolve()}"
+            in capsys.readouterr().out
+        )
+
+    def test_public_json_progress_is_silent(self, capsys):
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+        assert "Extracting" not in capsys.readouterr().out
+
+    def test_public_enabled_rate_limiter_reaches_scraper(self):
+        config = RateLimitConfig(enabled=True, requests_per_period=2, period_seconds=10)
+        received = {}
+
+        def construct(**kwargs):
+            received.update(kwargs)
+            return FakeThreadScraper(threads=[_THREAD_1])
+
+        with (
+            self._run(FakeThreadScraper(), config=config),
+            patch("perplexity_cli.runners.export.ThreadScraper", new=construct),
+        ):
+            run_export_threads_command({}, None, None, None, False, False)
+        assert received["rate_limiter"] is not None
+
+    def test_public_context_preserves_schema_flag(self):
+        captured = {}
+
+        def output(result, mode, logger):
+            captured["mode"] = mode
+
+        with (
+            self._run(FakeThreadScraper(threads=[_THREAD_1])),
+            patch("perplexity_cli.runners.export._output_export_results", new=output),
+        ):
+            run_export_threads_command(
+                {"json": True, "schema": True}, None, None, None, False, False
+            )
+        assert captured["mode"] == OutputMode("json", "with_schema")
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        (
+            ((None, "yes", False), "force_refresh must be a bool"),
+            ((None, False, "no"), "clear_cache must be a bool"),
+        ),
+    )
+    def test_public_request_validation_names_tail_fields(self, args, message):
+        with pytest.raises(TypeError) as error:
+            run_export_threads_command({}, None, None, *args)
+        assert str(error.value) == message
+
+    def test_public_invalid_date_hint_is_exact(self, capsys):
+        with self._run(FakeThreadScraper()), pytest.raises(SystemExit):
+            run_export_threads_command({}, "bad", None, None, False, False)
+        assert "Please use YYYY-MM-DD format (e.g., 2025-12-23)\n" in capsys.readouterr().err
+
+    def test_public_rate_limit_log_is_exact(self, caplog):
+        config = RateLimitConfig(enabled=True, requests_per_period=2, period_seconds=10)
+        with (
+            self._run(FakeThreadScraper(threads=[_THREAD_1]), config=config),
+            caplog.at_level(logging.INFO),
+        ):
+            run_export_threads_command({}, None, None, None, False, False)
+        assert "Rate limiting enabled: 2 requests per 10.0 seconds" in [
+            record.message for record in caplog.records
+        ]
+
+    def test_public_cache_clear_log_is_exact(self, tmp_path, capsys, caplog):
+        cache = FakeCacheManager(cache_path=tmp_path / "cache.json")
+        cache.cache_path.write_text("{}")
+        with (
+            self._run(FakeThreadScraper(threads=[_THREAD_1]), cache),
+            caplog.at_level(logging.INFO),
+        ):
+            run_export_threads_command({}, None, None, None, False, True)
+        assert "Cache cleared by user" in [record.message for record in caplog.records]
+
+    def test_public_empty_result_preserves_both_date_bounds(self, capsys):
+        with self._run(FakeThreadScraper()), pytest.raises(SystemExit):
+            run_export_threads_command({}, "2025-01-01", "2025-12-31", None, False, False)
+        assert capsys.readouterr().err == (
+            "\n[ERROR] No threads found matching criteria.\nDate range: 2025-01-01 to 2025-12-31\n"
+        )
+
+    def test_public_default_date_output_is_exact(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])):
+            run_export_threads_command({}, "2025-01-01", None, None, False, False)
+        assert "[OK] Filtered by date range: 2025-01-01 to end\n" in capsys.readouterr().err
+
+    def test_public_json_output_log_message_is_exact(self, caplog):
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])), caplog.at_level(logging.INFO):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+        assert "Exported 1 threads (JSON only, no CSV written)" in [
+            record.message for record in caplog.records
+        ]
+
+    def test_public_explicit_output_log_contains_written_path(self, tmp_path, caplog):
+        output = tmp_path / "export.csv"
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])), caplog.at_level(logging.INFO):
+            run_export_threads_command({}, None, None, output, False, False)
+        assert f"Exported 1 threads to {output}" in [record.message for record in caplog.records]
+
+    def test_public_known_json_error_preserves_exception_and_log(self, caplog):
+        error = ValueError("bad thread data")
+        with (
+            self._run(FakeThreadScraper(scrape_error=error)),
+            patch("perplexity_cli.runners.export.handle_error") as json_error,
+            caplog.at_level(logging.ERROR),
+            pytest.raises(SystemExit),
+        ):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+        json_error.assert_called_once_with(error, "pxcli threads export", output_format="json")
+        assert "Export failed: bad thread data" in [record.message for record in caplog.records]
+
+    @pytest.mark.parametrize("handler", ("handle_http_error", "handle_unexpected_cli_error"))
+    def test_public_json_error_false_debug_is_normal(self, handler):
+        error = (
+            PerplexityHTTPStatusError("http")
+            if handler == "handle_http_error"
+            else RuntimeError("unexpected")
+        )
+        with (
+            self._run(FakeThreadScraper(scrape_error=error)),
+            patch("perplexity_cli.runners.export.handle_error"),
+            patch(f"perplexity_cli.runners.export.{handler}", side_effect=SystemExit(1)) as mock,
+            pytest.raises(SystemExit),
+        ):
+            run_export_threads_command(
+                {"json": True, "debug": False}, None, None, None, False, False
+            )
+        assert mock.call_args.kwargs["debug_mode"] == "normal"
+
+    def test_public_missing_authentication_diagnostics_and_warning_are_exact(self, capsys, caplog):
+        with self._run(FakeThreadScraper()), pytest.raises(SystemExit):
+            with patch(
+                "perplexity_cli.runners.export._create_token_manager",
+                new=lambda: FakeTokenManager(load_token_result=(None, None)),
+            ):
+                with caplog.at_level(logging.WARNING):
+                    run_export_threads_command({}, None, None, None, False, False)
+        assert "Please authenticate first with: pxcli auth login\n" in capsys.readouterr().err
+        assert "Export attempted without authentication" in [
+            record.message for record in caplog.records
+        ]
+
+    def test_public_auth_guard_preserves_unreachable_assertion(self):
+        with (
+            self._run(FakeThreadScraper()),
+            patch(
+                "perplexity_cli.runners.export._create_token_manager",
+                new=lambda: FakeTokenManager(load_token_result=(None, None)),
+            ),
+            patch("perplexity_cli.runners.export._handle_auth_missing"),
+            pytest.raises(AssertionError, match="unreachable after auth-missing handler exits"),
+        ):
+            run_export_threads_command({}, None, None, None, False, False)
+
+    def test_public_interrupt_log_is_exact(self, caplog):
+        with (
+            self._run(FakeThreadScraper(scrape_error=KeyboardInterrupt())),
+            caplog.at_level(logging.INFO),
+        ):
+            with pytest.raises(SystemExit):
+                run_export_threads_command({}, None, None, None, False, False)
+        assert "Export interrupted by user" in [record.message for record in caplog.records]
+
+    def test_public_json_progress_has_no_leading_newline(self, capsys):
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+        assert not capsys.readouterr().out.startswith("\n")
+
+    def test_public_default_date_prefix_is_exact(self, capsys):
+        from perplexity_cli.runners.export import _echo_date_range
+
+        _echo_date_range("2025-01-01", None)
+        assert capsys.readouterr().err == "[OK] Filtered by date range: 2025-01-01 to end\n"
+
+    @pytest.mark.parametrize("handler", ("handle_http_error", "handle_unexpected_cli_error"))
+    def test_public_json_errors_without_debug_use_normal_mode(self, handler):
+        error = (
+            PerplexityHTTPStatusError("http")
+            if handler == "handle_http_error"
+            else RuntimeError("unexpected")
+        )
+        with (
+            self._run(FakeThreadScraper(scrape_error=error)),
+            patch("perplexity_cli.runners.export.handle_error"),
+            patch(f"perplexity_cli.runners.export.{handler}", side_effect=SystemExit(1)) as mock,
+            pytest.raises(SystemExit),
+        ):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+        assert mock.call_args.kwargs["debug_mode"] == "normal"
+
+    def test_public_preparation_start_log_is_exact(self, caplog):
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])), caplog.at_level(logging.INFO):
+            run_export_threads_command({}, None, None, None, False, False)
+        assert "Starting thread export" in [record.message for record in caplog.records]
+
+    def test_public_json_cache_clear_keeps_json_output(self, tmp_path, capsys):
+        cache = FakeCacheManager(cache_path=tmp_path / "cache.json")
+        cache.cache_path.write_text("{}")
+        with self._run(FakeThreadScraper(threads=[_THREAD_1]), cache):
+            run_export_threads_command({"json": True}, None, None, None, False, True)
+        assert json.loads(capsys.readouterr().out)["ok"] is True
+
+    def test_public_auth_guard_assertion_message_is_exact(self):
+        with (
+            self._run(FakeThreadScraper()),
+            patch(
+                "perplexity_cli.runners.export._create_token_manager",
+                new=lambda: FakeTokenManager(load_token_result=(None, None)),
+            ),
+            patch("perplexity_cli.runners.export._handle_auth_missing"),
+        ):
+            with pytest.raises(AssertionError) as error:
+                run_export_threads_command({}, None, None, None, False, False)
+        assert str(error.value) == "unreachable after auth-missing handler exits"
+
+    def test_public_thread_serialisation_uses_runtime_cast_contract(self, monkeypatch, capsys):
+        import perplexity_cli.runners.export as export_runner
+
+        original_cast = export_runner.cast
+        annotations = []
+
+        def checked_cast(annotation, value):
+            annotations.append(annotation)
+            return original_cast(annotation, value)
+
+        monkeypatch.setattr(export_runner, "cast", checked_cast)
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+        assert annotations and all(annotation is not None for annotation in annotations)
+
+    @pytest.mark.parametrize("handler", ("handle_http_error", "handle_unexpected_cli_error"))
+    def test_public_error_handlers_request_false_debug_default(self, handler):
+        error = (
+            PerplexityHTTPStatusError("http")
+            if handler == "handle_http_error"
+            else RuntimeError("unexpected")
+        )
+        defaults = []
+
+        class Context(dict):
+            def get(self, key, default=None):
+                if key == "debug":
+                    defaults.append(default)
+                return super().get(key, default)
+
+        with (
+            self._run(FakeThreadScraper(scrape_error=error)),
+            patch(
+                "perplexity_cli.runners.export._normalise_context",
+                return_value=Context(json=True),
+            ),
+            patch("perplexity_cli.runners.export.handle_error"),
+            patch(f"perplexity_cli.runners.export.{handler}", side_effect=SystemExit(1)),
+            pytest.raises(SystemExit),
+        ):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+        assert defaults == [False]
+
+    def test_public_default_date_prefix_survives_full_pipeline(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        with self._run(FakeThreadScraper(threads=[_THREAD_1])):
+            run_export_threads_command({}, "2025-01-01", None, None, False, False)
+        assert capsys.readouterr().err.endswith("[OK] Filtered by date range: 2025-01-01 to end\n")
+
+    def test_public_date_range_helper_declares_canonical_default(self):
+        assert signature(_echo_date_range).parameters["prefix"].default == (
+            "[OK] Filtered by date range"
+        )
+
+    @pytest.mark.parametrize("handler", ("handle_http_error", "handle_unexpected_cli_error"))
+    def test_public_empty_context_uses_normal_error_mode(self, handler):
+        error = (
+            PerplexityHTTPStatusError("http")
+            if handler == "handle_http_error"
+            else RuntimeError("unexpected")
+        )
+        with (
+            self._run(FakeThreadScraper(scrape_error=error)),
+            patch("perplexity_cli.runners.export._normalise_context", return_value=None),
+            patch("perplexity_cli.runners.export.handle_error"),
+            patch(f"perplexity_cli.runners.export.{handler}", side_effect=SystemExit(1)) as mock,
+            pytest.raises(SystemExit),
+        ):
+            run_export_threads_command({"json": True}, None, None, None, False, False)
+        assert mock.call_args.kwargs["debug_mode"] == "normal"
+
+    def test_public_unexpected_error_message_tuple_is_exact(self):
+        error = RuntimeError("unexpected")
+        with (
+            self._run(FakeThreadScraper(scrape_error=error)),
+            patch(
+                "perplexity_cli.runners.export.handle_unexpected_cli_error",
+                side_effect=SystemExit(1),
+            ) as mock,
+            pytest.raises(SystemExit),
+        ):
+            run_export_threads_command({}, None, None, None, False, False)
+        assert mock.call_args.kwargs["message_tuple"] == (
+            "\n[ERROR] Unexpected error: unexpected",
+            "Unexpected error during export",
+            False,
+        )

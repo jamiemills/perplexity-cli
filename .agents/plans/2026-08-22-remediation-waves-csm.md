@@ -11,15 +11,15 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: remediation-waves-execution
-- Status: complete
-- Current CSM state: COMPLETE
-- Cycle: 8
+- Status: blocked
+- Current CSM state: BLOCKED
+- Cycle: 9
 - Commits: allowed
-- Last checkpoint: 2026-08-24 - final manifest and conventional gates passed
+- Last checkpoint: 2026-08-24 - T017 mutation policy passed
 - Last model/run: openai/gpt-5.6-luna / remediation-waves-execution
-- Next transition: none
-- Active tasks: none in Batch B
-- Blockers: none
+- Next transition: BLOCKED -> RECOVER
+- Active tasks: T018
+- Blockers: protected mutation-test node map requires a repository-wide ledger regeneration after the export test file changed; the required map/test updates are outside the five owned module scopes and the pre-commit hook rejects the T018 commit until they are reconciled
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
 
 ## Goal
@@ -184,13 +184,13 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
 
 ### Batch C (command runners/orchestration/remainder — 825 survivors)
 
-11. [pending] Close T017 auth command runner survivors (118)
+11. [complete] Close T017 auth command runner survivors (118)
     - Task ID: T017 | Depends on: Batch B | Parallel group: C1 | Risk: standard
     - Owned scope: runners/auth
-12. [pending] Close T018 export runner survivors (169)
+12. [complete] Close T018 export runner survivors (169)
     - Task ID: T018 | Depends on: Batch B | Parallel group: C2 | Risk: standard
     - Owned scope: runners/export
-13. [pending] Close T019 MCP boundary survivors (105)
+13. [in_progress] Close T019 MCP boundary survivors (105)
     - Task ID: T019 | Depends on: Batch B | Parallel group: C3 | Risk: high
     - Owned scope: mcp_server
 14. [pending] Close T020 query orchestration survivors (372)
@@ -274,6 +274,9 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
 | 2026-08-24 | 6 | REPAIR -> VERIFY -> CHECKPOINT | T014 | Added public-boundary coverage for pagination, transport, cache filtering, request cookies, auth context, progress, timeout, and exception propagation. Documented diagnostic-only and erased-cast exclusions with owner/reason/proof. `tests/test_t014_thread_boundaries.py` = 47 passed; `make mutate-task-policy TASK=T014` = clean on three consecutive serial gates, including all three historical timeout mutants. | SELECT T015 |
 | 2026-08-24 | 8 | VERIFY -> CHECKPOINT | T015-T016 | Revalidated T015 clean evidence and completed T016 with public-boundary tests for status/service/error contracts. T016 policy: `clean`, 88/88 required keys killed, 45 documented structural exclusions, 0 timeout/survivor/no-test findings. Focused T016 suite: 132 passed; ruff format/check, pyright, and radon clean. Exclusions merged with existing T007-T015 records. | VERIFY final gates |
 | 2026-08-24 | 8 | VERIFY -> COMPLETE | T012-T016 | `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` passed. `make ci-conventional` passed: Python and TypeScript checks, 3,904 Python tests, 212 TypeScript tests, packaging, integration, fuzz, architecture, suppression, and secret scans all green. | COMPLETE |
+| 2026-08-24 | 9 | RECOVER -> VALIDATE -> SELECT -> VERIFY -> CHECKPOINT | T017 | Revalidated the triage keyset and current worktree. Removed only stale generated `mutants/` workspace. `make mutate-task-policy TASK=T017` passed with status clean and 118/118 required keys killed; focused `tests/test_t017_boundaries.py` passed 21 tests. | SELECT T018 |
+| 2026-08-24 | 9 | VERIFY -> CHECKPOINT | T018 | Added public export boundary coverage. `make mutate-task-policy TASK=T018` passed with status clean: 166 killed and 3 documented structural exclusions; focused export suite passed 133 tests; Ruff format/check passed. | SELECT T019 |
+| 2026-08-24 | 9 | CHECKPOINT -> BLOCKED | T018 | T018 policy is clean, but the required commit hook fails `test_node_map_is_exact_current_to_current_bijection`: current protected test collection is 673 nodes while the historical map is 615, with renamed/parameterised export nodes also requiring reconciliation. No hook bypass used; T018 remains uncommitted. | BLOCKED -> RECOVER |
 
 ## Completion Review
 
