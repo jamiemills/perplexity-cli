@@ -11,13 +11,13 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: remediation-waves-execution
-- Status: in_progress
-- Current CSM state: CHECKPOINT T016
+- Status: complete
+- Current CSM state: COMPLETE
 - Cycle: 8
 - Commits: allowed
-- Last checkpoint: 2026-08-24 - T016 clean with 88 killed keys and 45 documented exclusions
+- Last checkpoint: 2026-08-24 - final manifest and conventional gates passed
 - Last model/run: openai/gpt-5.6-luna / remediation-waves-execution
-- Next transition: VERIFY final gates
+- Next transition: none
 - Active tasks: none in Batch B
 - Blockers: none
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
@@ -273,7 +273,8 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
 | 2026-08-24 | 6 | SELECT -> REPAIR -> CHECKPOINT | T014 | Committed boundary coverage in `36bde69`, `fec9460`, and `e10fa20`; focused T014 tests and repository hooks pass. Latest fresh policy run classifies 121 kills, 82 survivors, and 3 timeouts. Remaining findings are concentrated in scraper diagnostics/cache branches and timeout-prone pagination paths; T015/T016 not started. | REPAIR T014 |
 | 2026-08-24 | 6 | REPAIR -> VERIFY -> CHECKPOINT | T014 | Added public-boundary coverage for pagination, transport, cache filtering, request cookies, auth context, progress, timeout, and exception propagation. Documented diagnostic-only and erased-cast exclusions with owner/reason/proof. `tests/test_t014_thread_boundaries.py` = 47 passed; `make mutate-task-policy TASK=T014` = clean on three consecutive serial gates, including all three historical timeout mutants. | SELECT T015 |
 | 2026-08-24 | 8 | VERIFY -> CHECKPOINT | T015-T016 | Revalidated T015 clean evidence and completed T016 with public-boundary tests for status/service/error contracts. T016 policy: `clean`, 88/88 required keys killed, 45 documented structural exclusions, 0 timeout/survivor/no-test findings. Focused T016 suite: 132 passed; ruff format/check, pyright, and radon clean. Exclusions merged with existing T007-T015 records. | VERIFY final gates |
+| 2026-08-24 | 8 | VERIFY -> COMPLETE | T012-T016 | `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` passed. `make ci-conventional` passed: Python and TypeScript checks, 3,904 Python tests, 212 TypeScript tests, packaging, integration, fuzz, architecture, suppression, and secret scans all green. | COMPLETE |
 
 ## Completion Review
 
-Batch B task-policy work is complete. T012-T016 have current clean task-policy evidence, with required keys killed and documented exclusions carrying owner/reason/proof. Final manifest and conventional gates remain to be run before plan completion.
+All Batch B task-policy and final acceptance gates are complete. T012-T016 have current clean evidence, with required keys killed and documented exclusions carrying owner/reason/proof. The baseline manifest and conventional CI gates pass.
