@@ -1,10 +1,11 @@
 """Tests for the date parser module used in thread export."""
 
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
 from perplexity_cli.threads.date_parser import (
+    _parse_day_start,
     is_in_date_range,
     parse_absolute_date_string,
     to_iso8601,
@@ -71,6 +72,20 @@ class TestParseAbsoluteDateString:
         """Test that an empty string raises ValueError."""
         with pytest.raises(ValueError):
             parse_absolute_date_string("")
+
+    def test_day_start_applies_requested_timezone(self):
+        """Day-start parsing retains the caller's timezone."""
+        offset = timezone(timedelta(hours=2))
+        result = _parse_day_start("2025-12-23 15:14:13", offset)
+        assert result == datetime(2025, 12, 23, tzinfo=offset)
+        result = _parse_day_start("2025-12-23 15:14:13.123456", offset)
+        assert result.microsecond == 0
+
+    def test_date_range_accepts_aware_offset_at_day_start(self):
+        """Inclusive range checks compare aware values in their source timezone."""
+        offset = timezone(timedelta(hours=2))
+        value = datetime(2025, 12, 23, tzinfo=offset)
+        assert is_in_date_range(value, "2025-12-23", "2025-12-23") is True
 
 
 class TestToIso8601:
