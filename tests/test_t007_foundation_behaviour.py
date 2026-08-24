@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from perplexity_cli.config.models import URLConfig
 from perplexity_cli.envelope import (
     ErrorCode,
     Meta,
@@ -39,6 +40,12 @@ from perplexity_cli.utils.exceptions import UpstreamSchemaError
 from perplexity_cli.utils.file_handler import load_attachments, resolve_file_arguments
 from perplexity_cli.utils.logging import JSONLogFormatter, redact_response_text, setup_logging
 from perplexity_cli.utils.style_manager import StyleManager
+
+
+def test_url_config_rejects_inclusive_ascii_control_upper_bound() -> None:
+    """The public URL model rejects ASCII control character 0x1f."""
+    with pytest.raises(ValueError, match="whitespace or control"):
+        URLConfig(base_url="https://example.com/" + chr(0x1F) + "path")
 
 
 def test_config_dir_honours_explicit_directory_and_expands_user(

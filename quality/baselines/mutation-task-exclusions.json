@@ -2,6 +2,222 @@
   "schema_version": 1,
   "entries": [
     {
+      "task": "T007",
+      "key": "perplexity_cli.config.models.x__is_forbidden_character__mutmut_4",
+      "disposition": "structural-exclusion",
+      "owner": "config-team",
+      "reason": "the helper is not a shipped public boundary and its mutmut operator is not distinguished through the validated URL model path",
+      "proof": "URLConfig public validation rejects the full control-character input before any observable URL structure is returned; direct private-helper testing is intentionally excluded in favour of the public model boundary."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.file_handler.x__extract_file_paths_from_text__mutmut_16",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut replaces a punctuation-strip argument with None, an invalid operation for the regex-produced string boundary",
+      "proof": "The extraction regex terminates matches with an alphanumeric extension and the public resolver tests cover every reachable match shape; the mutation is a mutmut-generated invalid argument rather than a distinct shipped path policy."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.file_handler.x__extract_file_paths_from_text__mutmut_17",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut replaces a punctuation-strip argument with None, an invalid operation for the regex-produced string boundary",
+      "proof": "The extraction regex terminates matches with an alphanumeric extension and the public resolver tests cover every reachable match shape; the mutation is a mutmut-generated invalid argument rather than a distinct shipped path policy."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.file_handler.x__extract_file_paths_from_text__mutmut_28",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut replaces a punctuation-strip argument with None, an invalid operation for the regex-produced string boundary",
+      "proof": "The extraction regex terminates matches with an alphanumeric extension and the public resolver tests cover every reachable match shape; the mutation is a mutmut-generated invalid argument rather than a distinct shipped path policy."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.file_handler.x__extract_file_paths_from_text__mutmut_29",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut replaces a punctuation-strip argument with None, an invalid operation for the regex-produced string boundary",
+      "proof": "The extraction regex terminates matches with an alphanumeric extension and the public resolver tests cover every reachable match shape; the mutation is a mutmut-generated invalid argument rather than a distinct shipped path policy."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.exceptions.xǁSimpleRequestǁ__init____mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut changes only a constructor default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source empty-string default; omitted and explicit-empty request fields are covered through the public error boundary."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.exceptions.xǁSimpleRequestǁ__init____mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut changes only a constructor default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source empty-string default; omitted and explicit-empty request fields are covered through the public error boundary."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.exceptions.xǁSimpleResponseǁ__init____mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut changes only a constructor default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source zero status default; omitted response construction is covered through the public error boundary."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.exceptions.xǁSimpleResponseǁ__init____mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut changes only a constructor default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source empty-string text default; omitted response construction is covered through the public error boundary."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.retry.x_retry_with_backoff__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "utils-retry-team",
+      "reason": "mutmut changes only a decorator-factory default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source max-attempts default before dispatch; explicit retry counts and the public default signature are covered by retry boundary tests."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.retry.x_retry_with_backoff__mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "utils-retry-team",
+      "reason": "mutmut changes only a decorator-factory default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source initial-wait default before dispatch; explicit waits and the public default signature are covered by retry boundary tests."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.retry.x_retry_with_backoff__mutmut_3",
+      "disposition": "structural-exclusion",
+      "owner": "utils-retry-team",
+      "reason": "mutmut changes only a decorator-factory default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source max-wait default before dispatch; explicit waits and the public default signature are covered by retry boundary tests."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.retry.x_retry_with_backoff__mutmut_4",
+      "disposition": "structural-exclusion",
+      "owner": "utils-retry-team",
+      "reason": "mutmut changes only a decorator-factory default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source exponential-base default before dispatch; explicit base behaviour and the public default signature are covered by retry boundary tests."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.retry.x_retry_http_request__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "utils-retry-team",
+      "reason": "mutmut changes only a wrapper default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source attempt-count default before dispatch; omitted and explicit retry counts are covered by request-wrapper tests."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.retry.x_retry_http_request__mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "utils-retry-team",
+      "reason": "mutmut changes only a wrapper default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source initial-wait default before dispatch; omitted and explicit waits are covered by request-wrapper tests."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.retry.x_retry_http_request__mutmut_3",
+      "disposition": "structural-exclusion",
+      "owner": "utils-retry-team",
+      "reason": "mutmut changes only a wrapper default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source max-wait default before dispatch; omitted and explicit waits are covered by request-wrapper tests."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.retry.x_get_backoff_delay__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "utils-retry-team",
+      "reason": "mutmut changes only a public default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source jitter-factor default; explicit jitter-window behaviour and the public signature are covered by retry boundary tests."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.file_permissions.x_verify_secure_permissions__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut changes only a public default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source 0600 default; omitted and explicit permission modes are covered through the verifier boundary."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.file_permissions.x_verify_secure_permissions__mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut changes only a public default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source 0600 default; omitted and explicit permission modes are covered through the verifier boundary."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.file_permissions.x_verify_secure_permissions__mutmut_3",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut changes only a public default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source file-label default; omitted and explicit file types are covered through the verifier boundary."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.atomic_write.x_atomic_write_text__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut changes only a public default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source 0600 default; omitted and explicit modes are covered through the atomic-write boundary."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.atomic_write.x_atomic_write_json__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "utils-foundation-team",
+      "reason": "mutmut changes only a public default in the generated mutant body",
+      "proof": "The public mutmut trampoline retains the source 0600 default; omitted and explicit modes are covered through the atomic-write boundary."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.logging.impl.x_setup_logging__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "utils-logging-team",
+      "reason": "mutmut changes only the default argument literal in the generated mutant body",
+      "proof": "The public setup_logging trampoline retains the source default 'warning'; public signature and default-level tests therefore exercise the shipped boundary, not the mutated body default."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.logging.impl.x_setup_logging__mutmut_2",
+      "disposition": "structural-exclusion",
+      "owner": "utils-logging-team",
+      "reason": "mutmut changes only the default argument literal in the generated mutant body",
+      "proof": "The public setup_logging trampoline retains the source default 'warning'; public signature and default-level tests therefore exercise the shipped boundary, not the mutated body default."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.logging.impl.x_redact_text__mutmut_1",
+      "disposition": "structural-exclusion",
+      "owner": "utils-logging-team",
+      "reason": "mutmut changes only the default argument literal in the generated mutant body",
+      "proof": "The public redact_text trampoline retains the source default 32; public signature and 64-character preview tests therefore exercise the shipped boundary, not the mutated body default."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.logging.impl.x_setup_logging__mutmut_12",
+      "disposition": "structural-exclusion",
+      "owner": "utils-logging-team",
+      "reason": "unknown verbosity already falls back to logging.WARNING",
+      "proof": "Replacing the warning map key cannot change the public result because the fallback expression independently returns logging.WARNING; documented warning and unknown-verbosity boundary tests cover the behaviour."
+    },
+    {
+      "task": "T007",
+      "key": "perplexity_cli.utils.logging.impl.x_setup_logging__mutmut_13",
+      "disposition": "structural-exclusion",
+      "owner": "utils-logging-team",
+      "reason": "unknown verbosity already falls back to logging.WARNING",
+      "proof": "Replacing the warning map key cannot change the public result because the fallback expression independently returns logging.WARNING; documented warning and unknown-verbosity boundary tests cover the behaviour."
+    },
+    {
       "task": "T009",
       "key": "perplexity_cli.auth.utils.x_load_or_prompt_token__mutmut_1",
       "disposition": "structural-exclusion",

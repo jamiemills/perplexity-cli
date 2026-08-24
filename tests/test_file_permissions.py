@@ -124,3 +124,11 @@ class TestVerifySecurePermissionsMessages:
         verify_secure_permissions(file_path, expected_permissions=0o640, logger=logger)
 
         logger.error.assert_not_called()
+
+    def test_permission_check_ignores_file_type_bits(self, tmp_path):
+        """Permission verification compares only the mode bits, not file type bits."""
+        file_path = tmp_path / "regular.txt"
+        file_path.write_text("data")
+        os.chmod(file_path, 0o600)
+
+        verify_secure_permissions(file_path, expected_permissions=0o600)

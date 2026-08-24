@@ -125,6 +125,17 @@ class TestAtomicWriteRoundTrip:
             atomic_write_json(dest, {"a": 1})
         assert not dest.exists()
 
+    def test_json_serialisation_failure_does_not_touch_destination(self, tmp_path):
+        """An unserialisable JSON value fails before replacing an existing file."""
+        dest = tmp_path / "data.json"
+        dest.write_text("ORIGINAL")
+
+        with pytest.raises(TypeError):
+            atomic_write_json(dest, object())
+
+        assert dest.read_text() == "ORIGINAL"
+        assert _temp_files(tmp_path) == []
+
 
 class TestTempNaming:
     """Tests for unique same-directory temporary sibling naming."""

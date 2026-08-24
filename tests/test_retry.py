@@ -258,6 +258,23 @@ class TestRetryWithBackoff:
         assert flaky() == "ok"
         assert call_count == 2
 
+    def test_decorator_retries_on_http_status_error(self):
+        """Decorated functions retry the public HTTP status exception type."""
+        call_count = 0
+        request = SimpleRequest(method="GET", url="http://example.com")
+        response = SimpleResponse(status_code=503, request=request)
+
+        @retry_with_backoff(max_attempts=2, initial_wait=0.01, max_wait=0.02)
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise PerplexityHTTPStatusError("server error", request=request, response=response)
+            return "ok"
+
+        assert flaky() == "ok"
+        assert call_count == 2
+
     def test_decorator_reraises_after_max_attempts(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Decorated function reraises after exhausting attempts."""
         sleeps: list[float] = []
@@ -309,6 +326,22 @@ class TestRetryHttpRequest:
 
         result = retry_http_request(flaky, max_attempts=3, initial_wait=0.01, max_wait=0.02)
         assert result == "done"
+        assert call_count == 2
+
+    def test_retries_http_status_error_and_returns_result(self):
+        """The public wrapper retries transient HTTP status failures."""
+        call_count = 0
+        request = SimpleRequest(method="GET", url="http://example.com")
+        response = SimpleResponse(status_code=503, request=request)
+
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise PerplexityHTTPStatusError("server error", request=request, response=response)
+            return "done"
+
+        assert retry_http_request(flaky, max_attempts=2, initial_wait=0.01, max_wait=0.02) == "done"
         assert call_count == 2
 
     def test_reraises_after_exhaustion(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -585,6 +618,13 @@ class TestGetBackoffDelayJitterContract:
             delay = get_backoff_delay(2, base_delay=1.0, max_delay=10.0, jitter_factor=0.1)
 
         assert delay == pytest.approx(4.25)
+
+    def test_negative_jitter_is_clamped_at_zero(self) -> None:
+        """A sufficiently negative random offset never produces a negative delay."""
+        with mock.patch("perplexity_cli.utils.retry._rng.uniform", return_value=-10.0):
+            delay = get_backoff_delay(0, base_delay=1.0, max_delay=10.0, jitter_factor=0.1)
+
+        assert delay == 0.0
 
 
 class TestRetryWithBackoffWaitShape:

@@ -99,7 +99,7 @@ class TestURLConfigValidation:
         with pytest.raises(ValidationError):
             URLConfig(base_url=url)
 
-    @pytest.mark.parametrize("character", ["\x00", "\x1f", "\x7f"])
+    @pytest.mark.parametrize("character", ["\x00", "\x1b", "\x1f", "\x7f"])
     def test_rejects_each_control_character_boundary(self, character):
         """Control and delete characters are forbidden in URL values."""
         with pytest.raises(ValidationError, match="whitespace or control"):

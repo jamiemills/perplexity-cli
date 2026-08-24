@@ -12,12 +12,12 @@ format: csm-plan/1
 
 - Plan ID: remediation-waves-execution
 - Status: in_progress
-- Current CSM state: RECOVER
+- Current CSM state: SELECT
 - Cycle: 6
 - Commits: allowed
-- Last checkpoint: 2026-08-24 cycle 6 - final recovery session; T011+T010 confirmed closed (bf206e7, da6b2bc); T007 reduced to 27 surviving findings after integrated behavioural coverage and retry default simplification; static checks clean on changed scope
-- Last model/run: openai/gpt-5.6-luna / recovery session 6 / Batch A final recovery
-- Next transition: REPAIR (T007 remaining 27 findings)
+- Last checkpoint: 2026-08-24 cycle 6 - recovered Batch A endgame; T011+T010 confirmed closed (bf206e7, da6b2bc); T007 reduced to 27 surviving findings after integrated behavioural coverage and retry default simplification; static checks clean on changed scope
+- Last model/run: openai/gpt-5.6-luna / recovery session 7 / Batch A endgame
+- Next transition: REPAIR T007 policy accounting / conventional gate
 - Active tasks: T007
 - Blockers: none for Batch A remainder; T010 holds 78 findings, T007 holds 405 per verified pre-session state
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
@@ -259,7 +259,9 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
    | 2026-08-23 | 4 | VERIFY -> CHECKPOINT | T010 | Three consecutive serial full policy gates exit 0 each: clean, 232/232 required keys killed (301 minus 69 documented exclusions). Focused tests: 163 passed across guard/base/formatters/rich-table files. ruff format/check clean; pyright strict src/ 0 errors. | SELECT T007 |
  | 2026-08-23 | 5 | RECOVER -> SELECT | T007 | Recovery session 5. Git log confirms T011 closed at bf206e7 and T010 at da6b2bc with triple clean gates (user's stated T011/T010 remainder was stale). Dead-subagent partial T007 test work (encryption/file_handler/logging/structured_logging/style_manager/upstream_contracts_boundary) verified: 155 focused tests pass, ruff format applied, ruff check clean, no C+ functions, all files <= 500 lines; committed as 4c3df1f. build/reports/mutation-task-T007.json holds 403 findings (368 survived, 35 timeout incl. get_config_dir 8, encryption 22, retry 1, atomic_write 2). Root report.json is a dead EnvironmentMismatchError artifact left untracked; .agents/reviews/ pre-existing, untouched. | SELECT T007 (dispatch module clusters) |
  | 2026-08-23 | 6 | RECOVER | T007, T010, T011 | User-provided recovery evidence and git history confirm T010/T011 are complete; e85c494 already contains the verified T008/T009 commit required at recovery start. Current diff contains prior T007 partial tests plus the plan; unrelated pre-existing `.agents/reviews/` and `report.json` remain untouched. | SELECT T007 |
- | 2026-08-24 | 6 | REPAIR -> VERIFY | T007 | Integrated recovered test work and added public-boundary coverage across foundation/config/models/runner/envelope/retry/utility modules. Focused T007 tests: 298 passed. Changed-scope ruff clean; pyright src clean except pre-existing import-cycle warning. T007 policy reduced from 403 findings to 27 survivors (0 timeouts); remaining clusters are retry wrappers, file handler path punctuation, exception defaults, permissions, atomic write defaults, logging defaults, and config control character. Retry default literals were centralised to remove mutmut wrapper-obscured mutations. | REPAIR T007 |
+  | 2026-08-24 | 6 | REPAIR -> VERIFY | T007 | Integrated recovered test work and added public-boundary coverage across foundation/config/models/runner/envelope/retry/utility modules. Focused T007 tests: 298 passed. Changed-scope ruff clean; pyright src clean except pre-existing import-cycle warning. T007 policy reduced from 403 findings to 27 survivors (0 timeouts); remaining clusters are retry wrappers, file handler path punctuation, exception defaults, permissions, atomic write defaults, logging defaults, and config control character. Retry default literals were centralised to remove mutmut wrapper-obscured mutations. | REPAIR T007 |
+  | 2026-08-24 | 7 | RECOVER -> SELECT | T007, T010, T011 | Verified current tree and prior commits; T011/T010 are closed and T007 has 27 actionable findings with no timeouts. Untracked `.agents/reviews/` and `report.json` are pre-existing and excluded. Execution order is T011, T010, T007; proceed with fresh task gates and incremental commits. | DISPATCH T011 |
+  | 2026-08-24 | 7 | SELECT -> VERIFY -> REPAIR | T011, T010, T007 | T011 passed three consecutive clean gates (175/175 required); T010 passed a fresh clean gate (232/232 required); T007 behavioural work reduced survivors to zero and current report is clean, but policy accounting reports `total_mutants 490 != keyset size 492` after the canonical run. Focused T007 tests: 307 passed; ruff format/check clean. Manifest check passed. `make ci-conventional` remains red on 8 existing test-quality PLR0917/noqa findings outside T007. | REPAIR T007 accounting and gate |
 
 ## Completion Review
 
