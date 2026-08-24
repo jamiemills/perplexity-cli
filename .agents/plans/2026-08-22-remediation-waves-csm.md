@@ -12,12 +12,12 @@ format: csm-plan/1
 
 - Plan ID: remediation-waves-execution
 - Status: in_progress
-- Current CSM state: SELECT T014
+- Current CSM state: REPAIR T014
 - Cycle: 6
 - Commits: allowed
-- Last checkpoint: 2026-08-24 - T013 fully closed and verified clean; T014 is next
-- Last model/run: openai/gpt-5.6-luna / orchestrator handoff
-- Next transition: dispatch T014 mutation-closure work
+- Last checkpoint: 2026-08-24 - T014 boundary coverage committed; policy remains non-clean
+- Last model/run: openai/gpt-5.6-luna / batch execution
+- Next transition: repair T014 survivors and timeout mutants
 - Active tasks: T014 (threads/scraper, threads/pagination)
 - Blockers: none
 - Resume: re-read Last checkpoint, latest journal row, Recovery notes, working-tree diff
@@ -270,6 +270,7 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
 | 2026-08-24 | 6 | DISPATCH -> VERIFY -> CHECKPOINT | T012 | Added public-boundary tests for config runner context selection, style/config output, schema forwarding, error arguments, and logging. Fresh policy gate: 104/104 required keys killed plus 4 structural exclusions; focused suite 56 passed; ruff, pyright, and radon clean; test file remains 821 lines. | DISPATCH T013 |
 | 2026-08-24 | 6 | DISPATCH -> REPAIR | T013 | Added `tests/test_t013_thread_boundaries.py` with 24 focused boundary tests. Latest `make mutate-task-policy TASK=T013` completed accounting but remains non-clean: 81 killed, 71 survived, 0 timeout, 0 no-tests. Remaining clusters are cache validation/coverage and several date/export/model distinctions; no T013 commit made because its acceptance gate is not clean. | REPAIR T013 |
 | 2026-08-24 | 6 | REPAIR -> VERIFY -> CHECKPOINT | T013 | `make mutate-task-policy TASK=T013` exited 0 with status clean and 152/152 required keys killed; focused T013/date-parser suites passed (63 tests); Ruff format/check clean. | SELECT T014 |
+| 2026-08-24 | 6 | SELECT -> REPAIR -> CHECKPOINT | T014 | Committed boundary coverage in `36bde69`, `fec9460`, and `e10fa20`; focused T014 tests and repository hooks pass. Latest fresh policy run classifies 121 kills, 82 survivors, and 3 timeouts. Remaining findings are concentrated in scraper diagnostics/cache branches and timeout-prone pagination paths; T015/T016 not started. | REPAIR T014 |
 
 ## Completion Review
 
