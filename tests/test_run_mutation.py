@@ -111,8 +111,8 @@ def sandbox_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         lambda root: (root / "mutants").write_text("stale"),
         lambda root: (root / "mutants").mkdir(),
         lambda root: (
-            (root / "target.txt").write_text("keep")
-            or (root / "mutants").symlink_to(root / "missing-target")
+            (root / "target.txt").write_text("keep"),
+            (root / "mutants").symlink_to(root / "missing-target"),
         ),
     ],
 )
