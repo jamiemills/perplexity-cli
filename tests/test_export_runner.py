@@ -906,6 +906,7 @@ class TestExportPublicBoundaryCoverage:
         assert envelope["error"]["message"] in {
             "Unknown string format: not-a-date",
             "month must be in 1..12: 2025-99-99",
+            "month must be in 1..12, not 99: 2025-99-99",
         }
         assert scraper.scrape_calls == []
 
