@@ -3,6 +3,7 @@
 import json
 import logging
 import sys
+from contextlib import ExitStack
 from unittest.mock import Mock, patch
 
 import pytest
@@ -14,6 +15,7 @@ from perplexity_cli.query_runner import (
     _build_json_envelope,
     _detect_execution_environment,
     _do_s3_upload,
+    _Formatter,
     _load_and_upload_attachments,
     _QueryOutputOptionsData,
     _QueryRenderContextData,
@@ -28,8 +30,12 @@ from perplexity_cli.query_runner import (
     resolve_attachment_urls,
     run_query_command,
 )
+from perplexity_cli.query_streaming import _StreamFormatter
 from perplexity_cli.utils.attachment_models import FileAttachment
-from perplexity_cli.utils.exceptions import AuthenticationError, UpstreamSchemaError
+from perplexity_cli.utils.exceptions import (
+    AuthenticationError,
+    UpstreamSchemaError,
+)
 from tests.helpers.query_deps import patch_query_deps, patched_dep
 
 
@@ -180,7 +186,7 @@ def test_log_query_debug_context_handles_hostname_failure(monkeypatch, caplog):
         log_query_debug_context("query", None, "stream")
 
     assert caplog.records
-    assert "hostname unavailable" not in "\n".join(record.getMessage() for record in caplog.records)
+    assert next(record.getMessage() for record in caplog.records) == "Could not resolve hostname"
 
 
 def test_build_json_envelope_contains_answer_references_and_trace(monkeypatch):
@@ -315,12 +321,14 @@ def test_do_s3_upload_constructs_uploader_with_token_and_cookies(monkeypatch):
     async_runner = Mock(return_value=["https://file.test/one"])
     patch_query_deps(monkeypatch, AttachmentUploader=uploader_class)
     patch_query_deps(monkeypatch, run_async=async_runner)
+    patch_query_deps(monkeypatch, redact_url=lambda value: f"redacted:{value}")
 
+    logger = Mock()
     result = _do_s3_upload(
         [attachment],
         "token-123",
         {"session": "cookie-value"},
-        Mock(),
+        logger,
     )
 
     assert result == ["https://file.test/one"]
@@ -330,6 +338,11 @@ def test_do_s3_upload_constructs_uploader_with_token_and_cookies(monkeypatch):
     )
     uploader.upload_files.assert_called_once_with([attachment])
     async_runner.assert_called_once_with(uploader.upload_files.return_value)
+    assert [call.args for call in logger.debug.call_args_list] == [
+        ("Starting S3 upload for attachments",),
+        ("S3 upload complete: %s file(s) uploaded", 1),
+        ("  [%s] %s", 1, "redacted:https://file.test/one"),
+    ]
 
 
 def test_render_complete_answer_uses_plain_formatter_output(monkeypatch):
@@ -354,6 +367,8 @@ def test_run_query_command_non_streaming_renders_answer(capsys):
     """Query runner executes batch mode and renders the formatted answer."""
     answer = Answer(text="Test answer", references=[])
     mock_api = _make_api_mock(answer)
+    logger = Mock()
+    logger.isEnabledFor.return_value = False
 
     with (
         patched_dep("TokenManager", Mock(return_value=Mock())),
@@ -362,6 +377,7 @@ def test_run_query_command_non_streaming_renders_answer(capsys):
             "perplexity_cli.query_runner.resolve_attachment_urls", return_value=[], autospec=True
         ),
         patched_dep("PerplexityAPI", Mock(return_value=mock_api)),
+        patched_dep("get_logger", logger),
         patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
     ):
         run_query_command(
@@ -379,20 +395,32 @@ def test_run_query_command_non_streaming_renders_answer(capsys):
     )
 
 
-def test_run_query_command_streaming_delegates_to_stream_handler():
-    """Streaming mode delegates to the streaming helper with resolved inputs."""
+def _exercise_streaming_query_command() -> None:
+    """Exercise streaming delegation and its complete structural arguments."""
     mock_api = _make_api_mock()
 
-    with (
-        patched_dep("TokenManager", Mock(return_value=Mock())),
-        patched_dep("load_token_optional", Mock(return_value=("token-123", None))),
-        patch(
-            "perplexity_cli.query_runner.resolve_attachment_urls", return_value=["https://s3/file"]
-        ),
-        patched_dep("PerplexityAPI", Mock(return_value=mock_api)),
-        patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
-        patch("perplexity_cli.query_runner.stream_query_response", autospec=True) as mock_stream,
-    ):
+    with ExitStack() as stack:
+        stack.enter_context(patched_dep("TokenManager", Mock(return_value=Mock())))
+        stack.enter_context(
+            patched_dep("load_token_optional", Mock(return_value=("token-123", None)))
+        )
+        stack.enter_context(
+            patch(
+                "perplexity_cli.query_runner.resolve_attachment_urls",
+                return_value=["https://s3/file"],
+            )
+        )
+        stack.enter_context(patched_dep("PerplexityAPI", Mock(return_value=mock_api)))
+        stack.enter_context(
+            patch("perplexity_cli.query_runner.build_final_query", return_value="final query")
+        )
+        mock_stream = stack.enter_context(
+            patch("perplexity_cli.query_runner.stream_query_response", autospec=True)
+        )
+        mock_debug = stack.enter_context(
+            patch("perplexity_cli.query_runner.log_query_debug_context")
+        )
+        stack.enter_context(patched_dep("get_logger", Mock()))
         run_query_command(
             ctx_obj={"debug": False},
             query_text="What is Python?",
@@ -422,6 +450,15 @@ def test_run_query_command_streaming_delegates_to_stream_handler():
         True,
         True,
     )
+    assert trace_arg.trace_id
+    assert trace_arg.start_time is not None
+    mock_debug.assert_called_once_with("What is Python?", "plain", "stream")
+    assert mock_stream.call_args.args[2].options.json_mode is False
+
+
+def test_run_query_command_streaming_delegates_to_stream_handler():
+    """Streaming mode delegates to the streaming helper with resolved inputs."""
+    _exercise_streaming_query_command()
 
 
 def test_run_query_command_reports_upstream_schema_error(capsys):
@@ -545,3 +582,59 @@ def test_run_query_command_keyboard_interrupt_json_mode(capsys):
             )
 
     assert exc_info.value.code == 130
+
+
+def test_log_query_debug_context_records_all_debug_fields(monkeypatch):
+    """Debug mode records platform, execution, cookie and invocation fields."""
+    logger = Mock()
+    logger.isEnabledFor.return_value = True
+    token_path = Mock()
+    token_path.exists.return_value = True
+    patch_query_deps(monkeypatch, get_logger=lambda: logger)
+    patch_query_deps(monkeypatch, get_config_paths=lambda: Mock(token_path=token_path))
+    patch_query_deps(monkeypatch, get_save_cookies_enabled=lambda: True)
+    patch_query_deps(monkeypatch, redact_path=lambda value: "REDACTED_PATH")
+    patch_query_deps(monkeypatch, redact_text=lambda value: "REDACTED_QUERY")
+    monkeypatch.setattr("perplexity_cli.query_runner.socket.gethostname", lambda: "host-1")
+
+    log_query_debug_context("secret query", "json", "stream")
+
+    messages = [call.args[0] for call in logger.debug.call_args_list]
+    assert messages == [
+        "Hostname: %s",
+        "Platform: %s",
+        "Python version: %s",
+        "Python executable: %s",
+        "Execution environment: %s",
+        "Token path: %s",
+        "Token exists: %s",
+        "Cookie storage enabled: %s",
+        "Query command invoked: query=%s, format=%s, stream=%s",
+    ]
+    assert logger.debug.call_args_list[-1].args[1:] == (
+        "REDACTED_QUERY",
+        "json",
+        "stream",
+    )
+    assert logger.debug.call_args_list[0].args[1:] == ("host-1",)
+    assert logger.debug.call_args_list[1].args[1:] == (sys.platform,)
+    assert logger.debug.call_args_list[2].args[1:] == (sys.version.split()[0],)
+    assert logger.debug.call_args_list[3].args[1:] == (sys.executable,)
+    assert logger.debug.call_args_list[4].args[1:] == (_detect_execution_environment(),)
+    assert logger.debug.call_args_list[5].args[1:] == ("REDACTED_PATH",)
+    assert logger.debug.call_args_list[6].args[1:] == (True,)
+    assert logger.debug.call_args_list[7].args[1:] == (True,)
+
+
+def test_protocol_declarations_are_reachable_without_adapter_objects():
+    """The structural declarations can be invoked independently of adapters."""
+    formatter = object.__new__(_Formatter)
+    stream_formatter = object.__new__(_StreamFormatter)
+    answer = Answer(text="answer", references=[])
+
+    assert _Formatter.format_answer(formatter, "text") is None
+    assert _Formatter.format_references(formatter, []) is None
+    assert _Formatter.format_complete(formatter, answer) is None
+    assert _Formatter.render_complete(formatter, answer) is None
+    assert _StreamFormatter.render_complete(stream_formatter, answer) is None
+    assert _StreamFormatter.format_references(stream_formatter, []) is None

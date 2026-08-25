@@ -35,10 +35,17 @@ CURRENT_TEST_FILES = (
     "tests/test_oauth_handler.py",
     "tests/test_oauth_cdp.py",
     "tests/test_query_runner.py",
+    "tests/test_t020_query_edges.py",
+    "tests/test_t020_query_runner_edges.py",
     "tests/test_scraper_coverage.py",
     "tests/test_token_manager.py",
 )
-NEW_TEST_FILES = {"tests/test_api_client_retry.py", "tests/test_oauth_cdp.py"}
+NEW_TEST_FILES = {
+    "tests/test_api_client_retry.py",
+    "tests/test_oauth_cdp.py",
+    "tests/test_t020_query_edges.py",
+    "tests/test_t020_query_runner_edges.py",
+}
 REQUIRED_REVIEW_FIELDS = {
     "id",
     "candidate_identity",
@@ -309,7 +316,7 @@ def test_node_map_is_exact_current_to_current_bijection() -> None:
         len(set(mapped_before)),
         len(set(mapped_after)),
         set(after) == set(mapped_after),
-    ) == (693, 693, 693, 693, True)
+    ) == (754, 754, 754, 754, True)
 
 
 def test_node_map_preserves_every_marker_explicitly() -> None:
@@ -329,7 +336,7 @@ def test_node_status_accounts_for_unchanged_moved_and_renamed_nodes() -> None:
         status: sum(row["status"] == status for row in mappings)
         for status in ("unchanged", "moved", "renamed")
     }
-    assert counts == {"unchanged": 664, "moved": 26, "renamed": 3}
+    assert counts == {"unchanged": 725, "moved": 26, "renamed": 3}
 
 
 def test_changed_tests_helpers_and_validator_have_cc_at_most_five() -> None:

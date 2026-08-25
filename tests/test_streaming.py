@@ -12,13 +12,25 @@ import pytest
 from perplexity_cli.api.models import QueryInput, TraceContext, WebResult
 from perplexity_cli.formatting.context import OutputOptions, RenderContext
 from perplexity_cli.query_streaming import (
+    _get_stream_logger,
     _handle_stream_error,
+    _handle_stream_http_status_error,
+    _handle_stream_keyboard_interrupt,
+    _handle_stream_network_error,
+    _handle_stream_output_error,
+    _handle_stream_unexpected_error,
+    _handle_stream_upstream_schema_error,
+    _init_stream_error_handlers,
     _process_stream_message,
+    _render_stream_references,
+    _run_stream_loop,
+    _StreamErrorHandlers,
     _write_ndjson_result,
     stream_query_response,
 )
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
+    PerplexityRequestError,
     UpstreamSchemaError,
 )
 
@@ -112,6 +124,132 @@ def test_stream_query_response_renders_rich_references_via_formatter():
     assert render.formatter.render_complete.call_args.kwargs["strip_references"] is True
 
 
+def test_stream_query_response_plain_rendering_distinguishes_empty_and_nonempty_refs(capsys):
+    """Plain output adds references only when formatting produces content."""
+    api = Mock()
+    refs = [WebResult(name="Ref", url="https://example.com", snippet="Example")]
+    api.submit_query.return_value = iter([_make_message("Answer", references=refs)])
+    render = _make_render_context(output_format="plain", strip_references=False)
+    render.formatter.format_references.return_value = ""
+
+    stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+    assert capsys.readouterr().out == "Answer\n\n"
+    render.formatter.format_references.assert_called_once()
+
+
+def test_stream_query_response_strips_references_without_calling_formatter(capsys):
+    """The strip option suppresses both reference formatting and output."""
+    api = Mock()
+    refs = [WebResult(name="Ref", url="https://example.com", snippet="Example")]
+    api.submit_query.return_value = iter([_make_message("Answer", references=refs)])
+    render = _make_render_context(output_format="plain", strip_references=True)
+
+    stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+    assert capsys.readouterr().out == "Answer\n"
+    render.formatter.format_references.assert_not_called()
+
+
+def test_stream_query_response_uses_references_only_from_final_message():
+    """References on intermediate snapshots do not leak into the final result."""
+    api = Mock()
+    intermediate_refs = [WebResult(name="Early", url="https://early.example", snippet="Early")]
+    final_refs = [WebResult(name="Final", url="https://final.example", snippet="Final")]
+    api.submit_query.return_value = iter(
+        [
+            _make_message("Answer", final=False, references=intermediate_refs),
+            _make_message("Answer", final=True, references=final_refs),
+        ]
+    )
+    render = _make_render_context(output_format="plain", strip_references=False)
+    render.formatter.format_references.return_value = "final refs"
+
+    stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+    render.formatter.format_references.assert_called_once_with(final_refs)
+
+
+def test_stream_query_response_json_mode_preserves_incremental_chunks_and_final_refs():
+    """JSON streaming exposes each suffix and only the final reference set."""
+    import json
+
+    api = Mock()
+    early_refs = [WebResult(name="Early", url="https://early.example", snippet="Early")]
+    final_refs = [WebResult(name="Final", url="https://final.example", snippet="Final")]
+    api.submit_query.return_value = iter(
+        [
+            _make_message("A", final=False, references=early_refs),
+            _make_message("Answer", final=True, references=final_refs),
+        ]
+    )
+    render = _make_render_context(json_mode=True, strip_references=True)
+    output = StringIO()
+
+    with patch("perplexity_cli.query_streaming.sys") as mock_sys:
+        mock_sys.stdout = output
+        stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+    events = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert [event["type"] for event in events] == ["start", "chunk", "chunk", "result"]
+    assert [event["text"] for event in events[1:3]] == ["A", "nswer"]
+    assert events[-1]["result"]["references"][0]["url"] == "https://final.example"
+    assert events[0]["command"] == "pxcli query --json --stream"
+    render.formatter.format_references.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("error", "expected", "exit_code"),
+    [
+        (PerplexityRequestError("offline"), "internet connection", 1),
+        (UpstreamSchemaError("bad snapshot"), "bad snapshot", 1),
+        (OSError("closed stdout"), "Failed to render streaming output: closed stdout", 1),
+        (RuntimeError("private detail"), "unexpected error occurred", 1),
+    ],
+)
+def test_stream_query_response_keeps_stream_error_boundaries(error, expected, exit_code, capsys):
+    """Public streaming errors retain their type-specific user-facing contract."""
+    api = Mock()
+    api.submit_query.side_effect = error
+    render = _make_render_context(strip_references=True)
+
+    with pytest.raises(SystemExit) as exc_info:
+        stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == exit_code
+    assert expected in captured.err
+    if isinstance(error, RuntimeError):
+        assert "private detail" not in captured.err
+
+
+@pytest.mark.parametrize(
+    ("status", "expected", "extra"),
+    [
+        (401, "Authentication failed", "perplexity-cli auth"),
+        (403, "Access forbidden", None),
+        (429, "Rate limit exceeded", None),
+        (418, "HTTP error 418", None),
+    ],
+)
+def test_stream_query_response_keeps_http_status_guidance(status, expected, extra, capsys):
+    """HTTP status classes retain status-specific guidance at the public boundary."""
+    response = Mock(status_code=status)
+    api = Mock()
+    api.submit_query.side_effect = PerplexityHTTPStatusError("request failed", response=response)
+    render = _make_render_context(strip_references=True)
+
+    with pytest.raises(SystemExit) as exc_info:
+        stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert captured.out == "\n"
+    assert expected in captured.err
+    if extra is not None:
+        assert extra in captured.err
+
+
 def test_stream_query_response_surfaces_output_failure(capsys):
     """Local render failures produce the dedicated streaming output error."""
     api = Mock()
@@ -161,6 +299,112 @@ def test_stream_query_response_maps_output_oserror_to_render_failure(capsys):
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
     assert "[ERROR] Failed to render streaming output: bad tty" in captured.err
+
+
+def test_stream_network_error_has_exact_stable_boundary_output(capsys):
+    """Network failures retain the documented guidance and line boundaries."""
+    logger = Mock()
+
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_stream_network_error(PerplexityRequestError("offline"), logger)
+
+    assert exc_info.value.code == 1
+    assert capsys.readouterr().err == (
+        "[ERROR] Network error. Please check your internet connection.\n"
+    )
+
+
+def test_stream_http_error_preserves_authentication_extra_line(capsys):
+    """Authentication failures include the re-authentication instruction."""
+    error = PerplexityHTTPStatusError("request failed", response=Mock(status_code=401))
+
+    with pytest.raises(SystemExit):
+        _handle_stream_http_status_error(error, Mock())
+
+    assert capsys.readouterr().err == (
+        "[ERROR] Authentication failed. Token may be expired.\n"
+        "\nRe-authenticate with: perplexity-cli auth\n"
+    )
+
+
+def test_stream_error_handlers_dispatch_keyboard_interrupt_to_handler(monkeypatch):
+    """The lazily-built dispatch table invokes the interrupt handler with its logger."""
+    handler = Mock()
+    monkeypatch.setattr("perplexity_cli.query_streaming._handle_stream_keyboard_interrupt", handler)
+
+    handlers = _init_stream_error_handlers()
+    keyboard_handler = next(callback for types, callback in handlers if types is KeyboardInterrupt)
+    logger = Mock()
+    keyboard_handler(KeyboardInterrupt(), logger)
+
+    handler.assert_called_once_with(logger)
+
+
+def test_stream_loop_ignores_intermediate_references():
+    """Only final SSE messages can replace the reference collection."""
+    early = [WebResult(name="early", url="https://early", snippet="early")]
+    api = Mock()
+    api.submit_query.return_value = iter(
+        [
+            _make_message("Answer", final=False, references=early),
+            _make_message("Answer", final=True),
+        ]
+    )
+
+    text, references = _run_stream_loop(api, QueryInput(query="query"), None)
+
+    assert text == "Answer"
+    assert references == []
+
+
+def test_write_ndjson_result_uses_json_metadata_and_millisecond_duration(monkeypatch):
+    """The result event serialises metadata in JSON mode with millisecond timing."""
+    writer = Mock()
+    trace = TraceContext(start_time=10.0, trace_id="trace-sentinel")
+    monkeypatch.setattr("perplexity_cli.query_streaming.time.monotonic", lambda: 11.234)
+    monkeypatch.setattr("perplexity_cli.query_streaming.get_version", lambda: "version-sentinel")
+
+    _write_ndjson_result(writer, "answer", [], trace)
+
+    kwargs = writer.result.call_args.kwargs
+    assert kwargs["ok"] is True
+    assert kwargs["command"] == "pxcli query --json --stream"
+    assert kwargs["result"] == {"answer": "answer", "references": []}
+    assert kwargs["extras"][0] == {
+        "duration_ms": 1234,
+        "version": "version-sentinel",
+        "trace_id": "trace-sentinel",
+        "truncated": False,
+    }
+
+
+def test_stream_query_response_forwards_query_and_emits_final_answer(monkeypatch):
+    """The public stream boundary forwards its input and preserves final text."""
+    api = Mock()
+    message = _make_message("answer", references=[])
+    api.submit_query.side_effect = lambda query_input: iter(
+        [message] if query_input == QueryInput(query="query") else []
+    )
+    render = _make_render_context(output_format="plain", strip_references=True)
+
+    stream_query_response(api, QueryInput(query="query"), render, TraceContext())
+
+    api.submit_query.assert_called_once_with(QueryInput(query="query"))
+    assert message.extract_answer_text.called
+
+
+def test_stream_query_response_json_result_preserves_accumulated_text(monkeypatch):
+    """JSON streaming passes the accumulated answer to the final result event."""
+    api = Mock()
+    api.submit_query.return_value = iter([_make_message("answer")])
+    render = _make_render_context(json_mode=True)
+    result = Mock()
+    monkeypatch.setattr("perplexity_cli.query_streaming._write_ndjson_result", result)
+    monkeypatch.setattr("perplexity_cli.query_streaming.NDJSONWriter.start", Mock())
+
+    stream_query_response(api, QueryInput(query="query"), render, TraceContext())
+
+    assert result.call_args.args[1] == "answer"
 
 
 def test_stream_query_response_divergent_snapshot_emits_no_garbage(capsys):
@@ -247,6 +491,32 @@ class TestProcessStreamMessage:
             _process_stream_message(message, "Hello", writer)
         writer.chunk.assert_not_called()
 
+    def test_identical_snapshot_does_not_write_to_ndjson(self):
+        """Repeated snapshots do not emit duplicate JSON chunks."""
+        writer = Mock()
+        result = _process_stream_message(_make_message("Hello"), "Hello", writer)
+
+        assert result == "Hello"
+        writer.chunk.assert_not_called()
+
+    def test_falsey_writer_uses_human_output(self, capsys):
+        """A falsey writer follows the human output branch without a chunk call."""
+        writer = Mock()
+        writer.__bool__ = Mock(return_value=False)
+
+        result = _process_stream_message(_make_message("Hello world"), "Hello", writer)
+
+        assert result == "Hello world"
+        assert capsys.readouterr().out == " world"
+        writer.chunk.assert_not_called()
+
+    def test_prefix_extension_from_empty_accumulator_writes_all_text(self, capsys):
+        """The first non-empty snapshot emits its complete text."""
+        result = _process_stream_message(_make_message("Hello"), "", None)
+
+        assert result == "Hello"
+        assert capsys.readouterr().out == "Hello"
+
 
 class TestWriteNdjsonResult:
     """Tests for _write_ndjson_result."""
@@ -293,6 +563,24 @@ class TestWriteNdjsonResult:
         assert data["ok"] is True
         assert data["meta"]["trace_id"] == ""
 
+    def test_serializes_all_reference_fields(self):
+        """NDJSON references preserve names, URLs, and snippets independently."""
+        from perplexity_cli.ndjson import NDJSONWriter
+
+        output = StringIO()
+        writer = NDJSONWriter(output)
+        reference = WebResult(name="Name", url="https://url", snippet="Snippet")
+
+        _write_ndjson_result(writer, "Answer", [reference], TraceContext())
+
+        import json
+
+        result = json.loads(output.getvalue())["result"]
+        assert result == {
+            "answer": "Answer",
+            "references": [{"name": "Name", "url": "https://url", "snippet": "Snippet"}],
+        }
+
 
 class TestHandleStreamError:
     """Tests for _handle_stream_error dispatch table."""
@@ -312,6 +600,95 @@ class TestHandleStreamError:
 
         assert exc_info.value.code == 1
         mock_unexpected.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("status", "expected"),
+        [
+            (401, "Authentication failed"),
+            (403, "Access forbidden"),
+            (429, "Rate limit exceeded"),
+            (500, "HTTP error 500"),
+        ],
+    )
+    def test_http_status_messages_are_status_specific(self, status, expected, capsys):
+        """HTTP status classes retain their distinct user-facing guidance."""
+        error = PerplexityHTTPStatusError("request failed", response=Mock(status_code=status))
+        logger = Mock()
+
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_stream_http_status_error(error, logger)
+
+        assert exc_info.value.code == 1
+        assert expected in capsys.readouterr().err
+        logger.error.assert_called_once_with("HTTP error %s during streaming: %s", status, error)
+
+    def test_network_error_has_network_guidance(self, capsys):
+        """Network failures produce actionable connection guidance."""
+        error = PerplexityRequestError("offline")
+        logger = Mock()
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_stream_network_error(error, logger)
+
+        assert exc_info.value.code == 1
+        assert "internet connection" in capsys.readouterr().err
+        logger.error.assert_called_once_with("Network error during streaming: %s", error)
+
+    def test_keyboard_interrupt_uses_interrupt_exit_code(self, capsys):
+        """Streaming interruption exits with the shell interrupt status."""
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_stream_keyboard_interrupt(Mock())
+
+        assert exc_info.value.code == 130
+        assert "Streaming interrupted" in capsys.readouterr().err
+
+    def test_upstream_schema_error_includes_original_detail(self, capsys):
+        """Malformed upstream data keeps the diagnostic detail visible."""
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_stream_upstream_schema_error(UpstreamSchemaError("missing text"), Mock())
+
+        assert exc_info.value.code == 1
+        assert "missing text" in capsys.readouterr().err
+
+    def test_output_error_includes_original_detail(self, capsys):
+        """Local output failures use the dedicated rendering message."""
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_stream_output_error(OSError("closed"), Mock())
+
+        assert exc_info.value.code == 1
+        assert "closed" in capsys.readouterr().err
+
+    def test_unexpected_error_hides_internal_detail(self, capsys):
+        """Unexpected failures expose safe guidance rather than exception data."""
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_stream_unexpected_error(RuntimeError("secret detail"), Mock())
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr().err
+        assert "unexpected error" in captured
+        assert "secret detail" not in captured
+
+    def test_unknown_error_uses_unexpected_handler(self):
+        """Errors outside the dispatch table use the safe fallback handler."""
+        error = ValueError("bad value")
+
+        with patch(
+            "perplexity_cli.query_streaming._handle_stream_unexpected_error",
+            side_effect=SystemExit(1),
+        ) as unexpected:
+            with pytest.raises(SystemExit):
+                _handle_stream_error(error)
+
+        unexpected.assert_called_once()
+        assert unexpected.call_args.args[0] is error
+
+    def test_http_handler_writes_extra_guidance_only_for_known_status(self, capsys):
+        """Only statuses with extra guidance receive a second error line."""
+        error = PerplexityHTTPStatusError("request failed", response=Mock(status_code=500))
+
+        with pytest.raises(SystemExit):
+            _handle_stream_http_status_error(error, Mock())
+
+        assert "Re-authenticate" not in capsys.readouterr().err
 
 
 class TestStreamQueryResponseJsonMode:
@@ -346,6 +723,57 @@ class TestStreamQueryResponseJsonMode:
         assert result["ok"] is True
 
 
+def test_run_stream_loop_ignores_nonfinal_references():
+    """Only references attached to a final snapshot are returned."""
+    early = [WebResult(name="Early", url="https://early", snippet="early")]
+    api = Mock()
+    api.submit_query.return_value = iter(
+        [_make_message("Answer", final=False, references=early), _make_message("Answer")]
+    )
+
+    text, references = _run_stream_loop(api, QueryInput(query="test"), None)
+
+    assert text == "Answer"
+    assert references == []
+
+
+@pytest.mark.parametrize(
+    ("output_format", "strip_references", "formatted", "expected"),
+    [
+        ("plain", False, "refs", "\n\nrefs\n"),
+        ("plain", False, "", "\n\n"),
+        ("plain", True, "refs", "\n"),
+    ],
+)
+def test_render_stream_references_plain_boundaries(
+    output_format, strip_references, formatted, expected, capsys
+):
+    """Plain reference rendering distinguishes stripped and empty output."""
+    render = _make_render_context(output_format, strip_references)
+    render.formatter.format_references.return_value = formatted
+
+    _render_stream_references(render, "Answer", [WebResult(name="Ref", url="url", snippet="")])
+
+    assert capsys.readouterr().out == expected
+    if strip_references:
+        render.formatter.format_references.assert_not_called()
+    else:
+        render.formatter.format_references.assert_called_once()
+
+
+def test_render_stream_references_rich_passes_complete_answer(capsys):
+    """Rich rendering receives the accumulated answer and references."""
+    render = _make_render_context("rich", False)
+    references = [WebResult(name="Ref", url="url", snippet="snippet")]
+
+    _render_stream_references(render, "Answer", references)
+
+    assert capsys.readouterr().out == "\n\n"
+    answer = render.formatter.render_complete.call_args.args[0]
+    assert answer.text == "Answer"
+    assert answer.references == references
+
+
 def test_query_streaming_keeps_application_layer_imports():
     """query_streaming must not import adapter, presentation, or framework modules."""
     source_path = (
@@ -366,3 +794,153 @@ def test_query_streaming_keeps_application_layer_imports():
             imported_modules.append(node.module)
     offenders = [name for name in imported_modules if name.startswith(banned_prefixes)]
     assert offenders == []
+
+
+def test_stream_logger_uses_the_module_namespace():
+    """Streaming diagnostics remain isolated under the streaming logger name."""
+    assert _get_stream_logger().name == "perplexity_cli.query_streaming"
+
+
+def test_stream_error_handlers_are_cached_and_cover_known_error_types():
+    """The dispatch table is stable and reuses its lazy cache."""
+    _StreamErrorHandlers._cache = None
+
+    handlers = _StreamErrorHandlers.get()
+
+    assert handlers is _StreamErrorHandlers.get()
+    assert len(handlers) == 5
+
+
+def test_process_stream_message_reports_snapshot_contract_exactly():
+    """Malformed snapshots expose the diagnostic contract, not a blank error."""
+    with pytest.raises(UpstreamSchemaError) as exc_info:
+        _process_stream_message(_make_message("Help"), "Hello", None)
+
+    assert str(exc_info.value) == (
+        "Streaming snapshot is not a strict prefix extension of the accumulated text "
+        "(accumulated 5 characters, received 4)"
+    )
+
+
+def test_write_ndjson_result_forwards_exact_writer_contract(monkeypatch):
+    """Final stream metadata uses milliseconds and the canonical result arguments."""
+    writer = Mock()
+    trace = TraceContext(start_time=100.0, trace_id="trace")
+    monkeypatch.setattr("perplexity_cli.query_streaming.time.monotonic", lambda: 100.25)
+
+    _write_ndjson_result(writer, "answer", [], trace)
+
+    writer.result.assert_called_once()
+    kwargs = writer.result.call_args.kwargs
+    assert kwargs["ok"] is True
+    assert kwargs["command"] == "pxcli query --json --stream"
+    assert kwargs["result"] == {"answer": "answer", "references": []}
+    assert kwargs["extras"][0]["duration_ms"] == 250
+    assert kwargs["extras"][2] is False
+
+
+def test_run_stream_loop_forwards_input_and_records_final_references():
+    """The gateway receives the original input and final references only."""
+    api = Mock()
+    refs = [WebResult(name="Final", url="url", snippet="snippet")]
+    api.submit_query.return_value = iter([_make_message("Answer", references=refs)])
+    query_input = QueryInput(query="original")
+
+    text, references = _run_stream_loop(api, query_input, None)
+
+    assert (text, references) == ("Answer", refs)
+    api.submit_query.assert_called_once_with(query_input)
+
+
+@pytest.mark.parametrize(
+    ("handler", "error", "level", "message"),
+    [
+        (
+            _handle_stream_network_error,
+            PerplexityRequestError("offline"),
+            "error",
+            "Network error during streaming: %s",
+        ),
+        (
+            _handle_stream_upstream_schema_error,
+            UpstreamSchemaError("bad"),
+            "error",
+            "Malformed upstream response during streaming: %s",
+        ),
+        (_handle_stream_output_error, OSError("closed"), "error", "Streaming output failed: %s"),
+    ],
+)
+def test_stream_error_handlers_log_the_original_error(handler, error, level, message, capsys):
+    """Streaming handlers preserve lazy logger format strings and values."""
+    logger = Mock()
+    with pytest.raises(SystemExit):
+        handler(error, logger)
+
+    getattr(logger, level).assert_called_once_with(message, error)
+    assert capsys.readouterr().out == "\n"
+
+
+def test_stream_http_error_logs_and_writes_exact_lines(capsys):
+    """HTTP streaming failures preserve status logging and line boundaries."""
+    error = PerplexityHTTPStatusError("failed", response=Mock(status_code=401))
+    logger = Mock()
+
+    with pytest.raises(SystemExit):
+        _handle_stream_http_status_error(error, logger)
+
+    logger.error.assert_called_once_with("HTTP error %s during streaming: %s", 401, error)
+    assert capsys.readouterr().out == "\n"
+
+
+def test_stream_keyboard_interrupt_logs_exactly_once(capsys):
+    """Interrupts retain both the informational log and terminal error line."""
+    logger = Mock()
+    with pytest.raises(SystemExit):
+        _handle_stream_keyboard_interrupt(logger)
+
+    logger.info.assert_called_once_with("Streaming interrupted by user")
+    assert capsys.readouterr().err == "\n[ERROR] Streaming interrupted.\n"
+
+
+def test_stream_unexpected_error_logs_safe_message_and_hides_detail(capsys):
+    """Unexpected errors log detail but expose only safe terminal guidance."""
+    logger = Mock()
+    error = RuntimeError("private sentinel")
+
+    with pytest.raises(SystemExit):
+        _handle_stream_unexpected_error(error, logger)
+
+    logger.error.assert_called_once_with("Unexpected error during streaming: %s", error)
+    assert capsys.readouterr().err == (
+        "[ERROR] An unexpected error occurred.\nRun with --debug for more information.\n"
+    )
+
+
+def test_stream_loop_logs_message_and_reference_counts(caplog):
+    """Streaming diagnostics record each message and extracted reference count."""
+    api = Mock()
+    api.submit_query.return_value = iter(
+        [_make_message("Answer", references=[WebResult(name="R", url="u", snippet="s")])]
+    )
+
+    with caplog.at_level("DEBUG", logger="perplexity_cli.query_streaming"):
+        _run_stream_loop(api, QueryInput(query="q"), None)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Received SSE message: status=COMPLETE, final=True" in messages
+    assert "Extracted 1 references" in messages
+
+
+def test_stream_error_handler_table_has_canonical_order_and_types():
+    """Known exception classes are dispatched in the documented order."""
+    streaming = __import__(
+        "perplexity_cli.query_streaming", fromlist=["_init_stream_error_handlers"]
+    )
+    handlers = streaming._init_stream_error_handlers()
+    assert [types for types, _handler in handlers] == [
+        PerplexityHTTPStatusError,
+        PerplexityRequestError,
+        UpstreamSchemaError,
+        KeyboardInterrupt,
+        OSError,
+    ]
