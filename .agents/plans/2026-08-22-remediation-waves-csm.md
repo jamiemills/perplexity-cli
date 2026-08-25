@@ -11,16 +11,16 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: remediation-waves-execution
-- Status: complete
-- Current CSM state: COMPLETE
-- Cycle: 10
+- Status: blocked
+- Current CSM state: BLOCKED
+- Cycle: 11
 - Commits: allowed
-- Last checkpoint: 2026-08-25 - T021 clean; final manifest and conventional CI gates passed
+- Last checkpoint: 2026-08-25 - Batch C closure gates passed; plan commit hook remains blocked by unrelated gitleaks xdist failure
 - Last model/run: openai/gpt-5.6-luna / remediation-waves-execution
-- Next transition: COMPLETE
+- Next transition: BLOCKED -> RECOVER
 - Active tasks: none
-- Blockers: none
-- Resume: complete; re-verify final gate evidence if the worktree changes
+- Blockers: plan journal commit hook fails the unrelated gitleaks temporary-repository test under the full xdist hook; isolated test passes after five retries
+- Resume: retry the plan-only commit after the gitleaks hook environment is repaired; do not bypass hooks
 
 ## Goal
 
@@ -282,7 +282,11 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
 | 2026-08-24 | 9 | SELECT -> REPAIR -> VERIFY -> BLOCKED | T020 | Serial policy gate after query-runner and streaming repairs: 76/372 keys killed, 296 survived, 0 no-tests, 0 timeouts. Remaining findings are executable behavioural distinctions across query_runner, query_streaming, and query_deps; no exclusions were added. T021 focused implementation exists but its gate is non-clean and remains uncommitted. | BLOCKED -> RECOVER |
  | 2026-08-25 | 10 | BLOCKED -> RECOVER -> REPAIR -> VERIFY -> BLOCKED | T020 | Added public-boundary coverage for dependency binding, query environment/context/stdin handling, attachment forwarding and logging, JSON envelope serialization, batch/stream orchestration, stream snapshots, NDJSON metadata, stream error channels, and diagnostic logging. Focused query suite: 134 passed. Latest `make mutate-task-policy TASK=T020`: 299/372 killed, 73 survived, 0 timeout/no-tests; no structural exclusions added. T020 remains uncommitted and T021 was not started. | BLOCKED -> RECOVER |
  | 2026-08-25 | 10 | RECOVER -> REPAIR -> VERIFY -> CHECKPOINT | T021 | Added public CLI boundary coverage and 14 owner/reason/proof dispositions for runtime-equivalent mutations. `make mutate-task-policy TASK=T021` passed with status:clean, 47/47 generated required keys killed plus 14 documented exclusions; focused T021 suite: 118 passed; Ruff, Pyright, Radon, and ledger checks passed. Committed as `510b319`; commit hooks passed after preserving unrelated staged work. | VERIFY final gates |
- | 2026-08-25 | 10 | VERIFY -> REPAIR -> VERIFY -> CHECKPOINT | GATE | `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` passed. `make ci-conventional` passed after refreshing the suppression-reason baseline: Python/TypeScript tests, fuzz, packaging, integration, architecture, suppression, and secret scans all green. | COMPLETE |
+| 2026-08-25 | 10 | VERIFY -> REPAIR -> VERIFY -> CHECKPOINT | GATE | `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` passed. `make ci-conventional` passed after refreshing the suppression-reason baseline: Python/TypeScript tests, fuzz, packaging, integration, architecture, suppression, and secret scans all green. | COMPLETE |
+| 2026-08-25 | 10 | CHECKPOINT -> BLOCKED | T020, T021 | Fresh T020 policy clean (354/354 required mutants killed) and fresh T021 policy clean (47/47 required mutants killed). T020 coverage and protected node-map reconciliation are staged, but the scoped commit hook repeatedly fails `tests/test_gitleaks.py::TestOidHandling::test_new_ref_remote_zeros_triggers_new_branch_path` with an invalid temporary Git object; isolated serial test passes. Final manifest and conventional gates were not run because the required T020 commit is blocked. | BLOCKED -> RECOVER |
+ | 2026-08-25 | 10 | BLOCKED -> REPAIR -> BLOCKED | T020 | Fresh clean-directory policy gate passed: `status: clean`, 354 generated mutants, no findings. The exact T020 commit was retried five times with 60-second pauses; each failed only at the gitleaks temporary-repository test with changing invalid-object paths. The failing test passes in isolation, but a full hook run with `PYTEST_XDIST_AUTO_NUM_WORKERS=1` still fails after 1,792 tests. No hook bypass used. | BLOCKED -> RECOVER |
+| 2026-08-25 | 11 | RECOVER -> VERIFY -> CHECKPOINT -> COMPLETE | T017-T021, GATE | T020 committed as `66804cc`; all Batch C task-policy gates are clean. `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` passed. `make ci-conventional` exited 0 with Python/TypeScript checks, tests, packaging, integration, fuzz, architecture, suppression, and secret scans green. | COMPLETE |
+| 2026-08-25 | 11 | COMPLETE -> BLOCKED | GATE | Plan-only commit retried five times with 60-second pauses; each hook run failed at the unrelated gitleaks temporary-repository test with invalid object `c1b0730e0133447badcfd47fd144e254807b06e1` after 2,575-2,577 tests. The isolated test passed with `uv run pytest tests/test_gitleaks.py::TestOidHandling::test_new_ref_remote_zeros_triggers_new_branch_path -q -n 0`. No hook bypass used; closure journal remains uncommitted. | BLOCKED -> RECOVER |
 
 ## Completion Review
 
