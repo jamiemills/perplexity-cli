@@ -132,22 +132,22 @@ class TestRateLimiterInitialisation:
 
     def test_zero_requests_per_period_raises(self):
         """Test that zero requests_per_period raises ValueError."""
-        with pytest.raises(ValueError, match="requests_per_period must be greater than 0"):
+        with pytest.raises(ValueError, match=r"^requests_per_period must be greater than 0$"):
             RateLimiter(requests_per_period=0, period_seconds=60.0)
 
     def test_negative_requests_per_period_raises(self):
         """Test that negative requests_per_period raises ValueError."""
-        with pytest.raises(ValueError, match="requests_per_period must be greater than 0"):
+        with pytest.raises(ValueError, match=r"^requests_per_period must be greater than 0$"):
             RateLimiter(requests_per_period=-5, period_seconds=60.0)
 
     def test_zero_period_seconds_raises(self):
         """Test that zero period_seconds raises ValueError."""
-        with pytest.raises(ValueError, match="period_seconds must be greater than 0"):
+        with pytest.raises(ValueError, match=r"^period_seconds must be greater than 0$"):
             RateLimiter(requests_per_period=10, period_seconds=0)
 
     def test_negative_period_seconds_raises(self):
         """Test that negative period_seconds raises ValueError."""
-        with pytest.raises(ValueError, match="period_seconds must be greater than 0"):
+        with pytest.raises(ValueError, match=r"^period_seconds must be greater than 0$"):
             RateLimiter(requests_per_period=10, period_seconds=-1.0)
 
     def test_initial_last_refill_time_is_set(self, fake_clock: _FakeClock) -> None:
@@ -242,6 +242,29 @@ class TestRateLimiterAcquire:
         wait_time = await limiter.acquire()
 
         assert wait_time == pytest.approx(0.0)
+
+    @pytest.mark.asyncio
+    async def test_acquire_with_exactly_one_token_never_sleeps(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A full token is consumed immediately without any sleep call."""
+        sleep_calls: list[float] = []
+
+        async def spy_sleep(seconds: float) -> None:
+            sleep_calls.append(seconds)
+
+        monkeypatch.setattr("perplexity_cli.utils.rate_limiter.asyncio.sleep", spy_sleep)
+        monkeypatch.setattr("perplexity_cli.utils.rate_limiter.time.monotonic", lambda: 1000.0)
+        limiter = RateLimiter(requests_per_period=3, period_seconds=60.0)
+
+        await limiter.acquire()
+        await limiter.acquire()
+        wait_time = await limiter.acquire()
+
+        assert sleep_calls == []
+        assert wait_time == pytest.approx(0.0)
+        assert limiter._state.tokens == pytest.approx(0.0)
+        assert limiter.total_wait_time == pytest.approx(0.0)
 
 
 class TestRateLimiterGetStats:

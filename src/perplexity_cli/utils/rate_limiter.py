@@ -39,7 +39,9 @@ class RateLimiter:
             period_seconds: Time period in seconds.
 
         Raises:
-            ValueError: If parameters are invalid.
+            ValueError: If parameters are invalid. The messages are exactly
+                "requests_per_period must be greater than 0" and
+                "period_seconds must be greater than 0".
         """
         if requests_per_period <= 0:
             msg = "requests_per_period must be greater than 0"
@@ -102,18 +104,17 @@ class RateLimiter:
             # Check if we have tokens available
             if self._state.tokens >= 1.0:
                 # Consume one token and proceed immediately
-                consumed_tokens = min(1.0, self._state.tokens)
-                self._state.tokens -= consumed_tokens
+                self._state.tokens -= 1.0
             else:
-                # No tokens available, calculate wait time
-                # We need 1 token, and we have self._state.tokens
-                # Time to earn remaining tokens: (1 - tokens) / refill_rate
+                # No tokens available: wait for the remaining refill time.
+                # tokens_needed is strictly positive in this branch and the
+                # refill rate is strictly positive, so this branch always
+                # sleeps for a positive duration.
                 tokens_needed = 1.0 - self._state.tokens
                 wait_time = tokens_needed / refill_rate
 
                 # Sleep asynchronously while still holding the lock
-                if wait_time > 0.0:
-                    await asyncio.sleep(wait_time)
+                await asyncio.sleep(wait_time)
 
                 # After sleep, reset state and consume one token
                 self._state.tokens = 0.0
