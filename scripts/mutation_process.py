@@ -78,7 +78,7 @@ def launch_mutmut(argv_suffix: tuple[str, ...], budget: int) -> None:
     Raises:
         EnvironmentMismatchError: On timeout or non-zero Mutmut exit.
     """
-    command = (*policy.MUTMUT_PREFIX, "run", *argv_suffix)
+    command = (*policy.MUTMUT_PREFIX, "run", "--max-children", "2", *argv_suffix)
     logger.info("Running %s with %ss budget", " ".join(command), budget)
     forwarder = _SignalForwarder()
     process = subprocess.Popen(  # nosec B603  # owner: quality-infrastructure; reason: pinned mutmut argv without a shell

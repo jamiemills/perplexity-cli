@@ -14,10 +14,17 @@ if TYPE_CHECKING:
 
 
 class _FakeClock:
-    """Deterministic replacement for ``time.monotonic`` and ``asyncio.sleep``."""
+    """Deterministic replacement for ``time.monotonic`` and ``asyncio.sleep``.
+
+    ``sleep`` enforces a virtual-time budget so tests fail fast when a
+    mutation starves the token bucket and would otherwise loop forever.
+    """
+
+    _MAX_VIRTUAL_SLEEP: float = 10_000.0
 
     def __init__(self, start: float = 1000.0) -> None:
         self.now = start
+        self._slept: float = 0.0
 
     def monotonic(self) -> float:
         return self.now
@@ -26,6 +33,9 @@ class _FakeClock:
         self.now += seconds
 
     async def sleep(self, seconds: float) -> None:
+        self._slept += seconds
+        if self._slept > self._MAX_VIRTUAL_SLEEP:
+            raise AssertionError("virtual sleep budget exhausted: bucket never refills")
         self.now += seconds
 
 
@@ -393,9 +403,12 @@ class TestRateLimiterConcurrency:
             return wait, clock.monotonic()
 
         gather_task = asyncio.gather(*(worker() for _ in range(total)))
-        while not gather_task.done():
+        for _ in range(10_000):
+            if gather_task.done():
+                return await gather_task
             await clock.advance(2.0)
-        return await gather_task
+        gather_task.cancel()
+        raise AssertionError("burst did not drain within the virtual-time budget")
 
     @pytest.mark.asyncio
     async def test_simultaneous_burst_never_exceeds_capacity(
