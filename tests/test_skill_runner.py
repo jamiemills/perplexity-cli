@@ -124,6 +124,38 @@ class TestSkillRunnerMutationKillers:
 
         assert result == "# Skill"
 
+    def test_load_skill_content_uses_utf8_encoding(self):
+        with patch("perplexity_cli.runners.skill.files") as mock_files:
+            mock_files.return_value.joinpath.return_value.read_text.return_value = "# Skill"
+            _load_skill_content()
+
+        mock_files.return_value.joinpath.return_value.read_text.assert_called_once_with(
+            encoding="utf-8"
+        )
+
+    def test_public_skill_command_loads_exact_resource_and_encoding(self, capsys):
+        with patch("perplexity_cli.runners.skill.files") as mock_files:
+            resource = mock_files.return_value.joinpath.return_value
+            resource.read_text.return_value = "skill content"
+            run_show_skill_command(json_mode=False)
+
+        mock_files.assert_called_once_with("perplexity_cli.resources")
+        mock_files.return_value.joinpath.assert_called_once_with("skill.md")
+        resource.read_text.assert_called_once_with(encoding="utf-8")
+        assert capsys.readouterr().out == "skill content\n"
+
+    def test_public_skill_command_fallback_is_exact_for_missing_resource(self, capsys):
+        with patch("perplexity_cli.runners.skill.files") as mock_files:
+            mock_files.return_value.joinpath.return_value.read_text.side_effect = (
+                FileNotFoundError()
+            )
+            run_show_skill_command(json_mode=False)
+
+        assert capsys.readouterr().out == (
+            "Agent Skill definition not available. "
+            "Run 'perplexity-cli --help' for usage information.\n"
+        )
+
     def test_resolve_ctx_flags_json_mode_true(self):
         with patch("perplexity_cli.runners.skill.click.get_current_context", return_value=None):
             output_format, include_schema = _resolve_ctx_flags(json_mode=True)
@@ -145,6 +177,23 @@ class TestSkillRunnerMutationKillers:
         assert output_format == "human"
         assert include_schema == "no_schema"
 
+    def test_resolve_ctx_flags_without_click_context_is_safe(self):
+        output_format, include_schema = _resolve_ctx_flags(json_mode=None)
+
+        assert output_format == "human"
+        assert include_schema == "no_schema"
+
+    def test_explicit_json_flag_wins_over_context_json_flag(self):
+        from unittest.mock import Mock
+
+        mock_ctx = Mock()
+        mock_ctx.obj = {"json": False, "schema": True}
+        with patch("perplexity_cli.runners.skill.click.get_current_context", return_value=mock_ctx):
+            output_format, include_schema = _resolve_ctx_flags(json_mode=True)
+
+        assert output_format == "json"
+        assert include_schema == "with_schema"
+
     def test_resolve_ctx_flags_schema_from_ctx(self):
         from unittest.mock import Mock
 
@@ -155,6 +204,26 @@ class TestSkillRunnerMutationKillers:
 
         assert output_format == "human"
         assert include_schema == "with_schema"
+
+    def test_resolve_ctx_flags_requests_silent_click_context(self):
+        with patch(
+            "perplexity_cli.runners.skill.click.get_current_context",
+            return_value=None,
+        ) as get_context:
+            _resolve_ctx_flags(json_mode=None)
+
+        get_context.assert_called_once_with(silent=True)
+
+    def test_resolve_ctx_flags_uses_context_json_when_explicit_is_missing(self):
+        from unittest.mock import Mock
+
+        mock_ctx = Mock()
+        mock_ctx.obj = {"json": True, "schema": False}
+        with patch("perplexity_cli.runners.skill.click.get_current_context", return_value=mock_ctx):
+            output_format, include_schema = _resolve_ctx_flags(json_mode=None)
+
+        assert output_format == "json"
+        assert include_schema == "no_schema"
 
     def test_run_show_skill_json_output(self, capsys):
         with patch("perplexity_cli.runners.skill.files") as mock_files:
@@ -172,3 +241,15 @@ class TestSkillRunnerMutationKillers:
             run_show_skill_command(json_mode=False)
 
         assert capsys.readouterr().out == "exact content\n"
+
+    def test_run_show_skill_json_includes_schema_when_requested(self, capsys):
+        with patch("perplexity_cli.runners.skill.files") as mock_files:
+            mock_files.return_value.joinpath.return_value.read_text.return_value = "# Skill MD"
+            with patch("perplexity_cli.runners.skill.write_envelope") as write_envelope:
+                with patch(
+                    "perplexity_cli.runners.skill.click.get_current_context",
+                    return_value=type("Context", (), {"obj": {"schema": True}})(),
+                ):
+                    run_show_skill_command(json_mode=True)
+
+        assert write_envelope.call_args.kwargs["include_schema"] == "with_schema"

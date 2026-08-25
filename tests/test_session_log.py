@@ -43,6 +43,13 @@ class TestSessionLoggerDisabled:
             success="ok", duration_ms=100, result_summary="done"
         )  # should not raise
 
+    def test_default_logger_is_disabled(self) -> None:
+        from perplexity_cli.session_log import SessionLogger
+
+        logger = SessionLogger("test-session")
+
+        assert logger._enabled is False
+
 
 class TestSessionLoggerEnabled:
     """Tests for enabled session logger."""
@@ -93,7 +100,36 @@ class TestSessionLoggerEnabled:
         event = json.loads(log_file.read_text().strip())
         ts = event["ts"]
         # Should parse as ISO 8601
-        datetime.fromisoformat(ts)
+        assert datetime.fromisoformat(ts).utcoffset().total_seconds() == 0
+
+    def test_invocation_preserves_unicode_and_writes_one_ndjson_line(
+        self, logger: SessionLogger
+    ) -> None:
+        logger.log_invocation("ask", {"query": "cafe\N{LATIN SMALL LETTER E WITH ACUTE}"})
+
+        log_file = logger.get_sessions_dir() / "test-session-123.ndjson"
+        raw = log_file.read_text()
+        assert raw.endswith("\n")
+        assert "cafe\N{LATIN SMALL LETTER E WITH ACUTE}" in raw
+        assert json.loads(raw) == {
+            "type": "invocation",
+            "ts": json.loads(raw)["ts"],
+            "session_id": "test-session-123",
+            "command": "ask",
+            "args": {"query": "cafe\N{LATIN SMALL LETTER E WITH ACUTE}"},
+        }
+
+    def test_response_boundary_preserves_summary_and_boolean_status(
+        self, logger: SessionLogger
+    ) -> None:
+        logger.log_response(success="not-ok", duration_ms=0, result_summary="")
+
+        event = json.loads((logger.get_sessions_dir() / "test-session-123.ndjson").read_text())
+        assert event["type"] == "response"
+        assert event["ok"] is False
+        assert event["duration_ms"] == 0
+        assert event["result_summary"] == ""
+        assert datetime.fromisoformat(event["ts"]).utcoffset().total_seconds() == 0
 
 
 class TestSessionLoggerFactory:
@@ -273,9 +309,16 @@ class TestWriteFailureRedacted:
         with caplog.at_level(logging.WARNING):
             logger.log_invocation("ask")  # must not raise
 
-        assert "Failed to write session log to <redacted>/fail-session.ndjson" in caplog.text
+        assert caplog.records[0].message == (
+            "Failed to write session log to <redacted>/fail-session.ndjson (errno 13)"
+        )
         assert str(tmp_path) not in caplog.text
         assert not (logger.get_sessions_dir() / "fail-session.ndjson").exists()
+
+    def test_empty_path_uses_generic_redaction_marker(self) -> None:
+        from perplexity_cli.session_log import _redact_path
+
+        assert _redact_path(Path()) == "<redacted-path>"
 
 
 class TestCredentialRedaction:
@@ -367,3 +410,34 @@ class TestCredentialRedaction:
             {"query": "what is tokenization and cookies"},
         )
         assert event["args"]["query"] == "what is tokenization and cookies"
+
+    @pytest.mark.parametrize(
+        "key",
+        ["token", "TOKEN", "api-key", "authorization", "COOKIE", "password", "secret"],
+    )
+    def test_all_credential_key_forms_are_redacted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, key: str
+    ) -> None:
+        event = self._write_and_read(tmp_path, monkeypatch, "credential-forms", {key: "sensitive"})
+        assert event["args"][key] == "[REDACTED]"
+
+    def test_nested_tuple_and_scalar_values_are_preserved(self) -> None:
+        from perplexity_cli.session_log import _redact_args
+
+        value = {"items": ("plain", 3), "none": None}
+        assert _redact_args(value) == value
+
+    def test_response_failure_is_written_as_false(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from perplexity_cli.session_log import SessionLogger
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        logger = SessionLogger("failed-response", enabled="enabled")
+        logger.log_response(success="error", duration_ms=7, result_summary="failed")
+        event = json.loads(
+            (logger.get_sessions_dir() / "failed-response.ndjson").read_text().strip()
+        )
+        assert event["ok"] is False
+        assert event["duration_ms"] == 7
+        assert event["result_summary"] == "failed"

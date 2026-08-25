@@ -25,3 +25,7 @@ class TestResolveJsonFlag:
 
     def test_returns_false_when_ctx_obj_is_empty(self) -> None:
         assert resolve_json_flag(None, {}) is False
+
+    def test_context_value_is_coerced_to_boolean(self) -> None:
+        assert resolve_json_flag(None, {"json": 1}) is True
+        assert resolve_json_flag(None, {"json": 0}) is False
