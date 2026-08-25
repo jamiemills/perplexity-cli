@@ -11,16 +11,16 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: remediation-waves-execution
-- Status: blocked
-- Current CSM state: BLOCKED
-- Cycle: 11
+- Status: complete (remediation waves)
+- Current CSM state: COMPLETE
+- Cycle: 12
 - Commits: allowed
-- Last checkpoint: 2026-08-25 - Batch C closure gates passed; plan commit hook remains blocked by unrelated gitleaks xdist failure
+- Last checkpoint: 2026-08-25 - Batch D manifest and conventional CI gates passed; remediation waves complete
 - Last model/run: openai/gpt-5.6-luna / remediation-waves-execution
-- Next transition: BLOCKED -> RECOVER
+- Next transition: COMPLETE; post-wave T004/T005 remain per Note On Remaining Work
 - Active tasks: none
-- Blockers: plan journal commit hook fails the unrelated gitleaks temporary-repository test under the full xdist hook; isolated test passes after five retries
-- Resume: retry the plan-only commit after the gitleaks hook environment is repaired; do not bypass hooks
+- Blockers: none for the remediation waves
+- Resume: post-wave T004 full-tree proof runs and optional T005 remote dispatch remain outside Batch D; do not bypass hooks
 
 ## Goal
 
@@ -202,7 +202,7 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
 
 ### Post-waves
 
-16. [pending] Final conventional gate and repair round
+16. [complete] Final conventional gate and repair round
     - Task ID: GATE
     - Depends on: T007-T021 all complete
     - Parallel group: serial
@@ -287,7 +287,8 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
  | 2026-08-25 | 10 | BLOCKED -> REPAIR -> BLOCKED | T020 | Fresh clean-directory policy gate passed: `status: clean`, 354 generated mutants, no findings. The exact T020 commit was retried five times with 60-second pauses; each failed only at the gitleaks temporary-repository test with changing invalid-object paths. The failing test passes in isolation, but a full hook run with `PYTEST_XDIST_AUTO_NUM_WORKERS=1` still fails after 1,792 tests. No hook bypass used. | BLOCKED -> RECOVER |
 | 2026-08-25 | 11 | RECOVER -> VERIFY -> CHECKPOINT -> COMPLETE | T017-T021, GATE | T020 committed as `66804cc`; all Batch C task-policy gates are clean. `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` passed. `make ci-conventional` exited 0 with Python/TypeScript checks, tests, packaging, integration, fuzz, architecture, suppression, and secret scans green. | COMPLETE |
 | 2026-08-25 | 11 | COMPLETE -> BLOCKED | GATE | Plan-only commit retried five times with 60-second pauses; each hook run failed at the unrelated gitleaks temporary-repository test with invalid object `c1b0730e0133447badcfd47fd144e254807b06e1` after 2,575-2,577 tests. The isolated test passed with `uv run pytest tests/test_gitleaks.py::TestOidHandling::test_new_ref_remote_zeros_triggers_new_branch_path -q -n 0`. No hook bypass used; closure journal remains uncommitted. | BLOCKED -> RECOVER |
+| 2026-08-25 | 12 | RECOVER -> VALIDATE -> VERIFY -> CHECKPOINT -> COMPLETE | GATE | Confirmed T007-T021 reports are all `status: clean`; `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` passed; `make ci-conventional` exited 0 with tests, packaging, integration, fuzz, architecture, suppression, and secret scans green. Remediation waves are complete; T004 full-tree proof runs and optional T005 remote dispatch remain post-wave items per Note On Remaining Work. | COMPLETE |
 
 ## Completion Review
 
-All task-policy and final acceptance gates are complete. T007-T021 have current clean evidence, with required keys killed and documented exclusions carrying owner/reason/proof. The baseline manifest and conventional CI gates pass.
+The remediation waves and Batch D gate are complete. T007-T021 have current clean evidence, with required keys killed and documented exclusions carrying owner/reason/proof. The baseline manifest and conventional CI gates pass. T004 full-tree proof runs and optional T005 remote dispatch remain post-wave items as recorded in Note On Remaining Work.
