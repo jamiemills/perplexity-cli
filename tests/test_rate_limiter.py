@@ -244,6 +244,30 @@ class TestRateLimiterAcquire:
         assert wait_time == pytest.approx(0.0)
 
     @pytest.mark.asyncio
+    async def test_refill_credits_earned_tokens_without_sleeping(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A half-period refill credits tokens so the next acquire never waits."""
+        sleep_calls: list[float] = []
+
+        async def spy_sleep(seconds: float) -> None:
+            sleep_calls.append(seconds)
+
+        monkeypatch.setattr("perplexity_cli.utils.rate_limiter.asyncio.sleep", spy_sleep)
+        clock = _FakeClock()
+        monkeypatch.setattr("perplexity_cli.utils.rate_limiter.time.monotonic", clock.monotonic)
+
+        limiter = RateLimiter(requests_per_period=2, period_seconds=1.0)
+        await limiter.acquire()
+        await limiter.acquire()
+        clock.advance(0.5)
+
+        wait_time = await limiter.acquire()
+
+        assert sleep_calls == []
+        assert wait_time == pytest.approx(0.0)
+
+    @pytest.mark.asyncio
     async def test_acquire_with_exactly_one_token_never_sleeps(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
