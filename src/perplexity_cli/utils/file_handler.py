@@ -62,19 +62,13 @@ def _extract_file_paths_from_text(text: str) -> list[Path]:
     # Pattern for tilde paths (~/path/to/file.ext)
     tilde_pattern = r"~[a-zA-Z0-9._\-/]*\.[a-zA-Z0-9]+"
 
-    # Find all potential paths
+    # Both regexes end with the alphanumeric extension, so any adjacent
+    # sentence punctuation is excluded from the match itself.
     for match in re.finditer(unix_pattern, text):
-        candidate = match.group()
-        # Remove trailing punctuation that's likely from the sentence
-        candidate = candidate.rstrip(".,;:!?'\"")
-        path = Path(candidate)
-        paths.add(path)
+        paths.add(Path(match.group()))
 
     for match in re.finditer(tilde_pattern, text):
-        candidate = match.group()
-        candidate = candidate.rstrip(".,;:!?'\"")
-        path = Path(candidate).expanduser()
-        paths.add(path)
+        paths.add(Path(match.group()).expanduser())
 
     return sorted(paths)
 
