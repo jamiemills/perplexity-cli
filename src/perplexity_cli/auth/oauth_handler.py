@@ -48,6 +48,9 @@ def _is_object_list(value: object) -> TypeGuard[list[object]]:
 class ChromeDevToolsClient:
     """Client for communicating with Chrome via DevTools Protocol."""
 
+    # Falsy class-level default; close() shadows it with an instance True.
+    _closed: bool = False
+
     def __init__(self, port: int) -> None:
         """Initialise Chrome DevTools client.
 
@@ -58,7 +61,6 @@ class ChromeDevToolsClient:
         self.ws: Any | None = None
         self.message_id: int = 0
         self._command_lock = asyncio.Lock()
-        self._closed = False
 
     async def connect(self) -> None:
         """Connect to Chrome's remote debugging endpoint.
@@ -403,7 +405,9 @@ async def _poll_for_auth_data(
         Tuple of (token, cookies_dict).
 
     Raises:
-        TimeoutError: If authentication timeout is exceeded.
+        TimeoutError: If authentication timeout is exceeded. The message is
+            exactly "Authentication timeout after {timeout} seconds. Please
+            ensure you have logged in to Perplexity.ai in Chrome.".
     """
     start_time = asyncio.get_event_loop().time()
 

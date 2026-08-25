@@ -889,12 +889,12 @@ class TestPollForAuthDataProtocol:
                 return_value={},
             ),
         ):
-            with pytest.raises(TimeoutError) as exc_info:
+            with pytest.raises(
+                TimeoutError,
+                match=r"^Authentication timeout after 5 seconds\. "
+                r"Please ensure you have logged in to Perplexity\.ai in Chrome\.$",
+            ):
                 await _poll_for_auth_data(mock_client, 5, 0.25, mock_logger)
-
-        message = str(exc_info.value)
-        assert "Authentication timeout after 5 seconds" in message
-        assert "Please ensure you have logged in to Perplexity.ai in Chrome." in message
 
 
 class TestWaitForPageLoadPacing:
