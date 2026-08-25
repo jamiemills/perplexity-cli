@@ -16,11 +16,13 @@ import pytest
 
 from perplexity_cli.config.models import RateLimitConfig
 from perplexity_cli.runners.export import (
+    CacheAction,
     ExportDateRange,
     ExportResult,
     OutputMode,
     _echo_date_range,
     _emit_json_error,
+    _handle_cache_action,
     _handle_cache_clear,
     _handle_http_status_error,
     _handle_known_error,
@@ -660,11 +662,14 @@ class TestExportRunnerMutationKillers:
         captured = capsys.readouterr()
         assert "Please use YYYY-MM-DD format" in captured.err
 
-    def test_handle_cache_clear_preserve_does_nothing(self, tmp_path):
+    def test_handle_cache_clear_preserve_does_nothing(self, tmp_path, capsys):
         cm = FakeCacheManager(cache_path=tmp_path / "cache.json")
         _handle_cache_clear(cm, clear_cache=False, output_format="human", logger=_LOGGER)
         assert cm.cache_exists_calls == 0
         assert cm.clear_calls == 0
+        json_cache = FakeCacheManager(cache_path=tmp_path / "missing-cache.json")
+        _handle_cache_action(json_cache, CacheAction.CLEAR, output_format="json", logger=_LOGGER)
+        assert capsys.readouterr().out == ""
 
     def test_resolve_ctx_flags_maps_json_and_schema(self):
         """Export output mode reflects both context flags independently."""

@@ -369,15 +369,17 @@ def test_run_query_command_non_streaming_renders_answer(capsys):
     mock_api = _make_api_mock(answer)
     logger = Mock()
     logger.isEnabledFor.return_value = False
+    token_manager = Mock()
+    load_token = Mock(return_value=("token-123", None))
 
     with (
-        patched_dep("TokenManager", Mock(return_value=Mock())),
-        patched_dep("load_token_optional", Mock(return_value=("token-123", None))),
+        patched_dep("TokenManager", Mock(return_value=token_manager)),
+        patched_dep("load_token_optional", load_token),
         patch(
             "perplexity_cli.query_runner.resolve_attachment_urls", return_value=[], autospec=True
         ),
         patched_dep("PerplexityAPI", Mock(return_value=mock_api)),
-        patched_dep("get_logger", logger),
+        patched_dep("get_logger", lambda: logger),
         patch("perplexity_cli.query_runner.build_final_query", return_value="final query"),
     ):
         run_query_command(
@@ -393,6 +395,7 @@ def test_run_query_command_non_streaming_renders_answer(capsys):
         "final query",
         extra_params=([], None, {}),
     )
+    load_token.assert_called_once_with(token_manager, logger)
 
 
 def _exercise_streaming_query_command() -> None:
