@@ -18,7 +18,8 @@
     "categories",
     "status",
     "findings",
-    "unsafe_results"
+    "unsafe_results",
+    "excluded_results"
   ],
   "properties": {
     "schema_version": {"const": 2},
@@ -43,6 +44,11 @@
       "type": "array",
       "uniqueItems": true,
       "items": {"$ref": "#/$defs/unsafeResult"}
+    },
+    "excluded_results": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/excludedResult"}
     },
     "error": {"type": "string", "minLength": 1}
   },
@@ -274,6 +280,7 @@
       "additionalProperties": false,
       "required": [
         "killed",
+        "excluded",
         "survived",
         "timeout",
         "suspicious",
@@ -287,6 +294,7 @@
       ],
       "properties": {
         "killed": {"type": "integer", "minimum": 0},
+        "excluded": {"type": "integer", "minimum": 0},
         "survived": {"type": "integer", "minimum": 0},
         "timeout": {"type": "integer", "minimum": 0},
         "suspicious": {"type": "integer", "minimum": 0},
@@ -305,6 +313,7 @@
         {
           "properties": {
             "survived": {"const": 0},
+            "excluded": {"minimum": 0},
             "timeout": {"const": 0},
             "suspicious": {"const": 0},
             "no_tests": {"const": 0},
@@ -357,6 +366,16 @@
         "category": {
           "enum": ["skipped", "not_checked", "interrupted", "segfault", "unknown"]
         }
+      }
+    },
+    "excludedResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "status", "category"],
+      "properties": {
+        "key": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "minLength": 1},
+        "category": {"const": "excluded"}
       }
     }
   }

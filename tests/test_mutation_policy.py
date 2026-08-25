@@ -208,6 +208,73 @@ def test_run_policy_writes_malformed_tool_error(tmp_path: Path) -> None:
     assert json.loads(report_path.read_text())["status"] == "tool-error"
 
 
+def test_run_policy_reports_structural_exclusions_without_findings(tmp_path: Path) -> None:
+    ledger = tmp_path / "exclusions.json"
+    ledger.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "entries": [
+                    {
+                        "task": "T000",
+                        "key": KEY_ONE,
+                        "disposition": "structural-exclusion",
+                        "owner": "test-owner",
+                        "reason": "sentinel reason",
+                        "proof": "sentinel proof",
+                    }
+                ],
+            }
+        )
+    )
+    report_path = tmp_path / "report.json"
+    policy_input = policy.PolicyInput(
+        _context(), (KEY_ONE,), EvidenceDisagreements(), _line(KEY_ONE, "survived"), ledger
+    )
+
+    assert policy.run_policy(policy_input, report_path) == policy.EXIT_CLEAN
+    payload = json.loads(report_path.read_text())
+    assert payload["status"] == policy.STATUS_CLEAN
+    assert payload["categories"]["excluded"] == 1
+    assert payload["findings"] == []
+    assert payload["excluded_results"] == [
+        {"key": KEY_ONE, "status": "survived", "category": "excluded"}
+    ]
+
+
+def test_run_policy_fails_closed_for_malformed_exclusion_ledger(tmp_path: Path) -> None:
+    ledger = tmp_path / "exclusions.json"
+    ledger.write_text("not-json")
+    policy_input = policy.PolicyInput(
+        _context(), (KEY_ONE,), EvidenceDisagreements(), _line(KEY_ONE, "killed"), ledger
+    )
+
+    assert policy.run_policy(policy_input) == policy.EXIT_TOOL_ERROR
+
+
+def test_stale_structural_exclusions_warn_without_failing(tmp_path: Path, caplog) -> None:
+    ledger = tmp_path / "exclusions.json"
+    ledger.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "task": "T000",
+                        "key": "missing-mutant",
+                        "disposition": "structural-exclusion",
+                        "owner": "test-owner",
+                        "reason": "sentinel reason",
+                        "proof": "sentinel proof",
+                    }
+                ]
+            }
+        )
+    )
+
+    assert policy.load_structural_exclusions(ledger, (KEY_ONE,)) == ("missing-mutant",)
+    assert "absent from current mutants" in caplog.text
+
+
 def test_fetch_results_uses_locked_click_boolean_syntax(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, ...]] = []
 

@@ -2202,10 +2202,15 @@ documents how to reproduce it and what it means.
   suspicious mutant), 2 tool-error (mutmut unavailable or output unparseable).
   The scheduled job FAILS on 1/2 while the summary/upload steps still run
   (`if: always()`).
+- **Reviewed structural exclusions:** the full policy honours
+  `quality/baselines/mutation-task-exclusions.json`; valid structural exclusions
+  are reported separately and do not fail the gate, while malformed ledger data
+  remains a tool error.
 - **Skip semantics:** none. Waivers are NOT supported.
 - **Inputs and configuration:** policy constants `ACTIONABLE_CATEGORIES =
-  {survived, timeout, suspicious}`; six report categories (killed, survived,
-  timeout, suspicious, skipped, not_checked).
+  {survived, timeout, suspicious}`; the reviewed structural-exclusion ledger;
+  report categories include killed, excluded, survived, timeout, suspicious,
+  skipped, and not_checked.
 - **Ordering and concurrency:** mutmut run then policy classification.
 - **Outputs and evidence:** `build/reports/mutation-report.json` conforming to
   `quality/schemas/mutation-report.json`; uploaded as a 30-day workflow
@@ -3782,6 +3787,9 @@ full inventory.
 - **Authoritative source:** `.github/workflows/mutation-scheduled.yml` job
   `mutation`; `make mutate-full-policy`.
 - **Canonical invocation:** `make mutate-full-policy` on Python 3.12.
+- **Reviewed structural exclusions:** the scheduled policy honours valid
+  structural exclusions from `quality/baselines/mutation-task-exclusions.json`
+  as a separate non-failing report category.
 - **Trigger and scope:** schedule `0 2 * * 0` (Sunday 02:00 UTC) or
   `workflow_dispatch`. Timeout 360 min.
 - **Execution context:** Ubuntu; contents: read.

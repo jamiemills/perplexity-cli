@@ -10,9 +10,9 @@ import subprocess  # nosec B404  # owner: quality-infrastructure; reason: only t
 import sys
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""}:
@@ -42,6 +42,8 @@ STATUS_CLEAN = "clean"
 STATUS_FINDINGS = "findings"
 STATUS_TOOL_ERROR = "tool-error"
 STATUS_NOT_APPLICABLE = "not-applicable"
+DEFAULT_EXCLUSIONS_PATH = PROJECT_ROOT / "quality" / "baselines" / "mutation-task-exclusions.json"
+ALLOWED_EXCLUSION_DISPOSITIONS = frozenset({"structural-exclusion", "removed-by-simplification"})
 
 type AggregateStatus = Literal["clean", "findings", "tool-error", "not-applicable"]
 type RunOutcome = Literal["completed", "interrupted", "timed-out", "failed", "not-applicable"]
@@ -51,6 +53,7 @@ ACTIONABLE_CATEGORIES = frozenset({"survived", "timeout", "suspicious", "no_test
 UNSAFE_CATEGORIES = frozenset({"skipped", "not_checked", "interrupted", "segfault", "unknown"})
 CATEGORY_ORDER = (
     "killed",
+    "excluded",
     "survived",
     "timeout",
     "suspicious",
@@ -96,6 +99,10 @@ class ReportValidationError(ValueError):
     """Raised when a report violates canonical semantic invariants."""
 
 
+class ExclusionLedgerError(ValueError):
+    """Raised when the reviewed mutation exclusion ledger is unusable."""
+
+
 @dataclass(frozen=True, slots=True)
 class MutantEntry:
     """One raw Mutmut result and its normalised category."""
@@ -110,6 +117,7 @@ class CategoryCounts:
     """Counts for every distinct Mutmut 3.5 result category."""
 
     killed: int = 0
+    excluded: int = 0
     survived: int = 0
     timeout: int = 0
     suspicious: int = 0
@@ -167,6 +175,7 @@ class PolicyInput:
     generated_keys: tuple[str, ...]
     disagreements: EvidenceDisagreements
     results_text: str
+    exclusions_path: Path = DEFAULT_EXCLUSIONS_PATH
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +207,7 @@ class MutationReport:
     status: AggregateStatus
     findings: tuple[MutantEntry, ...]
     unsafe_results: tuple[MutantEntry, ...]
+    excluded_results: tuple[MutantEntry, ...]
     error: str = ""
 
 
@@ -265,7 +275,12 @@ def build_report(
     status, error = _classify_report(context, evidence, categories)
     findings = _unique_entries(_entries_in_categories(selected_entries, ACTIONABLE_CATEGORIES))
     unsafe_results = _unique_entries(_entries_in_categories(selected_entries, UNSAFE_CATEGORIES))
-    return MutationReport(context, evidence, categories, status, findings, unsafe_results, error)
+    excluded_results = _unique_entries(
+        _entries_in_categories(selected_entries, frozenset({"excluded"}))
+    )
+    return MutationReport(
+        context, evidence, categories, status, findings, unsafe_results, excluded_results, error
+    )
 
 
 def build_tool_error_report(
@@ -299,6 +314,7 @@ def build_tool_error_report(
         status=STATUS_TOOL_ERROR,
         findings=(),
         unsafe_results=(),
+        excluded_results=(),
         error=message,
     )
 
@@ -330,6 +346,7 @@ def report_to_dict(report: MutationReport) -> dict[str, Any]:
         "status": report.status,
         "findings": [_entry_to_dict(entry) for entry in report.findings],
         "unsafe_results": [_entry_to_dict(entry) for entry in report.unsafe_results],
+        "excluded_results": [_entry_to_dict(entry) for entry in report.excluded_results],
     }
     if report.error:
         payload["error"] = report.error
@@ -364,10 +381,16 @@ def validate_report_payload(payload: dict[str, Any]) -> None:
         _validate_detail_records(
             payload["unsafe_results"], categories, UNSAFE_CATEGORIES, "unsafe results"
         )
+        _validate_detail_records(
+            payload["excluded_results"], categories, frozenset({"excluded"}), "excluded results"
+        )
     else:
         _validate_record_set(payload["findings"], categories, ACTIONABLE_CATEGORIES, "findings")
         _validate_record_set(
             payload["unsafe_results"], categories, UNSAFE_CATEGORIES, "unsafe results"
+        )
+        _validate_record_set(
+            payload["excluded_results"], categories, frozenset({"excluded"}), "excluded results"
         )
     _validate_evidence_lists(evidence)
     _validate_completeness(payload)
@@ -460,13 +483,19 @@ def _validate_record_set(
     expected = Counter({category: categories[category] for category in expected_categories})
     _require(lambda: actual == +expected, f"{label} do not correspond to categories")
     for record in records:
-        expected_category = STATUS_TO_CATEGORY.get(record["status"], "unknown")
+        expected_category = _expected_record_category(record, expected_categories)
         _require(
             lambda record=record, expected_category=expected_category: (
                 record["category"] == expected_category
             ),
             f"{label} status/category mismatch",
         )
+
+
+def _expected_record_category(record: dict[str, str], expected: frozenset[str]) -> str:
+    if "excluded" in expected:
+        return "excluded"
+    return STATUS_TO_CATEGORY.get(record["status"], "unknown")
 
 
 def _validate_detail_records(
@@ -491,7 +520,7 @@ def _validate_detail_statuses(
     records: list[dict[str, str]], expected_categories: frozenset[str], label: str
 ) -> None:
     for record in records:
-        expected_category = STATUS_TO_CATEGORY.get(record["status"], "unknown")
+        expected_category = _expected_record_category(record, expected_categories)
         valid = record["category"] == expected_category and expected_category in expected_categories
         _require(lambda valid=valid: valid, f"invalid {label} detail")
 
@@ -585,12 +614,17 @@ def run_policy(policy_input: PolicyInput, report_path: Path | None = None) -> in
         Canonical policy exit code.
     """
     try:
+        exclusions = load_structural_exclusions(
+            policy_input.exclusions_path, policy_input.generated_keys
+        )
         entries = parse_results_text(policy_input.results_text)
-    except ResultsParseError:
+    except (ExclusionLedgerError, ResultsParseError) as exc:
         logger.warning("Malformed Mutmut result evidence")
         report = build_tool_error_report(
             policy_input.context,
-            "malformed mutmut result evidence",
+            str(exc)
+            if isinstance(exc, ExclusionLedgerError)
+            else "malformed mutmut result evidence",
             policy_input.generated_keys,
             policy_input.disagreements,
         )
@@ -598,7 +632,7 @@ def run_policy(policy_input: PolicyInput, report_path: Path | None = None) -> in
         report = build_report(
             policy_input.context,
             policy_input.generated_keys,
-            entries,
+            _classify_excluded(entries, frozenset(exclusions)),
             policy_input.disagreements,
         )
     if report_path is not None:
@@ -655,6 +689,88 @@ def _selected_entries(
     entries: list[MutantEntry], selection: MutationSelection
 ) -> tuple[MutantEntry, ...]:
     return tuple(entry for entry in entries if matches_selection(entry.key, selection))
+
+
+def load_structural_exclusions(path: Path, generated_keys: tuple[str, ...]) -> tuple[str, ...]:
+    """Load structural exclusions and warn about keys absent from this run.
+
+    Args:
+        path: JSON exclusion ledger path.
+        generated_keys: Mutant keys generated by the current run.
+
+    Returns:
+        Sorted structural-exclusion keys.
+
+    Raises:
+        ExclusionLedgerError: If the ledger is missing or malformed.
+    """
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        msg = "unreadable exclusion ledger"
+        raise ExclusionLedgerError(msg) from exc
+    if not isinstance(payload, dict):
+        msg = "malformed exclusion ledger"
+        raise ExclusionLedgerError(msg)
+    document = cast("dict[str, object]", payload)
+    if not isinstance(document.get("entries"), list):
+        msg = "malformed exclusion ledger"
+        raise ExclusionLedgerError(msg)
+    structural = _structural_keys(cast("list[object]", document["entries"]))
+    _warn_stale_exclusions(structural, generated_keys)
+    _ensure_unique_exclusions(structural)
+    return tuple(sorted(structural))
+
+
+def _structural_keys(entries: list[object]) -> list[str]:
+    structural: list[str] = []
+    for raw_entry in entries:
+        record = _validated_ledger_entry(raw_entry)
+        if record["disposition"] == "structural-exclusion":
+            structural.append(record["key"])
+    return structural
+
+
+def _warn_stale_exclusions(structural: list[str], generated_keys: tuple[str, ...]) -> None:
+    generated = frozenset(generated_keys)
+    for key in sorted(set(structural) - generated):
+        logger.warning("Structural exclusion key is absent from current mutants: %s", key)
+
+
+def _ensure_unique_exclusions(structural: list[str]) -> None:
+    if len(structural) != len(set(structural)):
+        msg = "exclusion ledger contains duplicate keys"
+        raise ExclusionLedgerError(msg)
+
+
+def _validated_ledger_entry(raw_entry: object) -> dict[str, str]:
+    if not isinstance(raw_entry, dict):
+        msg = "exclusion ledger entry is not an object"
+        raise ExclusionLedgerError(msg)
+    record = cast("dict[str, object]", raw_entry)
+    required = ("task", "key", "disposition", "owner", "reason", "proof")
+    if not _ledger_fields_valid(record, required):
+        msg = "exclusion ledger entry lacks required provenance"
+        raise ExclusionLedgerError(msg)
+    disposition = cast("str", record["disposition"])
+    if disposition not in ALLOWED_EXCLUSION_DISPOSITIONS:
+        msg = "exclusion ledger entry has an invalid disposition"
+        raise ExclusionLedgerError(msg)
+    return {field: cast("str", record[field]) for field in required}
+
+
+def _ledger_fields_valid(record: dict[str, object], fields: tuple[str, ...]) -> bool:
+    return all(
+        isinstance(record.get(field), str) and cast("str", record[field]).strip()
+        for field in fields
+    )
+
+
+def _classify_excluded(entries: list[MutantEntry], exclusions: frozenset[str]) -> list[MutantEntry]:
+    return [
+        replace(entry, category="excluded") if entry.key in exclusions else entry
+        for entry in entries
+    ]
 
 
 def _entries_in_categories(
