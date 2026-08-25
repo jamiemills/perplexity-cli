@@ -2215,6 +2215,36 @@ documents how to reproduce it and what it means.
 - **Replication checks:** all-killed => 0; survivor => 1; unparseable => 2 +
   tool-error report.
 
+#### `make.mutate-task-policy`: Single triage task policy gate
+
+- **Purpose:** run one triage task's surviving keyset through the fail-closed
+  canonical mutation policy, without mutating outside that task's owned scope.
+- **Authoritative source:** `Makefile` `mutate-task-policy`;
+  `scripts/mutation_task_policy.py`; keysets from
+  `quality/baselines/mutation-triage.json`.
+- **Canonical invocation:** `make mutate-task-policy TASK=T009` (TASK must
+  match `Tddd` and exist in the triage manifest).
+- **Trigger and scope:** on-demand; used by remediation-wave execution to
+  verify one task's closure at a time.
+- **Execution context:** Local developer workstation; repository checkout;
+  untrusted-local trust boundary.
+- **Contextual enforcement:** same exit codes as
+  `make.mutate-full-policy` (0 clean, 1 findings, 2 tool-error). A stale
+  `mutants/` workspace is refused (delete it and re-run).
+- **Skip semantics:** none. Waivers are NOT supported.
+- **Inputs and configuration:** `TASK` variable (`Tddd`); triage keyset from
+  `quality/baselines/mutation-triage.json`; `MUTATION_SELECTED_TIMEOUT`.
+- **Ordering and concurrency:** keyset load, mutmut run over the task's owned
+  modules, then policy classification; run serially, never alongside other
+  mutation runs.
+- **Outputs and evidence:** `build/reports/mutation-task-<TASK>.json`
+  conforming to the canonical report schema.
+- **Requirements:** uv environment; mutmut.
+- **Side effects:** writes `mutants/`, `build/reports/`.
+- **Replication checks:** all-killed => 0; any survived/timeout/suspicious
+  => 1; stale `mutants/` workspace or unparseable output => 2 tool-error
+  report; unknown TASK id => Makefile usage error.
+
 #### `make.mutate-estimate`: Full-run time estimate
 
 - **Purpose:** print how long a full mutation run would take.
