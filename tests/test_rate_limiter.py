@@ -183,7 +183,7 @@ class TestRateLimiterAcquire:
         assert limiter.total_requests == 1
 
     @pytest.mark.asyncio
-    async def test_acquire_returns_zero_when_tokens_available(self):
+    async def test_acquire_returns_zero_when_tokens_available(self, fake_clock: _FakeClock) -> None:
         """Test that acquire() returns 0 wait time when tokens are available."""
         limiter = RateLimiter(requests_per_period=10, period_seconds=60.0)
         wait_time = await limiter.acquire()
@@ -191,7 +191,7 @@ class TestRateLimiterAcquire:
         assert limiter.total_requests == 1
 
     @pytest.mark.asyncio
-    async def test_acquire_consumes_tokens(self):
+    async def test_acquire_consumes_tokens(self, fake_clock: _FakeClock) -> None:
         """Test that acquire() consumes one token per call."""
         limiter = RateLimiter(requests_per_period=3, period_seconds=60.0)
         await limiter.acquire()
@@ -317,7 +317,7 @@ class TestRateLimiterGetStats:
         assert stats["current_tokens"] == pytest.approx(20.0)
 
     @pytest.mark.asyncio
-    async def test_get_stats_after_requests(self):
+    async def test_get_stats_after_requests(self, fake_clock: _FakeClock) -> None:
         """Test get_stats() after some requests have been made."""
         limiter = RateLimiter(requests_per_period=5, period_seconds=60.0)
 
@@ -403,7 +403,7 @@ class TestRateLimiterConcurrency:
             return wait, clock.monotonic()
 
         gather_task = asyncio.gather(*(worker() for _ in range(total)))
-        for _ in range(10_000):
+        for _ in range(1_000):
             if gather_task.done():
                 return await gather_task
             await clock.advance(2.0)
