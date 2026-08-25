@@ -24,16 +24,21 @@ _HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
 _MAX_RETRY_AFTER_DELAY: Final[float] = 60.0
 _DEFAULT_BACKOFF_DELAY: Final[float] = 1.0
 _DEFAULT_MAX_BACKOFF_DELAY: Final[float] = 60.0
+_DEFAULT_MAX_ATTEMPTS: Final[int] = 3
+_DEFAULT_INITIAL_WAIT: Final[float] = 1.0
+_DEFAULT_RETRY_MAX_WAIT: Final[float] = 10.0
+_DEFAULT_EXPONENTIAL_BASE: Final[float] = 2.0
+_DEFAULT_JITTER_FACTOR: Final[float] = 0.1
 _rng = random
 
 T = TypeVar("T")
 
 
 def retry_with_backoff(
-    max_attempts: int = 3,
-    initial_wait: float = 1.0,
-    max_wait: float = 10.0,
-    exponential_base: float = 2.0,
+    max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
+    initial_wait: float = _DEFAULT_INITIAL_WAIT,
+    max_wait: float = _DEFAULT_RETRY_MAX_WAIT,
+    exponential_base: float = _DEFAULT_EXPONENTIAL_BASE,
 ) -> Callable[[Callable[[], T]], Callable[[], T]]:
     """Create a retry decorator with exponential backoff.
 
@@ -56,9 +61,9 @@ def retry_with_backoff(
 
 def retry_http_request[T](
     func: Callable[[], T],
-    max_attempts: int = 3,
-    initial_wait: float = 1.0,
-    max_wait: float = 10.0,
+    max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
+    initial_wait: float = _DEFAULT_INITIAL_WAIT,
+    max_wait: float = _DEFAULT_RETRY_MAX_WAIT,
 ) -> T:
     """Retry an HTTP request function with exponential backoff.
 
@@ -138,7 +143,7 @@ def get_backoff_delay(
     attempt: int,
     base_delay: float = _DEFAULT_BACKOFF_DELAY,
     max_delay: float = _DEFAULT_MAX_BACKOFF_DELAY,
-    jitter_factor: float = 0.1,
+    jitter_factor: float = _DEFAULT_JITTER_FACTOR,
 ) -> float:
     """Calculate exponential backoff delay with bounded jitter.
 
