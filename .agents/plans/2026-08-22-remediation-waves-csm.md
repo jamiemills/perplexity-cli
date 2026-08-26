@@ -17,10 +17,10 @@ format: csm-plan/1
 - Commits: allowed
 - Last checkpoint: 2026-08-25 - Batch D manifest and conventional CI gates passed; remediation waves complete
 - Last model/run: openai/gpt-5.6-luna / remediation-waves-execution
-- Next transition: COMPLETE; post-wave T004/T005 remain per Note On Remaining Work
+- Next transition: COMPLETE (T004 and T005 verified)
 - Active tasks: none
 - Blockers: none for the remediation waves
-- Resume: post-wave T004 full-tree proof runs and optional T005 remote dispatch remain outside Batch D; do not bypass hooks
+- Resume: none; plan goal verified complete
 
 ## Goal
 
@@ -288,6 +288,7 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
 | 2026-08-25 | 11 | RECOVER -> VERIFY -> CHECKPOINT -> COMPLETE | T017-T021, GATE | T020 committed as `66804cc`; all Batch C task-policy gates are clean. `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` passed. `make ci-conventional` exited 0 with Python/TypeScript checks, tests, packaging, integration, fuzz, architecture, suppression, and secret scans green. | COMPLETE |
 | 2026-08-25 | 11 | COMPLETE -> BLOCKED | GATE | Plan-only commit retried five times with 60-second pauses; each hook run failed at the unrelated gitleaks temporary-repository test with invalid object `c1b0730e0133447badcfd47fd144e254807b06e1` after 2,575-2,577 tests. The isolated test passed with `uv run pytest tests/test_gitleaks.py::TestOidHandling::test_new_ref_remote_zeros_triggers_new_branch_path -q -n 0`. No hook bypass used; closure journal remains uncommitted. | BLOCKED -> RECOVER |
 | 2026-08-25 | 12 | RECOVER -> VALIDATE -> VERIFY -> CHECKPOINT -> COMPLETE | GATE | Confirmed T007-T021 reports are all `status: clean`; `make mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` passed; `make ci-conventional` exited 0 with tests, packaging, integration, fuzz, architecture, suppression, and secret scans green. Remediation waves are complete; T004 full-tree proof runs and optional T005 remote dispatch remain post-wave items per Note On Remaining Work. | COMPLETE |
+ | 2026-08-26 | 13 | VERIFY -> COMPLETE | T004, T005, GATE | Two independent remote full-tree proof runs (32913939672, 32m38s; 32929940603, 29m0s) both status:clean on distinct runners: 9094 killed + 501 honoured structural exclusions = 9595/9595 accounted, 0 findings, 0 warnings. Ledger-aware full policy landed in 815f7e0; 5 residual survivors killed in c52fe65. ci-conventional green at c52fe65. Overall mutation-closure goal COMPLETE. | COMPLETE |
 
 ## Completion Review
 
