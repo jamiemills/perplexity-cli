@@ -11,11 +11,11 @@ format: csm-plan/1
 ## Control
 
 - Plan ID: remediation-waves-execution
-- Status: complete (remediation waves)
+- Status: complete
 - Current CSM state: COMPLETE
-- Cycle: 12
+- Cycle: 13
 - Commits: allowed
-- Last checkpoint: 2026-08-25 - Batch D manifest and conventional CI gates passed; remediation waves complete
+- Last checkpoint: 2026-08-26 - T004 (two clean full-tree proof runs) and T005 (remote corroboration) verified; plan goal complete
 - Last model/run: openai/gpt-5.6-luna / remediation-waves-execution
 - Next transition: COMPLETE (T004 and T005 verified)
 - Active tasks: none
@@ -110,7 +110,7 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
    - Acceptance evidence: per-key kill confirmation, test names, amendment hashes
    - Repair attempts: 0
    - Recovery note: per-key commits; failed key reverts independently
-2. [pending] Close T008 API transport survivors (303)
+2. [complete] Close T008 API transport survivors (303)
    - Task ID: T008
    - Depends on: none
    - Parallel group: A2
@@ -123,7 +123,7 @@ Total: 3,179 mutants across 15 parallel-capable tasks in 3 batches + final gate.
    - Acceptance evidence: per-key kills, test names
    - Repair attempts: 0
    - Recovery note: per-key commits
-3. [pending] Close T009 token persistence survivors (172)
+3. [complete] Close T009 token persistence survivors (172)
    - Task ID: T009
    - Depends on: none
    - Parallel group: A3
@@ -292,4 +292,14 @@ ruff/pyright/radon and focused pytest on owned paths. Batch-boundary verificatio
 
 ## Completion Review
 
-The remediation waves and Batch D gate are complete. T007-T021 have current clean evidence, with required keys killed and documented exclusions carrying owner/reason/proof. The baseline manifest and conventional CI gates pass. T004 full-tree proof runs and optional T005 remote dispatch remain post-wave items as recorded in Note On Remaining Work.
+All acceptance criteria are verified:
+
+1. Every one of the 3,179 baseline keys is accounted for: killed by behavioural tests over public boundaries, removed by production simplification, or documented in the structural-exclusion ledger with owner/reason/proof (519 entries; 501 still generated and honoured by the full policy, the remainder removed by simplification).
+2. All fifteen per-task `mutate-task-policy` gates exited 0 with complete schema-valid clean reports (see Progress Journal cycles 1-12 and build/reports/mutation-task-T00*.json).
+3. `mutation-manifest-check BASELINE_SHA=7b0b6a41cc92b497c279d51d21c61385ee45bf05` passes; no keys lost.
+4. `make ci-conventional` exited 0 at c52fe65 after every batch and at final verification.
+5. Changed tests/helpers hold CC <= 5 and every changed file stayed within the 1,000-line cap.
+
+Post-wave items closed: T004 proven by two independent cache-free remote full-tree runs (32913939672, 32929940603), both status:clean with 9,094 killed + 501 honoured exclusions = 9,595/9,595 accounted and zero findings; T005 corroboration satisfied by the same GitHub-runner executions; final ci-conventional green on the proof candidate (cc34124, CI run 32932113708).
+
+The overall mutation-closure goal is COMPLETE.
