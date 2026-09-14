@@ -335,6 +335,20 @@ class TestManifestPatterns:
         with pytest.raises(rm.RunnerUsageError, match=message):
             rm.patterns_from_manifest(manifest)
 
+    def test_empty_manifest_is_allowed_only_via_optional_loader(self, tmp_path: Path) -> None:
+        manifest = self._write_manifest(tmp_path / "m.json", [])
+        with pytest.raises(rm.RunnerUsageError, match="lacks a non-empty"):
+            rm.patterns_from_manifest(manifest)
+        assert rm.optional_patterns_from_manifest(manifest) is None
+        args = _args(scope="selected", manifest_path=manifest, allow_empty_diff=True)
+        assert rm._manifest_or_fail(args) == ()
+
+    def test_optional_loader_does_not_mask_malformed_manifests(self, tmp_path: Path) -> None:
+        manifest = tmp_path / "bad.json"
+        manifest.write_text('{"changed_files": "x"}')
+        with pytest.raises(rm.RunnerUsageError, match="lacks a non-empty"):
+            rm.optional_patterns_from_manifest(manifest)
+
     def test_outside_source_paths_are_rejected(self, tmp_path: Path) -> None:
         manifest = self._write_manifest(tmp_path / "m.json", ["tests/x.py"])
         with pytest.raises(rm.RunnerUsageError, match="not production source"):

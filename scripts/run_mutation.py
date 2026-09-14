@@ -114,6 +114,9 @@ def _has_non_module_segments(segments: list[str]) -> bool:
     return any(not segment.isidentifier() for segment in segments)
 
 
+_EMPTY_MANIFEST_MSG = "discovery manifest lacks a non-empty changed_files list"
+
+
 def patterns_from_manifest(manifest_path: Path) -> tuple[str, ...]:
     """Build selected patterns from a discovery JSON manifest.
 
@@ -127,16 +130,38 @@ def patterns_from_manifest(manifest_path: Path) -> tuple[str, ...]:
         RunnerUsageError: If the manifest is malformed or has no targets.
     """
     changed = _manifest_changed_files(manifest_path)
+    if changed is None:
+        raise RunnerUsageError(_EMPTY_MANIFEST_MSG)
     return tuple(_module_pattern(entry) for entry in changed)
 
 
-def _manifest_changed_files(manifest_path: Path) -> list[str]:
-    """Load and validate the ``changed_files`` list of a discovery manifest."""
+def optional_patterns_from_manifest(manifest_path: Path) -> tuple[str, ...] | None:
+    """Build selected patterns, tolerating an explicit empty ``changed_files``.
+
+    Args:
+        manifest_path: Path to a discovery manifest JSON document.
+
+    Returns:
+        One pattern per changed production source file, or ``None`` when the
+        manifest declares an empty ``changed_files`` list.
+
+    Raises:
+        RunnerUsageError: If the manifest is malformed.
+    """
+    changed = _manifest_changed_files(manifest_path)
+    if changed is None:
+        return None
+    return tuple(_module_pattern(entry) for entry in changed)
+
+
+def _manifest_changed_files(manifest_path: Path) -> list[str] | None:
+    """Return a manifest's ``changed_files``, or ``None`` when it is empty."""
     payload = _manifest_payload(manifest_path)
     changed_any: object = payload.get("changed_files")
-    if not isinstance(changed_any, list) or not changed_any:
-        msg = "discovery manifest lacks a non-empty changed_files list"
-        raise RunnerUsageError(msg)
+    if not isinstance(changed_any, list):
+        raise RunnerUsageError(_EMPTY_MANIFEST_MSG)
+    if not changed_any:
+        return None
     return _validated_string_entries(cast("list[object]", changed_any))
 
 
@@ -508,6 +533,9 @@ def main(argv: list[str] | None = None) -> int:
 def _manifest_or_fail(args: argparse.Namespace) -> tuple[str, ...]:
     """Load manifest patterns or exit via a controlled usage failure."""
     try:
+        if args.allow_empty_diff:
+            optional = optional_patterns_from_manifest(args.manifest_path)
+            return optional if optional is not None else ()
         return patterns_from_manifest(args.manifest_path)
     except RunnerUsageError as exc:
         _usage_exit(exc)

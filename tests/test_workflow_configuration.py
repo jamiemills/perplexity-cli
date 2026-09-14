@@ -251,6 +251,17 @@ def test_ci_test_coverage_installs_gitleaks() -> None:
     assert install_index < run_index
 
 
+def test_ci_diff_coverage_installs_gitleaks() -> None:
+    """The diff-coverage job must install gitleaks before running the suite."""
+    ci = _load_workflow("ci.yml")
+    steps = ci["jobs"]["diff-coverage"]["steps"]
+    names = [step.get("name", "") for step in steps]
+    assert "Install gitleaks 8.30.1" in names
+    gitleaks_step = next(step for step in steps if step.get("name") == "Install gitleaks 8.30.1")
+    assert "8.30.1" in str(gitleaks_step.get("run", ""))
+    assert names.index("Install gitleaks 8.30.1") < names.index("Run tests with coverage")
+
+
 def test_scheduled_workflows_have_concurrency() -> None:
     """Every scheduled workflow must declare a concurrency group with cancel."""
     for name in SCHEDULED_WORKFLOWS:
