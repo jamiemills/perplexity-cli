@@ -43,7 +43,7 @@ from perplexity_cli.utils.config import clear_feature_config_cache, clear_urls_c
 
 # Fail-closed network isolation for non-live lanes (installed in
 # pytest_configure, before test-module collection).
-pytest_plugins = ["tests.support.network_guard"]
+pytest_plugins = ["tests.support.network_guard", "tests.support.git_isolation"]
 
 # ---------------------------------------------------------------------------
 # Hypothesis profiles
