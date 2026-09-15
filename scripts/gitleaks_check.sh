@@ -102,26 +102,42 @@ _load_advertised_remote_commits() {
             _die "remote returned a malformed advertised ref"
         }
         _validate_oid "$advertised_oid" "advertised remote" "$expected_length"
-        _load_commit_oid commit "$advertised_oid" "advertised remote"
+        # A remote ref whose objects are absent locally cannot subtract any
+        # commit reachable from the local tip (such a commit would be local),
+        # so skipping it only widens the scan; it can never hide a commit.
+        if ! git cat-file -e "$advertised_oid^{object}" 2>/dev/null; then
+            echo "gitleaks: skipping advertised ref unavailable locally: $advertised_ref" >&2
+            continue
+        fi
+        commit="$(git rev-parse --verify "$advertised_oid^{commit}" 2>/dev/null)" || {
+            _die "advertised remote object $advertised_oid does not peel to a commit"
+        }
         _raw_commits+="$commit"$'\n'
     done <<< "$advertisement"
 
-    local _deduped
+    local _deduped _arr=()
     _deduped="$(printf '%s' "$_raw_commits" | sort -u)"
-    [[ -n "$_deduped" ]] || _die "remote advertised no usable commit refs"
-    local _arr=()
     while IFS= read -r commit; do
-        _arr+=("$commit")
+        [[ -n "$commit" ]] && _arr+=("$commit")
     done <<< "$_deduped"
-    eval "$output_name=(\"\${_arr[@]}\")"
+    if [[ ${#_arr[@]} -eq 0 ]]; then
+        eval "$output_name=()"
+    else
+        eval "$output_name=(\"\${_arr[@]}\")"
+    fi
 }
 
 _append_reachable_difference() {
     local output_name="$1"
-    shift
+    local tip="$2"
+    shift 2
+    local -a rev_args=("$tip")
+    if [[ $# -gt 0 ]]; then
+        rev_args+=(--not "$@")
+    fi
     local reachable_commits
 
-    reachable_commits="$(git rev-list "$@" 2>/dev/null)" || {
+    reachable_commits="$(git rev-list "${rev_args[@]}" 2>/dev/null)" || {
         _die "unable to establish commit reachability"
     }
     if [[ -n "$reachable_commits" ]]; then
@@ -183,7 +199,7 @@ _pre_push_scan() {
         if ! _is_zero_oid "$remote_oid"; then
             _load_commit_oid remote_commit "$remote_oid" "remote"
             echo "gitleaks: existing ref $local_ref"
-            _append_reachable_difference commits "$local_commit" --not "$remote_commit"
+            _append_reachable_difference commits "$local_commit" "$remote_commit"
             continue
         fi
 
@@ -193,7 +209,11 @@ _pre_push_scan() {
             _load_advertised_remote_commits advertised_commits "$remote_query_target" "$expected_length"
             advertisements_loaded=true
         fi
-        _append_reachable_difference commits "$local_commit" --not "${advertised_commits[@]}"
+        if [[ ${#advertised_commits[@]} -eq 0 ]]; then
+            _append_reachable_difference commits "$local_commit"
+        else
+            _append_reachable_difference commits "$local_commit" "${advertised_commits[@]}"
+        fi
     done
 
     if [[ $row_count -eq 0 ]]; then
