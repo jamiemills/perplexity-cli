@@ -21,6 +21,12 @@ SEMGREP_CONFIG = PROJECT_ROOT / ".semgrep.yml"
 SNAPSHOT_MANIFEST = PROJECT_ROOT / "quality" / "semgrep-snapshot.json"
 WRAPPER = PROJECT_ROOT / "scripts" / "semgrep_policy.py"
 
+# The wrapper enforces its own scanner timeout; keep it below the subprocess
+# timeout so a hung scan is classified by the wrapper instead of being killed
+# here, and give both enough headroom for a loaded machine.
+SCANNER_TIMEOUT = 600
+SCAN_PROCESS_TIMEOUT = SCANNER_TIMEOUT + 60
+
 
 def test_semgrep_config_exists() -> None:
     """The project and reviewed Semgrep configurations exist and match hashes."""
@@ -45,6 +51,8 @@ def test_no_semgrep_warnings_or_errors_via_wrapper() -> None:
             "python",
             str(WRAPPER),
             "--blocking",
+            "--timeout",
+            str(SCANNER_TIMEOUT),
             "--config",
             str(SEMGREP_CONFIG),
             "--config",
@@ -68,7 +76,7 @@ def test_no_semgrep_warnings_or_errors_via_wrapper() -> None:
         capture_output=True,
         text=True,
         cwd=str(PROJECT_ROOT),
-        timeout=300,
+        timeout=SCAN_PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, (
         f"Semgrep blocking mode failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
@@ -85,6 +93,8 @@ def test_semgrep_advisory_runs_without_failure() -> None:
             "python",
             str(WRAPPER),
             "--advisory",
+            "--timeout",
+            str(SCANNER_TIMEOUT),
             "--config",
             str(SEMGREP_CONFIG),
             "--severity",
@@ -104,7 +114,7 @@ def test_semgrep_advisory_runs_without_failure() -> None:
         capture_output=True,
         text=True,
         cwd=str(PROJECT_ROOT),
-        timeout=300,
+        timeout=SCAN_PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, (
         f"Semgrep advisory mode failed unexpectedly:\n"
