@@ -510,7 +510,13 @@ def test_empty_remote_fails_closed(tmp_path: Path) -> None:
     assert "unexpectedly advertised no refs" in result.stderr
 
 
-def test_advertised_object_unavailable_locally_fails_closed(tmp_path: Path) -> None:
+def test_advertised_object_unavailable_locally_is_skipped(tmp_path: Path) -> None:
+    """Advertised refs absent locally are skipped, not fatal.
+
+    A remote (for example GitHub's ``refs/pull/*``) can advertise commits the
+    local clone never fetched. Such a commit cannot subtract anything from the
+    local history, so the scan proceeds without it instead of aborting the push.
+    """
     repo = _setup_repo(tmp_path)
     foreign = tmp_path / "foreign"
     foreign.mkdir()
@@ -523,15 +529,15 @@ def test_advertised_object_unavailable_locally_fails_closed(tmp_path: Path) -> N
     remote = _add_bare_remote(foreign, tmp_path, "foreign-remote")
     _git_run(repo, "remote", "add", "foreign", str(remote))
     head = _git(repo, "rev-parse", "HEAD")
-    result, _ = _run_fake(
+    result, commits = _run_fake(
         repo,
         tmp_path,
         _row("refs/heads/new", head, "refs/heads/new", ZERO),
         remote="foreign",
     )
-    assert result.returncode == 3
-    assert "advertised remote object" in result.stderr
-    assert "unavailable locally" in result.stderr
+    assert result.returncode == 0
+    assert "skipping advertised ref unavailable locally" in result.stderr
+    assert head in commits
 
 
 def test_annotated_commit_tag_is_peeled(tmp_path: Path) -> None:

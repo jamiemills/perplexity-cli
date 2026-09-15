@@ -24,6 +24,7 @@ STARTUP_TIMEOUT: float = 2.0
 REQUEST_TIMEOUT: float = 5.0
 SHUTDOWN_TIMEOUT: float = 5.0
 TEST_TIMEOUT: float = 30.0
+RENDEZVOUS_TIMEOUT: float = 5.0
 
 
 @dataclass
@@ -168,10 +169,12 @@ class ProtocolServer(ThreadingHTTPServer):
         self._fake_now: float | None = None
         self._handler_errors: list[BaseException] = []
 
-        # Test hooks: an artificial per-request delay and an optional
-        # exception the handler raises before serving each request.
+        # Test hooks: an artificial per-request delay, an optional exception
+        # the handler raises before serving each request, and an optional
+        # rendezvous barrier proving handlers run concurrently.
         self.handler_sleep: float = 0.0
         self.handler_exception: BaseException | None = None
+        self.handler_barrier: threading.Barrier | None = None
 
         self.query_response: QueryResponse = QueryResponse(
             sse_chunks=[dict(c) for c in _DEFAULT_QUERY.sse_chunks],
@@ -305,6 +308,7 @@ class ProtocolServer(ThreadingHTTPServer):
 
     def _handle_post(self, handler: _Handler, body: bytes) -> None:
         self._raise_if_configured_failure()
+        self._rendezvous_handlers()
         self._delay_response()
         with self._state_lock:
             self.request_count += 1
@@ -318,6 +322,7 @@ class ProtocolServer(ThreadingHTTPServer):
 
     def _handle_put(self, handler: _Handler, body: bytes) -> None:
         self._raise_if_configured_failure()
+        self._rendezvous_handlers()
         self._delay_response()
         with self._state_lock:
             self.request_count += 1
@@ -329,6 +334,7 @@ class ProtocolServer(ThreadingHTTPServer):
 
     def _handle_get(self, handler: _Handler) -> None:
         self._raise_if_configured_failure()
+        self._rendezvous_handlers()
         self._delay_response()
         with self._state_lock:
             self.request_count += 1
@@ -341,6 +347,17 @@ class ProtocolServer(ThreadingHTTPServer):
         failure = self.handler_exception
         if failure is not None:
             raise failure
+
+    def _rendezvous_handlers(self) -> None:
+        """Block until the configured number of handlers run concurrently.
+
+        When ``handler_barrier`` is set, every handler waits on it. A serial
+        server can never satisfy the barrier, so a concurrency test fails
+        deterministically instead of relying on a wall-clock threshold.
+        """
+        barrier = self.handler_barrier
+        if barrier is not None:
+            barrier.wait(timeout=RENDEZVOUS_TIMEOUT)
 
     def _delay_response(self) -> None:
         delay = self.handler_sleep

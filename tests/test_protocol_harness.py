@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 
 import httpx
 import pytest
@@ -365,17 +364,16 @@ class TestServerLifecycle:
         assert server.request_count == 3
 
     def test_concurrent_requests_served_threaded(self, server: ProtocolServer) -> None:
-        """Concurrent requests are served in parallel, not serially."""
-        server.handler_sleep = 0.3
-        barrier = threading.Barrier(5, timeout=TEST_TIMEOUT)
+        """Concurrent requests are served in parallel, not serially.
+
+        All five handlers must rendezvous inside the request path within the
+        barrier timeout. A serial server can never satisfy that rendezvous, so
+        concurrency is proven without a load-sensitive wall-clock threshold.
+        """
+        server.handler_barrier = threading.Barrier(5, timeout=TEST_TIMEOUT)
         results: list[str] = []
 
         def _make_request() -> None:
-            try:
-                barrier.wait()
-            except threading.BrokenBarrierError:
-                results.append("barrier-broken")
-                return
             try:
                 resp = httpx.post(
                     f"{server.url}/api/query",
@@ -387,16 +385,13 @@ class TestServerLifecycle:
                 results.append(f"error:{exc}")
 
         threads = [threading.Thread(target=_make_request) for _ in range(5)]
-        started = time.monotonic()
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join(timeout=TEST_TIMEOUT)
-        elapsed = time.monotonic() - started
 
         assert results == ["200"] * 5
         assert server.request_count == 5
-        assert elapsed < 1.0, "requests appear to have been served serially"
 
     def test_no_handler_errors_on_normal_requests(self, server: ProtocolServer) -> None:
         """Well-formed requests do not record handler errors."""
