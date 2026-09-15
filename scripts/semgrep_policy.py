@@ -34,7 +34,10 @@ from pathlib import Path
 from typing import Any, NoReturn, cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TIMEOUT = 180
+# A full-repository scan with the community packs can exceed three minutes on
+# a loaded developer machine. This ceiling still bounds a genuinely hung
+# scanner while leaving ample headroom; CI job timeouts bound the upper end.
+DEFAULT_TIMEOUT = 600
 SEMGREP_VERSION = "1.171.0"
 INSTALL_TIMEOUT = 30
 
