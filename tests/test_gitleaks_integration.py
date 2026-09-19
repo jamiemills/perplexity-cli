@@ -46,6 +46,9 @@ SCRIPT = PROJECT_ROOT / "scripts" / "gitleaks_check.sh"
 GITLEAKS_CONFIG = PROJECT_ROOT / ".gitleaks.toml"
 FIXTURES_DIR = PROJECT_ROOT / "tests" / "fixtures" / "gitleaks"
 
+# A real gitleaks scan can exceed a tight limit on a heavily loaded machine.
+GITLEAKS_RUN_TIMEOUT = 300
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -66,7 +69,7 @@ def _run_gitleaks(
         capture_output=True,
         text=True,
         cwd=str(tmp_repo),
-        timeout=30,
+        timeout=GITLEAKS_RUN_TIMEOUT,
         input=stdin_text,
         env=env,
     )

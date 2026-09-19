@@ -71,6 +71,26 @@ class TestSemgrepWrapper:
         )
 
 
+class TestRuleTimeout:
+    """The wrapper must bound per-rule runtime so load cannot fail scans."""
+
+    def test_argv_carries_generous_rule_timeout_before_targets(self) -> None:
+        """Semgrep ``--timeout`` is emitted with the configured default."""
+        from scripts.semgrep_policy import (
+            DEFAULT_RULE_TIMEOUT,
+            SemgrepInvocation,
+            _parse_semgrep_invocation,
+        )
+
+        invocation = SemgrepInvocation(configs=(".semgrep.yml",), targets=("src",))
+        argv = invocation.to_argv()
+        assert argv[-3:] == ["--timeout", str(DEFAULT_RULE_TIMEOUT), "src"]
+
+        parsed = _parse_semgrep_invocation(argv)
+        assert parsed.rule_timeout == DEFAULT_RULE_TIMEOUT
+        assert parsed.targets == ("src",)
+
+
 class TestParseOutput:
     """Unit tests for JSON parsing and error classification."""
 
