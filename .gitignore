@@ -1,3 +1,6 @@
+# Agent artifacts
+.agents/
+
 # Claude Code
 .scratch
 .claude
