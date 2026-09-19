@@ -36,7 +36,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = PROJECT_ROOT / "quality" / "semgrep-policy.toml"
 SEMGREP_VERSION = "1.171.0"
-SCAN_TIMEOUT = 120
+SCAN_TIMEOUT = 600
 
 # Configs are exactly the SEMGREP_CONFIGS the Makefile passes to ``make semgrep``.
 PRODUCTION_CONFIGS = (
@@ -157,7 +157,7 @@ def semgrep_available() -> None:
             _semgrep_argv("--version"),
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=120,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:

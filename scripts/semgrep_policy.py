@@ -38,6 +38,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # a loaded developer machine. This ceiling still bounds a genuinely hung
 # scanner while leaving ample headroom; CI job timeouts bound the upper end.
 DEFAULT_TIMEOUT = 600
+# Semgrep's per-rule timeout defaults to 30s; under CPU contention a rule can
+# exceed it and Semgrep reports a non-fatal ``Timeout`` analysis error, which
+# the wrapper would otherwise fail closed on. Give rules generous headroom;
+# DEFAULT_TIMEOUT remains the hard ceiling for the whole process.
+DEFAULT_RULE_TIMEOUT = 120
 SEMGREP_VERSION = "1.171.0"
 INSTALL_TIMEOUT = 30
 
@@ -81,6 +86,7 @@ class SemgrepInvocation:
     json_outputs: tuple[str, ...] = ()
     sarif_outputs: tuple[str, ...] = ()
     targets: tuple[str, ...] = ()
+    rule_timeout: int = DEFAULT_RULE_TIMEOUT
 
     def to_argv(self) -> list[str]:
         """Render the validated invocation as Semgrep argv."""
@@ -90,6 +96,7 @@ class SemgrepInvocation:
         _append_options(argv, "--exclude", self.excludes)
         _append_options(argv, "--json-output", self.json_outputs)
         _append_options(argv, "--sarif-output", self.sarif_outputs)
+        argv.extend(("--timeout", str(self.rule_timeout)))
         argv.extend(self.targets)
         return argv
 
@@ -170,6 +177,7 @@ def _scanner_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exclude", action="append", default=[])
     parser.add_argument("--json-output", action="append", default=[])
     parser.add_argument("--sarif-output", action="append", default=[])
+    parser.add_argument("--timeout", type=int, default=DEFAULT_RULE_TIMEOUT)
     parser.add_argument("targets", nargs="*")
     return parser
 
@@ -188,6 +196,7 @@ def _parse_semgrep_invocation(semgrep_args: list[str]) -> SemgrepInvocation:
         json_outputs=tuple(args.json_output),
         sarif_outputs=tuple(args.sarif_output),
         targets=tuple(args.targets),
+        rule_timeout=args.timeout,
     )
 
 
