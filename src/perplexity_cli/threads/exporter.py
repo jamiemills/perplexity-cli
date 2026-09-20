@@ -17,7 +17,6 @@ from pydantic import BaseModel
 from perplexity_cli.utils.atomic_write import atomic_write_text
 
 _FORMULA_PREFIXES = ("=", "+", "-", "@")
-_CSV_MODE = 0o600
 
 
 class ThreadRecord(BaseModel):
@@ -109,7 +108,8 @@ def write_threads_csv(
 
     # Replace the destination atomically
     try:
-        atomic_write_text(output_path, buffer.getvalue(), _CSV_MODE)
+        # atomic_write_text applies the owner-only 0600 mode by default.
+        atomic_write_text(output_path, buffer.getvalue())
     except OSError as exc:
         msg = f"Failed to write CSV file to {output_path}: {exc}"
         raise OSError(msg) from exc
