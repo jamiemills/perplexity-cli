@@ -291,7 +291,7 @@ pre-push:
 
     # Stage 4: Mutation + safety + fuzz (sequential, heavy)
     - name: mutate-diff
-      run: make mutate-diff
+      run: scripts/mutate_diff_push.sh
 
     - name: safety-and-fuzz
       group:
