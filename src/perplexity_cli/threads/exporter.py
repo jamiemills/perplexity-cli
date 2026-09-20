@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from perplexity_cli.utils.atomic_write import atomic_write_text
 
 _FORMULA_PREFIXES = ("=", "+", "-", "@")
-_CSV_MODE = 0o644
+_CSV_MODE = 0o600
 
 
 class ThreadRecord(BaseModel):

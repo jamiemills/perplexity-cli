@@ -6,6 +6,7 @@ from typing import Final
 
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
+    AttachmentUploadError,
     AuthenticationError,
     ConfigurationError,
     PerplexityHTTPStatusError,
@@ -37,7 +38,8 @@ _EXCEPTION_EXIT_CODE_TABLE: list[tuple[type, int]] = [
     (ConfigurationError, VALIDATION),
     (UpstreamSchemaError, VALIDATION),
     (AttachmentError, VALIDATION),
-    (ValueError, GENERAL_FAILURE),
+    (AttachmentUploadError, VALIDATION),
+    (ValueError, VALIDATION),
     (KeyboardInterrupt, INTERRUPTED),
 ]
 

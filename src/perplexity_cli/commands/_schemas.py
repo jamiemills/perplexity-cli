@@ -43,6 +43,13 @@ COMMAND_RESULT_SCHEMAS: dict[str, dict[str, Any]] = {
         "cookies_stored": {"type": "integer"},
         "verified": {"type": ["boolean", "null"]},
     },
+    "auth export": {
+        "path": {"type": "string"},
+    },
+    "auth import": {
+        "imported": {"type": "boolean"},
+        "cookies_stored": {"type": "boolean"},
+    },
     "config set": {
         "key": {"type": "string"},
         "value": {"type": "boolean"},

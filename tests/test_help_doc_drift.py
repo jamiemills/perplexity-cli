@@ -7,12 +7,17 @@ again.  Each test name maps to a specific gap in that plan.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
 from perplexity_cli.cli import main
+from perplexity_cli.commands._examples import (
+    QUERY_NDJSON_EXAMPLE,
+    QUERY_NDJSON_FAILURE_EXAMPLE,
+)
 from perplexity_cli.commands._schemas import COMMAND_RESULT_SCHEMAS
 from perplexity_cli.utils.version import get_version
 
@@ -76,6 +81,75 @@ class TestQueryNDJSONEvents:
         # The header line lists "start, chunk, result (final line)."
         assert "start, chunk, result (final line)." in output
         assert "progress" not in output
+
+
+# ---------------------------------------------------------------------------
+# Streaming failure contract: terminal ok=false result event, shared taxonomy
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingFailureContractDocs:
+    """The NDJSON failure contract must be documented in README, help, examples."""
+
+    def test_readme_ndjson_section_documents_failure_event(self) -> None:
+        """README must show the terminal ``ok=false`` result event shape."""
+        text = README.read_text(encoding="utf-8")
+        ndjson = text.split("### NDJSON streaming", 1)[1].split("### JSON Schema", 1)[0]
+        assert '"ok": false' in ndjson
+        assert '"error": {' in ndjson
+        assert '"code": "rate_limited"' in ndjson
+
+    def test_readme_ndjson_section_lists_streaming_error_taxonomy(self) -> None:
+        """README must list the streaming error codes mirroring batch taxonomy."""
+        text = README.read_text(encoding="utf-8")
+        ndjson = text.split("### NDJSON streaming", 1)[1].split("### JSON Schema", 1)[0]
+        required = (
+            "authentication_required",
+            "permission_denied",
+            "rate_limited",
+            "network_error",
+            "upstream_schema_error",
+            "output_error",
+            "interrupted",
+            "internal_error",
+        )
+        missing = [code for code in required if code not in ndjson]
+        assert missing == [], f"README NDJSON section missing error codes: {missing}"
+
+    def test_readme_exit_codes_section_notes_streaming_parity(self) -> None:
+        """The exit-codes section must state streaming shares the taxonomy."""
+        text = README.read_text(encoding="utf-8")
+        assert "same exit-code taxonomy" in text
+
+    def test_query_help_documents_result_event_on_success_and_failure(
+        self, runner: CliRunner
+    ) -> None:
+        """``query --help`` must say the result event carries ok true/false."""
+        output = _help(runner, "query")
+        assert "ok=true" in output
+        assert "ok=false" in output
+        assert "result.error" in output
+
+    def test_failure_example_lines_are_valid_ndjson(self) -> None:
+        """The failure example must parse line-by-line and end ok=false."""
+        events = [json.loads(line) for line in QUERY_NDJSON_FAILURE_EXAMPLE.strip().splitlines()]
+        assert events[0]["type"] == "start"
+        assert events[-1]["type"] == "result"
+        assert events[-1]["ok"] is False
+        assert events[-1]["result"]["error"]["code"] == "rate_limited"
+        assert "message" in events[-1]["result"]["error"]
+
+    def test_success_example_lines_are_valid_ndjson(self) -> None:
+        """The success NDJSON example must parse and end ok=true."""
+        events = [json.loads(line) for line in QUERY_NDJSON_EXAMPLE.strip().splitlines()]
+        assert [event["type"] for event in events] == [
+            "start",
+            "chunk",
+            "chunk",
+            "chunk",
+            "result",
+        ]
+        assert events[-1]["ok"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +561,8 @@ class TestExampleJsonIsValid:
             (("skill", "show"), '"skill_md":'),
             (("doctor", "security"), '"storage_backend":'),
             (("threads", "export"), '"output_path": null'),
+            (("auth", "export"), '"path":'),
+            (("auth", "import"), '"imported":'),
         ],
     )
     def test_example_block_is_valid_json(

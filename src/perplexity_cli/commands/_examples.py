@@ -12,6 +12,8 @@ import textwrap
 from perplexity_cli.utils.version import get_version
 
 __all__ = [
+    "AUTH_EXPORT_JSON_EXAMPLE",
+    "AUTH_IMPORT_JSON_EXAMPLE",
     "AUTH_LOGIN_JSON_EXAMPLE",
     "AUTH_LOGOUT_JSON_EXAMPLE",
     "AUTH_STATUS_JSON_EXAMPLE",
@@ -21,6 +23,7 @@ __all__ = [
     "MODELS_LIST_JSON_EXAMPLE",
     "QUERY_JSON_EXAMPLE",
     "QUERY_NDJSON_EXAMPLE",
+    "QUERY_NDJSON_FAILURE_EXAMPLE",
     "SKILL_SHOW_JSON_EXAMPLE",
     "STYLE_CLEAR_JSON_EXAMPLE",
     "STYLE_SET_JSON_EXAMPLE",
@@ -90,6 +93,13 @@ QUERY_NDJSON_EXAMPLE = _versioned(
     {"type": "result", "ts": "2025-05-09T10:00:03+00:00", "ok": true, "command": "pxcli query --json --stream", "result": {"answer": "Python is a high-level programming language...", "references": [{"name": "...", "url": "...", "snippet": "..."}]}, "meta": {"duration_ms": 3000, "version": "0.7.0", "trace_id": "...", "truncated": false}, "next_actions": []}""")
 )
 
+#: Failure companion to :data:`QUERY_NDJSON_EXAMPLE`: a stream whose terminal
+#: result event carries the error taxonomy instead of an answer envelope.
+QUERY_NDJSON_FAILURE_EXAMPLE = textwrap.dedent("""\
+    {"type": "start", "ts": "2025-05-09T10:00:00+00:00", "command": "pxcli query --json --stream"}
+    {"type": "chunk", "ts": "2025-05-09T10:00:01+00:00", "text": "Python is a"}
+    {"type": "result", "ts": "2025-05-09T10:00:02+00:00", "ok": false, "command": "pxcli query --json --stream", "result": {"error": {"code": "rate_limited", "message": "Rate limit exceeded. Please wait and try again.", "fix": "Wait a moment and retry the query."}}}""")
+
 AUTH_LOGIN_JSON_EXAMPLE = _versioned(
     textwrap.dedent("""\
     {
@@ -156,6 +166,53 @@ AUTH_STATUS_JSON_EXAMPLE = _versioned(
         "truncated": false
       },
       "next_actions": []
+    }""")
+)
+
+AUTH_EXPORT_JSON_EXAMPLE = _versioned(
+    textwrap.dedent("""\
+    {
+      "ok": true,
+      "command": "pxcli auth export",
+      "result": {
+        "path": "/Users/you/pxcli-auth-2025-05-09-100000.json"
+      },
+      "meta": {
+        "duration_ms": 12,
+        "version": "0.7.0",
+        "trace_id": "e6f7a8b9-c0d1-2345-abcd-678901234567",
+        "truncated": false
+      },
+      "next_actions": [
+        {
+          "command": "pxcli auth status",
+          "description": "Check authentication state"
+        }
+      ]
+    }""")
+)
+
+AUTH_IMPORT_JSON_EXAMPLE = _versioned(
+    textwrap.dedent("""\
+    {
+      "ok": true,
+      "command": "pxcli auth import",
+      "result": {
+        "imported": true,
+        "cookies_stored": false
+      },
+      "meta": {
+        "duration_ms": 10,
+        "version": "0.7.0",
+        "trace_id": "f7a8b9c0-d1e2-3456-bcde-789012345678",
+        "truncated": false
+      },
+      "next_actions": [
+        {
+          "command": "pxcli auth status",
+          "description": "Verify the imported credentials"
+        }
+      ]
     }""")
 )
 

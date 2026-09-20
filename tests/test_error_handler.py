@@ -147,7 +147,7 @@ class TestHandleErrorJsonMode:
         )
         data = json.loads(stdout)
         assert data["error"]["code"] == "attachment_error"
-        assert code == GENERAL_FAILURE
+        assert code == VALIDATION
 
     def test_upstream_schema_error_json(self):
         stdout, _, code = _capture_handle_error(

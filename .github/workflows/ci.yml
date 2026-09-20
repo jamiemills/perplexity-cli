@@ -25,12 +25,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install gitleaks 8.30.1
-        run: |
-          set -euo pipefail
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
-            | sudo tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
+      - name: Set up environment
+        uses: ./.github/actions/setup-env
+        with:
+          gitleaks: 'true'
 
       - name: Run gitleaks (full history)
         run: make gitleaks-ci
@@ -74,13 +72,8 @@ jobs:
 
       - name: Set up environment
         uses: ./.github/actions/setup-env
-
-      - name: Install gitleaks 8.30.1
-        run: |
-          set -euo pipefail
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
-            | sudo tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
+        with:
+          gitleaks: 'true'
 
       - name: Run tests with coverage
         run: make ci-test-coverage
@@ -134,13 +127,7 @@ jobs:
         uses: ./.github/actions/setup-env
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install gitleaks 8.30.1
-        run: |
-          set -euo pipefail
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
-            | sudo tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
+          gitleaks: 'true'
 
       - name: Run compatibility tests
         run: make ci-test-compat
@@ -320,13 +307,8 @@ jobs:
 
       - name: Set up environment
         uses: ./.github/actions/setup-env
-
-      - name: Install gitleaks 8.30.1
-        run: |
-          set -euo pipefail
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz \
-            | sudo tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
+        with:
+          gitleaks: 'true'
 
       - name: Run compatibility tests
         run: make ci-test-compat
@@ -344,13 +326,8 @@ jobs:
 
       - name: Set up environment
         uses: ./.github/actions/setup-env
-
-      - name: Install gitleaks 8.30.1
-        run: |
-          set -euo pipefail
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
-            | sudo tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
+        with:
+          gitleaks: 'true'
 
       - name: Run tests with coverage
         run: make test-coverage-report

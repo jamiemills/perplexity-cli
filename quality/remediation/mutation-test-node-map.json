@@ -1,9 +1,4 @@
-{
-  "schema_version": 1,
-  "source": "protected post-intake backup copies and current behavioural tests",
-  "before_source": "verified external recovery package identified by the intake patch SHA-256",
-  "before_count": 754,
-  "after_count": 754,
+{"schema_version": 1, "source": "protected post-intake backup copies and current behavioural tests", "before_source": "verified external recovery package identified by the intake patch SHA-256", "before_count": 772, "after_count": 772,
   "mappings": [
     {"before":"tests/test_api_client.py::TestQueryParams::test_default_values","after":"tests/test_api_client.py::TestQueryParams::test_default_values","status":"unchanged","markers":[],"marker_preserved":true},
     {"before":"tests/test_api_client.py::TestQueryParams::test_to_dict","after":"tests/test_api_client.py::TestQueryParams::test_to_dict","status":"unchanged","markers":[],"marker_preserved":true},
@@ -758,6 +753,24 @@
     {"before":"tests/test_token_manager.py::TestLoadTokenRoundTrip::test_load_verifies_exact_security_contract_before_reading","after":"tests/test_token_manager.py::TestLoadTokenRoundTrip::test_load_verifies_exact_security_contract_before_reading","status":"unchanged","markers":[],"marker_preserved":true},
     {"before":"tests/test_token_manager.py::TestClearTokenOSError::test_clear_token_raises_on_oserror","after":"tests/test_token_manager.py::TestClearTokenOSError::test_clear_token_raises_on_oserror","status":"unchanged","markers":[],"marker_preserved":true},
     {"before":"tests/test_token_manager.py::TestClearTokenOSError::test_clear_token_without_file_is_noop","after":"tests/test_token_manager.py::TestClearTokenOSError::test_clear_token_without_file_is_noop","status":"unchanged","markers":[],"marker_preserved":true},
-    {"before":"tests/test_query_runner.py::test_run_query_command_streaming_delegates_to_stream_handler","after":"tests/test_query_runner.py::test_run_query_command_streaming_delegates_to_stream_handler","status":"unchanged","markers":[],"marker_preserved":true}
+    {"before":"tests/test_query_runner.py::test_run_query_command_streaming_delegates_to_stream_handler","after":"tests/test_query_runner.py::test_run_query_command_streaming_delegates_to_stream_handler","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_api_client.py::TestResolveEffectiveTimeout::test_deep_research_larger_user_timeout_respected","after":"tests/test_api_client.py::TestResolveEffectiveTimeout::test_deep_research_larger_user_timeout_respected","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_api_client.py::TestResolveEffectiveTimeout::test_deep_research_timeout_floor_boundary","after":"tests/test_api_client.py::TestResolveEffectiveTimeout::test_deep_research_timeout_floor_boundary","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_mcp_server.py::test_friendly_error_authentication_includes_original_message","after":"tests/test_mcp_server.py::test_friendly_error_authentication_includes_original_message","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_mcp_server.py::test_friendly_error_upstream_schema","after":"tests/test_mcp_server.py::test_friendly_error_upstream_schema","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_mcp_server.py::test_run_mcp_query_wraps_authentication_error","after":"tests/test_mcp_server.py::test_run_mcp_query_wraps_authentication_error","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_mcp_server.py::test_run_mcp_query_wraps_upstream_schema_error","after":"tests/test_mcp_server.py::test_run_mcp_query_wraps_upstream_schema_error","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_mcp_server.py::test_main_warns_on_non_loopback_http_bind","after":"tests/test_mcp_server.py::test_main_warns_on_non_loopback_http_bind","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_mcp_server.py::test_main_silent_for_loopback_http_bind[127.0.0.1]","after":"tests/test_mcp_server.py::test_main_silent_for_loopback_http_bind[127.0.0.1]","status":"unchanged","markers":["parametrize"],"marker_preserved":true},
+    {"before":"tests/test_mcp_server.py::test_main_silent_for_loopback_http_bind[localhost]","after":"tests/test_mcp_server.py::test_main_silent_for_loopback_http_bind[localhost]","status":"unchanged","markers":["parametrize"],"marker_preserved":true},
+    {"before":"tests/test_mcp_server.py::test_main_silent_for_loopback_http_bind[::1]","after":"tests/test_mcp_server.py::test_main_silent_for_loopback_http_bind[::1]","status":"unchanged","markers":["parametrize"],"marker_preserved":true},
+    {"before":"tests/test_mcp_server.py::test_main_silent_for_stdio_transport","after":"tests/test_mcp_server.py::test_main_silent_for_stdio_transport","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_mcp_server.py::test_create_mcp_server_non_loopback_prints_no_warning","after":"tests/test_mcp_server.py::test_create_mcp_server_non_loopback_prints_no_warning","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_oauth_handler.py::TestExtractToken::test_keeps_only_perplexity_domain_cookies","after":"tests/test_oauth_handler.py::TestExtractToken::test_keeps_only_perplexity_domain_cookies","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_oauth_handler.py::TestExtractToken::test_cross_domain_same_name_cookie_no_overwrite","after":"tests/test_oauth_handler.py::TestExtractToken::test_cross_domain_same_name_cookie_no_overwrite","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_oauth_handler.py::TestExtractToken::test_session_cookie_fallback_with_perplexity_domain","after":"tests/test_oauth_handler.py::TestExtractToken::test_session_cookie_fallback_with_perplexity_domain","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_oauth_handler.py::TestExtractToken::test_foreign_session_cookie_not_used_for_fallback","after":"tests/test_oauth_handler.py::TestExtractToken::test_foreign_session_cookie_not_used_for_fallback","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_oauth_handler.py::TestExtractToken::test_domain_less_cookie_kept_for_token_fallback","after":"tests/test_oauth_handler.py::TestExtractToken::test_domain_less_cookie_kept_for_token_fallback","status":"unchanged","markers":[],"marker_preserved":true},
+    {"before":"tests/test_oauth_handler.py::TestPollForAuthData::test_filters_foreign_domain_cookies","after":"tests/test_oauth_handler.py::TestPollForAuthData::test_filters_foreign_domain_cookies","status":"unchanged","markers":["asyncio"],"marker_preserved":true}
   ]
 }

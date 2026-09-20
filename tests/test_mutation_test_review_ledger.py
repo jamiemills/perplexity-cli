@@ -316,7 +316,7 @@ def test_node_map_is_exact_current_to_current_bijection() -> None:
         len(set(mapped_before)),
         len(set(mapped_after)),
         set(after) == set(mapped_after),
-    ) == (754, 754, 754, 754, True)
+    ) == (772, 772, 772, 772, True)
 
 
 def test_node_map_preserves_every_marker_explicitly() -> None:
@@ -336,7 +336,7 @@ def test_node_status_accounts_for_unchanged_moved_and_renamed_nodes() -> None:
         status: sum(row["status"] == status for row in mappings)
         for status in ("unchanged", "moved", "renamed")
     }
-    assert counts == {"unchanged": 725, "moved": 26, "renamed": 3}
+    assert counts == {"unchanged": 743, "moved": 26, "renamed": 3}
 
 
 def test_changed_tests_helpers_and_validator_have_cc_at_most_five() -> None:

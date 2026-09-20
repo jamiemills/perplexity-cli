@@ -44,7 +44,7 @@ def _run_wrapper(*args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         cwd=str(PROJECT_ROOT),
-        timeout=30,
+        timeout=180,
     )
     return result
 

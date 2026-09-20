@@ -27,6 +27,8 @@ class TestSubcommands:
             ["auth", "login", "--help"],
             ["auth", "logout", "--help"],
             ["auth", "status", "--help"],
+            ["auth", "export", "--help"],
+            ["auth", "import", "--help"],
             ["config", "set", "--help"],
             ["config", "show", "--help"],
             ["style", "set", "--help"],

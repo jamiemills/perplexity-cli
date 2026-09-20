@@ -66,7 +66,7 @@ check-infisical:  ## Verify infisical CLI is installed
 
 setup: check-uv check-gitleaks check-infisical
 	uv venv --python $(PYTHON_VERSION) --allow-existing
-	uv sync --locked --extra dev --group dev
+	uv sync --locked --group dev
 	uv run lefthook install
 	uv run pxcli --help > /dev/null
 

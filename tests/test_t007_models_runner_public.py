@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from types import TracebackType
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,6 +14,24 @@ from perplexity_cli.models.model_config import ModelConfigEntry, SubscriptionLev
 from perplexity_cli.runners import models
 from perplexity_cli.utils.config import get_user_settings_endpoint
 from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, PerplexityRequestError
+
+
+class _ClientContextStub:
+    """Context-manager shim yielding the wrapped client without suppression."""
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def __enter__(self) -> Any:
+        return self._client
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        return None
 
 
 def _entry(model_id: str = "sonar") -> ModelConfigEntry:
@@ -29,7 +49,9 @@ def _entry(model_id: str = "sonar") -> ModelConfigEntry:
 def _patch_runner(monkeypatch: pytest.MonkeyPatch, service: MagicMock) -> None:
     """Stub authentication and network setup for the public runner call."""
     monkeypatch.setattr(models, "_resolve_auth", lambda: ("token", {"sid": "cookie"}))
-    monkeypatch.setattr(models, "_create_rest_client", lambda token, cookies: object())
+    monkeypatch.setattr(
+        models, "_create_rest_client", lambda token, cookies: _ClientContextStub(object())
+    )
     monkeypatch.setattr(models, "_detect_subscription_level", lambda client: SubscriptionLevel.PRO)
     monkeypatch.setattr(models, "_create_model_service", lambda client, level: service)
 
@@ -136,6 +158,8 @@ def test_public_runner_builds_rest_client_with_auth_context(
     """The listing path preserves both token and cookies in the REST client."""
     auth_context = MagicMock()
     client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = None
     rest_client = MagicMock(return_value=client)
     service = MagicMock()
     service.list_available_models.return_value = []
@@ -164,7 +188,9 @@ def test_public_runner_detects_subscription_and_preserves_output_flags(
     output_json = MagicMock()
     logger = MagicMock()
     monkeypatch.setattr(models, "_resolve_auth", lambda: ("token", None))
-    monkeypatch.setattr(models, "_create_rest_client", lambda token, cookies: client)
+    monkeypatch.setattr(
+        models, "_create_rest_client", lambda token, cookies: _ClientContextStub(client)
+    )
     monkeypatch.setattr(models, "_create_model_service", create_service)
     monkeypatch.setattr(models, "_output_json", output_json)
     monkeypatch.setattr(models, "get_logger", lambda: logger)
@@ -192,7 +218,9 @@ def test_public_runner_uses_settings_endpoint_and_free_tier(
     service.list_available_models.return_value = []
     create_service = MagicMock(return_value=service)
     monkeypatch.setattr(models, "_resolve_auth", lambda: ("token", None))
-    monkeypatch.setattr(models, "_create_rest_client", lambda token, cookies: client)
+    monkeypatch.setattr(
+        models, "_create_rest_client", lambda token, cookies: _ClientContextStub(client)
+    )
     monkeypatch.setattr(models, "_create_model_service", create_service)
 
     models.run_models_list_command(None)

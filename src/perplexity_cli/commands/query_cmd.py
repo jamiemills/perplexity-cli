@@ -64,7 +64,9 @@ from perplexity_cli.commands._runner_adapter import QueryOptions, run_query_comm
         "printed incrementally as it arrives from the API rather than waiting "
         "for the complete response.  When combined with --json, produces NDJSON "
         "(newline-delimited JSON) output with one event per line: start, chunk, "
-        "and result events.  Default: --no-stream (batch mode)."
+        "and result events; the final result event is emitted on both success "
+        "(ok=true) and failure (ok=false with result.error).  Default: "
+        "--no-stream (batch mode)."
     ),
 )
 @click.option(
@@ -93,7 +95,8 @@ from perplexity_cli.commands._runner_adapter import QueryOptions, run_query_comm
         "next_actions} on success, or {ok, command, error, fix, next_actions} on "
         "failure.  The result object includes 'answer' (string) and 'references' "
         "(array).  Intended for programmatic consumption by scripts and agents.  "
-        "When combined with --stream, produces NDJSON output."
+        "When combined with --stream, produces NDJSON output in which the "
+        "terminal result event carries ok=false and result.error on failure."
     ),
 )
 @click.option(
@@ -115,8 +118,10 @@ from perplexity_cli.commands._runner_adapter import QueryOptions, run_query_comm
     help=(
         "Request timeout in seconds.  If the API does not respond within this "
         "duration, the request is aborted and an error is returned (exit code 6). "
-        "Default: 60 seconds for standard queries.  Set a higher value for "
-        "complex queries that may take longer to process.  Example: --timeout 120"
+        "Default: 60 seconds for standard queries.  Deep-research queries use a "
+        "minimum of 360 seconds; a larger --timeout is respected.  Set a higher "
+        "value for complex queries that may take longer to process.  "
+        "Example: --timeout 120"
     ),
 )
 @click.option(
@@ -184,7 +189,11 @@ def query(ctx: click.Context, query_text: str, **params: ClickValue) -> None:
       JSON (NDJSON).  Each line is a typed event:
         start   - Emitted when the query begins
         chunk   - Emitted for each piece of streamed text
-        result  - Final line containing the complete envelope
+        result  - Final line containing the complete envelope,
+                  emitted on BOTH success and failure: ok=true with
+                  {answer, references}, or ok=false with
+                  result.error {code, message, fix?}.  Exit codes match
+                  batch mode (see the Exit Codes section).
 
     \b
     FILE ATTACHMENTS (--attach):

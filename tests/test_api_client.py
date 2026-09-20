@@ -776,6 +776,24 @@ class TestResolveEffectiveTimeout:
         assert is_deep is True
         assert timeout == 360
 
+    def test_deep_research_larger_user_timeout_respected(self):
+        """A user timeout above the floor wins for deep research."""
+        client = SSEClient(auth=AuthContext(token="test-token"), timeout=600)
+        is_deep, timeout = client._resolve_effective_timeout(
+            {"params": {"search_implementation_mode": "multi_step"}}
+        )
+        assert is_deep is True
+        assert timeout == 600
+
+    def test_deep_research_timeout_floor_boundary(self):
+        """A user timeout exactly at the floor stays at the floor."""
+        client = SSEClient(auth=AuthContext(token="test-token"), timeout=360)
+        is_deep, timeout = client._resolve_effective_timeout(
+            {"params": {"search_implementation_mode": "multi_step"}}
+        )
+        assert is_deep is True
+        assert timeout == 360
+
 
 class TestLogRequestContext:
     """Tests for _log_request_context."""

@@ -249,13 +249,14 @@ rules:
 
   - id: fstring-in-logging
     # Defeats lazy formatting and structured logging.
+    # Trailing ", ..." also covers multi-argument calls (e.g. exc_info=True).
     pattern-either:
-      - pattern: $LOG.debug(f"...")
-      - pattern: $LOG.info(f"...")
-      - pattern: $LOG.warning(f"...")
-      - pattern: $LOG.error(f"...")
-      - pattern: $LOG.critical(f"...")
-      - pattern: $LOG.exception(f"...")
+      - pattern: $LOG.debug(f"...", ...)
+      - pattern: $LOG.info(f"...", ...)
+      - pattern: $LOG.warning(f"...", ...)
+      - pattern: $LOG.error(f"...", ...)
+      - pattern: $LOG.critical(f"...", ...)
+      - pattern: $LOG.exception(f"...", ...)
     message: "Use lazy logging args ('%s', val) — f-strings evaluate even when disabled (Ch.8)."
     languages: [python]
     severity: WARNING

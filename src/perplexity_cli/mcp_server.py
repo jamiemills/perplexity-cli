@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from typing import TYPE_CHECKING, Annotated, Literal, cast
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -18,7 +19,12 @@ from perplexity_cli.auth.utils import load_token_optional
 from perplexity_cli.formatting import get_formatter
 from perplexity_cli.formatting.base import Formatter
 from perplexity_cli.ports import QueryGateway
-from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, PerplexityRequestError
+from perplexity_cli.utils.exceptions import (
+    AuthenticationError,
+    PerplexityHTTPStatusError,
+    PerplexityRequestError,
+    UpstreamSchemaError,
+)
 from perplexity_cli.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -40,6 +46,13 @@ _SERVER_INSTRUCTIONS = (
     "`markdown` for readable summaries, and `plain` for compact raw text."
 )
 _TOOL_OUTPUT_LIMIT = 120000
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+_PLAIN_MESSAGE_ERRORS = (
+    PerplexityHTTPStatusError,
+    PerplexityRequestError,
+    UpstreamSchemaError,
+    ValueError,
+)
 
 
 class MCPReference(BaseModel):
@@ -175,11 +188,9 @@ def _request_answer(query: str, mode: QueryMode) -> Answer:
 
 def _friendly_error_message(exc: Exception) -> str:
     """Convert internal exceptions into agent-friendly tool errors."""
-    if isinstance(exc, PerplexityHTTPStatusError):
-        return str(exc)
-    if isinstance(exc, PerplexityRequestError):
-        return str(exc)
-    if isinstance(exc, ValueError):
+    if isinstance(exc, AuthenticationError):
+        return f"Authentication failed: {exc} Run 'pxcli auth login' to re-authenticate."
+    if isinstance(exc, _PLAIN_MESSAGE_ERRORS):
         return str(exc)
     return f"Perplexity request failed: {exc}"
 
@@ -208,7 +219,13 @@ def run_mcp_query(query: str, mode: QueryMode, output_format: str) -> MCPQueryRe
 
     try:
         answer = _request_answer(cleaned_query, mode)
-    except (PerplexityHTTPStatusError, PerplexityRequestError, ValueError) as exc:
+    except (
+        AuthenticationError,
+        PerplexityHTTPStatusError,
+        PerplexityRequestError,
+        UpstreamSchemaError,
+        ValueError,
+    ) as exc:
         raise RuntimeError(_friendly_error_message(exc)) from exc
 
     references = [_build_reference(ref) for ref in answer.references]
@@ -297,8 +314,27 @@ async def _perplexity_deep_info(
     return result
 
 
+def _write_stderr(text: str) -> None:
+    """Write *text* to stderr and flush."""
+    sys.stderr.write(text)
+    sys.stderr.flush()
+
+
+def _warn_non_loopback_bind(config: ServerConfig) -> None:
+    """Warn when the HTTP transport binds a host reachable from other machines."""
+    if config.transport != "streamable-http" or config.host in _LOOPBACK_HOSTS:
+        return
+    _write_stderr(
+        f"[WARNING] Binding to non-loopback host '{config.host}': the MCP endpoint has "
+        "no authentication and DNS-rebinding protection is disabled for non-loopback "
+        "binds. Anyone who can reach this address can use your stored Perplexity "
+        "credentials.\n"
+    )
+
+
 def main() -> None:
     """Run the Perplexity MCP server."""
     config = _parse_args()
+    _warn_non_loopback_bind(config)
     server = create_mcp_server(config)
     server.run(transport=config.transport, mount_path=config.mount_path)

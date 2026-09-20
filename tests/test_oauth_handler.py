@@ -293,9 +293,81 @@ class TestExtractToken:
     """Cookie shape validation before extraction."""
 
     def test_valid_cookies_returned(self):
-        """Valid cookie entries produce the expected map."""
+        """Valid Perplexity-domain cookie entries produce the expected map."""
         token, cookies = _extract_token(
-            [{"name": "__Secure-next-auth.session-token", "value": "tok"}], {}
+            [
+                {
+                    "name": "__Secure-next-auth.session-token",
+                    "value": "tok",
+                    "domain": ".perplexity.ai",
+                }
+            ],
+            {},
+        )
+        assert token == "tok"
+        assert cookies == {"__Secure-next-auth.session-token": "tok"}
+
+    def test_keeps_only_perplexity_domain_cookies(self):
+        """Cookies from foreign domains are dropped from the capture set."""
+        token, cookies = _extract_token(
+            [
+                {"name": "cf_clearance", "value": "cf-1", "domain": ".perplexity.ai"},
+                {"name": "pplx-session", "value": "s-1", "domain": "www.perplexity.ai"},
+                {"name": "sid", "value": "google-sid", "domain": ".google.com"},
+                {"name": "legacy", "value": "example-sid", "domain": ".example.com"},
+            ],
+            {},
+        )
+        assert token is None
+        assert cookies == {"cf_clearance": "cf-1", "pplx-session": "s-1"}
+
+    def test_cross_domain_same_name_cookie_no_overwrite(self):
+        """A foreign same-name cookie cannot overwrite the Perplexity one."""
+        token, cookies = _extract_token(
+            [
+                {"name": "csrftoken", "value": "pplx-csrf", "domain": ".perplexity.ai"},
+                {"name": "csrftoken", "value": "google-csrf", "domain": ".google.com"},
+            ],
+            {},
+        )
+        assert token is None
+        assert cookies == {"csrftoken": "pplx-csrf"}
+
+    def test_session_cookie_fallback_with_perplexity_domain(self):
+        """The token fallback still sees Perplexity-domain session cookies."""
+        token, cookies = _extract_token(
+            [
+                {
+                    "name": "__Secure-next-auth.session-token",
+                    "value": "tok",
+                    "domain": ".perplexity.ai",
+                }
+            ],
+            {},
+        )
+        assert token == "tok"
+        assert cookies == {"__Secure-next-auth.session-token": "tok"}
+
+    def test_foreign_session_cookie_not_used_for_fallback(self):
+        """A foreign-domain session cookie never feeds the token fallback."""
+        token, cookies = _extract_token(
+            [
+                {
+                    "name": "__Secure-next-auth.session-token",
+                    "value": "foreign-tok",
+                    "domain": ".example.com",
+                }
+            ],
+            {},
+        )
+        assert token is None
+        assert cookies == {}
+
+    def test_domain_less_cookie_kept_for_token_fallback(self):
+        """Entries without a domain field stay usable by the token fallback."""
+        token, cookies = _extract_token(
+            [{"name": "__Secure-next-auth.session-token", "value": "tok"}],
+            {},
         )
         assert token == "tok"
         assert cookies == {"__Secure-next-auth.session-token": "tok"}
@@ -318,7 +390,13 @@ class TestExtractToken:
     def test_local_storage_token_takes_precedence(self):
         """A valid localStorage token is preferred over cookie fallback."""
         token, _ = _extract_token(
-            [{"name": "__Secure-next-auth.session-token", "value": "cookie-token"}],
+            [
+                {
+                    "name": "__Secure-next-auth.session-token",
+                    "value": "cookie-token",
+                    "domain": ".perplexity.ai",
+                }
+            ],
             {"pplx-next-auth-session": '{"user": "local"}'},
         )
         assert token == '{"user": "local"}'
@@ -326,7 +404,13 @@ class TestExtractToken:
     def test_invalid_local_storage_falls_back_to_cookie(self):
         """Invalid localStorage data falls back to the secure session cookie."""
         token, _ = _extract_token(
-            [{"name": "__Secure-next-auth.session-token", "value": "cookie-token"}],
+            [
+                {
+                    "name": "__Secure-next-auth.session-token",
+                    "value": "cookie-token",
+                    "domain": ".perplexity.ai",
+                }
+            ],
             {"pplx-next-auth-session": "not-json"},
         )
         assert token == "cookie-token"
@@ -475,7 +559,14 @@ class TestPollForAuthData:
     async def test_returns_token_on_first_poll(self):
         """Returns token immediately when found on first poll."""
         mock_client = AsyncMock(spec=ChromeDevToolsClient)
-        cookies = [{"name": "__Secure-next-auth.session-token", "value": "tok123"}]
+        cookies = [
+            {
+                "name": "__Secure-next-auth.session-token",
+                "value": "tok123",
+                "domain": ".perplexity.ai",
+            },
+            {"name": "sid", "value": "google-sid", "domain": ".google.com"},
+        ]
         mock_client.send_command.return_value = {"cookies": cookies}
         mock_logger = MagicMock()
 
@@ -488,7 +579,31 @@ class TestPollForAuthData:
                 mock_client, timeout=10, poll_interval=0.1, logger=mock_logger
             )
         assert token == "tok123"
-        assert cookie_dict["__Secure-next-auth.session-token"] == "tok123"
+        assert cookie_dict == {"__Secure-next-auth.session-token": "tok123"}
+
+    @pytest.mark.asyncio
+    async def test_filters_foreign_domain_cookies(self):
+        """Polling captures only Perplexity-domain cookies."""
+        mock_client = AsyncMock(spec=ChromeDevToolsClient)
+        cookies = [
+            {"name": "cf_clearance", "value": "cf-1", "domain": ".perplexity.ai"},
+            {"name": "csrftoken", "value": "pplx-csrf", "domain": "www.perplexity.ai"},
+            {"name": "csrftoken", "value": "google-csrf", "domain": ".google.com"},
+            {"name": "sid", "value": "example-sid", "domain": ".example.com"},
+        ]
+        mock_client.send_command.return_value = {"cookies": cookies}
+        mock_logger = MagicMock()
+
+        with patch(
+            "perplexity_cli.auth.oauth_handler._fetch_local_storage",
+            new_callable=AsyncMock,
+            return_value={"pplx-next-auth-session": '{"user": "local"}'},
+        ):
+            token, cookie_dict = await _poll_for_auth_data(
+                mock_client, timeout=10, poll_interval=0.1, logger=mock_logger
+            )
+        assert token == '{"user": "local"}'
+        assert cookie_dict == {"cf_clearance": "cf-1", "csrftoken": "pplx-csrf"}
 
     @pytest.mark.asyncio
     async def test_raises_timeout(self):
@@ -531,7 +646,15 @@ class TestPollForAuthData:
         mock_client.send_command.side_effect = [
             {"cookies": []},
             {"cookies": []},
-            {"cookies": [{"name": "__Secure-next-auth.session-token", "value": "found"}]},
+            {
+                "cookies": [
+                    {
+                        "name": "__Secure-next-auth.session-token",
+                        "value": "found",
+                        "domain": ".perplexity.ai",
+                    }
+                ]
+            },
         ]
         mock_logger = MagicMock()
 
@@ -553,7 +676,13 @@ class TestPollForAuthData:
         """A token available exactly at the timeout boundary is accepted."""
         mock_client = AsyncMock(spec=ChromeDevToolsClient)
         mock_client.send_command.return_value = {
-            "cookies": [{"name": "__Secure-next-auth.session-token", "value": "boundary"}]
+            "cookies": [
+                {
+                    "name": "__Secure-next-auth.session-token",
+                    "value": "boundary",
+                    "domain": ".perplexity.ai",
+                }
+            ]
         }
         loop = MagicMock()
         loop.time.side_effect = [100.0, 105.0]
@@ -717,7 +846,13 @@ class TestAuthenticateWithBrowser:
                 {
                     "id": 5,
                     "result": {
-                        "cookies": [{"name": "__Secure-next-auth.session-token", "value": "tok"}]
+                        "cookies": [
+                            {
+                                "name": "__Secure-next-auth.session-token",
+                                "value": "tok",
+                                "domain": ".perplexity.ai",
+                            }
+                        ]
                     },
                 }
             ),  # getAllCookies

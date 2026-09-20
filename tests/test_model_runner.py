@@ -7,6 +7,7 @@ REST client usage, table/JSON output formatting, and error handling.
 from __future__ import annotations
 
 import json
+from types import TracebackType
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -90,6 +91,32 @@ def _mock_model_service(
     accessible = [entry for entry in model_config.config if entry.is_accessible(level)]
     service.list_available_models.return_value = accessible
     return service
+
+
+def _context_mock() -> MagicMock:
+    """Create a MagicMock usable as a non-suppressing context manager."""
+    mock = MagicMock()
+    mock.__enter__.return_value = mock
+    mock.__exit__.return_value = False
+    return mock
+
+
+class _RecordingClient:
+    """Fake REST client whose context exit records closure."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def __enter__(self) -> _RecordingClient:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self.closed = True
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +268,7 @@ class TestRunModelsListCommand:
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
-                return_value=MagicMock(),
+                return_value=_context_mock(),
                 autospec=True,
             ),
             patch(
@@ -278,7 +305,7 @@ class TestRunModelsListCommand:
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
-                return_value=MagicMock(),
+                return_value=_context_mock(),
                 autospec=True,
             ),
             patch(
@@ -316,7 +343,7 @@ class TestRunModelsListCommand:
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
-                return_value=MagicMock(),
+                return_value=_context_mock(),
                 autospec=True,
             ),
             patch(
@@ -374,7 +401,7 @@ class TestRunModelsListCommand:
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
-                return_value=MagicMock(),
+                return_value=_context_mock(),
                 autospec=True,
             ),
             patch(
@@ -411,7 +438,7 @@ class TestRunModelsListCommand:
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
-                return_value=MagicMock(),
+                return_value=_context_mock(),
                 autospec=True,
             ),
             patch(
@@ -443,7 +470,7 @@ class TestRunModelsListCommand:
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
-                return_value=MagicMock(),
+                return_value=_context_mock(),
                 autospec=True,
             ),
             patch(
@@ -480,7 +507,7 @@ class TestRunModelsListCommand:
             ),
             patch(
                 "perplexity_cli.runners.models._create_rest_client",
-                return_value=MagicMock(),
+                return_value=_context_mock(),
                 autospec=True,
             ),
             patch(
@@ -496,6 +523,85 @@ class TestRunModelsListCommand:
                 run_models_list_command(ctx_obj={"json": True, "schema": False})
 
             mock_handle.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Tests: client lifecycle
+# ---------------------------------------------------------------------------
+
+
+class TestClientClose:
+    """Tests for REST client cleanup during model listing."""
+
+    def test_client_context_closes_after_successful_listing(self, capsys) -> None:
+        """The REST client context exits, closing the client after listing."""
+        from perplexity_cli.runners.models import run_models_list_command
+
+        client = _RecordingClient()
+        mock_service = MagicMock()
+        mock_service.list_available_models.return_value = []
+        with (
+            patch(
+                "perplexity_cli.runners.models._create_model_service",
+                return_value=mock_service,
+                autospec=True,
+            ),
+            patch(
+                "perplexity_cli.runners.models._resolve_auth",
+                return_value=("token", {}),
+                autospec=True,
+            ),
+            patch(
+                "perplexity_cli.runners.models._create_rest_client",
+                return_value=client,
+                autospec=True,
+            ),
+            patch(
+                "perplexity_cli.runners.models._detect_subscription_level",
+                return_value=SubscriptionLevel.PRO,
+                autospec=True,
+            ),
+        ):
+            run_models_list_command(ctx_obj=None)
+
+        assert client.closed is True
+        assert "No models available" in capsys.readouterr().out
+
+    def test_client_context_closes_before_error_exit(self, capsys) -> None:
+        """The client closes even when listing fails and the runner exits."""
+        from perplexity_cli.runners.models import run_models_list_command
+        from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError
+
+        client = _RecordingClient()
+        mock_service = MagicMock()
+        mock_service.list_available_models.side_effect = PerplexityHTTPStatusError("Forbidden")
+        with (
+            patch(
+                "perplexity_cli.runners.models._create_model_service",
+                return_value=mock_service,
+                autospec=True,
+            ),
+            patch(
+                "perplexity_cli.runners.models._resolve_auth",
+                return_value=("token", {}),
+                autospec=True,
+            ),
+            patch(
+                "perplexity_cli.runners.models._create_rest_client",
+                return_value=client,
+                autospec=True,
+            ),
+            patch(
+                "perplexity_cli.runners.models._detect_subscription_level",
+                return_value=SubscriptionLevel.PRO,
+                autospec=True,
+            ),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                run_models_list_command(ctx_obj=None)
+
+        assert exc_info.value.code == 1
+        assert client.closed is True
 
 
 # ---------------------------------------------------------------------------

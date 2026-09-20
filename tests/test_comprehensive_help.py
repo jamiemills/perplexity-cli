@@ -40,7 +40,7 @@ class TestGroupHelpComprehensiveness:
     @pytest.mark.parametrize(
         "group,expected_phrases",
         [
-            ("auth", ["authentication", "login", "logout", "status"]),
+            ("auth", ["authentication", "login", "logout", "status", "export", "import"]),
             ("config", ["configuration", "set", "show"]),
             ("style", ["style", "set", "show", "clear"]),
             ("threads", ["thread", "export"]),
@@ -74,6 +74,8 @@ class TestLeafCommandExamples:
             (["auth", "login"], "pxcli auth login"),
             (["auth", "logout"], "pxcli auth logout"),
             (["auth", "status"], "pxcli auth status"),
+            (["auth", "export"], "pxcli auth export"),
+            (["auth", "import"], "pxcli auth import"),
             (["config", "set"], "pxcli config set"),
             (["config", "show"], "pxcli config show"),
             (["style", "set"], "pxcli style set"),
@@ -106,6 +108,8 @@ _JSON_COMMANDS = [
     ["auth", "login"],
     ["auth", "logout"],
     ["auth", "status"],
+    ["auth", "export"],
+    ["auth", "import"],
     ["config", "set"],
     ["config", "show"],
     ["style", "set"],
@@ -231,6 +235,22 @@ class TestOptionHelpComprehensiveness:
         output = _help(runner, ["auth", "status"])
         assert "API" in output or "live" in output.lower()
 
+    def test_auth_export_output_option_detailed(self, runner: CliRunner) -> None:
+        output = _help(runner, ["auth", "export"])
+        assert "--output" in output
+        assert "pxcli-auth-" in output
+        assert "0600" in output
+
+    def test_auth_import_argument_and_cookie_gate_detailed(self, runner: CliRunner) -> None:
+        output = _help(runner, ["auth", "import"])
+        assert "FILE_PATH" in output
+        assert "save_cookies" in output
+        assert "re-encrypt" in output.lower() or "re-encrypts" in output.lower()
+
+    def test_auth_import_see_also_references_export(self, runner: CliRunner) -> None:
+        output = _help(runner, ["auth", "import"])
+        assert "pxcli auth export" in output
+
     def test_threads_export_date_options_detailed(self, runner: CliRunner) -> None:
         output = _help(runner, ["threads", "export"])
         assert "ISO 8601" in output or "YYYY-MM-DD" in output
@@ -265,6 +285,8 @@ class TestHelpSectionsExpanded:
             (["auth", "login"], ["pxcli auth status", "pxcli auth logout"]),
             (["auth", "logout"], ["pxcli auth login"]),
             (["auth", "status"], ["pxcli auth login", "pxcli auth logout"]),
+            (["auth", "export"], ["pxcli auth login", "pxcli auth status", "pxcli auth import"]),
+            (["auth", "import"], ["pxcli auth export", "pxcli config set save_cookies true"]),
             (["config", "set"], ["pxcli config show"]),
             (["config", "show"], ["pxcli config set"]),
             (["style", "set"], ["pxcli style show", "pxcli style clear"]),
@@ -312,6 +334,8 @@ class TestHelpLengthThresholds:
             # Simpler commands still need reasonable detail
             (["auth", "logout"], 1000),
             (["auth", "status"], 1500),
+            (["auth", "export"], 1500),
+            (["auth", "import"], 1500),
             (["config", "set"], 1000),
             (["config", "show"], 1000),
             (["style", "set"], 1000),

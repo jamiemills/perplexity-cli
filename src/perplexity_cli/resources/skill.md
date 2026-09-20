@@ -357,7 +357,7 @@ for action in envelope.get("next_actions", []):
 | `NO_COLOR` | Disable coloured output (any non-empty value) |
 | `XDG_CONFIG_HOME` | Override default config directory (default: `~/.config`) |
 | `PERPLEXITY_BASE_URL` | Override the Perplexity.ai base URL |
-| `PXCLI_SESSION_LOG` | Path to session log file |
+| `PXCLI_SESSION_LOG` | Set to `true` to enable NDJSON session logging (boolean; see README) |
 
 ## Style Prompts
 

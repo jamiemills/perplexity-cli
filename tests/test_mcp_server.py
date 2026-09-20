@@ -31,7 +31,12 @@ from perplexity_cli.mcp_server import (
     main,
     run_mcp_query,
 )
-from perplexity_cli.utils.exceptions import PerplexityHTTPStatusError, PerplexityRequestError
+from perplexity_cli.utils.exceptions import (
+    AuthenticationError,
+    PerplexityHTTPStatusError,
+    PerplexityRequestError,
+    UpstreamSchemaError,
+)
 
 # ---------------------------------------------------------------------------
 # _parse_args
@@ -251,6 +256,18 @@ def test_friendly_error_generic() -> None:
     assert "Perplexity request failed" in _friendly_error_message(exc)
 
 
+def test_friendly_error_authentication_includes_original_message() -> None:
+    exc = AuthenticationError("token expired")
+    message = _friendly_error_message(exc)
+    assert "token expired" in message
+    assert "pxcli auth login" in message
+
+
+def test_friendly_error_upstream_schema() -> None:
+    exc = UpstreamSchemaError("malformed payload")
+    assert "malformed payload" in _friendly_error_message(exc)
+
+
 # ---------------------------------------------------------------------------
 # _server_meta
 # ---------------------------------------------------------------------------
@@ -330,6 +347,31 @@ def test_run_mcp_query_wraps_value_error(monkeypatch: pytest.MonkeyPatch) -> Non
         run_mcp_query("test", "quick", "plain")
 
     assert isinstance(excinfo.value.__cause__, ValueError)
+
+
+def test_run_mcp_query_wraps_authentication_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "perplexity_cli.mcp_server._request_answer",
+        lambda query, mode: (_ for _ in ()).throw(AuthenticationError("token expired")),
+    )
+
+    with pytest.raises(RuntimeError, match="token expired") as excinfo:
+        run_mcp_query("test", "quick", "plain")
+
+    assert isinstance(excinfo.value.__cause__, AuthenticationError)
+    assert "pxcli auth login" in str(excinfo.value)
+
+
+def test_run_mcp_query_wraps_upstream_schema_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "perplexity_cli.mcp_server._request_answer",
+        lambda query, mode: (_ for _ in ()).throw(UpstreamSchemaError("malformed payload")),
+    )
+
+    with pytest.raises(RuntimeError, match="malformed payload") as excinfo:
+        run_mcp_query("test", "quick", "plain")
+
+    assert isinstance(excinfo.value.__cause__, UpstreamSchemaError)
 
 
 def test_run_mcp_query_plain_format(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -426,7 +468,7 @@ def test_request_answer_maps_each_public_mode(
     factory = Mock(return_value=context)
     monkeypatch.setattr("perplexity_cli.mcp_server.PerplexityAPI", factory)
 
-    _request_answer("question", mode)  # type: ignore[arg-type]
+    _request_answer("question", mode)  # type: ignore[arg-type]; owner: mcp-team; reason: mode is a literal test double accepted by the loose protocol
 
     api.get_complete_answer.assert_called_once_with(
         "question", search_implementation_mode=expected_search_mode
@@ -600,7 +642,7 @@ async def test_query_tools_forward_clean_arguments_without_context(
     run_query = Mock(return_value="result")
     monkeypatch.setattr("perplexity_cli.mcp_server.run_mcp_query", run_query)
 
-    result = await tool("question", "json", None)  # type: ignore[operator]
+    result = await tool("question", "json", None)  # type: ignore[operator]; owner: mcp-team; reason: FastMCP tool wrapper types do not expose the awaitable overload
 
     assert result == "result"
     run_query.assert_called_once_with("question", mode, "json")
@@ -696,3 +738,63 @@ def test_main_forwards_config_to_server(monkeypatch: pytest.MonkeyPatch) -> None
 
     create_mcp_server.assert_called_once_with(config)
     server_mock.run.assert_called_once_with(transport="streamable-http", mount_path="/custom")
+
+
+# ---------------------------------------------------------------------------
+# main — non-loopback bind warning
+# ---------------------------------------------------------------------------
+
+
+def _run_main_with_config(monkeypatch: pytest.MonkeyPatch, config: ServerConfig) -> None:
+    """Invoke main() with a stubbed config and a no-op server."""
+    monkeypatch.setattr("perplexity_cli.mcp_server._parse_args", lambda: config)
+    server_mock = Mock()
+    monkeypatch.setattr(
+        "perplexity_cli.mcp_server.create_mcp_server", Mock(return_value=server_mock)
+    )
+    main()
+
+
+def test_main_warns_on_non_loopback_http_bind(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Binding streamable-http to 0.0.0.0 prints a security warning to stderr."""
+    _run_main_with_config(monkeypatch, ServerConfig(transport="streamable-http", host="0.0.0.0"))
+
+    err = capsys.readouterr().err
+    assert "[WARNING]" in err
+    assert "0.0.0.0" in err
+    assert "no authentication" in err
+    assert "DNS-rebinding protection" in err
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
+def test_main_silent_for_loopback_http_bind(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    host: str,
+) -> None:
+    """Loopback streamable-http binds produce no warning."""
+    _run_main_with_config(
+        monkeypatch, ServerConfig(transport="streamable-http", host=host, port=9876)
+    )
+
+    assert capsys.readouterr().err == ""
+
+
+def test_main_silent_for_stdio_transport(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The stdio transport never triggers the bind warning, regardless of host."""
+    _run_main_with_config(monkeypatch, ServerConfig(transport="stdio", host="0.0.0.0"))
+
+    assert capsys.readouterr().err == ""
+
+
+def test_create_mcp_server_non_loopback_prints_no_warning(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Direct server construction must not emit the bind warning (DR8)."""
+    create_mcp_server(ServerConfig(transport="streamable-http", host="0.0.0.0"))
+
+    assert capsys.readouterr().err == ""

@@ -67,7 +67,7 @@ def _run_harness(harness_name: str, iterations: int = _FUZZ_ITERATIONS) -> dict[
     """
     if importlib.util.find_spec("atheris") is None:
         pytest.fail(
-            "atheris is not installed -- run 'uv sync --all-extras --group dev' "
+            "atheris is not installed -- run 'uv sync --group dev' "
             "(fuzz lane is authoritative and must not skip)"
         )
     with tempfile.TemporaryDirectory() as tmp_dir:

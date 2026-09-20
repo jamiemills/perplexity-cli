@@ -36,24 +36,8 @@ dependencies = [
     "mcp>=1.28.1,<2.0.0",
     "websockets>=12.0",
     "rich>=13.0",
-    "tenacity>=8.0",
     "python-dateutil>=2.8.0",
     "pydantic>=2.4.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "pytest-mock>=3.0",
-    "pytest-cov>=7.0",
-    "pytest-asyncio>=1.2.0",
-    "ruff>=0.1",
-    "refurb>=2.0",
-    "ty>=0.0.24",
-    "lefthook>=2.1.6",
-    "bandit>=1.7.7",
-    "vulture>=2.14",
-    "diff-cover>=9.0",
 ]
 
 [project.urls]
@@ -115,9 +99,6 @@ max-complexity = 5
 
 [tool.ruff.lint.pylint]
 max-args = 4
-max-branches = 5
-max-returns = 4
-max-statements = 30
 max-nested-blocks = 3
 
 [tool.ruff.lint.pydocstyle]
@@ -199,19 +180,29 @@ known_first_party = ["scripts"]
 
 [dependency-groups]
 dev = [
-    "pyright>=1.1",
-    "radon>=6.0.1",
-    "vulture>=2.16",
-    "mutmut>=3.0",
-    "hypothesis>=6.0",
-    "pytest-xdist>=3.0",
-    "deptry>=0.20",
-    "pip-audit>=2.7",
-    "import-linter>=2.0",
-    "ruamel.yaml>=0.18",
-    "tomli>=2.0",
-    "grimp>=3.0",
     "atheris>=3.1.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "bandit>=1.7.7",
+    "deptry>=0.20",
+    "diff-cover>=9.0",
+    "grimp>=3.0",
+    "hypothesis>=6.0",
+    "import-linter>=2.0",
+    "lefthook>=2.1.6",
+    "mutmut>=3.0",
+    "pip-audit>=2.7",
+    "pyright>=1.1",
+    "pytest>=7.0",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=7.0",
+    "pytest-mock>=3.0",
+    "pytest-xdist>=3.0",
+    "radon>=6.0.1",
+    "refurb>=2.0",
+    "ruamel.yaml>=0.18",
+    "ruff>=0.1",
+    "tomli>=2.0",
+    "ty>=0.0.24",
+    "vulture>=2.16",
 ]
 
 [tool.deptry.per_rule_ignores]

@@ -35,6 +35,7 @@ from perplexity_cli.envelope import Meta, envelope_to_dict, success_envelope
 from perplexity_cli.ports import QueryGateway
 from perplexity_cli.query_deps import require_query_deps
 from perplexity_cli.query_streaming import stream_query_response
+from perplexity_cli.session_log import SessionLogger
 from perplexity_cli.utils.attachment_models import FileAttachment
 from perplexity_cli.utils.exceptions import (
     AttachmentError,
@@ -667,6 +668,46 @@ class _QueryRenderContextData:
     options: Any
 
 
+def _create_session_logger_safely() -> SessionLogger:
+    """Create the session logger, degrading to a disabled no-op on failure.
+
+    The guard is ``OSError``-only to mirror ``session_log``'s own failure
+    surface, so session logging can never alter query output or exit codes.
+    """
+    try:
+        if not SessionLogger.is_enabled():
+            return SessionLogger(session_id="disabled", enabled="disabled")
+        return SessionLogger.create()
+    except OSError as exc:
+        logger.warning("Session logging failed: %s", exc)
+        return SessionLogger(session_id="disabled", enabled="disabled")
+
+
+def _log_session_invocation(
+    session_logger: SessionLogger,
+    event_args: dict[str, object],
+) -> None:
+    """Record the query invocation event using JSON primitives only."""
+    try:
+        session_logger.log_invocation("query", event_args)
+    except OSError as exc:
+        logger.warning("Session logging failed: %s", exc)
+
+
+def _log_session_response(
+    session_logger: SessionLogger,
+    outcome: str,
+    start_time: float | None,
+) -> None:
+    """Record the query response event without affecting exit behaviour."""
+    effective_start = start_time if start_time is not None else time.monotonic()
+    duration_ms = int((time.monotonic() - effective_start) * 1000)
+    try:
+        session_logger.log_response(outcome, duration_ms, result_summary=None)
+    except OSError as exc:
+        logger.warning("Session logging failed: %s", exc)
+
+
 def run_query_command(
     ctx_obj: dict[str, object] | None,
     query_text: str,
@@ -691,6 +732,12 @@ def run_query_command(
     json_mode, timeout, include_schema = _read_ctx_options(ctx_obj)
 
     trace = TraceContext(trace_id=str(uuid.uuid4()), start_time=time.monotonic())
+
+    session_logger = _create_session_logger_safely()
+    _log_session_invocation(
+        session_logger,
+        {"mode": "stream" if stream else "batch", "json": json_mode, "stream": stream},
+    )
 
     log_query_debug_context(query_text, output_format, "stream" if stream else "batch")
 
@@ -725,7 +772,12 @@ def run_query_command(
             else:
                 _fetch_and_render(api, query_input, render, trace)
 
-    _handle_query_error(_execute_query_body, "json" if json_mode else "human")
+    outcome = "error"
+    try:
+        _handle_query_error(_execute_query_body, "json" if json_mode else "human")
+        outcome = "ok"
+    finally:
+        _log_session_response(session_logger, outcome, trace.start_time)
 
 
 # ---------------------------------------------------------------------------

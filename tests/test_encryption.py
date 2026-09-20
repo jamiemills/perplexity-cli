@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import logging
 import os
 from unittest import mock
 
@@ -319,6 +320,48 @@ class TestLegacyCompatibility:
             decrypt_token(garbage)
         assert "Failed to decrypt token" in str(exc_info.value)
         assert garbage not in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "make_fixture",
+        [_make_pbkdf2_legacy_fixture, _make_sha256_legacy_fixture],
+        ids=["pbkdf2", "sha256"],
+    )
+    def test_legacy_decrypt_logs_deprecation_warning_once(
+        self,
+        make_fixture: object,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A successful legacy decrypt warns exactly once, without token material."""
+        fixture = make_fixture()
+        monkeypatch.setattr(encryption_module, "_build_key_material", lambda: FIXTURE_KEY_MATERIAL)
+        derive_encryption_key.cache_clear()
+        try:
+            with caplog.at_level(logging.WARNING, logger=encryption_module.logger.name):
+                assert decrypt_token(fixture) == FIXTURE_PLAINTEXT
+        finally:
+            derive_encryption_key.cache_clear()
+
+        legacy_warnings = [
+            record
+            for record in caplog.records
+            if record.levelno == logging.WARNING
+            and "Legacy token format detected" in record.getMessage()
+        ]
+        assert len(legacy_warnings) == 1
+        assert "re-authenticate with 'pxcli auth login' to upgrade storage" in (
+            legacy_warnings[0].getMessage()
+        )
+        assert FIXTURE_PLAINTEXT not in caplog.text
+
+    def test_current_format_decrypt_does_not_log_legacy_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Decrypting a current v2 payload emits no legacy-format warning."""
+        encrypted = encrypt_token("current-format-token")
+        with caplog.at_level(logging.WARNING, logger=encryption_module.logger.name):
+            assert decrypt_token(encrypted) == "current-format-token"
+        assert "Legacy token format detected" not in caplog.text
 
 
 class TestStrictDecoding:

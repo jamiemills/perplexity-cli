@@ -59,6 +59,12 @@ class _MockGateway:
         return None
 
     def submit_query(self, query_input):
+        if MODE == "stream503":
+            raise PerplexityHTTPStatusError(
+                "HTTP 503: service unavailable",
+                request=SimpleRequest(method="POST", url="https://www.perplexity.ai/api/query"),
+                response=SimpleResponse(status_code=503, text="service unavailable"),
+            )
         raise AssertionError("submit_query must not be used in process tests")
 
     def get_complete_answer(self, query, search_implementation_mode="standard", **extra):
@@ -216,9 +222,19 @@ class TestUnifiedExitCodePolicy:
         assert result.stdout == b""
         assert b"Error: HTTP 503: service unavailable" in result.stderr
 
-    def test_validation_failure_json_mode_exits_1(self):
+    def test_json_stream_failure_is_clean_ndjson_with_taxonomy_code(self, tmp_path):
+        script = _write_mock_script(tmp_path)
+        result = _run_mock(script, "stream503", "query", "--json", "--stream", "hello")
+        assert result.returncode == 6
+        events = [json.loads(line) for line in result.stdout.splitlines() if line]
+        assert [event["type"] for event in events] == ["start", "result"]
+        assert events[-1]["ok"] is False
+        assert events[-1]["result"]["error"]["code"] == "network_error"
+        assert b"[ERROR]" not in result.stderr
+
+    def test_validation_failure_json_mode_exits_7(self):
         result = _run_cli("query", "--json", "--request-param", "missing-equals", "hello")
-        assert result.returncode == 1
+        assert result.returncode == 7  # VALIDATION: envelope code and exit code agree
         payload = json.loads(result.stdout)
         assert payload["ok"] is False
         assert payload["error"]["code"] == "validation_error"

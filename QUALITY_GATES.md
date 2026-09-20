@@ -3412,9 +3412,14 @@ documents how to reproduce it and what it means.
 `ci.yml` has exactly seventeen jobs. Workflow-level concurrency: group
 `ci-<workflow>-<pr-number | dispatch-run-id | ref>`, `cancel-in-progress:
 true` except for `workflow_dispatch`. Each job runs in a clean checkout with
-`uv sync --all-extras --locked --group dev` and delegates to Make targets.
+`uv sync --locked --group dev` and delegates to Make targets.
 The `test-coverage` job installs gitleaks 8.30.1 before running the suite
-because the authoritative gitleaks tests fail when the binary is absent. The
+because the authoritative gitleaks tests fail when the binary is absent; the
+install is delegated to the `setup-env` composite action (`gitleaks: 'true'`),
+which downloads the pinned release tarball, verifies its sha256 checksum
+against a pinned value before extraction, and puts the verified binary on
+`PATH` (likewise for the `secret-scan`, `test-compat`, `test-macos`, and
+`diff-coverage` jobs). The
 `repository-policy` job is the required source of truth for the deterministic
 offline quality gates: it warms the pinned uvx tool cache (semgrep/actionlint)
 so `make ci-quality` does not stall on first-use downloads, then runs the

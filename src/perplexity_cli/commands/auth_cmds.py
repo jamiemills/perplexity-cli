@@ -1,20 +1,35 @@
-"""``pxcli auth`` group: login, logout, status subcommands."""
+"""``pxcli auth`` group: login, logout, status, export, import subcommands."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
-from perplexity_cli.commands._ctx import ClickValue, _ensure_ctx_obj, record_output_flags
+from perplexity_cli.commands._ctx import (
+    ClickValue,
+    _ensure_ctx_obj,
+    as_path_or_none,
+    record_output_flags,
+)
 from perplexity_cli.commands._examples import (
+    AUTH_EXPORT_JSON_EXAMPLE,
+    AUTH_IMPORT_JSON_EXAMPLE,
     AUTH_LOGIN_JSON_EXAMPLE,
     AUTH_LOGOUT_JSON_EXAMPLE,
     AUTH_STATUS_JSON_EXAMPLE,
 )
-from perplexity_cli.commands._help_refs import AUTH_LOGIN_HELP_REF, AUTH_STATUS_HELP_REF
+from perplexity_cli.commands._help_refs import (
+    AUTH_EXPORT_HELP_REF,
+    AUTH_IMPORT_HELP_REF,
+    AUTH_LOGIN_HELP_REF,
+    AUTH_STATUS_HELP_REF,
+)
 from perplexity_cli.commands._help_sections import HelpSectionConfig, add_help_sections
 from perplexity_cli.commands._runner_adapter import run_auth_command
 from perplexity_cli.config.defaults import DEFAULT_CHROME_DEBUG_PORT
 from perplexity_cli.runners import run_logout_command, run_status_command
+from perplexity_cli.runners.auth import run_export_command, run_import_command
 
 
 @click.group(
@@ -32,6 +47,8 @@ from perplexity_cli.runners import run_logout_command, run_status_command
         "  login   - Extract and store a session token from Chrome\n\n"
         "  logout  - Remove stored credentials\n\n"
         "  status  - Check current authentication state\n\n"
+        "  export  - Export credentials to a portable JSON file\n\n"
+        "  import  - Import credentials from a JSON bundle file\n\n"
         "Quick start:\n\n"
         "  pxcli auth login          # Authenticate\n\n"
         "  pxcli auth status         # Verify\n\n"
@@ -260,9 +277,170 @@ def auth_status(ctx: click.Context, **flags: ClickValue) -> None:
     run_status_command("verify" if flags.get("verify") else "skip")
 
 
+@click.command(name="export")
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Output JSON file path.  If omitted, defaults to "
+        "pxcli-auth-YYYY-MM-DD-HHMMSS.json in the current directory.  The "
+        "file is written atomically with owner-only permissions (0600).  "
+        "Choose a safe location for this file.  Example: "
+        "--output ~/secret/pxcli-creds.json"
+    ),
+)
+@click.option(
+    "--json",
+    "json_flag",
+    is_flag=True,
+    help=(
+        "Emit output as a structured JSON envelope to stdout instead of "
+        "human-readable text.  The envelope contains {ok, command, result, meta, "
+        "next_actions} on success.  The result object includes 'path' only — "
+        "the credential contents are NEVER included in the envelope.  "
+        "Intended for programmatic consumption."
+    ),
+)
+@click.option(
+    "--schema",
+    "schema_flag",
+    is_flag=True,
+    help=(
+        "Embed the full JSON Schema definition as a $schema key in the JSON "
+        "envelope output.  Only effective when --json is also specified."
+    ),
+)
+@click.pass_context
+def auth_export(ctx: click.Context, **flags: ClickValue) -> None:
+    """Export stored credentials to a portable JSON file.
+
+    Writes the decrypted session token and any stored cookies to a JSON
+    bundle suitable for moving credentials to another machine.  This is a
+    deliberate, explicit action: the export file contains PLAINTEXT
+    session credentials, is NOT encrypted, and anyone who can read it
+    can use your Perplexity account.  A warning is printed to stderr
+    before the file is written, and the file is created with owner-only
+    permissions (0600).
+
+    Requires authentication.  Run 'pxcli auth login' first; if no token
+    is stored, the command exits with code 4 (authentication required)
+    and writes no file.
+
+    \b
+    Bundle fields (written to the export file):
+      version      - Bundle format version (currently 1)
+      token        - The plaintext session token
+      cookies      - Stored browser cookies (may be empty {})
+      exported_at  - ISO-8601 UTC timestamp of the export
+
+    \b
+    Result fields (--json):
+      path  - Path of the written export file
+              (contents are never included in the envelope)
+
+    \b
+    Examples:
+        pxcli auth export
+        pxcli auth export --output ~/secret/pxcli-creds.json
+        pxcli auth export -o pxcli-creds.json
+        pxcli auth export --json
+        pxcli auth export --json | jq -r '.result.path'
+
+    \b
+    Example Output (human):
+        [WARNING] The export file contains PLAINTEXT session credentials. ...
+        [OK] Credentials exported to pxcli-auth-2025-05-09-100000.json
+    """
+    record_output_flags(ctx, flags)
+    run_export_command(as_path_or_none(flags.get("output")))
+
+
+@click.command(name="import")
+@click.argument(
+    "file_path",
+    required=True,
+    type=click.Path(path_type=Path),
+)
+@click.option(
+    "--json",
+    "json_flag",
+    is_flag=True,
+    help=(
+        "Emit output as a structured JSON envelope to stdout instead of "
+        "human-readable text.  The envelope contains {ok, command, result, meta, "
+        "next_actions} on success.  The result object reports whether cookies "
+        "were stored — credential contents are NEVER included in the envelope.  "
+        "Intended for programmatic consumption."
+    ),
+)
+@click.option(
+    "--schema",
+    "schema_flag",
+    is_flag=True,
+    help=(
+        "Embed the full JSON Schema definition as a $schema key in the JSON "
+        "envelope output.  Only effective when --json is also specified."
+    ),
+)
+@click.pass_context
+def auth_import(ctx: click.Context, file_path: Path, **flags: ClickValue) -> None:
+    """Import credentials from a JSON bundle file.
+
+    Restores credentials previously written by 'pxcli auth export'.  The
+    bundle is validated (version must be 1, token must be a non-empty
+    string, cookies must map names to string values), then the token and
+    cookies are re-encrypted for THIS machine and stored at
+    ~/.config/perplexity-cli/token.json.  The bundle file itself is left
+    untouched; delete it manually once the import succeeds.
+
+    The encryption key is machine-bound, so imported credentials are
+    re-encrypted locally — you cannot copy a token.json file between
+    machines, but you CAN move an export bundle and import it.
+
+    If the bundle contains cookies and cookie storage is disabled
+    (save_cookies is false by default), the cookies are NOT stored and a
+    loud warning is printed to stderr.  Run 'pxcli config set
+    save_cookies true' and re-import to keep them.  The token is stored
+    regardless.
+
+    Malformed, unreadable, or schema-violating bundle files exit with
+    code 7 (validation error).  A missing file is also reported as a
+    validation error (exit 7).
+
+    \b
+    Bundle fields (read from the import file):
+      version      - Bundle format version (must be 1)
+      token        - The plaintext session token
+      cookies      - Browser cookies to restore (may be empty or absent)
+      exported_at  - Ignored on import (unknown keys are ignored)
+
+    \b
+    Result fields (--json):
+      imported         - Whether the credentials were stored (boolean)
+      cookies_stored   - Whether cookies from the bundle were stored
+
+    \b
+    Examples:
+        pxcli auth import pxcli-auth-2025-05-09-100000.json
+        pxcli auth import ~/secret/pxcli-creds.json
+        pxcli auth import --json pxcli-creds.json
+        pxcli auth import --json pxcli-creds.json | jq '.result.imported'
+
+    \b
+    Example Output (human):
+        [OK] Credentials imported
+    """
+    record_output_flags(ctx, flags)
+    run_import_command(file_path)
+
+
 auth_group.add_command(auth_login)
 auth_group.add_command(auth_logout)
 auth_group.add_command(auth_status)
+auth_group.add_command(auth_export)
+auth_group.add_command(auth_import)
 
 
 add_help_sections(
@@ -289,6 +467,24 @@ add_help_sections(
         json_example=AUTH_STATUS_JSON_EXAMPLE,
         json_schema=True,
         exit_codes=True,
-        see_also=(AUTH_LOGIN_HELP_REF, "pxcli auth logout"),
+        see_also=(AUTH_LOGIN_HELP_REF, "pxcli auth logout", AUTH_EXPORT_HELP_REF),
+    ),
+)
+add_help_sections(
+    auth_export,
+    HelpSectionConfig(
+        json_example=AUTH_EXPORT_JSON_EXAMPLE,
+        json_schema=True,
+        exit_codes=True,
+        see_also=(AUTH_LOGIN_HELP_REF, AUTH_STATUS_HELP_REF, AUTH_IMPORT_HELP_REF),
+    ),
+)
+add_help_sections(
+    auth_import,
+    HelpSectionConfig(
+        json_example=AUTH_IMPORT_JSON_EXAMPLE,
+        json_schema=True,
+        exit_codes=True,
+        see_also=(AUTH_EXPORT_HELP_REF, "pxcli config set save_cookies true"),
     ),
 )

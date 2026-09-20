@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import os
 import secrets
 import socket
@@ -19,6 +20,8 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from perplexity_cli.utils.exceptions import AuthenticationError, ConfigurationError
 
+logger = logging.getLogger(__name__)
+
 # Salt used for key derivation - consistent across installations
 _KEY_DERIVATION_SALT = b"perplexity-cli-token-encryption"
 _ENCRYPTED_TOKEN_VERSION_PREFIX = b"v2:"
@@ -27,6 +30,10 @@ _PER_MESSAGE_SALT_BYTES = 16
 _DECRYPT_FAILURE_HINT = (
     "This usually means the token was encrypted on a different machine or "
     "with a different user. Please re-authenticate with: perplexity-cli auth"
+)
+
+_LEGACY_FORMAT_WARNING = (
+    "Legacy token format detected; re-authenticate with 'pxcli auth login' to upgrade storage"
 )
 
 
@@ -210,6 +217,15 @@ def _decrypt_with_legacy_sha256(decoded_payload: bytes) -> str:
     return decrypted.decode()
 
 
+def _warn_legacy_format() -> None:
+    """Emit the deprecation warning for a successfully read legacy payload.
+
+    The warning never includes token material; it only nudges the user to
+    re-authenticate so the stored payload is upgraded to the v2 format.
+    """
+    logger.warning(_LEGACY_FORMAT_WARNING)
+
+
 def decrypt_token(encrypted_token: str) -> str:
     """Decrypt a token using the system-derived key.
 
@@ -219,7 +235,8 @@ def decrypt_token(encrypted_token: str) -> str:
     PBKDF2 reader first, then the legacy SHA-256 reader, in that order.
 
     Read-only compatibility: no migration-on-read and no silent rewrite happens
-    here; ``encrypt_token`` always emits fresh random-salt v2 payloads.
+    here; ``encrypt_token`` always emits fresh random-salt v2 payloads.  A
+    successful legacy read logs a deprecation warning advising re-authentication.
 
     Args:
         encrypted_token: Base64url-encoded encrypted token.
@@ -238,10 +255,12 @@ def decrypt_token(encrypted_token: str) -> str:
             msg = f"Failed to decrypt token in the current format. {_DECRYPT_FAILURE_HINT}"
             raise AuthenticationError(msg) from e
     try:
-        return _decrypt_with_legacy_pbkdf2(decoded_payload)
+        plaintext = _decrypt_with_legacy_pbkdf2(decoded_payload)
     except (ConfigurationError, ValueError, TypeError, InvalidToken):
         try:
-            return _decrypt_with_legacy_sha256(decoded_payload)
+            plaintext = _decrypt_with_legacy_sha256(decoded_payload)
         except (ConfigurationError, ValueError, TypeError, InvalidToken) as e:
             msg = f"Failed to decrypt token. {_DECRYPT_FAILURE_HINT}"
             raise AuthenticationError(msg) from e
+    _warn_legacy_format()
+    return plaintext

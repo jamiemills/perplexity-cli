@@ -454,8 +454,9 @@ async def authenticate_with_browser(
     """Authenticate with Perplexity via Google and extract the session token and cookies.
 
     Opens Chrome to the Perplexity login page and monitors network traffic
-    to capture the authentication token from localStorage and all browser cookies
-    (including Cloudflare cookies for bot detection bypass).
+    to capture the authentication token from localStorage and the browser
+    cookies scoped to perplexity.ai (including Cloudflare cookies for bot
+    detection bypass).
 
     Args:
         url: The Perplexity URL to navigate to. If None, uses configured base URL.
@@ -466,7 +467,7 @@ async def authenticate_with_browser(
     Returns:
         Tuple of (token, cookies_dict) where:
             - token: The extracted authentication token
-            - cookies_dict: Dictionary of all browser cookies {name: value}
+            - cookies_dict: Dictionary of Perplexity-domain cookies {name: value}
 
     Raises:
         RuntimeError: If Chrome is not available or authentication fails.
@@ -557,7 +558,7 @@ def _extract_token(
     Returns:
         Tuple of (token, cookies_dict) where:
             - token: The authentication token string, or None if not found
-            - cookies_dict: Dictionary of all cookies {name: value}
+            - cookies_dict: Dictionary of Perplexity-domain cookies {name: value}
 
     Raises:
         AuthenticationError: If a cookie entry is malformed.
@@ -570,29 +571,86 @@ def _extract_token(
 
 
 def _build_cookie_dict(cookies: Sequence[object]) -> dict[str, str]:
-    """Build a validated {name: value} cookie map.
+    """Build a validated {name: value} map of Perplexity-domain cookies.
+
+    Every entry is validated first: a malformed entry raises regardless
+    of its domain. Valid entries are kept only when their domain is
+    perplexity.ai or a subdomain of it, so cookies from unrelated
+    origins are never captured. Entries without a usable domain field
+    are kept; see ``_in_perplexity_scope`` for the rationale.
 
     Args:
         cookies: List of cookie dictionaries from Chrome.
 
     Returns:
-        Dictionary of all cookies {name: value}.
+        Dictionary of Perplexity-domain cookies {name: value}.
 
     Raises:
         AuthenticationError: If a cookie entry is malformed.
     """
     cookie_dict: dict[str, str] = {}
     for entry in cookies:
-        if not _is_str_dict(entry):
-            msg = "Chrome returned a malformed cookie entry"
-            raise AuthenticationError(msg)
-        name = entry.get("name")
-        value = entry.get("value")
-        if not isinstance(name, str) or not isinstance(value, str):
-            msg = "Chrome returned a malformed cookie entry"
-            raise AuthenticationError(msg)
-        cookie_dict[name] = value
+        name, value, domain = _validated_cookie_entry(entry)
+        if _in_perplexity_scope(domain):
+            cookie_dict[name] = value
     return cookie_dict
+
+
+def _validated_cookie_entry(entry: object) -> tuple[str, str, object]:
+    """Validate a cookie entry and return its name, value, and raw domain.
+
+    Args:
+        entry: A single cookie object from the CDP cookies list.
+
+    Returns:
+        Tuple of (name, value, domain) where domain is the raw
+        ``domain`` field (an empty string when absent).
+
+    Raises:
+        AuthenticationError: If the entry is not a dict or its name or
+            value is not a string.
+    """
+    if not _is_str_dict(entry):
+        msg = "Chrome returned a malformed cookie entry"
+        raise AuthenticationError(msg)
+    name = entry.get("name")
+    value = entry.get("value")
+    if not isinstance(name, str) or not isinstance(value, str):
+        msg = "Chrome returned a malformed cookie entry"
+        raise AuthenticationError(msg)
+    return (name, value, entry.get("domain", ""))
+
+
+def _in_perplexity_scope(domain: object) -> bool:
+    """Check whether a raw CDP domain value is within the capture scope.
+
+    Domain-less entries (missing, empty, or non-string values) are kept:
+    real ``Network.getAllCookies`` payloads always carry a domain, and
+    keeping domain-less entries preserves the session-token cookie
+    fallback relied upon by existing fixtures.
+
+    Args:
+        domain: Raw ``domain`` field of a CDP cookie entry.
+
+    Returns:
+        True when the domain is perplexity.ai, a subdomain of it, or
+        absent; False for any other domain string.
+    """
+    if not isinstance(domain, str) or not domain:
+        return True
+    return _is_perplexity_domain(domain)
+
+
+def _is_perplexity_domain(domain: str) -> bool:
+    """Check whether a cookie domain belongs to perplexity.ai.
+
+    Args:
+        domain: Cookie domain string, possibly with a leading dot.
+
+    Returns:
+        True for ``perplexity.ai`` and any of its subdomains.
+    """
+    return domain == "perplexity.ai" or domain.endswith(".perplexity.ai")
 
 
 def _extract_token_from_local_storage(local_storage: dict[str, Any]) -> str | None:
@@ -645,7 +703,7 @@ def authenticate_sync(
     Returns:
         Tuple of (token, cookies_dict) where:
             - token: The extracted authentication token
-            - cookies_dict: Dictionary of all browser cookies {name: value}
+            - cookies_dict: Dictionary of Perplexity-domain cookies {name: value}
 
     Raises:
         RuntimeError: If Chrome is not available or authentication fails.

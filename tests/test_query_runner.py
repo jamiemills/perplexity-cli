@@ -98,7 +98,7 @@ def test_get_query_formatter_invalid_format_exits(capsys):
             )
 
     captured = capsys.readouterr()
-    assert exc_info.value.code == 1
+    assert exc_info.value.code == 7  # VALIDATION: invalid output format is a validation error
     assert "Available:" in captured.err
 
 

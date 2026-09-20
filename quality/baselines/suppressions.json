@@ -89,6 +89,8 @@
     "src/perplexity_cli/query_streaming.py:nosemgrep:5c580561:boolean-flag-argument",
     "src/perplexity_cli/runners/auth.py:nosemgrep:0f582c26:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
     "src/perplexity_cli/runners/auth.py:nosemgrep:1a8041f3:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
+    "src/perplexity_cli/runners/auth.py:nosemgrep:cf48e0c1:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
+    "src/perplexity_cli/runners/auth.py:nosemgrep:cf48e0c1:custom.credential-logging-vendored,python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure#2",
     "src/perplexity_cli/runners/export.py:nosemgrep:ec3420cb:boolean-flag-argument",
     "src/perplexity_cli/runners/skill.py:noqa:491c0edd:ERA001",
     "src/perplexity_cli/runners/skill.py:nosemgrep:491c0edd:python.lang.compatibility.python37.python37-compatibility-importlib2",

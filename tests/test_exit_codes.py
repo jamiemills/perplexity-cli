@@ -88,10 +88,10 @@ class TestExitCodeMapping:
         assert exit_code_for_exception(AttachmentError("bad file")) == 7
 
     def test_attachment_upload_error(self):
-        assert exit_code_for_exception(AttachmentUploadError("upload failed")) == 1
+        assert exit_code_for_exception(AttachmentUploadError("upload failed")) == 7
 
     def test_value_error(self):
-        assert exit_code_for_exception(ValueError("invalid")) == 1
+        assert exit_code_for_exception(ValueError("invalid")) == 7
 
     def test_keyboard_interrupt(self):
         assert exit_code_for_exception(KeyboardInterrupt()) == 130

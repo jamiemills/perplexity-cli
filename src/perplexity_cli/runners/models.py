@@ -268,10 +268,10 @@ def _execute_models_list(
     """
     logger = get_logger()
     try:
-        client = _create_rest_client(token, cookies)
-        level = _detect_subscription_level(client)
-        service = _create_model_service(client, level)
-        entries = service.list_available_models()
+        with _create_rest_client(token, cookies) as client:
+            level = _detect_subscription_level(client)
+            service = _create_model_service(client, level)
+            entries = service.list_available_models()
     except Exception as exc:  # catch-all CLI error handler
         _handle_list_error(exc, output_format, logger)
         return  # unreachable; _handle_list_error always exits

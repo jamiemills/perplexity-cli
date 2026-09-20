@@ -152,7 +152,7 @@ def main(
 
     \b
     Command groups:
-      auth        Manage authentication (login, logout, status)
+      auth        Manage authentication (login, logout, status, export, import)
       config      Read and write persistent feature toggles
       models      List available models for your subscription tier
       style       Set, view, or clear a style prompt for all queries

@@ -238,28 +238,66 @@ def test_ci_has_repository_policy_job() -> None:
             )
 
 
-def test_ci_test_coverage_installs_gitleaks() -> None:
-    """The coverage job must install gitleaks before running the suite."""
-    ci = _load_workflow("ci.yml")
-    steps = ci["jobs"]["test-coverage"]["steps"]
-    names = [step.get("name", "") for step in steps]
-    assert "Install gitleaks 8.30.1" in names
-    gitleaks_step = next(step for step in steps if step.get("name") == "Install gitleaks 8.30.1")
-    assert "8.30.1" in str(gitleaks_step.get("run", ""))
-    run_index = names.index("Run tests with coverage")
-    install_index = names.index("Install gitleaks 8.30.1")
-    assert install_index < run_index
+GITLEAKS_JOBS: tuple[str, ...] = (
+    "secret-scan",
+    "test-coverage",
+    "test-compat",
+    "test-macos",
+    "diff-coverage",
+)
 
 
-def test_ci_diff_coverage_installs_gitleaks() -> None:
-    """The diff-coverage job must install gitleaks before running the suite."""
+def _gitleaks_install_step() -> dict[str, Any]:
+    """Return the checksum-verified gitleaks step from the composite action."""
+    action = _load_workflow("../actions/setup-env/action.yml")
+    return next(
+        step
+        for step in action["runs"]["steps"]
+        if isinstance(step, dict) and "Install gitleaks 8.30.1" in str(step.get("name", ""))
+    )
+
+
+def test_setup_env_gitleaks_install_is_checksum_verified() -> None:
+    """The composite action must verify a pinned sha256 before installing."""
+    step = _gitleaks_install_step()
+    assert str(step.get("if", "")).strip() == "${{ inputs.gitleaks == 'true' }}"
+    run = str(step.get("run", ""))
+    assert "curl -fsSL" in run
+    assert "sha256sum -c -" in run
+    assert "shasum -a 256 -c -" in run
+    assert "gitleaks_8.30.1_linux_x64.tar.gz" in run
+    assert "gitleaks_8.30.1_darwin_arm64.tar.gz" in run
+    assert "8.30.1" in run
+    env = step.get("env") or {}
+    for name in ("GITLEAKS_SHA256_LINUX_X64", "GITLEAKS_SHA256_DARWIN_ARM64"):
+        assert re.fullmatch(r"[0-9a-f]{64}", str(env.get(name, ""))), name
+
+
+def test_ci_gitleaks_jobs_use_verified_composite_install() -> None:
+    """Every gitleaks-consuming job must opt into the composite install."""
     ci = _load_workflow("ci.yml")
-    steps = ci["jobs"]["diff-coverage"]["steps"]
-    names = [step.get("name", "") for step in steps]
-    assert "Install gitleaks 8.30.1" in names
-    gitleaks_step = next(step for step in steps if step.get("name") == "Install gitleaks 8.30.1")
-    assert "8.30.1" in str(gitleaks_step.get("run", ""))
-    assert names.index("Install gitleaks 8.30.1") < names.index("Run tests with coverage")
+    for job_name in GITLEAKS_JOBS:
+        steps = ci["jobs"][job_name]["steps"]
+        setup_indexes = [
+            index
+            for index, step in enumerate(steps)
+            if isinstance(step, dict) and step.get("uses") == "./.github/actions/setup-env"
+        ]
+        assert len(setup_indexes) == 1, job_name
+        assert steps[setup_indexes[0]].get("with", {}).get("gitleaks") == "true", job_name
+        make_indexes = [
+            index
+            for index, step in enumerate(steps)
+            if isinstance(step, dict) and "make" in str(step.get("run", ""))
+        ]
+        assert make_indexes, job_name
+        assert setup_indexes[0] < make_indexes[0], job_name
+
+
+def test_ci_has_no_inline_gitleaks_download() -> None:
+    """Gitleaks tarballs must never be curled directly inside ci.yml."""
+    ci_text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+    assert "github.com/gitleaks" not in ci_text
 
 
 def test_scheduled_workflows_have_concurrency() -> None:

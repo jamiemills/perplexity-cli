@@ -311,5 +311,5 @@ def run_show_config_command(*, output_format: OutputFormat | None = None) -> Non
         if output_format == "json":
             handle_error(e, "pxcli config show", output_format="json")
         click.echo(f"[ERROR] Failed to load configuration: {e}", err=True)
-        logger.error(f"Configuration display failed: {e}", exc_info=True)
+        logger.error("Configuration display failed: %s", e, exc_info=True)
         sys.exit(1)

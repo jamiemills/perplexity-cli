@@ -1300,82 +1300,73 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dateutil" },
     { name = "rich" },
-    { name = "tenacity" },
     { name = "websockets" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "bandit" },
-    { name = "diff-cover" },
-    { name = "lefthook" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-    { name = "refurb" },
-    { name = "ruff" },
-    { name = "ty" },
-    { name = "vulture" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "atheris", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "bandit" },
     { name = "deptry" },
+    { name = "diff-cover" },
     { name = "grimp" },
     { name = "hypothesis" },
     { name = "import-linter" },
+    { name = "lefthook" },
     { name = "mutmut" },
     { name = "pip-audit" },
     { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
     { name = "pytest-xdist" },
     { name = "radon" },
+    { name = "refurb" },
     { name = "ruamel-yaml" },
+    { name = "ruff" },
     { name = "tomli" },
+    { name = "ty" },
     { name = "vulture" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "bandit", marker = "extra == 'dev'", specifier = ">=1.7.7" },
     { name = "click", specifier = ">=8.0" },
     { name = "cryptography", specifier = ">=48.0.1" },
     { name = "curl-cffi", specifier = ">=0.15.0" },
-    { name = "diff-cover", marker = "extra == 'dev'", specifier = ">=9.0" },
     { name = "httpx", specifier = ">=0.25" },
-    { name = "lefthook", marker = "extra == 'dev'", specifier = ">=2.1.6" },
     { name = "mcp", specifier = ">=1.28.1,<2.0.0" },
     { name = "pydantic", specifier = ">=2.4.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.2.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0" },
-    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.0" },
     { name = "python-dateutil", specifier = ">=2.8.0" },
-    { name = "refurb", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "rich", specifier = ">=13.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1" },
-    { name = "tenacity", specifier = ">=8.0" },
-    { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.24" },
-    { name = "vulture", marker = "extra == 'dev'", specifier = ">=2.14" },
     { name = "websockets", specifier = ">=12.0" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "atheris", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = ">=3.1.0" },
+    { name = "bandit", specifier = ">=1.7.7" },
     { name = "deptry", specifier = ">=0.20" },
+    { name = "diff-cover", specifier = ">=9.0" },
     { name = "grimp", specifier = ">=3.0" },
     { name = "hypothesis", specifier = ">=6.0" },
     { name = "import-linter", specifier = ">=2.0" },
+    { name = "lefthook", specifier = ">=2.1.6" },
     { name = "mutmut", specifier = ">=3.0" },
     { name = "pip-audit", specifier = ">=2.7" },
     { name = "pyright", specifier = ">=1.1" },
+    { name = "pytest", specifier = ">=7.0" },
+    { name = "pytest-asyncio", specifier = ">=1.2.0" },
+    { name = "pytest-cov", specifier = ">=7.0" },
+    { name = "pytest-mock", specifier = ">=3.0" },
     { name = "pytest-xdist", specifier = ">=3.0" },
     { name = "radon", specifier = ">=6.0.1" },
+    { name = "refurb", specifier = ">=2.0" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
+    { name = "ruff", specifier = ">=0.1" },
     { name = "tomli", specifier = ">=2.0" },
+    { name = "ty", specifier = ">=0.0.24" },
     { name = "vulture", specifier = ">=2.16" },
 ]
 
@@ -2068,15 +2059,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e9/88/35e4d27d9177d7df76d060e0a18f69c6c5794c96960c94042e20a12c8ba2/stevedore-5.8.0.tar.gz", hash = "sha256:b49867b32ca3016e94100e68dbf26e72aa7b8708d0a3f73c08aeb220370ac715", size = 514710, upload-time = "2026-05-18T09:15:27.731Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f5/ac/19f9941c74add59d17694930ec8105d5eddeee4ce56dd8632b765ca16d6c/stevedore-5.8.0-py3-none-any.whl", hash = "sha256:88eede9e66ca80e34085b9174e2327da2c61ac91f24f70e41c3ad76e4bb4872b", size = 54553, upload-time = "2026-05-18T09:15:25.82Z" },
-]
-
-[[package]]
-name = "tenacity"
-version = "9.1.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
 ]
 
 [[package]]

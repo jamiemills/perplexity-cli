@@ -769,8 +769,8 @@ class SSEClient:
     def _resolve_effective_timeout(self, json_data: JsonObject) -> tuple[bool, int]:
         """Determine the effective timeout based on query parameters.
 
-        Deep research requests use a longer timeout (360s) to accommodate
-        multi-step processing.
+        Deep research requests use a timeout floor (360s) to accommodate
+        multi-step processing; a larger user-configured timeout is respected.
 
         Args:
             json_data: JSON request body.
@@ -781,7 +781,9 @@ class SSEClient:
         params_value = json_data.get("params")
         params: JsonObject = params_value if _is_json_object(params_value) else {}
         is_deep_research = _is_deep_research_request(params)
-        effective_timeout = DEFAULT_DEEP_RESEARCH_TIMEOUT if is_deep_research else self.timeout
+        effective_timeout = (
+            max(self.timeout, DEFAULT_DEEP_RESEARCH_TIMEOUT) if is_deep_research else self.timeout
+        )
         return is_deep_research, effective_timeout
 
     def _log_request_context(

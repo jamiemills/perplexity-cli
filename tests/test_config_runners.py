@@ -479,7 +479,7 @@ class TestConfigRunnerMutationKillers:
 
         assert "sentinel failure" in capsys.readouterr().err
         logger.error.assert_called_once_with(
-            "Configuration display failed: sentinel failure", exc_info=True
+            "Configuration display failed: %s", error, exc_info=True
         )
 
     def test_read_ctx_bool_supports_dict_and_object_contexts(self):

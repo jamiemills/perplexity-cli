@@ -1,10 +1,14 @@
 name: Set up environment
-description: Install uv, Python, and locked project dependencies.
+description: Install uv, Python, locked project dependencies, and optionally gitleaks.
 inputs:
   python-version:
     description: Python version to install.
     required: false
     default: '3.12'
+  gitleaks:
+    description: Install a checksum-verified gitleaks 8.30.1 binary.
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -16,4 +20,45 @@ runs:
         python-version: ${{ inputs.python-version }}
     - name: Sync dependencies
       shell: bash
-      run: uv sync --all-extras --locked --group dev
+      run: uv sync --locked --group dev
+    - name: Install gitleaks 8.30.1 (checksum verified)
+      if: ${{ inputs.gitleaks == 'true' }}
+      shell: bash
+      env:
+        GITLEAKS_SHA256_LINUX_X64: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        GITLEAKS_SHA256_DARWIN_ARM64: b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5
+      run: |
+        set -euo pipefail
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64)
+            asset="gitleaks_8.30.1_linux_x64.tar.gz"
+            expected="${GITLEAKS_SHA256_LINUX_X64}"
+            ;;
+          macOS-arm64)
+            asset="gitleaks_8.30.1_darwin_arm64.tar.gz"
+            expected="${GITLEAKS_SHA256_DARWIN_ARM64}"
+            ;;
+          *)
+            echo "Unsupported runner for gitleaks: ${RUNNER_OS}-${RUNNER_ARCH}" >&2
+            exit 1
+            ;;
+        esac
+        archive="${RUNNER_TEMP}/${asset}"
+        curl -fsSL -o "${archive}" "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/${asset}"
+        if command -v sha256sum >/dev/null 2>&1; then
+          printf '%s  %s\n' "${expected}" "${archive}" | sha256sum -c -
+        else
+          printf '%s  %s\n' "${expected}" "${archive}" | shasum -a 256 -c -
+        fi
+        install_dir="${RUNNER_TEMP}/gitleaks-bin"
+        mkdir -p "${install_dir}"
+        tar -xzf "${archive}" -C "${install_dir}"
+        version="$("${install_dir}/gitleaks" version)"
+        case "${version}" in
+          *8.30.1*) ;;
+          *)
+            echo "Unexpected gitleaks version: ${version}" >&2
+            exit 1
+            ;;
+        esac
+        echo "${install_dir}" >> "${GITHUB_PATH}"

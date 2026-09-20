@@ -22,6 +22,9 @@ from perplexity_cli.utils.config.contracts import (
 )
 from perplexity_cli.utils.exceptions import ConfigurationError
 
+# Mirror of session_log._SESSIONS_DIR_MODE: owner-only config directory.
+_CONFIG_DIR_MODE = 0o700
+
 
 def get_config_paths() -> ConfigPaths:
     """Return the resolved config paths for the current environment."""
@@ -32,6 +35,8 @@ def get_config_dir() -> Path:
     """Get the configuration directory path, creating it if necessary.
 
     If ``PERPLEXITY_CONFIG_DIR`` is set, that directory is used directly.
+    A newly created directory receives owner-only permissions (0700) on
+    the final component; pre-existing directories are left untouched.
 
     Returns the platform-specific configuration directory:
     - Linux/macOS: ~/.config/perplexity-cli/
@@ -56,8 +61,10 @@ def get_config_dir() -> Path:
 
     try:
         # owner: api-contract - public getter is documented to create the resolved directory.
+        # Mirrors session_log: 0700 applies to the final component on creation only;
+        # pre-existing user directories are never force-chmodded (least surprise).
         config_dir.mkdir(  # nosemgrep: getter-with-side-effects  # owner: quality-infrastructure; reason: mkdir is a deliberate side effect of config init
-            parents=True, exist_ok=True
+            parents=True, exist_ok=True, mode=_CONFIG_DIR_MODE
         )
     except OSError as e:
         msg = f"Failed to create config directory {config_dir}: {e}"

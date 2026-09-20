@@ -201,8 +201,8 @@ def test_stream_query_response_json_mode_preserves_incremental_chunks_and_final_
 @pytest.mark.parametrize(
     ("error", "expected", "exit_code"),
     [
-        (PerplexityRequestError("offline"), "internet connection", 1),
-        (UpstreamSchemaError("bad snapshot"), "bad snapshot", 1),
+        (PerplexityRequestError("offline"), "internet connection", 6),
+        (UpstreamSchemaError("bad snapshot"), "bad snapshot", 7),
         (OSError("closed stdout"), "Failed to render streaming output: closed stdout", 1),
         (RuntimeError("private detail"), "unexpected error occurred", 1),
     ],
@@ -224,15 +224,17 @@ def test_stream_query_response_keeps_stream_error_boundaries(error, expected, ex
 
 
 @pytest.mark.parametrize(
-    ("status", "expected", "extra"),
+    ("status", "expected", "extra", "exit_code"),
     [
-        (401, "Authentication failed", "perplexity-cli auth"),
-        (403, "Access forbidden", None),
-        (429, "Rate limit exceeded", None),
-        (418, "HTTP error 418", None),
+        (401, "Authentication failed", "perplexity-cli auth", 4),
+        (403, "Access forbidden", None, 4),
+        (429, "Rate limit exceeded", None, 6),
+        (418, "HTTP error 418", None, 1),
     ],
 )
-def test_stream_query_response_keeps_http_status_guidance(status, expected, extra, capsys):
+def test_stream_query_response_keeps_http_status_guidance(
+    status, expected, extra, exit_code, capsys
+):
     """HTTP status classes retain status-specific guidance at the public boundary."""
     response = Mock(status_code=status)
     api = Mock()
@@ -243,8 +245,8 @@ def test_stream_query_response_keeps_http_status_guidance(status, expected, extr
         stream_query_response(api, QueryInput(query="test"), render, TraceContext())
 
     captured = capsys.readouterr()
-    assert exc_info.value.code == 1
-    assert captured.out == "\n"
+    assert exc_info.value.code == exit_code
+    assert captured.out == ""
     assert expected in captured.err
     if extra is not None:
         assert extra in captured.err
@@ -308,7 +310,7 @@ def test_stream_network_error_has_exact_stable_boundary_output(capsys):
     with pytest.raises(SystemExit) as exc_info:
         _handle_stream_network_error(PerplexityRequestError("offline"), logger)
 
-    assert exc_info.value.code == 1
+    assert exc_info.value.code == 6
     assert capsys.readouterr().err == (
         "[ERROR] Network error. Please check your internet connection.\n"
     )
@@ -337,7 +339,7 @@ def test_stream_error_handlers_dispatch_keyboard_interrupt_to_handler(monkeypatc
     logger = Mock()
     keyboard_handler(KeyboardInterrupt(), logger)
 
-    handler.assert_called_once_with(logger)
+    handler.assert_called_once_with(logger, None)
 
 
 def test_stream_loop_ignores_intermediate_references():
@@ -423,7 +425,7 @@ def test_stream_query_response_divergent_snapshot_emits_no_garbage(capsys):
     with pytest.raises(SystemExit) as exc_info:
         stream_query_response(api, query_input, render, trace)
 
-    assert exc_info.value.code == 1
+    assert exc_info.value.code == 7
     captured = capsys.readouterr()
     assert captured.out.strip() == "Hello"
     assert "Upstream response format changed" in captured.err
@@ -598,19 +600,19 @@ class TestHandleStreamError:
             with pytest.raises(SystemExit) as exc_info:
                 _handle_stream_error(error)
 
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 6
         mock_unexpected.assert_not_called()
 
     @pytest.mark.parametrize(
-        ("status", "expected"),
+        ("status", "expected", "exit_code"),
         [
-            (401, "Authentication failed"),
-            (403, "Access forbidden"),
-            (429, "Rate limit exceeded"),
-            (500, "HTTP error 500"),
+            (401, "Authentication failed", 4),
+            (403, "Access forbidden", 4),
+            (429, "Rate limit exceeded", 6),
+            (500, "HTTP error 500", 6),
         ],
     )
-    def test_http_status_messages_are_status_specific(self, status, expected, capsys):
+    def test_http_status_messages_are_status_specific(self, status, expected, exit_code, capsys):
         """HTTP status classes retain their distinct user-facing guidance."""
         error = PerplexityHTTPStatusError("request failed", response=Mock(status_code=status))
         logger = Mock()
@@ -618,7 +620,7 @@ class TestHandleStreamError:
         with pytest.raises(SystemExit) as exc_info:
             _handle_stream_http_status_error(error, logger)
 
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == exit_code
         assert expected in capsys.readouterr().err
         logger.error.assert_called_once_with("HTTP error %s during streaming: %s", status, error)
 
@@ -629,7 +631,7 @@ class TestHandleStreamError:
         with pytest.raises(SystemExit) as exc_info:
             _handle_stream_network_error(error, logger)
 
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 6
         assert "internet connection" in capsys.readouterr().err
         logger.error.assert_called_once_with("Network error during streaming: %s", error)
 
@@ -646,7 +648,7 @@ class TestHandleStreamError:
         with pytest.raises(SystemExit) as exc_info:
             _handle_stream_upstream_schema_error(UpstreamSchemaError("missing text"), Mock())
 
-        assert exc_info.value.code == 1
+        assert exc_info.value.code == 7
         assert "missing text" in capsys.readouterr().err
 
     def test_output_error_includes_original_detail(self, capsys):
@@ -723,6 +725,156 @@ class TestStreamQueryResponseJsonMode:
         assert result["ok"] is True
 
 
+class TestStreamFailureContract:
+    """Terminal failure events and taxonomy exit codes for streaming."""
+
+    @pytest.mark.parametrize(
+        ("error", "code", "exit_code"),
+        [
+            (
+                PerplexityHTTPStatusError("denied", response=Mock(status_code=401)),
+                "authentication_required",
+                4,
+            ),
+            (
+                PerplexityHTTPStatusError("slow down", response=Mock(status_code=429)),
+                "rate_limited",
+                6,
+            ),
+            (UpstreamSchemaError("bad snapshot"), "upstream_schema_error", 7),
+        ],
+    )
+    def test_json_mode_failure_emits_terminal_result_event(self, error, code, exit_code):
+        """JSON streaming failures end with an ok=false result event and taxonomy code."""
+        import json
+
+        api = Mock()
+        api.submit_query.side_effect = error
+        render = _make_render_context(json_mode=True, strip_references=True)
+        output = StringIO()
+
+        with patch("perplexity_cli.query_streaming.sys") as mock_sys:
+            mock_sys.stdout = output
+            with pytest.raises(SystemExit) as exc_info:
+                stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+        assert exc_info.value.code == exit_code
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        assert [event["type"] for event in events] == ["start", "result"]
+        assert events[-1]["ok"] is False
+        assert events[-1]["command"] == "pxcli query --json --stream"
+        assert events[-1]["result"]["error"]["code"] == code
+        assert events[-1]["result"]["error"]["message"]
+
+    def test_json_mode_interrupt_emits_failure_event_and_exits_130(self):
+        """A mid-stream interrupt in JSON mode emits an ok=false event and exits 130."""
+        import json
+
+        api = Mock()
+        api.submit_query.side_effect = KeyboardInterrupt
+        render = _make_render_context(json_mode=True, strip_references=True)
+        output = StringIO()
+
+        with patch("perplexity_cli.query_streaming.sys") as mock_sys:
+            mock_sys.stdout = output
+            with pytest.raises(SystemExit) as exc_info:
+                stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+        assert exc_info.value.code == 130
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        assert events[-1]["ok"] is False
+        assert events[-1]["result"]["error"]["code"] == "interrupted"
+
+    def test_json_mode_failure_stdout_contains_only_ndjson_events(self):
+        """JSON failure output stays pure NDJSON with no corrupting blank lines."""
+        import json
+
+        api = Mock()
+        api.submit_query.side_effect = PerplexityRequestError("offline")
+        render = _make_render_context(json_mode=True, strip_references=True)
+        output = StringIO()
+
+        with patch("perplexity_cli.query_streaming.sys") as mock_sys:
+            mock_sys.stdout = output
+            with pytest.raises(SystemExit) as exc_info:
+                stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+        assert exc_info.value.code == 6
+        raw = output.getvalue()
+        assert raw.endswith("}\n")
+        events = [json.loads(line) for line in raw.splitlines()]
+        assert [event["type"] for event in events] == ["start", "result"]
+
+    def test_human_mode_failure_is_stderr_only(self, capsys):
+        """Human-mode failures write guidance to stderr only, with no stdout newline."""
+        api = Mock()
+        api.submit_query.side_effect = PerplexityRequestError("offline")
+        render = _make_render_context(strip_references=True)
+
+        with pytest.raises(SystemExit) as exc_info:
+            stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+        assert exc_info.value.code == 6
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "internet connection" in captured.err
+
+    def test_json_mode_stream_without_final_message_emits_schema_failure_event(self):
+        """A stream lacking a final SSE message ends in an upstream_schema_error event."""
+        import json
+
+        api = Mock()
+        api.submit_query.return_value = iter(
+            [
+                _make_message("Partial", final=False),
+                _make_message("Partial answer", final=False),
+            ]
+        )
+        render = _make_render_context(json_mode=True, strip_references=True)
+        output = StringIO()
+
+        with patch("perplexity_cli.query_streaming.sys") as mock_sys:
+            mock_sys.stdout = output
+            with pytest.raises(SystemExit) as exc_info:
+                stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+        assert exc_info.value.code == 7
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        assert [event["type"] for event in events] == ["start", "chunk", "chunk", "result"]
+        assert events[-1]["ok"] is False
+        assert events[-1]["result"]["error"]["code"] == "upstream_schema_error"
+        assert (
+            "No final SSE message found in upstream response"
+            in events[-1]["result"]["error"]["message"]
+        )
+
+    def test_human_mode_stream_without_final_message_errors_to_stderr(self, capsys):
+        """A human-mode stream lacking a final SSE message reports the error and exits 7."""
+        api = Mock()
+        api.submit_query.return_value = iter([_make_message("Partial", final=False)])
+        render = _make_render_context(strip_references=True)
+
+        with pytest.raises(SystemExit) as exc_info:
+            stream_query_response(api, QueryInput(query="test"), render, TraceContext())
+
+        assert exc_info.value.code == 7
+        captured = capsys.readouterr()
+        assert "Partial" in captured.out
+        assert "Upstream response format changed" in captured.err
+        assert "No final SSE message found in upstream response" in captured.err
+
+    def test_failure_event_broken_pipe_does_not_mask_original_error(self):
+        """A dead output pipe never masks the original streaming failure."""
+        writer = Mock()
+        writer.result.side_effect = BrokenPipeError("pipe closed")
+
+        with pytest.raises(SystemExit) as exc_info:
+            _handle_stream_error(UpstreamSchemaError("bad snapshot"), writer)
+
+        assert exc_info.value.code == 7
+        writer.result.assert_called_once()
+
+
 def test_run_stream_loop_ignores_nonfinal_references():
     """Only references attached to a final snapshot are returned."""
     early = [WebResult(name="Early", url="https://early", snippet="early")]
@@ -735,6 +887,17 @@ def test_run_stream_loop_ignores_nonfinal_references():
 
     assert text == "Answer"
     assert references == []
+
+
+def test_run_stream_loop_without_final_message_raises_upstream_schema_error():
+    """A stream ending without a final SSE message raises the canonical error."""
+    api = Mock()
+    api.submit_query.return_value = iter([_make_message("Partial", final=False)])
+
+    with pytest.raises(UpstreamSchemaError) as exc_info:
+        _run_stream_loop(api, QueryInput(query="test"), None)
+
+    assert str(exc_info.value) == "No final SSE message found in upstream response"
 
 
 @pytest.mark.parametrize(
@@ -877,7 +1040,7 @@ def test_stream_error_handlers_log_the_original_error(handler, error, level, mes
         handler(error, logger)
 
     getattr(logger, level).assert_called_once_with(message, error)
-    assert capsys.readouterr().out == "\n"
+    assert capsys.readouterr().out == ""
 
 
 def test_stream_http_error_logs_and_writes_exact_lines(capsys):
@@ -889,7 +1052,7 @@ def test_stream_http_error_logs_and_writes_exact_lines(capsys):
         _handle_stream_http_status_error(error, logger)
 
     logger.error.assert_called_once_with("HTTP error %s during streaming: %s", 401, error)
-    assert capsys.readouterr().out == "\n"
+    assert capsys.readouterr().out == ""
 
 
 def test_stream_keyboard_interrupt_logs_exactly_once(capsys):

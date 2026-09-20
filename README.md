@@ -322,6 +322,9 @@ echo "What is Python?" | pxcli query -
 pxcli query --timeout 120 "Complex research question"
 ```
 
+Deep-research queries always use a minimum timeout of 360 seconds; a larger
+`--timeout` value is respected as-is.
+
 ### Output formats
 
 The default is `rich` when stdout is a terminal, or `plain` when piped.
@@ -407,7 +410,7 @@ pxcli query --json --stream "What is Python?"
 | `--strip-references` | `-S` | Remove citation markers and references section |
 | `--attach` | `-a` | Attach file(s) or directory |
 | `--model` | `-m` | Model identifier (see `pxcli models list`) |
-| `--timeout` | `-t` | Request timeout in seconds (default: 60) |
+| `--timeout` | `-t` | Request timeout in seconds (default: 60; deep-research minimum 360) |
 | `--schema` | | Embed JSON Schema in envelope (with `--json`) |
 | `--request-param` | | Inject extra key=value into API request (experimental) |
 
@@ -476,6 +479,8 @@ Error codes: `authentication_required`, `permission_denied`, `rate_limited`, `ne
 | `auth login` | `{token_path, cookies_stored}` |
 | `auth logout` | `{credentials_existed}` |
 | `auth status` | `{authenticated, token_path, token_age_days, cookies_stored, verified}` |
+| `auth export` | `{path}` |
+| `auth import` | `{imported, cookies_stored}` |
 | `config set` | `{key, value}` |
 | `config show` | `{config_path, save_cookies, debug_mode, env_overrides}` |
 | `style set` | `{style}` |
@@ -525,6 +530,31 @@ pxcli query --json --stream "What is Python?"
 
 Event types: `start` (first line), `chunk` (incremental content), `result` (final line with full envelope).
 
+The `result` event is always the terminal line and is emitted on both success and failure. On failure, `ok` is `false` and `result` carries an `error` object with a taxonomy code, a human-readable message, and an optional `fix` hint:
+
+```
+{"type": "start", "command": "pxcli query --json --stream", "ts": "2025-05-09T10:00:00+00:00"}
+{"type": "chunk", "text": "Python is a", "ts": "2025-05-09T10:00:01+00:00"}
+{"type": "result", "ok": false, "command": "pxcli query --json --stream", "result": {"error": {"code": "rate_limited", "message": "Rate limit exceeded. Please wait and try again."}}, "ts": "2025-05-09T10:00:02+00:00"}
+```
+
+Streaming failures use the same error-code taxonomy as batch mode (`--json` without `--stream`):
+
+| Error code | Typical cause | Exit code |
+|---|---|---|
+| `authentication_required` | HTTP 401 | `4` |
+| `permission_denied` | HTTP 403 | `4` |
+| `rate_limited` | HTTP 429 | `6` |
+| `network_error` | Request or connection failure | `6` |
+| `upstream_schema_error` | Malformed stream, or the stream ended without a final SSE message | `7` |
+| `output_error` | Writing to stdout failed (for example, a closed pipe) | `1` |
+| `interrupted` | Ctrl+C during the stream | `130` |
+| `internal_error` | Unexpected failure | `1` |
+
+Exit codes are identical to batch mode, so scripts that branch on `$?` behave the same with or without `--stream`. Interrupting with Ctrl+C emits an `interrupted` failure event and exits `130`. A stream that ends without a final SSE message fails with `upstream_schema_error` (exit `7`) instead of silently returning a partial answer.
+
+In `--json` mode stdout carries only `start`, `chunk`, and `result` events; human-readable error guidance goes to stderr.
+
 Without `--json`, `--stream` produces raw text as it arrives.
 
 ### JSON Schema
@@ -553,7 +583,7 @@ pxcli query --json --schema "What is Python?"   # adds $schema key to envelope
 ANSWER=$(pxcli query --format plain "What is 2+2?")
 echo "The answer is: $ANSWER"
 
-# Error handling with exit codes
+# Error handling with exit codes (same taxonomy and codes with --stream)
 pxcli query --json "Your question"
 rc=$?
 case $rc in
@@ -606,6 +636,7 @@ for ref in envelope["result"]["references"]:
 ```python
 import json
 import subprocess
+import sys
 
 proc = subprocess.Popen(
     ["pxcli", "query", "--json", "--stream", "What is Python?"],
@@ -617,10 +648,15 @@ for line in proc.stdout:
     if event["type"] == "chunk":
         print(event["text"], end="", flush=True)
     elif event["type"] == "result":
+        if not event["ok"]:
+            error = event["result"]["error"]
+            print(f"\n{error['code']}: {error['message']}", file=sys.stderr)
+            break
         refs = event["result"]["references"]
         print(f"\n\n{len(refs)} references found.")
 
 proc.wait()
+sys.exit(proc.returncode)
 ```
 
 ## Authentication setup
@@ -680,6 +716,21 @@ pxcli auth status --json         # JSON envelope output
 ```bash
 pxcli auth logout
 ```
+
+### Exporting and importing credentials
+
+```bash
+pxcli auth export                                  # pxcli-auth-YYYY-MM-DD-HHMMSS.json in the current directory
+pxcli auth export --output ~/secret/pxcli-creds.json
+pxcli auth export --json | jq -r '.result.path'
+
+pxcli auth import ~/secret/pxcli-creds.json        # restore on another machine
+pxcli auth import --json ~/secret/pxcli-creds.json | jq '.result.imported'
+```
+
+`auth export` writes a JSON bundle with fields `version`, `token`, `cookies`, and `exported_at` (ISO-8601 UTC). The token and cookies are stored as PLAINTEXT — the bundle is not encrypted — so anyone who can read the file can use your Perplexity account. A warning is printed to stderr before the file is written, the file is created with 0600 permissions, and `--json` output contains only the file path, never the credentials. Requires authentication; exits with code 4 when no token is stored.
+
+`auth import` restores such a bundle on the target machine. The bundle is validated (`version` must be 1, `token` must be a non-empty string, `cookies` must map names to string values; unknown top-level keys are ignored) and the credentials are then re-encrypted for the local machine — you cannot copy `token.json` between machines directly because the encryption key is machine-bound, but an export bundle transfers fine. Importing never logs the bundle contents; only the file path appears in logs. Malformed, unreadable, missing, or schema-violating bundle files exit with code 7 (validation error). If the bundle contains cookies and `save_cookies` is disabled (the default), the cookies are NOT stored, a loud warning is printed to stderr, and the token is still saved — run `pxcli config set save_cookies true` and re-import to keep the cookies. Delete the plaintext bundle file once the import succeeds.
 
 ### What requires authentication?
 
@@ -953,7 +1004,9 @@ pxcli
 |-- auth
 |   |-- login [--port PORT]        Authenticate via Chrome DevTools
 |   |-- logout                     Remove stored credentials
-|   +-- status [--verify]          Check authentication state
+|   |-- status [--verify]          Check authentication state
+|   |-- export [--output PATH]     Export credentials to a JSON file
+|   +-- import FILE_PATH           Import credentials from a JSON bundle
 |-- config
 |   |-- set KEY VALUE              Set a configuration option
 |   +-- show                       Display current configuration
@@ -991,7 +1044,7 @@ The `auth`, `config`, `models`, `style`, `threads`, `skill`, and `doctor` subcom
 | `7` | Validation error |
 | `130` | Interrupted (Ctrl+C) |
 
-For scripting, prefer checking the exit code first. In `--json` mode, both success and error responses are valid JSON envelopes on stdout -- check the `.ok` field.
+For scripting, prefer checking the exit code first. In `--json` mode, both success and error responses are valid JSON envelopes on stdout -- check the `.ok` field. Streaming mode (`--stream`) uses the same exit-code taxonomy as batch mode: with `--json --stream` the terminal `result` event carries `ok: false` and `result.error.code` from the same error-code set, so exit-code branching works identically.
 
 ## Security
 
@@ -1001,6 +1054,8 @@ For scripting, prefer checking the exit code first. In `--json` mode, both succe
 - Token validity checked on each request, with age warnings after 30 days
 - No credentials written to logs
 - Cookie storage is opt-in and uses the same encrypted file
+- `pxcli auth export` writes credentials as PLAINTEXT JSON only when explicitly invoked; the export file is created with 0600 permissions and no credential material appears in any default command output
+- `pxcli auth import` re-encrypts imported credentials with the local machine-bound key; bundle contents are never logged and the plaintext bundle is left for the user to delete
 
 This is machine-bound obfuscation rather than OS keychain-backed secret storage. It prevents casual copying between machines but does not protect against other local processes that can already read the token file. If cookie storage is enabled, browser cookies are stored alongside the token and should be treated as sensitive session material.
 

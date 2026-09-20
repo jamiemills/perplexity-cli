@@ -51,7 +51,6 @@ FRAMEWORK_PACKAGES = frozenset(
         "websockets",
         "mcp",
         "cryptography",
-        "tenacity",
     }
 )
 

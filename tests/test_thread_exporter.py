@@ -307,11 +307,11 @@ class TestAtomicCsvWrite:
         assert output_path.exists()
 
     @pytest.mark.skipif(not _POSIX, reason="POSIX mode bits are not asserted on Windows")
-    def test_written_file_has_default_mode(self, tmp_path):
-        """A newly written CSV gets the conventional 0644 mode."""
+    def test_written_file_has_owner_only_mode(self, tmp_path):
+        """A newly written CSV gets the owner-only 0600 mode."""
         output_path = tmp_path / "threads.csv"
         write_threads_csv([ThreadRecord(title="t", url="u", created_at="c")], output_path)
-        assert stat.S_IMODE(output_path.stat().st_mode) == 0o644
+        assert stat.S_IMODE(output_path.stat().st_mode) == 0o600
 
     def test_failed_write_preserves_existing_destination(self, tmp_path, monkeypatch):
         """A pre-replace failure preserves the old file byte-for-byte."""

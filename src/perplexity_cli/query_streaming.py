@@ -26,6 +26,7 @@ from perplexity_cli.api.models import (
     WebResult,
 )
 from perplexity_cli.envelope import Meta
+from perplexity_cli.exit_codes import INTERRUPTED, exit_code_for_exception
 from perplexity_cli.ndjson import NDJSONWriter
 from perplexity_cli.ports import QueryGateway
 from perplexity_cli.utils.exceptions import (
@@ -37,7 +38,7 @@ from perplexity_cli.utils.version import get_version
 
 if TYPE_CHECKING:
     #: Type for error handler callbacks in the dispatch table.
-    _ErrorHandler = Callable[[Any, logging.Logger], Any]
+    _ErrorHandler = Callable[..., Any]
 
 
 class _StreamOutputOptions(Protocol):
@@ -81,6 +82,21 @@ _HTTP_ERROR_MESSAGES: Final[dict[int, str]] = {
 _HTTP_ERROR_EXTRAS: Final[dict[int, str]] = {
     401: "\nRe-authenticate with: perplexity-cli auth",
 }
+
+_ERROR_MESSAGE_PREFIX: Final[str] = "[ERROR] "
+
+_STREAM_HTTP_STATUS_CODES: Final[dict[int, str]] = {
+    401: "authentication_required",
+    403: "permission_denied",
+    429: "rate_limited",
+}
+
+_STREAM_ERROR_CODES: Final[list[tuple[type[BaseException], str]]] = [
+    (PerplexityRequestError, "network_error"),
+    (UpstreamSchemaError, "upstream_schema_error"),
+    (KeyboardInterrupt, "interrupted"),
+    (OSError, "output_error"),
+]
 
 
 def _get_stream_logger() -> logging.Logger:
@@ -205,6 +221,20 @@ def _render_stream_references(
             _write_stdout(formatted_refs + "\n")
 
 
+def _require_final_message(final_message: object | None) -> None:
+    """Raise the canonical schema error when the stream lacked a final message.
+
+    Args:
+        final_message: The final SSE message, or ``None`` when none arrived.
+
+    Raises:
+        UpstreamSchemaError: If the stream ended without a final SSE message.
+    """
+    if final_message is None:
+        msg = "No final SSE message found in upstream response"
+        raise UpstreamSchemaError(msg)
+
+
 def _run_stream_loop(
     api: QueryGateway,
     query_input: QueryInput,
@@ -219,10 +249,14 @@ def _run_stream_loop(
 
     Returns:
         Tuple of (accumulated_text, references).
+
+    Raises:
+        UpstreamSchemaError: If the stream ends without a final SSE message.
     """
     logger = _get_stream_logger()
     accumulated_text = ""
     references: list[WebResult] = []
+    final_message: object | None = None
 
     for message in api.submit_query(query_input):
         logger.debug(
@@ -232,64 +266,152 @@ def _run_stream_loop(
         )
         accumulated_text = _process_stream_message(message, accumulated_text, ndjson_writer)
 
-        if message.final_sse_message and message.web_results:
-            references = message.web_results
-            logger.debug("Extracted %s references", len(references))
+        if message.final_sse_message:
+            final_message = message
+            if message.web_results:
+                references = message.web_results
+                logger.debug("Extracted %s references", len(references))
 
+    _require_final_message(final_message)
     return accumulated_text, references
 
 
-def _handle_stream_http_status_error(
-    error: PerplexityHTTPStatusError, logger: logging.Logger
+def _stream_error_code(error: BaseException) -> str:
+    """Classify a streaming failure into the shared error-code taxonomy."""
+    if isinstance(error, PerplexityHTTPStatusError):
+        return _STREAM_HTTP_STATUS_CODES.get(error.response.status_code, "network_error")
+    for exc_type, code in _STREAM_ERROR_CODES:
+        if isinstance(error, exc_type):
+            return code
+    return "internal_error"
+
+
+def _emit_stream_failure_event(
+    ndjson_writer: NDJSONWriter | None,
+    code: str,
+    message: str,
+    fix: str | None,
 ) -> None:
-    """Handle an HTTP status error during streaming, exiting with code 1."""
+    """Emit the terminal ``ok=false`` result event for JSON streaming mode.
+
+    Emission is skipped in human mode and when the output pipe is already
+    closed, so reporting a failure never masks the original error.
+
+    Args:
+        ndjson_writer: NDJSON writer for JSON mode, or ``None`` in human mode.
+        code: Taxonomy code describing the failure.
+        message: Human-facing error message (prefix and padding stripped).
+        fix: Optional remediation hint.
+    """
+    if ndjson_writer is None:
+        return
+    error_payload: dict[str, Any] = {
+        "code": code,
+        "message": message.strip().removeprefix(_ERROR_MESSAGE_PREFIX),
+    }
+    if fix is not None:
+        error_payload["fix"] = fix.strip()
+    try:
+        ndjson_writer.result(
+            ok=False,
+            command="pxcli query --json --stream",
+            result={"error": error_payload},
+        )
+    except BrokenPipeError:
+        _get_stream_logger().debug("Skipped failure event; output pipe already closed")
+
+
+def _write_human_error(
+    message: str,
+    fix: str | None,
+    ndjson_writer: NDJSONWriter | None,
+) -> None:
+    """Write error guidance to stderr in human mode; JSON mode stays silent."""
+    if ndjson_writer is not None:
+        return
+    _write_stderr(message + "\n")
+    if fix is not None:
+        _write_stderr(fix + "\n")
+
+
+def _handle_stream_http_status_error(
+    error: PerplexityHTTPStatusError,
+    logger: logging.Logger,
+    ndjson_writer: NDJSONWriter | None = None,
+) -> None:
+    """Handle an HTTP status error, exiting with its taxonomy exit code."""
     status = error.response.status_code
     logger.error("HTTP error %s during streaming: %s", status, error)
-    _write_stdout("\n")
     message = _HTTP_ERROR_MESSAGES.get(status, f"[ERROR] HTTP error {status}.")
-    _write_stderr(message + "\n")
-    if status in _HTTP_ERROR_EXTRAS:
-        _write_stderr(_HTTP_ERROR_EXTRAS[status] + "\n")
-    raise SystemExit(1)
+    fix = _HTTP_ERROR_EXTRAS.get(status)
+    _emit_stream_failure_event(ndjson_writer, _stream_error_code(error), message, fix)
+    _write_human_error(message, fix, ndjson_writer)
+    raise SystemExit(exit_code_for_exception(error))
 
 
-def _handle_stream_network_error(error: PerplexityRequestError, logger: logging.Logger) -> None:
-    """Handle a network error during streaming, exiting with code 1."""
+def _handle_stream_network_error(
+    error: PerplexityRequestError,
+    logger: logging.Logger,
+    ndjson_writer: NDJSONWriter | None = None,
+) -> None:
+    """Handle a network error, exiting with its taxonomy exit code."""
     logger.error("Network error during streaming: %s", error)
-    _write_stdout("\n")
-    _write_stderr("[ERROR] Network error. Please check your internet connection.\n")
-    raise SystemExit(1)
+    message = "[ERROR] Network error. Please check your internet connection."
+    _emit_stream_failure_event(ndjson_writer, _stream_error_code(error), message, None)
+    _write_human_error(message, None, ndjson_writer)
+    raise SystemExit(exit_code_for_exception(error))
 
 
-def _handle_stream_upstream_schema_error(error: Any, logger: logging.Logger) -> None:
-    """Handle a malformed upstream snapshot, exiting with code 1."""
+def _handle_stream_upstream_schema_error(
+    error: Any,
+    logger: logging.Logger,
+    ndjson_writer: NDJSONWriter | None = None,
+) -> None:
+    """Handle a malformed upstream snapshot, exiting with its taxonomy exit code."""
     logger.error("Malformed upstream response during streaming: %s", error)
-    _write_stdout("\n")
-    _write_stderr(f"[ERROR] Upstream response format changed: {error}\n")
-    raise SystemExit(1)
+    message = f"[ERROR] Upstream response format changed: {error}"
+    _emit_stream_failure_event(ndjson_writer, _stream_error_code(error), message, None)
+    _write_human_error(message, None, ndjson_writer)
+    raise SystemExit(exit_code_for_exception(error))
 
 
-def _handle_stream_keyboard_interrupt(logger: logging.Logger) -> None:
+def _handle_stream_keyboard_interrupt(
+    logger: logging.Logger,
+    ndjson_writer: NDJSONWriter | None = None,
+) -> None:
     """Handle a user interrupt during streaming, exiting with code 130."""
     logger.info("Streaming interrupted by user")
-    _write_stderr("\n[ERROR] Streaming interrupted.\n")
-    raise SystemExit(130)
+    message = "\n[ERROR] Streaming interrupted."
+    _emit_stream_failure_event(ndjson_writer, "interrupted", message, None)
+    _write_human_error(message, None, ndjson_writer)
+    raise SystemExit(INTERRUPTED)
 
 
-def _handle_stream_output_error(error: Any, logger: logging.Logger) -> None:
-    """Handle a local output failure during streaming, exiting with code 1."""
+def _handle_stream_output_error(
+    error: Any,
+    logger: logging.Logger,
+    ndjson_writer: NDJSONWriter | None = None,
+) -> None:
+    """Handle a local output failure, exiting with its taxonomy exit code."""
     logger.error("Streaming output failed: %s", error)
-    _write_stdout("\n")
-    _write_stderr(f"[ERROR] Failed to render streaming output: {error}\n")
-    raise SystemExit(1)
+    message = f"[ERROR] Failed to render streaming output: {error}"
+    _emit_stream_failure_event(ndjson_writer, _stream_error_code(error), message, None)
+    _write_human_error(message, None, ndjson_writer)
+    raise SystemExit(exit_code_for_exception(error))
 
 
-def _handle_stream_unexpected_error(error: Exception, logger: logging.Logger) -> None:
-    """Handle an unexpected streaming error, exiting with code 1."""
+def _handle_stream_unexpected_error(
+    error: BaseException,
+    logger: logging.Logger,
+    ndjson_writer: NDJSONWriter | None = None,
+) -> None:
+    """Handle an unexpected streaming error, exiting with its taxonomy exit code."""
     logger.error("Unexpected error during streaming: %s", error)
-    _write_stderr("[ERROR] An unexpected error occurred.\n")
-    _write_stderr("Run with --debug for more information.\n")
-    raise SystemExit(1)
+    message = "[ERROR] An unexpected error occurred."
+    fix = "Run with --debug for more information."
+    _emit_stream_failure_event(ndjson_writer, _stream_error_code(error), message, fix)
+    _write_human_error(message, fix, ndjson_writer)
+    raise SystemExit(exit_code_for_exception(error))
 
 
 def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorHandler]]:
@@ -298,12 +420,18 @@ def _init_stream_error_handlers() -> list[tuple[type | tuple[type, ...], _ErrorH
         (PerplexityHTTPStatusError, _handle_stream_http_status_error),
         (PerplexityRequestError, _handle_stream_network_error),
         (UpstreamSchemaError, _handle_stream_upstream_schema_error),
-        (
-            KeyboardInterrupt,
-            lambda _error, log: _handle_stream_keyboard_interrupt(log),
-        ),
+        (KeyboardInterrupt, _dispatch_stream_keyboard_interrupt),
         (OSError, _handle_stream_output_error),
     ]
+
+
+def _dispatch_stream_keyboard_interrupt(
+    _error: BaseException,
+    logger: logging.Logger,
+    ndjson_writer: NDJSONWriter | None = None,
+) -> None:
+    """Dispatch a user interrupt to the dedicated streaming interrupt handler."""
+    _handle_stream_keyboard_interrupt(logger, ndjson_writer)
 
 
 class _StreamErrorHandlers:
@@ -319,19 +447,24 @@ class _StreamErrorHandlers:
         return cls._cache
 
 
-def _handle_stream_error(error: Exception) -> None:
+def _handle_stream_error(
+    error: BaseException,
+    ndjson_writer: NDJSONWriter | None = None,
+) -> None:
     """Handle errors raised during streaming, exiting as appropriate.
 
     Args:
         error: The exception that was raised.
+        ndjson_writer: Optional NDJSON writer receiving the terminal failure
+            event in JSON mode.
     """
     logger = _get_stream_logger()
     for exc_types, handler in _StreamErrorHandlers.get():
         if isinstance(error, exc_types):
-            handler(error, logger)
+            handler(error, logger, ndjson_writer)
             return
 
-    _handle_stream_unexpected_error(error, logger)
+    _handle_stream_unexpected_error(error, logger, ndjson_writer)
 
 
 def stream_query_response(
@@ -363,5 +496,7 @@ def stream_query_response(
             _write_ndjson_result(ndjson_writer, accumulated_text, references, trace)
         else:
             _render_stream_references(render, accumulated_text, references)
+    except KeyboardInterrupt as e:
+        _handle_stream_error(e, ndjson_writer)
     except Exception as e:  # catch-all CLI error handler
-        _handle_stream_error(e)
+        _handle_stream_error(e, ndjson_writer)

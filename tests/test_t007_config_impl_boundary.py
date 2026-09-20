@@ -12,6 +12,8 @@ import json
 import logging
 import os
 import signal
+import stat
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -36,6 +38,7 @@ from perplexity_cli.utils.exceptions import ConfigurationError
 _IMPL_LOGGER_NAME = "perplexity_cli.utils.config.impl"
 _FEATURES_SECTION_ERROR = "^Feature configuration 'features' section must be a dictionary$"
 _RATE_LIMITING_SECTION_ERROR = "^rate_limiting section must be a dictionary$"
+_POSIX = sys.platform != "win32"
 
 
 def _run_with_deadline[ResultT](
@@ -95,6 +98,22 @@ class TestGetConfigDirResolution:
             get_config_dir()
 
         assert str(configured) in str(excinfo.value)
+
+    @pytest.mark.skipif(not _POSIX, reason="POSIX mode bits are not asserted on Windows")
+    def test_newly_created_config_dir_is_owner_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A newly created config directory receives 0700 permissions.
+
+        Mirrors the session-log precedent: the mode applies to the final
+        component at creation time only, and pre-existing directories are
+        never force-chmodded.
+        """
+        config_dir = tmp_path / "fresh" / "perplexity-cli"
+        monkeypatch.setenv("PERPLEXITY_CONFIG_DIR", str(config_dir))
+
+        assert get_config_dir() == config_dir
+        assert stat.S_IMODE(config_dir.stat().st_mode) == 0o700
 
 
 class TestUrlsConfigFiles:

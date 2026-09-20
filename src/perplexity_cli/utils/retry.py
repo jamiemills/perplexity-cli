@@ -3,15 +3,7 @@
 import math
 import random
 import time
-from collections.abc import Callable
-from typing import Final, TypeVar
-
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+from typing import Final
 
 from perplexity_cli.utils.exceptions import (
     PerplexityHTTPStatusError,
@@ -24,73 +16,8 @@ _HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
 _MAX_RETRY_AFTER_DELAY: Final[float] = 60.0
 _DEFAULT_BACKOFF_DELAY: Final[float] = 1.0
 _DEFAULT_MAX_BACKOFF_DELAY: Final[float] = 60.0
-_DEFAULT_MAX_ATTEMPTS: Final[int] = 3
-_DEFAULT_INITIAL_WAIT: Final[float] = 1.0
-_DEFAULT_RETRY_MAX_WAIT: Final[float] = 10.0
-_DEFAULT_EXPONENTIAL_BASE: Final[float] = 2.0
 _DEFAULT_JITTER_FACTOR: Final[float] = 0.1
 _rng = random
-
-T = TypeVar("T")
-
-
-def retry_with_backoff(
-    max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
-    initial_wait: float = _DEFAULT_INITIAL_WAIT,
-    max_wait: float = _DEFAULT_RETRY_MAX_WAIT,
-    exponential_base: float = _DEFAULT_EXPONENTIAL_BASE,
-) -> Callable[[Callable[[], T]], Callable[[], T]]:
-    """Create a retry decorator with exponential backoff.
-
-    Args:
-        max_attempts: Maximum number of retry attempts.
-        initial_wait: Initial wait time in seconds.
-        max_wait: Maximum wait time in seconds.
-        exponential_base: Base for exponential backoff calculation.
-
-    Returns:
-        Decorator function for retrying operations.
-    """
-    return retry(
-        stop=stop_after_attempt(max_attempts),
-        wait=wait_exponential(multiplier=initial_wait, max=max_wait, exp_base=exponential_base),
-        retry=retry_if_exception_type((PerplexityRequestError, PerplexityHTTPStatusError)),
-        reraise=True,
-    )
-
-
-def retry_http_request[T](
-    func: Callable[[], T],
-    max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
-    initial_wait: float = _DEFAULT_INITIAL_WAIT,
-    max_wait: float = _DEFAULT_RETRY_MAX_WAIT,
-) -> T:
-    """Retry an HTTP request function with exponential backoff.
-
-    Args:
-        func: Function that performs HTTP request.
-        max_attempts: Maximum number of retry attempts.
-        initial_wait: Initial wait time in seconds.
-        max_wait: Maximum wait time in seconds.
-
-    Returns:
-        Result of the function call.
-
-    Raises:
-        PerplexityRequestError: If all retry attempts fail.
-        PerplexityHTTPStatusError: If HTTP error persists after retries.
-    """
-    retry_decorator = retry_with_backoff(
-        max_attempts=max_attempts,
-        initial_wait=initial_wait,
-        max_wait=max_wait,
-    )
-
-    @retry_decorator
-    def _retry_wrapper() -> T:
-        return func()
-
-    return _retry_wrapper()
 
 
 def is_retryable_error(exception: Exception) -> bool:

@@ -135,8 +135,6 @@ classify_network_error
 configure_quiet_mode
 enable_structured_logging
 _.get_stats
-retry_http_request
-sleep_with_backoff
 is_curl_cffi_available
 get_version_from_pyproject
 _.extract_plan_info

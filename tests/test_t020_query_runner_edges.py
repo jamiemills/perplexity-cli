@@ -257,11 +257,17 @@ def test_query_runner_stream_loop_keeps_references_from_final_message_only():
     api.submit_query.return_value = iter(
         [
             Mock(
-                extract_answer_text=Mock(return_value="answer"),
-                status="COMPLETE",
+                extract_answer_text=Mock(return_value="ans"),
+                status="STREAM",
                 final_sse_message=False,
                 web_results=early,
-            )
+            ),
+            Mock(
+                extract_answer_text=Mock(return_value="answer"),
+                status="COMPLETE",
+                final_sse_message=True,
+                web_results=None,
+            ),
         ]
     )
 
