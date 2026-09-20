@@ -29,12 +29,13 @@ runs:
         GITLEAKS_SHA256_DARWIN_ARM64: b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5
       run: |
         set -euo pipefail
-        case "${RUNNER_OS}-${RUNNER_ARCH}" in
-          Linux-X64)
+        runner="$(printf '%s-%s' "${RUNNER_OS}" "${RUNNER_ARCH}" | tr '[:upper:]' '[:lower:]')"
+        case "${runner}" in
+          linux-x64)
             asset="gitleaks_8.30.1_linux_x64.tar.gz"
             expected="${GITLEAKS_SHA256_LINUX_X64}"
             ;;
-          macOS-arm64)
+          macos-arm64)
             asset="gitleaks_8.30.1_darwin_arm64.tar.gz"
             expected="${GITLEAKS_SHA256_DARWIN_ARM64}"
             ;;
